@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PioneerNews 实时新闻监控脚本
+FinFeed 实时新闻监控脚本
 ===========================
 独立运行的新闻抓取脚本，支持12个主流财经信息源的实时监控、SQLite持久化、JSON/CSV导出和Web仪表盘。
 
@@ -986,6 +986,11 @@ def export_to_csv(output_path: str, start_date=None, end_date=None):
 # ============================================================
 # CLI 界面渲染
 # ============================================================
+def _make_link(url: str, text: str) -> str:
+    """生成终端可点击的超链接（OSC 8 协议）"""
+    if not url or url == "#":
+        return text
+    return f"\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\"
 
 
 def _build_news_table(news_list: list, max_rows: int = 0) -> Table:
@@ -1012,8 +1017,9 @@ def _build_news_table(news_list: list, max_rows: int = 0) -> Table:
         pub_time = n.get("publish_time", "")
         source = n.get("source", "")
         title = n.get("title", "")
-        # 纯文本标题，不使用 OSC 8 超链接（避免 Windows Terminal 自动添加下划线）
-        table.add_row(pub_time, source, title)
+        url = n.get("url", "#")
+        title_text = _make_link(url, title)
+        table.add_row(pub_time, source, title_text)
         shown += 1
 
     return table
@@ -1033,7 +1039,7 @@ def _build_header(cycle: int, total_news: int, new_count: int, source_stats: dic
     stats_line = "  ".join(stats_parts)
 
     header = Text()
-    header.append(f" PioneerNews 实时监控 ", style="bold white on blue")
+    header.append(f" FinFeed 实时监控 ", style="bold white on blue")
     header.append(f"  {now_str}  ", style="bold cyan")
     header.append(f"第{cycle}轮", style="yellow")
     header.append(f" | 共{total_news}条", style="green")
@@ -1051,15 +1057,20 @@ def _build_header(cycle: int, total_news: int, new_count: int, source_stats: dic
 
 
 def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
-                    source_stats: dict, interval: int, status: str) -> Layout:
-    """构建完整的终端布局"""
+                    source_stats: dict, interval: int, status: str,
+                    table: Table | None = None) -> Layout:
+    """构建完整的终端布局
+    
+    当传入预构建的 table 时，只重建 header（轻量级时钟刷新），
+    避免每次时钟更新都重建整个表格导致事件循环阻塞。
+    """
     layout = Layout()
     layout.split_column(
         Layout(name="header", size=5),
         Layout(name="body"),
     )
 
-    # 头部（无颜色来源）
+    # 头部（轻量重建，仅更新时钟和状态）
     now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     stats_parts = []
     for name, count in source_stats.items():
@@ -1070,7 +1081,7 @@ def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
     stats_line = " ".join(stats_parts)
 
     header_text = (
-        f" \u2588 PioneerNews 实时监控 "
+        f" \u2588 FinFeed 实时监控 "
         f" \u2502 {now_str}"
         f" \u2502 第{cycle}轮"
         f" \u2502 库内{total_news}条"
@@ -1085,10 +1096,11 @@ def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
         padding=(0, 1),
     ))
 
-    # 新闻表格
-    term_height = console.size.height
-    max_rows = max(10, term_height - 10)
-    table = _build_news_table(news_list, max_rows=max_rows)
+    # 新闻表格：使用预构建的 table 或按需重建
+    if table is None:
+        term_height = console.size.height
+        max_rows = max(10, term_height - 10)
+        table = _build_news_table(news_list, max_rows=max_rows)
     layout["body"].update(table)
 
     return layout
@@ -1121,7 +1133,7 @@ _WEB_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PioneerNews 实时监控</title>
+<title>FinFeed 实时监控</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0d1117;color:#c9d1d9;font-family:'Cascadia Code','Consolas','Microsoft YaHei',monospace;padding:16px;font-size:14px}
@@ -1184,7 +1196,7 @@ tbody td{padding:8px 12px;vertical-align:middle;white-space:nowrap}
 <body>
 <div class="header">
 <div class="header-top">
-<h1>&#9608; PioneerNews<span id="update-time"></span></h1>
+<h1>&#9608; FinFeed<span id="update-time"></span></h1>
 <div class="export-bar">
 <select id="export-format"><option value="json">JSON</option><option value="csv">CSV</option></select>
 <button class="btn" onclick="doExport()">&#128229; 导出</button>
@@ -1296,7 +1308,7 @@ class _WebHandler(BaseHTTPRequestHandler):
                 data = buf.getvalue().encode("utf-8-sig")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
-                self.send_header("Content-Disposition", f'attachment; filename="pioneer_news_{ts_str}.csv"')
+                self.send_header("Content-Disposition", f'attachment; filename="finfeed_news_{ts_str}.csv"')
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -1304,7 +1316,7 @@ class _WebHandler(BaseHTTPRequestHandler):
                 data = json.dumps(news, ensure_ascii=False, indent=2).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Disposition", f'attachment; filename="pioneer_news_{ts_str}.json"')
+                self.send_header("Content-Disposition", f'attachment; filename="finfeed_news_{ts_str}.json"')
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -1375,7 +1387,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
 
         console.print()
         console.print(Panel(
-            f"[bold white on blue] PioneerNews 单次抓取完成 [/]"
+            f"[bold white on blue] FinFeed 单次抓取完成 [/]"
             f" [cyan]{now_bj().strftime('%Y-%m-%d %H:%M:%S')}[/]"
             f" | 抓取 {len(all_news)} 条 | 新增入库 {inserted} 条 | 库内共 {total_in_db} 条",
             border_style="bright_blue",
@@ -1395,32 +1407,37 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         refresh_per_second=2,
         screen=True,
     ) as live:
-        # 缓存上次渲染的快照，每秒或数据变化时刷新时钟
-        _last_render_key = ""
-        _last_render_sec = -1
+        # 缓存上次构建的表格，时钟更新时只重建 header，避免事件循环阻塞
+        _cached_table: Table | None = None
+        _last_table_key = ""
 
-        def _update_if_changed(news, cyc, total, new_ct, stats, itv, st, force=False):
-            nonlocal _last_render_key, _last_render_sec
-            cur_sec = int(time.time())
-            key = f"{len(news)}|{cyc}|{new_ct}|{st}"
-            # 每秒刷新时钟，或数据变化时刷新
-            if force or key != _last_render_key or cur_sec != _last_render_sec:
-                _last_render_key = key
-                _last_render_sec = cur_sec
-                live.update(_build_display(news, cyc, total, new_ct, stats, itv, st))
+        def _rebuild_table_if_needed(news, force=False):
+            """只在新闻列表变化时重建表格（轻量判断）"""
+            nonlocal _cached_table, _last_table_key
+            key = f"{len(news)}|{news[0]['title'] if news else ''}"
+            if force or key != _last_table_key:
+                _last_table_key = key
+                term_height = console.size.height
+                max_rows = max(10, term_height - 10)
+                _cached_table = _build_news_table(news, max_rows=max_rows)
+            return _cached_table
+
+        def _update_display(news, cyc, total, new_ct, stats, itv, st, force=False, rebuild_table=False):
+            table = _rebuild_table_if_needed(news, force=rebuild_table) if rebuild_table else _cached_table
+            live.update(_build_display(news, cyc, total, new_ct, stats, itv, st, table=table))
 
         while True:
             cycle += 1
-            _update_if_changed(
+            _update_display(
                 all_collected_news, cycle, total_in_db, 0,
-                source_stats, interval, "抓取中..."
+                source_stats, interval, "抓取中...", rebuild_table=True
             )
 
-            # 抓取期间每 0.3s 刷新时钟，不让画面卡住
+            # 抓取期间每 0.3s 刷新时钟，只重建 header（表格不变）
             fetch_task = asyncio.create_task(fetch_all_news())
             while not fetch_task.done():
                 await asyncio.sleep(0.3)
-                _update_if_changed(
+                _update_display(
                     all_collected_news, cycle, total_in_db, last_new_count,
                     source_stats, interval, "抓取中...", force=True
                 )
@@ -1445,13 +1462,19 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                 last_new_count, f"{status} | {wait_sec:.1f}s后下一轮"
             )
 
-            # 等待期间每秒刷新时钟显示
+            # 等待期间每秒刷新时钟显示（只重建 header）
             wait_end = time.time() + wait_sec
+            # 数据变化后重建一次表格
+            _update_display(
+                all_collected_news, cycle, total_in_db, last_new_count,
+                source_stats, interval, f"{status} | {wait_sec:.0f}s后下一轮",
+                force=True, rebuild_table=True
+            )
             while time.time() < wait_end:
                 await asyncio.sleep(0.5)
                 remaining = max(0, wait_end - time.time())
                 st = f"{status} | {remaining:.0f}s后下一轮"
-                _update_if_changed(
+                _update_display(
                     all_collected_news, cycle, total_in_db, last_new_count,
                     source_stats, interval, st, force=True
                 )
@@ -1462,7 +1485,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
 # ============================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="PioneerNews 实时新闻监控脚本",
+        description="FinFeed 实时新闻监控脚本",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
