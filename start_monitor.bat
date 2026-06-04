@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul
 echo ============================================
 echo   PioneerNews 实时新闻监控
@@ -22,8 +22,9 @@ if errorlevel 1 (
 )
 
 :: 运行脚本
-echo [启动] 实时监控模式（每5秒抓取一次，Ctrl+C 停止）
-echo [网页] http://localhost:8866
+echo.
+echo   [启动] 实时监控模式（每5秒抓取一次，Ctrl+C 停止）
+echo   [网页] http://localhost:8866
 echo.
 python "%~dp0news_monitor.py" %*
 pause

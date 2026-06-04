@@ -986,21 +986,14 @@ def export_to_csv(output_path: str, start_date=None, end_date=None):
 # ============================================================
 # CLI 界面渲染
 # ============================================================
-def _make_link(url: str, text: str) -> str:
-    """生成终端可点击的超链接（无下划线）
-    
-    使用原始 OSC 8 转义序列而非 rich 的 [link] markup，
-    因为 rich 的 link 标记会强制添加下划线，而 OSC 8 本身不控制样式。
-    """
-    if not url or url == "#":
-        return text
-    # OSC 8: \x1b]8;;URL\x1b\\TEXT\x1b]8;;\x1b\\
-    # 纯转义序列，不带任何样式修饰，无下划线
-    return f"\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\"
 
 
 def _build_news_table(news_list: list, max_rows: int = 0) -> Table:
-    """构建新闻表格"""
+    """构建新闻表格
+    
+    每条数据严格占一行，标题超长时自动截断（ellipsis），
+    表格宽度随终端窗口自适应。
+    """
     table = Table(
         box=box.SIMPLE_HEAVY,
         show_lines=False,
@@ -1019,10 +1012,8 @@ def _build_news_table(news_list: list, max_rows: int = 0) -> Table:
         pub_time = n.get("publish_time", "")
         source = n.get("source", "")
         title = n.get("title", "")
-        url = n.get("url", "#")
-
-        title_text = _make_link(url, title)
-        table.add_row(pub_time, source, title_text)
+        # 纯文本标题，不使用 OSC 8 超链接（避免 Windows Terminal 自动添加下划线）
+        table.add_row(pub_time, source, title)
         shown += 1
 
     return table
