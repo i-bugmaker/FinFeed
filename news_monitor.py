@@ -38,9 +38,8 @@ from bs4 import BeautifulSoup
 from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
-from rich.layout import Layout
 from rich.text import Text
-from rich.console import Console
+from rich.console import Console, Group
 from rich import box
 
 import threading
@@ -993,22 +992,44 @@ def _make_link(url: str, text: str) -> str:
     return f"\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\"
 
 
+# 来源颜色配置
+SOURCE_COLORS = {
+    "新浪财经": "#55aaff",
+    "财联社": "#ff3b30",
+    "同花顺": "red",
+    "东方财富": "#ff9500",
+    "雅虎财经": "#aaaaaa",
+    "21经济网": "#0078ff",
+    "华尔街见闻": "#00d4ff",
+    "雪球": "#0066ff",
+    "金十数据": "#ff9500",
+    "格隆汇": "#68af00",
+    "法布财经": "#00a0e9",
+    "企查查": "magenta",
+}
+
+
 def _build_news_table(news_list: list, max_rows: int = 0) -> Table:
-    """构建新闻表格
-    
+    """构建新闻表格（圆角边框样式）
+
     每条数据严格占一行，标题超长时自动截断（ellipsis），
-    表格宽度随终端窗口自适应。
+    表格宽度随终端窗口自适应，带圆角边框和序号列。
     """
+    total = len(news_list)
     table = Table(
-        box=box.SIMPLE_HEAVY,
+        title=f"📰 财经资讯 ({total}条)",
+        box=box.ROUNDED,
+        border_style="cyan",
+        show_header=True,
+        header_style="bold white",
         show_lines=False,
-        pad_edge=False,
+        pad_edge=True,
         expand=True,
-        header_style="bold white on dark_blue",
     )
+    table.add_column("序号", style="yellow", width=4, justify="center", no_wrap=True)
+    table.add_column("标题 (Ctrl+点击跳转)", style="cyan", ratio=1, no_wrap=True, overflow="ellipsis")
+    table.add_column("来源", style="magenta", width=10, no_wrap=True)
     table.add_column("时间", style="dim", width=19, no_wrap=True)
-    table.add_column("来源", width=10, no_wrap=True)
-    table.add_column("标题", ratio=1, no_wrap=True, overflow="ellipsis")
 
     shown = 0
     for n in news_list:
@@ -1018,59 +1039,29 @@ def _build_news_table(news_list: list, max_rows: int = 0) -> Table:
         source = n.get("source", "")
         title = n.get("title", "")
         url = n.get("url", "#")
-        title_text = _make_link(url, title)
-        table.add_row(pub_time, source, title_text)
+
+        source_color = SOURCE_COLORS.get(source, "#aaaaaa")
+        source_display = f"[{source_color}]{source}[/]"
+
+        if url and url != "#":
+            title_display = f"[link={url}]{title}[/link]"
+        else:
+            title_display = title
+
+        table.add_row(str(shown + 1), title_display, source_display, pub_time)
         shown += 1
 
     return table
 
 
-def _build_header(cycle: int, total_news: int, new_count: int, source_stats: dict, interval: int, status: str) -> Panel:
-    """构建顶部状态栏"""
-    now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-
-    # 来源统计（无颜色）
-    stats_parts = []
-    for name, count in source_stats.items():
-        if count > 0:
-            stats_parts.append(f"{name}:{count}")
-        else:
-            stats_parts.append(f"[dim]{name}:0[/dim]")
-    stats_line = "  ".join(stats_parts)
-
-    header = Text()
-    header.append(f" FinFeed 实时监控 ", style="bold white on blue")
-    header.append(f"  {now_str}  ", style="bold cyan")
-    header.append(f"第{cycle}轮", style="yellow")
-    header.append(f" | 共{total_news}条", style="green")
-    if new_count > 0:
-        header.append(f" | 新增{new_count}条", style="bold green")
-    header.append(f" | 间隔{interval}s", style="dim")
-    header.append(f" | {status}", style="bold magenta")
-
-    panel_content = str(header) + "\n\n" + stats_line
-    return Panel(
-        Text.from_markup(panel_content),
-        border_style="bright_blue",
-        padding=(0, 1),
-    )
-
-
 def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
                     source_stats: dict, interval: int, status: str,
-                    table: Table | None = None) -> Layout:
-    """构建完整的终端布局
-    
+                    table: Table | None = None) -> Group:
+    """构建完整的终端布局（Group 模式：顶部状态栏 + 表格 + 底部栏）
+
     当传入预构建的 table 时，只重建 header（轻量级时钟刷新），
     避免每次时钟更新都重建整个表格导致事件循环阻塞。
     """
-    layout = Layout()
-    layout.split_column(
-        Layout(name="header", size=5),
-        Layout(name="body"),
-    )
-
-    # 头部（轻量重建，仅更新时钟和状态）
     now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     stats_parts = []
     for name, count in source_stats.items():
@@ -1081,29 +1072,29 @@ def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
     stats_line = " ".join(stats_parts)
 
     header_text = (
-        f" \u2588 FinFeed 实时监控 "
-        f" \u2502 {now_str}"
-        f" \u2502 第{cycle}轮"
-        f" \u2502 库内{total_news}条"
-        f"{' | +' + str(new_count) + '条新' if new_count > 0 else ''}"
-        f" \u2502 间隔{interval}s"
-        f" \u2502 {status}\n"
-        f" {stats_line}"
+        f"[bold white] FinFeed 实时监控[/]"
+        f" [dim]│[/] {now_str}"
+        f" [dim]│[/] 第{cycle}轮"
+        f" [dim]│[/] 库内{total_news}条"
+        f"{' [green]│ +' + str(new_count) + '条新[/]' if new_count > 0 else ''}"
+        f" [dim]│[/] 间隔{interval}s"
+        f" [dim]│[/] {status}"
     )
-    layout["header"].update(Panel(
-        Text.from_markup(header_text),
-        border_style="bright_blue",
-        padding=(0, 1),
-    ))
+    status_bar = Panel(
+        Text.from_markup(header_text + "\n " + stats_line),
+        border_style="cyan",
+        box=box.SIMPLE,
+    )
 
     # 新闻表格：使用预构建的 table 或按需重建
     if table is None:
         term_height = console.size.height
-        max_rows = max(10, term_height - 10)
+        max_rows = max(10, term_height - 12)
         table = _build_news_table(news_list, max_rows=max_rows)
-    layout["body"].update(table)
 
-    return layout
+    footer = Panel("[dim]按 Ctrl+C 退出程序[/]", border_style="dim", box=box.SIMPLE)
+
+    return Group(status_bar, table, footer)
 
 
 def _jitter_interval(base: int) -> float:
@@ -1418,7 +1409,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             if force or key != _last_table_key:
                 _last_table_key = key
                 term_height = console.size.height
-                max_rows = max(10, term_height - 10)
+                max_rows = max(10, term_height - 12)
                 _cached_table = _build_news_table(news, max_rows=max_rows)
             return _cached_table
 
