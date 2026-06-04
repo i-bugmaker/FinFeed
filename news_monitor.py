@@ -1122,6 +1122,7 @@ _web_state = {
     "status": "启动中",
     "sources": [],
     "last_update": "",
+    "server_ts": time.time(),
 }
 
 _WEB_HTML = r"""<!DOCTYPE html>
@@ -1211,18 +1212,28 @@ tbody td{padding:8px 12px;vertical-align:middle;white-space:nowrap}
 <tbody id="news-body"><tr><td colspan="3" class="empty">正在加载...</td></tr></tbody>
 </table>
 <script>
-let allNews=[], activeSource='all';
+let allNews=[], activeSource='all', serverOffset=0;
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function truncate(s,n){return s.length>n?s.slice(0,n)+'...':s}
+function pad(n){return n<10?'0'+n:n}
+function bjNow(){
+  // 基于服务器偏移量计算北京时间，每秒本地刷新
+  const now=new Date(Date.now()+serverOffset);
+  return now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+' '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds())
+}
+// 每秒刷新顶部时钟（不依赖 API 轮询）
+setInterval(()=>{document.getElementById('update-time').textContent=bjNow()},1000);
 async function load(){
   try{
     const r=await fetch('/api/news');
     const d=await r.json();
+    // 计算服务器时间与本地时间的偏移量
+    if(d.server_ts){serverOffset=(d.server_ts*1000)-Date.now()}
     document.getElementById('cycle').textContent=d.cycle;
     document.getElementById('total').textContent=d.total;
     document.getElementById('new-count').textContent=d.new_count;
     document.getElementById('status').textContent=d.status;
-    document.getElementById('update-time').textContent=d.last_update;
+    document.getElementById('update-time').textContent=bjNow();
     allNews=d.news||[];
     const sources=[...new Set(allNews.map(n=>n.source))];
     const fc=document.getElementById('filters');
@@ -1266,7 +1277,9 @@ class _WebHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         elif self.path.startswith("/api/news"):
-            data = json.dumps(_web_state, ensure_ascii=False).encode("utf-8")
+            state = dict(_web_state)
+            state["server_ts"] = time.time()  # 每次请求都返回精确服务器时间
+            data = json.dumps(state, ensure_ascii=False).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -1331,6 +1344,7 @@ def _update_web_state(news, stats, cycle, total, new_count, status):
     _web_state["status"] = status
     _web_state["sources"] = list(stats.keys())
     _web_state["last_update"] = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+    _web_state["server_ts"] = time.time()
 
 
 # ============================================================
@@ -1387,18 +1401,21 @@ async def monitor_loop(interval: int = 5, once: bool = False):
     with Live(
         _build_display(all_collected_news, 0, total_in_db, 0, source_stats, interval, "启动中..."),
         console=console,
-        refresh_per_second=1,
+        refresh_per_second=2,
         screen=True,
     ) as live:
-        # 缓存上次渲染的快照，仅在数据变化时才更新画面
+        # 缓存上次渲染的快照，每秒或数据变化时刷新时钟
         _last_render_key = ""
+        _last_render_sec = -1
 
-        def _update_if_changed(news, cyc, total, new_ct, stats, itv, st):
-            nonlocal _last_render_key
-            # 用新闻条数+轮次+状态作为快照指纹，避免相同内容重复渲染
+        def _update_if_changed(news, cyc, total, new_ct, stats, itv, st, force=False):
+            nonlocal _last_render_key, _last_render_sec
+            cur_sec = int(time.time())
             key = f"{len(news)}|{cyc}|{new_ct}|{st}"
-            if key != _last_render_key:
+            # 每秒刷新时钟，或数据变化时刷新
+            if force or key != _last_render_key or cur_sec != _last_render_sec:
                 _last_render_key = key
+                _last_render_sec = cur_sec
                 live.update(_build_display(news, cyc, total, new_ct, stats, itv, st))
 
         while True:
@@ -1408,7 +1425,15 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                 source_stats, interval, "抓取中..."
             )
 
-            all_news, source_stats = await fetch_all_news()
+            # 抓取期间每 0.3s 刷新时钟，不让画面卡住
+            fetch_task = asyncio.create_task(fetch_all_news())
+            while not fetch_task.done():
+                await asyncio.sleep(0.3)
+                _update_if_changed(
+                    all_collected_news, cycle, total_in_db, last_new_count,
+                    source_stats, interval, "抓取中...", force=True
+                )
+            all_news, source_stats = fetch_task.result()
             new_hashes, inserted = db_insert_news(all_news)
 
             # 将新抓取的新闻优雅合并：新条目插入到列表头部，保持时间排序
@@ -1421,19 +1446,24 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             total_in_db += inserted
             last_new_count = inserted
 
-            # 更新状态：等待中
+            # 更新状态：等待中（每秒刷新时钟）
             wait_sec = _jitter_interval(interval)
             status = f"新增{inserted}条" if inserted > 0 else "无新内容"
             _update_web_state(
                 all_collected_news, source_stats, cycle, total_in_db,
                 last_new_count, f"{status} | {wait_sec:.1f}s后下一轮"
             )
-            _update_if_changed(
-                all_collected_news, cycle, total_in_db, last_new_count,
-                source_stats, interval, f"{status} | {wait_sec:.1f}s后下一轮"
-            )
 
-            await asyncio.sleep(wait_sec)
+            # 等待期间每秒刷新时钟显示
+            wait_end = time.time() + wait_sec
+            while time.time() < wait_end:
+                await asyncio.sleep(0.5)
+                remaining = max(0, wait_end - time.time())
+                st = f"{status} | {remaining:.0f}s后下一轮"
+                _update_if_changed(
+                    all_collected_news, cycle, total_in_db, last_new_count,
+                    source_stats, interval, st, force=True
+                )
 
 
 # ============================================================
