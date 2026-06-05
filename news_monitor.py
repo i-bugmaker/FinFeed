@@ -1092,7 +1092,11 @@ def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
         max_rows = max(10, term_height - 12)
         table = _build_news_table(news_list, max_rows=max_rows)
 
-    footer = Panel("[dim]按 Ctrl+C 退出程序[/]", border_style="dim", box=box.SIMPLE)
+    footer = Panel(
+        f"[dim]按 Ctrl+C 退出 │ 网页仪表盘: [cyan]http://localhost:{_web_port}[/][/]",
+        border_style="dim",
+        box=box.SIMPLE,
+    )
 
     return Group(status_bar, table, footer)
 
@@ -1107,6 +1111,8 @@ def _jitter_interval(base: int) -> float:
 # ============================================================
 # Web 服务器
 # ============================================================
+_web_port = 8866
+
 _web_state = {
     "news": [],
     "stats": {},
@@ -1522,8 +1528,9 @@ def main():
         web_server = None
         try:
             # 启动 Web 仪表盘
+            global _web_port
+            _web_port = args.port
             web_server = _start_web_server(port=args.port)
-            console.print(f"[bold green]\u2714 Web 仪表盘已启动:[/bold green] [bold cyan]http://localhost:{args.port}[/bold cyan]")
             asyncio.run(monitor_loop(interval=args.interval, once=args.once))
         except KeyboardInterrupt:
             logger.info("\n用户中断，正在退出...")
