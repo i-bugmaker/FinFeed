@@ -924,6 +924,22 @@ def db_get_all_for_export(start_date=None, end_date=None):
         return [dict(row) for row in c.fetchall()]
 
 
+def db_get_date_range() -> tuple[str, str, list[str]]:
+    """获取数据库中新闻的时间范围及所有有数据的日期"""
+    with get_db() as conn:
+        c = conn.cursor()
+        try:
+            c.execute("SELECT MIN(publish_time) as min_date, MAX(publish_time) as max_date FROM news")
+            row = c.fetchone()
+            c.execute("SELECT DISTINCT substr(publish_time, 1, 10) as d FROM news WHERE publish_time IS NOT NULL AND publish_time != '' ORDER BY d")
+            dates = [r["d"] for r in c.fetchall()]
+            if row and row["min_date"] and row["max_date"]:
+                return row["min_date"][:10], row["max_date"][:10], dates
+        except Exception:
+            pass
+        return "", "", []
+
+
 # ============================================================
 # 批量抓取所有来源
 # ============================================================
@@ -1188,6 +1204,15 @@ tbody td{padding:8px 12px;vertical-align:middle;white-space:nowrap}
   thead th:nth-child(1),.col-time{display:none}
   .col-source{width:50px}
 }
+.range-picker-wrap{display:flex;align-items:center;gap:4px}
+.date-input{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:4px 8px;font-size:13px;font-family:inherit;width:140px;cursor:pointer;transition:border-color .2s}
+.date-input:focus{outline:none;border-color:#58a6ff}
+.date-input::-webkit-calendar-picker-indicator{filter:invert(.7);cursor:pointer}
+.range-result{color:#58a6ff;font-size:13px;white-space:nowrap}
+.range-result.done{cursor:pointer;padding:2px 8px;border-radius:4px;transition:background .2s}
+.range-result.done:hover{background:#1c2333}
+@media(max-width:768px){.date-input{width:130px;font-size:12px}}
+@media(max-width:480px){.date-input{width:110px;font-size:11px}}
 </style>
 </head>
 <body>
@@ -1195,6 +1220,10 @@ tbody td{padding:8px 12px;vertical-align:middle;white-space:nowrap}
 <div class="header-top">
 <h1>&#9608; FinFeed<span id="update-time"></span></h1>
 <div class="export-bar">
+<div class="range-picker-wrap">
+<input type="date" id="range-picker" class="date-input">
+<span id="range-show" class="range-result"></span>
+</div>
 <select id="export-format"><option value="json">JSON</option><option value="csv">CSV</option></select>
 <button class="btn" onclick="doExport()">&#128229; 导出</button>
 </div>
@@ -1256,9 +1285,57 @@ function render(){
   }).join('');
 }
 load();setInterval(load,5000);
+// === 两步日期选择器 ===
+let pickState='start', rangeStart='', rangeEnd='', availDates=new Set();
+async function initRangePicker(){
+  try{
+    const r=await fetch('/api/daterange');
+    const d=await r.json();
+    if(d.dates&&d.dates.length){
+      const picker=document.getElementById('range-picker');
+      picker.min=d.min; picker.max=d.max;
+      d.dates.forEach(t=>availDates.add(t));
+      picker.addEventListener('change',onDatePick);
+    }
+  }catch(e){}
+}
+function onDatePick(){
+  const picker=document.getElementById('range-picker');
+  const show=document.getElementById('range-show');
+  const val=picker.value;
+  if(!val)return;
+  if(!availDates.has(val)){
+    alert('该日期无新闻数据，请重新选择');
+    picker.value=''; return;
+  }
+  if(pickState==='start'){
+    rangeStart=val; pickState='end';
+    picker.value='';
+  }else if(pickState==='end'){
+    if(val<rangeStart){
+      alert('截止日期不能早于起始日期'); picker.value=''; return;
+    }
+    rangeEnd=val; pickState='done';
+    picker.style.display='none';
+    show.textContent='📅 '+rangeStart+' ~ '+rangeEnd;
+    show.className='range-result done'; show.title='点击重新选择';
+    show.onclick=resetRange;
+  }
+}
+function resetRange(){
+  pickState='start'; rangeStart=''; rangeEnd='';
+  const picker=document.getElementById('range-picker');
+  picker.value=''; picker.style.display='';
+  const show=document.getElementById('range-show');
+  show.textContent=''; show.className='range-result'; show.onclick=null;
+}
+initRangePicker();
 function doExport(){
   const fmt=document.getElementById('export-format').value;
-  window.open('/api/export?format='+fmt,'_blank');
+  let url='/api/export?format='+fmt;
+  if(rangeStart)url+='&start='+rangeStart;
+  if(rangeEnd)url+='&end='+rangeEnd;
+  window.open(url,'_blank');
 }
 </script>
 </body>
@@ -1317,6 +1394,16 @@ class _WebHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
+        elif self.path.startswith("/api/daterange"):
+            min_date, max_date, dates = db_get_date_range()
+            d = {"min": min_date, "max": max_date, "dates": dates}
+            data = json.dumps(d, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         else:
             self.send_error(404)
 
