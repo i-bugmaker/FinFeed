@@ -1481,17 +1481,17 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         console.print(table)
         return
 
+    # ============================================================
     # 持续监控模式
-    # screen=True: 使用终端备用缓冲区，消除重绘闪烁
-    # refresh_per_second=1: 低帧率避免过度刷新
-    # 只在数据变化时调用 live.update()，进一步减少无谓重绘
-    with Live(
-        _build_display(all_collected_news, 0, total_in_db, 0, source_stats, interval, "启动中..."),
-        console=console,
-        refresh_per_second=2,
-        screen=True,
-    ) as live:
-        # 缓存上次构建的表格，时钟更新时只重建 header，避免事件循环阻塞
+    # ============================================================
+
+    async def _run_cycles(render):
+        """
+        核心监控循环，通过 render 回调输出显示。
+        render 签名: render(news, cycle, total, new_count, stats, interval, status, table)
+        """
+        nonlocal cycle, all_collected_news, source_stats, total_in_db, last_new_count
+
         _cached_table: Table | None = None
         _last_table_key = ""
 
@@ -1506,25 +1506,16 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                 _cached_table = _build_news_table(news, max_rows=max_rows)
             return _cached_table
 
-        def _update_display(news, cyc, total, new_ct, stats, itv, st, force=False, rebuild_table=False):
-            table = _rebuild_table_if_needed(news, force=rebuild_table) if rebuild_table else _cached_table
-            live.update(_build_display(news, cyc, total, new_ct, stats, itv, st, table=table))
-
         while True:
             cycle += 1
-            _update_display(
-                all_collected_news, cycle, total_in_db, 0,
-                source_stats, interval, "抓取中...", rebuild_table=True
-            )
+            table = _rebuild_table_if_needed(all_collected_news, force=True)
+            render(all_collected_news, cycle, total_in_db, 0, source_stats, interval, "抓取中...", table)
 
             # 抓取期间每 0.3s 刷新时钟，只重建 header（表格不变）
             fetch_task = asyncio.create_task(fetch_all_news())
             while not fetch_task.done():
                 await asyncio.sleep(0.3)
-                _update_display(
-                    all_collected_news, cycle, total_in_db, last_new_count,
-                    source_stats, interval, "抓取中...", force=True
-                )
+                render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval, "抓取中...", _cached_table)
             all_news, source_stats = fetch_task.result()
             new_hashes, inserted = db_insert_news(all_news)
 
@@ -1543,25 +1534,46 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             status = f"新增{inserted}条" if inserted > 0 else "无新内容"
             _update_web_state(
                 all_collected_news, source_stats, cycle, total_in_db,
-                last_new_count, f"{status} | {wait_sec:.1f}s后下一轮"
+                last_new_count, f"{status} | {wait_sec:.1f}s后一轮"
             )
 
             # 等待期间每秒刷新时钟显示（只重建 header）
             wait_end = time.time() + wait_sec
-            # 数据变化后重建一次表格
-            _update_display(
-                all_collected_news, cycle, total_in_db, last_new_count,
-                source_stats, interval, f"{status} | {wait_sec:.0f}s后下一轮",
-                force=True, rebuild_table=True
-            )
+            table = _rebuild_table_if_needed(all_collected_news, force=True)
+            render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
+                   f"{status} | {wait_sec:.0f}s后一轮", table)
             while time.time() < wait_end:
                 await asyncio.sleep(0.5)
                 remaining = max(0, wait_end - time.time())
-                st = f"{status} | {remaining:.0f}s后下一轮"
-                _update_display(
-                    all_collected_news, cycle, total_in_db, last_new_count,
-                    source_stats, interval, st, force=True
-                )
+                render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
+                       f"{status} | {remaining:.0f}s后一轮", _cached_table)
+
+    # 尝试 Live 显示模式，失败时降级为简单模式
+    _live_simple_last_print = 0.0
+
+    def _live_render(news, cyc, total, new_ct, stats, itv, st, table):
+        live.update(_build_display(news, cyc, total, new_ct, stats, itv, st, table=table))
+
+    def _simple_render(news, cyc, total, new_ct, stats, itv, st, table):
+        """降级模式：每 10 秒打印一次状态到终端"""
+        nonlocal _live_simple_last_print
+        now = time.time()
+        if now - _live_simple_last_print >= 10:
+            _live_simple_last_print = now
+            console.clear()
+            console.print(_build_display(news, cyc, total, new_ct, stats, itv, st, table=table))
+
+    try:
+        with Live(
+            _build_display(all_collected_news, 0, total_in_db, 0, source_stats, interval, "启动中..."),
+            console=console,
+            refresh_per_second=2,
+            screen=True,
+        ) as live:
+            await _run_cycles(_live_render)
+    except Exception:
+        logger.warning("Live 显示模式异常，降级为简单轮询模式（每 10 秒刷新一次终端）", exc_info=True)
+        await _run_cycles(_simple_render)
 
 
 # ============================================================
