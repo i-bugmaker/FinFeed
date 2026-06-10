@@ -276,6 +276,15 @@ FINANCE_NEWS_SOURCES = [
         "params": {"page": 1, "tag": "", "type": "all"},
     },
     {
+        "name": "同花顺原创",
+        "url": "http://yuanchuang.10jqka.com.cn",
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "http://yuanchuang.10jqka.com.cn/",
+            "Accept": "text/html",
+        },
+    },
+    {
         "name": "东方财富",
         "url": "https://np-listapi.eastmoney.com/comm/web/getFastNewsList",
         "headers": {
@@ -369,12 +378,29 @@ SOURCE_TIMEOUTS = {
     "金十数据": 10.0,
     "格隆汇": 12.0,
     "法布财经": 12.0,
+    "同花顺原创": 15.0,
 }
 
 SOURCE_SKIP_REQ_TRACE = {"21经济网"}
 
 # 各来源上次抓取的最新时间戳（用于增量更新）
 source_last_ts: dict[str, int] = {s["name"]: 0 for s in FINANCE_NEWS_SOURCES}
+
+# 同花顺原创栏目配置
+THSYC_CHANNELS = [
+    {"name": "原创滚动盘评", "path": "ycall_list"},
+    {"name": "盘后点睛",     "path": "djpingpan_list"},
+    {"name": "快评",         "path": "djkuaiping_list"},
+    {"name": "资金评盘",     "path": "zjpingpan_list"},
+    {"name": "公告解读",     "path": "djggjd_list"},
+    {"name": "公司互动",     "path": "djgshd_list"},
+    {"name": "数据解读",     "path": "djsjdp_list"},
+    {"name": "涨停解密",     "path": "mrnxgg_list"},
+    {"name": "深度分析",     "path": "djsdfx_list"},
+]
+THSYC_BASE_URL = "http://yuanchuang.10jqka.com.cn"
+# 各栏目独立时间戳
+_thsyc_channel_last_ts: dict[str, int] = {ch["name"]: 0 for ch in THSYC_CHANNELS}
 
 
 # ============================================================
@@ -681,6 +707,91 @@ async def fetch_news_from_source(source: dict) -> list:
                         "title": title[:80], "url": url or "#", "source": source_name,
                         "publish_time": pt, "publish_ts": ts, "intro": intro,
                     })
+            elif source_name == "同花顺原创":
+                for ch in THSYC_CHANNELS:
+                    ch_name = ch["name"]
+                    ch_last_ts = _thsyc_channel_last_ts.get(ch_name, 0)
+                    max_pages = 5
+                    ch_news = []
+
+                    for page in range(1, max_pages + 1):
+                        page_url = f"{THSYC_BASE_URL}/{ch['path']}/" if page == 1 else f"{THSYC_BASE_URL}/{ch['path']}/index_{page}.shtml"
+                        try:
+                            resp = await client.get(page_url, headers=source["headers"])
+                        except Exception:
+                            break
+                        if resp.status_code != 200:
+                            break
+
+                        html_text = resp.content.decode("gbk", errors="replace")
+                        soup = BeautifulSoup(html_text, "html.parser")
+                        items = soup.select(".list-con ul li")
+                        if not items:
+                            break
+
+                        page_has_new = False
+                        for item in items:
+                            title_elem = item.select_one(".arc-title a")
+                            if not title_elem:
+                                continue
+                            title = title_elem.get_text(strip=True)
+                            if not title:
+                                continue
+
+                            time_elem = item.select_one(".arc-title span")
+                            summary_elem = item.select_one(".arc-cont")
+                            time_str = time_elem.get_text(strip=True) if time_elem else ""
+                            summary = summary_elem.get_text(strip=True)[:150] if summary_elem else ""
+
+                            url = title_elem.get("href", "")
+                            if url and not url.startswith("http"):
+                                url = f"{THSYC_BASE_URL}{url}" if url.startswith("/") else url
+
+                            ts = 0
+                            # 优先从 URL 提取日期（格式: /YYYYMMDD/c...shtml）
+                            url_str = str(url)
+                            url_m = re.search(r"/(\d{8})/", url_str)
+                            if url_m:
+                                yyyymmdd = url_m.group(1)
+                                year, month, day = int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8])
+                                time_m = re.search(r"(\d{1,2}):(\d{2})", time_str.strip())
+                                hour = int(time_m.group(1)) if time_m else 0
+                                minute = int(time_m.group(2)) if time_m else 0
+                                dt = now_bj().replace(year=year, month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0)
+                                ts = int(dt.timestamp())
+                            else:
+                                # 回退: 从 月日 格式猜年份
+                                m = re.match(r"(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})", time_str.strip())
+                                if m:
+                                    now = now_bj()
+                                    month, day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+                                    dt = now.replace(month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0)
+                                    if dt > now:
+                                        dt = dt.replace(year=dt.year - 1)
+                                    ts = int(dt.timestamp())
+
+                            if ts <= ch_last_ts:
+                                continue
+
+                            pt = bj_str_from_ts(ts) if ts else now_bj().strftime("%Y-%m-%d %H:%M:%S")
+                            ch_news.append({
+                                "title": title[:80],
+                                "url": url or "#",
+                                "source": source_name,
+                                "publish_time": pt,
+                                "publish_ts": ts,
+                                "intro": summary,
+                            })
+                            page_has_new = True
+
+                        if not page_has_new:
+                            break
+
+                    if ch_news:
+                        max_ts = max(n["publish_ts"] for n in ch_news if n["publish_ts"] > 0)
+                        if max_ts > 0:
+                            _thsyc_channel_last_ts[ch_name] = max_ts
+                        news_list.extend(ch_news)
 
             else:
                 # JSON 源解析（新浪财经、财联社、同花顺、东方财富）
@@ -1022,6 +1133,7 @@ SOURCE_COLORS = {
     "格隆汇": "#68af00",
     "法布财经": "#00a0e9",
     "企查查": "magenta",
+    "同花顺原创": "#e74c3c",
 }
 
 
