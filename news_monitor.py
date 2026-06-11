@@ -370,6 +370,35 @@ FINANCE_NEWS_SOURCES = [
             "Accept": "application/json",
         },
     },
+    {
+        "name": "巨潮公告",
+        "url": "https://www.cninfo.com.cn/new/hisAnnouncement/query",
+        "method": "POST",
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.cninfo.com.cn/new/commonUrl?url=disclosure/list/notice",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": "https://www.cninfo.com.cn",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        "params": {
+            "pageNum": "1",
+            "pageSize": "30",
+            "column": "",
+            "tabName": "fulltext",
+            "plate": "",
+            "stock": "",
+            "searchkey": "",
+            "secid": "",
+            "category": "",
+            "trade": "",
+            "seDate": "",
+            "sortName": "",
+            "sortType": "",
+            "isHLtitle": "true",
+        },
+    },
 ]
 
 # 不同源的特殊配置
@@ -379,9 +408,10 @@ SOURCE_TIMEOUTS = {
     "格隆汇": 12.0,
     "法布财经": 12.0,
     "同花顺原创": 15.0,
+    "巨潮公告": 12.0,
 }
 
-SOURCE_SKIP_REQ_TRACE = {"21经济网"}
+SOURCE_SKIP_REQ_TRACE = {"21经济网", "巨潮公告"}
 
 # 各来源上次抓取的最新时间戳（用于增量更新）
 source_last_ts: dict[str, int] = {s["name"]: 0 for s in FINANCE_NEWS_SOURCES}
@@ -707,6 +737,51 @@ async def fetch_news_from_source(source: dict) -> list:
                         "title": title[:80], "url": url or "#", "source": source_name,
                         "publish_time": pt, "publish_ts": ts, "intro": intro,
                     })
+            # 巨潮公告 - JSON API
+            elif source_name == "巨潮公告":
+                data = response.json()
+                announcements = data.get("announcements") or []
+                for item in announcements:
+                    title_raw = (item.get("announcementTitle") or "").strip()
+                    if not title_raw:
+                        continue
+                    # 清除 HTML 标签（如 <em>）
+                    title = re.sub(r"<[^>]+>", "", title_raw).strip()
+                    if not title:
+                        continue
+                    # 提取公司简称和代码
+                    sec_code = item.get("secCode", "") or ""
+                    sec_name = item.get("secName", "") or ""
+                    # 去除标题开头的 "公司名：" 前缀，避免重复
+                    if sec_name:
+                        # 先匹配 "公司名：/公司名:" 带冒号的情况
+                        title = re.sub(r"^" + re.escape(sec_name) + r"[：:]\s*", "", title)
+                        # 再匹配 "公司名" 直接开头的情况（无冒号）
+                        if title.startswith(sec_name):
+                            title = title[len(sec_name):].lstrip()
+                    # 标题格式: 公司名：公告内容
+                    if sec_name:
+                        title = f"{sec_name}：{title}"
+                    # 时间戳为毫秒
+                    ts_ms = item.get("announcementTime", 0) or 0
+                    ts = int(ts_ms) // 1000 if ts_ms > 1e12 else (int(ts_ms) if ts_ms else 0)
+                    if ts <= last_ts:
+                        continue
+                    pt = bj_str_from_ts(ts) if ts else now_bj().strftime("%Y-%m-%d %H:%M:%S")
+                    # 构造 PDF 链接
+                    adjunct_url = item.get("adjunctUrl", "") or ""
+                    if adjunct_url:
+                        url = f"http://static.cninfo.com.cn/{adjunct_url}"
+                    else:
+                        ann_id = item.get("announcementId", "")
+                        url = f"http://www.cninfo.com.cn/new/disclosure/detail?annoId={ann_id}" if ann_id else "#"
+                    # 股票代码作为 intro
+                    intro = sec_code or ""
+                    news_list.append({
+                        "title": title[:80], "url": url, "source": source_name,
+                        "publish_time": pt, "publish_ts": ts, "intro": intro[:150],
+                    })
+
             elif source_name == "同花顺原创":
                 for ch in THSYC_CHANNELS:
                     ch_name = ch["name"]
@@ -1056,7 +1131,7 @@ def db_get_date_range() -> tuple[str, str, list[str]]:
 # ============================================================
 async def fetch_all_news() -> tuple[list, dict]:
     """并发抓取所有新闻源"""
-    semaphore = asyncio.Semaphore(12)
+    semaphore = asyncio.Semaphore(14)
 
     async def _fetch_with_sem(source):
         async with semaphore:
@@ -1134,6 +1209,7 @@ SOURCE_COLORS = {
     "法布财经": "#00a0e9",
     "企查查": "magenta",
     "同花顺原创": "#e74c3c",
+    "巨潮公告": "#ff6600",
 }
 
 
