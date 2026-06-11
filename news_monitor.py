@@ -3,7 +3,7 @@
 """
 FinFeed 实时新闻监控脚本
 ===========================
-独立运行的新闻抓取脚本，支持12个主流财经信息源的实时监控、SQLite持久化、JSON/CSV导出和Web仪表盘。
+独立运行的新闻抓取脚本，支持16个主流财经信息源的实时监控、SQLite持久化、JSON/CSV导出和Web仪表盘。
 
 用法:
     python news_monitor.py                     # 启动实时监控（默认每30秒抓取一次）
@@ -409,6 +409,14 @@ FINANCE_NEWS_SOURCES = [
             "isHLtitle": "true",
         },
     },
+    {
+        "name": "cnBeta",
+        "url": "https://rss.cnbeta.com.tw/",
+        "verify": False,
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+    },
 ]
 
 # 不同源的特殊配置
@@ -479,7 +487,7 @@ async def fetch_news_from_source(source: dict) -> list:
             if elapsed < min_interval:
                 await asyncio.sleep(min_interval - elapsed)
 
-        ssl_ctx = True
+        ssl_ctx = source.get("verify", True)
 
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=ssl_ctx) as client:
             kwargs = {"url": source["url"], "headers": source["headers"]}
@@ -718,6 +726,39 @@ async def fetch_news_from_source(source: dict) -> list:
                     news_list.append({
                         "title": title[:80], "url": "#", "source": source_name,
                         "publish_time": pt, "publish_ts": ts, "intro": "",
+                    })
+
+            # cnBeta - RSS XML
+            elif source_name == "cnBeta":
+                soup = BeautifulSoup(response.text, "xml")
+                for item in soup.find_all("item"):
+                    title_tag = item.find("title")
+                    link_tag = item.find("link")
+                    pub_date_tag = item.find("pubDate")
+                    desc_tag = item.find("description")
+                    title = (title_tag.text if title_tag else "无标题").strip()
+                    link = link_tag.text if link_tag else "#"
+                    ts, pt = 0, now_bj().strftime("%Y-%m-%d %H:%M:%S")
+                    pub_date = pub_date_tag.text if pub_date_tag else ""
+                    try:
+                        if pub_date:
+                            pub_clean = pub_date.strip()
+                            if pub_clean.endswith(" GMT"):
+                                pub_clean = pub_clean[:-4] + " +0000"
+                            dt = datetime.strptime(pub_clean, "%a, %d %b %Y %H:%M:%S %z")
+                            ts = int(dt.timestamp())
+                            pt = bj_str_from_ts(ts)
+                    except (ValueError, TypeError):
+                        pass
+                    if ts <= last_ts:
+                        continue
+                    intro = ""
+                    if desc_tag and desc_tag.text:
+                        desc_soup = BeautifulSoup(desc_tag.text, "lxml")
+                        intro = desc_soup.get_text(strip=True)[:150]
+                    news_list.append({
+                        "title": title, "url": link, "source": source_name,
+                        "publish_time": pt, "publish_ts": ts, "intro": intro,
                     })
 
             # 雅虎财经 - RSS XML
@@ -1258,6 +1299,7 @@ SOURCE_COLORS = {
     "企查查": "magenta",
     "同花顺原创": "#e74c3c",
     "巨潮公告": "#ff6600",
+    "cnBeta": "#00b0ff",
 }
 
 
