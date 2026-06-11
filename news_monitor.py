@@ -344,13 +344,23 @@ FINANCE_NEWS_SOURCES = [
         },
     },
     {
-        "name": "格隆汇",
+        "name": "格隆汇文章",
         "url": "https://www.gelonghui.com/news/",
         "headers": {
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://www.gelonghui.com/",
             "Accept": "text/html",
         },
+    },
+    {
+        "name": "格隆汇快讯",
+        "url": "https://www.gelonghui.com/api/live-channels/all/lives/v4",
+        "headers": {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.gelonghui.com/live",
+            "Accept": "application/json",
+        },
+        "params": {"category": "all", "limit": 15},
     },
     {
         "name": "法布财经",
@@ -405,13 +415,24 @@ FINANCE_NEWS_SOURCES = [
 SOURCE_TIMEOUTS = {
     "雪球": 12.0,
     "金十数据": 10.0,
-    "格隆汇": 12.0,
+    "格隆汇文章": 12.0,
+    "格隆汇快讯": 10.0,
     "法布财经": 12.0,
     "同花顺原创": 15.0,
     "巨潮公告": 12.0,
 }
 
-SOURCE_SKIP_REQ_TRACE = {"21经济网", "巨潮公告"}
+# 内部名称 → 显示名称映射（多个内部源共享同一显示标签）
+SOURCE_DISPLAY_NAMES = {
+    "格隆汇文章": "格隆汇",
+    "格隆汇快讯": "格隆汇",
+}
+
+def _display_name(internal_name: str) -> str:
+    """获取来源的显示名称"""
+    return SOURCE_DISPLAY_NAMES.get(internal_name, internal_name)
+
+SOURCE_SKIP_REQ_TRACE = {"21经济网", "巨潮公告", "格隆汇快讯"}
 
 # 各来源上次抓取的最新时间戳（用于增量更新）
 source_last_ts: dict[str, int] = {s["name"]: 0 for s in FINANCE_NEWS_SOURCES}
@@ -619,8 +640,8 @@ async def fetch_news_from_source(source: dict) -> list:
                             "source": source_name, "publish_time": pt, "publish_ts": ts, "intro": desc[:150] if desc else "",
                         })
 
-            # 格隆汇 - HTML
-            elif source_name == "格隆汇":
+            # 格隆汇文章 - HTML
+            elif source_name == "格隆汇文章":
                 soup = BeautifulSoup(response.text, "html.parser")
                 for article in soup.select(".article-content"):
                     link_elem = article.select_one(".detail-right > a")
@@ -642,8 +663,35 @@ async def fetch_news_from_source(source: dict) -> list:
                         continue
                     pt = bj_str_from_ts(ts) if ts else now_bj().strftime("%Y-%m-%d %H:%M:%S")
                     news_list.append({
-                        "title": title[:80], "url": url or "#", "source": source_name,
+                        "title": title[:80], "url": url or "#", "source": _display_name(source_name),
                         "publish_time": pt, "publish_ts": ts, "intro": info[:150] if info else "",
+                    })
+
+            # 格隆汇快讯 - JSON API
+            elif source_name == "格隆汇快讯":
+                data = response.json()
+                items = data.get("result") or []
+                for item in items:
+                    ts = item.get("createTimestamp", 0)
+                    if not isinstance(ts, int) or ts <= 0:
+                        continue
+                    if ts <= last_ts:
+                        continue
+                    title = (item.get("title") or "").strip()
+                    content = (item.get("content") or "").strip()
+                    if not title and not content:
+                        continue
+                    if not title:
+                        title = content[:80]
+                    pt = bj_str_from_ts(ts)
+                    route = item.get("route", "")
+                    url = f"https://www.gelonghui.com{route}" if route and not route.startswith("http") else (route or "#")
+                    # 关联股票作为 intro
+                    stocks = item.get("relatedStocks") or []
+                    intro = ", ".join(s.get("name", "") for s in stocks if s.get("name")) if stocks else ""
+                    news_list.append({
+                        "title": title[:80], "url": url, "source": _display_name(source_name),
+                        "publish_time": pt, "publish_ts": ts, "intro": intro[:150],
                     })
 
             # 法布财经 - HTML
@@ -1267,8 +1315,13 @@ def _build_display(news_list: list, cycle: int, total_news: int, new_count: int,
     避免每次时钟更新都重建整个表格导致事件循环阻塞。
     """
     now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-    stats_parts = []
+    # 合并共享显示名称的统计
+    merged_stats: dict[str, int] = {}
     for name, count in source_stats.items():
+        dname = _display_name(name)
+        merged_stats[dname] = merged_stats.get(dname, 0) + count
+    stats_parts = []
+    for name, count in merged_stats.items():
         if count > 0:
             stats_parts.append(f"{name}:{count}")
         else:
