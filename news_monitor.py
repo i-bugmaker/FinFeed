@@ -1793,12 +1793,15 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             cycle += 1
             table = _rebuild_table_if_needed(all_collected_news, force=True)
             render(all_collected_news, cycle, total_in_db, 0, source_stats, interval, "抓取中...", table)
-
-            # 抓取期间每 0.3s 刷新时钟，只重建 header（表格不变）
+            # 抓取期间每秒刷新时钟（降低频率避免 Windows Terminal 抖动）
             fetch_task = asyncio.create_task(fetch_all_news())
+            _last_fetch_sec = -1
             while not fetch_task.done():
                 await asyncio.sleep(0.3)
-                render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval, "抓取中...", _cached_table)
+                cur_sec = int(time.time())
+                if cur_sec != _last_fetch_sec:
+                    _last_fetch_sec = cur_sec
+                    render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval, "抓取中...", _cached_table)
             all_news, source_stats = fetch_task.result()
             new_hashes, inserted = db_insert_news(all_news)
 
@@ -1846,6 +1849,45 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             console.clear()
             console.print(_build_display(news, cyc, total, new_ct, stats, itv, st, table=table))
 
+    # Live 模式：将 root logger 和 news_monitor logger 的 stderr handler 全部替换为文件
+    # 防止任何日志（包括 httpx 等第三方库）穿透到终端导致画面抖动
+    _log_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "news_monitor.log")
+    _file_handler = logging.FileHandler(_log_file_path, encoding="utf-8")
+    _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S"))
+
+    _root_logger = logging.getLogger()
+    _root_orig_handlers = list(_root_logger.handlers)
+    _nm_orig_handlers = list(logger.handlers)
+    _nm_orig_propagate = logger.propagate
+
+    # 替换 root logger 的所有 handler（basicConfig 添加的 stderr handler 在这里）
+    for h in _root_orig_handlers:
+        _root_logger.removeHandler(h)
+    _root_logger.addHandler(_file_handler)
+
+    # news_monitor logger 也加上文件 handler 并禁止传播
+    for h in _nm_orig_handlers:
+        logger.removeHandler(h)
+    logger.addHandler(_file_handler)
+    logger.propagate = False
+
+    _logging_restored = False
+
+    def _restore_logging():
+        """恢复所有 logger 的原始 handler（幂等）"""
+        nonlocal _logging_restored
+        if _logging_restored:
+            return
+        _logging_restored = True
+        _root_logger.removeHandler(_file_handler)
+        for h in _root_orig_handlers:
+            _root_logger.addHandler(h)
+        logger.removeHandler(_file_handler)
+        for h in _nm_orig_handlers:
+            logger.addHandler(h)
+        logger.propagate = _nm_orig_propagate
+        _file_handler.close()
+
     try:
         with Live(
             _build_display(all_collected_news, 0, total_in_db, 0, source_stats, interval, "启动中..."),
@@ -1855,8 +1897,11 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         ) as live:
             await _run_cycles(_live_render)
     except Exception:
+        _restore_logging()
         logger.warning("Live 显示模式异常，降级为简单轮询模式（每 10 秒刷新一次终端）", exc_info=True)
         await _run_cycles(_simple_render)
+    finally:
+        _restore_logging()
 
 
 # ============================================================
