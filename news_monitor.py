@@ -28,7 +28,7 @@ import sqlite3
 import logging
 import argparse
 from datetime import datetime, timezone, timedelta
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from collections import Counter
 from urllib.parse import urlencode
 
@@ -57,6 +57,21 @@ logger = logging.getLogger("news_monitor")
 
 # Rich 控制台
 console = Console()
+
+# ============================================================
+# 预编译正则表达式
+# ============================================================
+_RE_DIGITS = re.compile(r"(\d+)")
+_RE_HHMM = re.compile(r"(\d{1,2}):(\d{2})")
+_RE_URL_DATE = re.compile(r"/(\d{8})/")
+_RE_MD_HHMM = re.compile(r"(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})")
+_RE_MDHM = re.compile(r"^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$")
+_RE_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}")
+_RE_STRIP_HTML = re.compile(r"<[^>]+>")
+_RE_JIN10_VAR = re.compile(r"^var\s+newest\s*=\s*")
+_RE_JIN10_TITLE = re.compile(r"^【([^】]*)】(.*)$")
+_RE_QCC_ID = re.compile(r'[?&]id=([a-f0-9]+)')
+_RE_SHARE_URL = re.compile(r"/share/(\d+)/?")
 
 # ============================================================
 # 时间工具函数
@@ -148,32 +163,32 @@ def parse_relative_time(time_str: str) -> int:
         return 0
     try:
         if "分钟前" in time_str:
-            m = re.search(r"(\d+)", time_str)
+            m = _RE_DIGITS.search(time_str)
             if m:
                 return int((now - timedelta(minutes=int(m.group(1)))).replace(tzinfo=TZ_BJ).timestamp())
         elif "小时前" in time_str:
-            m = re.search(r"(\d+)", time_str)
+            m = _RE_DIGITS.search(time_str)
             if m:
                 return int((now - timedelta(hours=int(m.group(1)))).replace(tzinfo=TZ_BJ).timestamp())
         elif "天前" in time_str:
-            m = re.search(r"(\d+)", time_str)
+            m = _RE_DIGITS.search(time_str)
             if m:
                 return int((now - timedelta(days=int(m.group(1)))).replace(tzinfo=TZ_BJ).timestamp())
         elif time_str.startswith("昨天"):
-            m = re.search(r"(\d{1,2}):(\d{2})", time_str)
+            m = _RE_HHMM.search(time_str)
             if m:
                 hour, minute = int(m.group(1)), int(m.group(2))
                 dt = (now - timedelta(days=1)).replace(hour=hour, minute=minute, second=0)
                 return int(dt.replace(tzinfo=TZ_BJ).timestamp())
         elif time_str.startswith("今天"):
-            m = re.search(r"(\d{1,2}):(\d{2})", time_str)
+            m = _RE_HHMM.search(time_str)
             if m:
                 hour, minute = int(m.group(1)), int(m.group(2))
                 dt = now.replace(hour=hour, minute=minute, second=0)
                 return int(dt.replace(tzinfo=TZ_BJ).timestamp())
         elif "前天" in time_str:
             return int((now - timedelta(days=2)).replace(hour=0, minute=0, second=0, tzinfo=TZ_BJ).timestamp())
-        m = re.match(r"^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$", time_str)
+        m = _RE_MDHM.match(time_str)
         if m:
             month, day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
             dt = now.replace(month=month, day=day, hour=hour, minute=minute, second=0)
@@ -189,41 +204,6 @@ def parse_relative_time(time_str: str) -> int:
 # ============================================================
 # 去重工具函数
 # ============================================================
-def compute_simhash(text: str) -> int:
-    """计算文本的 SimHash 指纹（用于近似去重）"""
-    if not text:
-        return 0
-    ngrams = []
-    n = 3
-    for i in range(len(text) - n + 1):
-        ngrams.append(text[i : i + n])
-    if not ngrams:
-        ngrams = [text]
-    v = [0] * 64
-    for ng in ngrams:
-        ng_hash = int(hashlib.md5(ng.encode("utf-8")).hexdigest(), 16)
-        for i in range(64):
-            if ng_hash & (1 << i):
-                v[i] += 1
-            else:
-                v[i] -= 1
-    fingerprint = 0
-    for i in range(64):
-        if v[i] > 0:
-            fingerprint |= 1 << i
-    return fingerprint
-
-
-def hamming_distance(hash1: int, hash2: int) -> int:
-    """计算两个 SimHash 的汉明距离"""
-    x = hash1 ^ hash2
-    dist = 0
-    while x:
-        dist += 1
-        x &= x - 1
-    return dist
-
-
 def compute_title_full_hash(title: str) -> str:
     """计算标题的完整 MD5 哈希（用于精确去重）"""
     return hashlib.md5(title.encode("utf-8")).hexdigest()
@@ -242,6 +222,27 @@ def compute_url_hash(url: str) -> str:
 SOURCE_RATE_LIMITS: dict[str, float] = {}
 _last_source_req: dict[str, float] = {}
 _rate_blocked_until: dict[str, float] = {}
+
+# 分级调度配置：值表示每 N 轮才抓取一次
+# fast(1)=每轮, medium(6)=每6轮, slow(12)=每12轮
+SOURCE_TIERS: dict[str, int] = {
+    # 快速更新源 - 每轮抓取
+    "新浪财经": 1, "财联社": 1, "同花顺": 1, "东方财富": 1,
+    "华尔街见闻": 1, "金十数据": 1, "格隆汇快讯": 1,
+    # 中频更新源 - 每6轮抓取
+    "雪球": 6, "格隆汇文章": 6, "法布财经": 6,
+    "同花顺原创": 6, "巨潮公告": 6, "企查查": 6,
+    # 低频更新源 - 每12轮抓取（RSS/更新慢）
+    "雅虎财经": 12, "21经济网": 12, "cnBeta": 12,
+}
+
+
+def _should_skip_source(source_name: str, cycle: int) -> bool:
+    """判断当前轮次是否跳过该源"""
+    tier = SOURCE_TIERS.get(source_name, 1)
+    if tier <= 1:
+        return False
+    return cycle % tier != 0
 
 # ============================================================
 # 新闻源配置
@@ -465,8 +466,18 @@ _thsyc_channel_last_ts: dict[str, int] = {ch["name"]: 0 for ch in THSYC_CHANNELS
 # ============================================================
 # 新闻抓取核心函数
 # ============================================================
-async def fetch_news_from_source(source: dict) -> list:
-    """从指定新闻源抓取新闻"""
+@asynccontextmanager
+async def _get_client(client, timeout=8.0, verify=True):
+    """上下文管理器：有共享client则复用，否则创建并自动关闭"""
+    if client is not None:
+        yield client
+    else:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=verify) as c:
+            yield c
+
+
+async def fetch_news_from_source(source: dict, client: httpx.AsyncClient | None = None) -> list:
+    """从指定新闻源抓取新闻（支持共享 client 复用连接池）"""
     news_list = []
     source_name = source["name"]
     last_ts = source_last_ts.get(source_name, 0)
@@ -479,6 +490,8 @@ async def fetch_news_from_source(source: dict) -> list:
         logger.debug(f"{source_name} 仍在冷却中，跳过（剩余 {remaining}s）")
         return news_list
 
+    ssl_ctx = source.get("verify", True)
+
     try:
         # 速率限制
         min_interval = SOURCE_RATE_LIMITS.get(source_name, 0)
@@ -487,10 +500,10 @@ async def fetch_news_from_source(source: dict) -> list:
             if elapsed < min_interval:
                 await asyncio.sleep(min_interval - elapsed)
 
-        ssl_ctx = source.get("verify", True)
-
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=ssl_ctx) as client:
+        async with _get_client(client, timeout=timeout, verify=ssl_ctx) as client:
             kwargs = {"url": source["url"], "headers": source["headers"]}
+            if not ssl_ctx:
+                kwargs["verify"] = False
             method = source.get("method", "GET")
             if "params" in source and source_name not in SOURCE_SKIP_REQ_TRACE:
                 params_dict = dict(source["params"])
@@ -582,7 +595,7 @@ async def fetch_news_from_source(source: dict) -> list:
 
             # 雪球 - HTML
             elif source_name == "雪球":
-                soup = BeautifulSoup(response.text, "html.parser")
+                soup = BeautifulSoup(response.text, "lxml")
                 articles = soup.select(".timeline__item, .status-item, [class*='timeline'] li, [class*='status'] li")
                 if not articles:
                     articles = soup.find_all("li")
@@ -598,7 +611,7 @@ async def fetch_news_from_source(source: dict) -> list:
                     ts, pt = 0, now_bj().strftime("%Y-%m-%d %H:%M:%S")
                     if time_elem:
                         time_text = time_elem.get_text(strip=True)
-                        if time_text and re.match(r"\d{4}-\d{2}-\d{2}", time_text):
+                        if time_text and _RE_DATE_PREFIX.match(time_text):
                             try:
                                 dt = datetime.strptime(time_text[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                                 ts = int(dt.timestamp())
@@ -621,7 +634,7 @@ async def fetch_news_from_source(source: dict) -> list:
 
             # 金十数据 - JavaScript变量
             elif source_name == "金十数据":
-                text = re.sub(r"^var\s+newest\s*=\s*", "", response.text).rstrip(";").strip()
+                text = _RE_JIN10_VAR.sub("", response.text).rstrip(";").strip()
                 if text:
                     data = json.loads(text)
                     for item in data:
@@ -633,8 +646,8 @@ async def fetch_news_from_source(source: dict) -> list:
                         title_raw = (data_content.get("title", "") or data_content.get("content", "")).strip()
                         if any(kw in title_raw for kw in ("VIP会员", "立减", "开通>>", "折扣")):
                             continue
-                        title_raw = re.sub(r"<[^>]+>", "", title_raw)
-                        m = re.match(r"^【([^】]*)】(.*)$", title_raw)
+                        title_raw = _RE_STRIP_HTML.sub("", title_raw)
+                        m = _RE_JIN10_TITLE.match(title_raw)
                         title, desc = (m.group(1).strip(), m.group(2).strip()) if m else (title_raw, "")
                         if not title:
                             continue
@@ -650,7 +663,7 @@ async def fetch_news_from_source(source: dict) -> list:
 
             # 格隆汇文章 - HTML
             elif source_name == "格隆汇文章":
-                soup = BeautifulSoup(response.text, "html.parser")
+                soup = BeautifulSoup(response.text, "lxml")
                 for article in soup.select(".article-content"):
                     link_elem = article.select_one(".detail-right > a")
                     if not link_elem:
@@ -704,7 +717,7 @@ async def fetch_news_from_source(source: dict) -> list:
 
             # 法布财经 - HTML
             elif source_name == "法布财经":
-                soup = BeautifulSoup(response.text, "html.parser")
+                soup = BeautifulSoup(response.text, "lxml")
                 _fb_seen = set()  # 单次抓取内去重
                 for article in soup.select(".news-list"):
                     title_elem = article.select_one(".title_name")
@@ -811,16 +824,16 @@ async def fetch_news_from_source(source: dict) -> list:
                     title = links[0].get("title", "").strip() if links else ""
                     if not title:
                         # 无链接时从 content 提取标题（取前 60 字符）
-                        title = re.sub(r"<[^>]+>", "", fd.get("content", "")).strip()[:60]
+                        title = _RE_STRIP_HTML.sub("", fd.get("content", "")).strip()[:60]
                     if not title:
                         continue
                     # 优先用 news_id 构造正式链接，回退从 share URL 提取 id
                     news_id = item.get("news_id", "")
                     if not news_id and links:
-                        m = re.search(r'[?&]id=([a-f0-9]+)', links[0].get("url", ""))
+                        m = _RE_QCC_ID.search(links[0].get("url", ""))
                         news_id = m.group(1) if m else ""
                     url = f"https://news.qcc.com/postnews/{news_id}.html?pageSource=dynamic" if news_id else (links[0].get("url", "#") if links else "#")
-                    intro = re.sub(r"<[^>]+>", "", fd.get("content", "")).strip()
+                    intro = _RE_STRIP_HTML.sub("", fd.get("content", "")).strip()
                     intro = re.sub(r"\s+", " ", intro)[:150]
                     news_list.append({
                         "title": title[:80], "url": url or "#", "source": source_name,
@@ -835,7 +848,7 @@ async def fetch_news_from_source(source: dict) -> list:
                     if not title_raw:
                         continue
                     # 清除 HTML 标签（如 <em>）
-                    title = re.sub(r"<[^>]+>", "", title_raw).strip()
+                    title = _RE_STRIP_HTML.sub("", title_raw).strip()
                     if not title:
                         continue
                     # 提取公司简称和代码
@@ -888,7 +901,7 @@ async def fetch_news_from_source(source: dict) -> list:
                             break
 
                         html_text = resp.content.decode("gbk", errors="replace")
-                        soup = BeautifulSoup(html_text, "html.parser")
+                        soup = BeautifulSoup(html_text, "lxml")
                         items = soup.select(".list-con ul li")
                         if not items:
                             break
@@ -914,18 +927,18 @@ async def fetch_news_from_source(source: dict) -> list:
                             ts = 0
                             # 优先从 URL 提取日期（格式: /YYYYMMDD/c...shtml）
                             url_str = str(url)
-                            url_m = re.search(r"/(\d{8})/", url_str)
+                            url_m = _RE_URL_DATE.search(url_str)
                             if url_m:
                                 yyyymmdd = url_m.group(1)
                                 year, month, day = int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8])
-                                time_m = re.search(r"(\d{1,2}):(\d{2})", time_str.strip())
+                                time_m = _RE_HHMM.search(time_str.strip())
                                 hour = int(time_m.group(1)) if time_m else 0
                                 minute = int(time_m.group(2)) if time_m else 0
                                 dt = now_bj().replace(year=year, month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0)
                                 ts = int(dt.timestamp())
                             else:
                                 # 回退: 从 月日 格式猜年份
-                                m = re.match(r"(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})", time_str.strip())
+                                m = _RE_MD_HHMM.match(time_str.strip())
                                 if m:
                                     now = now_bj()
                                     month, day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
@@ -1004,7 +1017,7 @@ async def fetch_news_from_source(source: dict) -> list:
                         share_url = a.get("shareUrl", "")
                         url = "#"
                         if share_url and "/share/" in share_url:
-                            m = re.search(r"/share/(\d+)/?", share_url)
+                            m = _RE_SHARE_URL.search(share_url)
                             if m:
                                 aid = m.group(1)
                                 date_str = bj_str_from_ts(ts)[:10].replace("-", "")
@@ -1070,34 +1083,36 @@ def get_conn() -> sqlite3.Connection:
     return _db_conn
 
 
+def init_db():
+    """初始化数据库（仅在启动时调用一次）"""
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS news (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            url TEXT,
+            source TEXT NOT NULL,
+            publish_time TEXT,
+            publish_ts INTEGER DEFAULT 0,
+            intro TEXT,
+            title_hash TEXT UNIQUE,
+            created_at TEXT,
+            title_full_hash TEXT,
+            url_hash TEXT
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_publish_ts ON news(publish_ts DESC, id DESC)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_created ON news(created_at ASC)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_title_full_hash ON news(title_full_hash)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_url_hash ON news(url_hash)")
+    conn.commit()
+
+
 @contextmanager
 def get_db():
     conn = get_conn()
     try:
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS news (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                url TEXT,
-                source TEXT NOT NULL,
-                publish_time TEXT,
-                publish_ts INTEGER DEFAULT 0,
-                intro TEXT,
-                title_hash TEXT UNIQUE,
-                created_at TEXT,
-                title_full_hash TEXT,
-                url_hash TEXT,
-                simhash TEXT,
-                dedup_group INTEGER DEFAULT 0
-            )
-        """)
-        c.execute("CREATE INDEX IF NOT EXISTS idx_publish_ts ON news(publish_ts DESC, id DESC)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_created ON news(created_at ASC)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_title_full_hash ON news(title_full_hash)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_url_hash ON news(url_hash)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_simhash ON news(simhash)")
-        conn.commit()
         yield conn
     except Exception:
         conn.rollback()
@@ -1105,65 +1120,53 @@ def get_db():
 
 
 def db_insert_news(news_list: list) -> tuple[list, int]:
-    """插入新闻到数据库（自动去重）"""
+    """插入新闻到数据库（批量去重优化：预加载hash集合，避免逐条查询）"""
     if not news_list:
         return [], 0
     with get_db() as conn:
         c = conn.cursor()
+
+        # 一次性预加载所有已有的 title_full_hash 和 url_hash 到内存 set
+        existing_title_hashes = set(
+            row[0] for row in c.execute("SELECT title_full_hash FROM news WHERE title_full_hash IS NOT NULL")
+        )
+        existing_url_hashes = set(
+            row[0] for row in c.execute("SELECT url_hash FROM news WHERE url_hash IS NOT NULL AND url_hash != ''")
+        )
+
         new_hashes = []
         inserted = 0
-        c.execute("SELECT MAX(dedup_group) FROM news")
-        max_group = c.fetchone()[0] or 0
-        seven_days_ago = int(time.time()) - 7 * 86400
+        now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
 
         for n in news_list:
             title = n["title"]
             url = n.get("url", "#")
 
-            # 标题精确去重
+            # 标题精确去重（内存 set 查找，O(1)）
             title_full_hash = compute_title_full_hash(title)
-            c.execute("SELECT id FROM news WHERE title_full_hash = ? LIMIT 1", (title_full_hash,))
-            if c.fetchone():
-                logger.debug(f"去重[标题精确]: {title[:40]}")
+            if title_full_hash in existing_title_hashes:
                 continue
 
-            # URL精确去重
+            # URL精确去重（内存 set 查找，O(1)）
             url_hash = compute_url_hash(url)
-            if url_hash:
-                c.execute("SELECT id FROM news WHERE url_hash = ? LIMIT 1", (url_hash,))
-                if c.fetchone():
-                    logger.debug(f"去重[URL精确]: {title[:40]}")
-                    continue
-
-            # SimHash 近似去重
-            simhash_val = compute_simhash(title)
-            simhash_hex = f"{simhash_val:016x}"
-            dedup_group = 0
-            c.execute(
-                "SELECT simhash, dedup_group FROM news WHERE simhash IS NOT NULL AND simhash != '' AND dedup_group > 0 AND publish_ts > ? ORDER BY publish_ts DESC LIMIT 500",
-                (seven_days_ago,),
-            )
-            for ex in c.fetchall():
-                ex_simhash = int(ex["simhash"], 16) if isinstance(ex["simhash"], str) else ex["simhash"]
-                if hamming_distance(simhash_val, ex_simhash) <= 10:
-                    dedup_group = ex["dedup_group"]
-                    break
-
-            if dedup_group == 0:
-                max_group += 1
-                dedup_group = max_group
+            if url_hash and url_hash in existing_url_hashes:
+                continue
 
             title_hash = f"{n['title'][:30]}|{n['source']}"
             try:
                 c.execute(
-                    """INSERT OR IGNORE INTO news (title, url, source, publish_time, publish_ts, intro, title_hash, created_at, title_full_hash, url_hash, simhash, dedup_group)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT OR IGNORE INTO news (title, url, source, publish_time, publish_ts, intro, title_hash, created_at, title_full_hash, url_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (title, url, n["source"], n["publish_time"], n.get("publish_ts", 0), n["intro"],
-                     title_hash, now_bj().strftime("%Y-%m-%d %H:%M:%S"), title_full_hash, url_hash, simhash_hex, dedup_group),
+                     title_hash, now_str, title_full_hash, url_hash),
                 )
                 if c.rowcount > 0:
                     new_hashes.append(title_hash)
                     inserted += 1
+                    # 加入内存 set，防止本批次内重复
+                    existing_title_hashes.add(title_full_hash)
+                    if url_hash:
+                        existing_url_hashes.add(url_hash)
             except sqlite3.IntegrityError:
                 pass
 
@@ -1218,32 +1221,42 @@ def db_get_date_range() -> tuple[str, str, list[str]]:
 # ============================================================
 # 批量抓取所有来源
 # ============================================================
-async def fetch_all_news() -> tuple[list, dict]:
-    """并发抓取所有新闻源"""
-    semaphore = asyncio.Semaphore(14)
+async def fetch_all_news(cycle: int = 1) -> tuple[list, dict]:
+    """并发抓取所有新闻源（共享 httpx client，降低并发峰值）"""
+    semaphore = asyncio.Semaphore(6)
 
-    async def _fetch_with_sem(source):
-        async with semaphore:
-            return await fetch_news_from_source(source)
+    async with httpx.AsyncClient(
+        timeout=15.0, follow_redirects=True, verify=True,
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=6),
+    ) as shared_client:
 
-    tasks = [asyncio.create_task(_fetch_with_sem(s)) for s in FINANCE_NEWS_SOURCES]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+        async def _fetch_with_sem(source):
+            if _should_skip_source(source["name"], cycle):
+                return source["name"], []
+            async with semaphore:
+                return source["name"], await fetch_news_from_source(source, shared_client)
+
+        tasks = [asyncio.create_task(_fetch_with_sem(s)) for s in FINANCE_NEWS_SOURCES]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_news, source_stats = [], {}
     _seen_keys = set()  # 跨来源去重：(title, source) 组合
     for s, r in zip(FINANCE_NEWS_SOURCES, results):
         name = s["name"]
-        if isinstance(r, list):
-            for item in r:
+        if isinstance(r, tuple) and len(r) == 2:
+            _name, items = r
+            for item in items:
                 key = (item["title"], item["source"])
                 if key in _seen_keys:
                     continue
                 _seen_keys.add(key)
                 all_news.append(item)
-            source_stats[name] = len(r)
-        else:
+            source_stats[name] = len(items)
+        elif isinstance(r, Exception):
             source_stats[name] = 0
             logger.warning(f"抓取{name}异常: {r}")
+        else:
+            source_stats[name] = 0
 
     all_news.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
     return all_news, source_stats
@@ -1745,7 +1758,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
 
     if once:
         # 单次模式：不启动 Live，直接打印结果
-        all_news, source_stats = await fetch_all_news()
+        all_news, source_stats = await fetch_all_news(cycle=1)
         new_hashes, inserted = db_insert_news(all_news)
         all_collected_news.extend(all_news)
         all_collected_news.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
@@ -1794,10 +1807,10 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             table = _rebuild_table_if_needed(all_collected_news, force=True)
             render(all_collected_news, cycle, total_in_db, 0, source_stats, interval, "抓取中...", table)
             # 抓取期间每秒刷新时钟（降低频率避免 Windows Terminal 抖动）
-            fetch_task = asyncio.create_task(fetch_all_news())
+            fetch_task = asyncio.create_task(fetch_all_news(cycle))
             _last_fetch_sec = -1
             while not fetch_task.done():
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(1.0)
                 cur_sec = int(time.time())
                 if cur_sec != _last_fetch_sec:
                     _last_fetch_sec = cur_sec
@@ -1812,6 +1825,9 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                 if new_items:
                     new_items.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
                     all_collected_news = new_items + [n for n in all_collected_news if n["title"] not in {x["title"] for x in new_items}]
+            # 内存管理：限制累积列表上限，防止长时间运行内存泄漏
+            if len(all_collected_news) > 500:
+                all_collected_news = all_collected_news[:500]
             total_in_db += inserted
             last_new_count = inserted
 
@@ -1829,7 +1845,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
                    f"{status} | {wait_sec:.0f}s后一轮", table)
             while time.time() < wait_end:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1.0)
                 remaining = max(0, wait_end - time.time())
                 render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
                        f"{status} | {remaining:.0f}s后一轮", _cached_table)
@@ -1892,7 +1908,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         with Live(
             _build_display(all_collected_news, 0, total_in_db, 0, source_stats, interval, "启动中..."),
             console=console,
-            refresh_per_second=2,
+            refresh_per_second=1,
             screen=True,
         ) as live:
             await _run_cycles(_live_render)
@@ -1932,8 +1948,7 @@ def main():
     args = parser.parse_args()
 
     # 初始化数据库
-    with get_db():
-        pass
+    init_db()
 
     if args.export:
         # 导出模式
