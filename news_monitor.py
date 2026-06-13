@@ -16,34 +16,30 @@ FinFeed 实时新闻监控脚本
 
 import os
 import re
-import sys
 import csv
 import time
 import json
-import html
 import random
 import hashlib
 import asyncio
 import sqlite3
 import logging
 import argparse
+import threading
 from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager, asynccontextmanager
-from collections import Counter
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlencode
 
 import httpx
 from bs4 import BeautifulSoup
 
+from rich import box
 from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich.console import Console, Group
-from rich import box
-
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ============================================================
 # 日志配置
@@ -57,6 +53,14 @@ logger = logging.getLogger("news_monitor")
 
 # Rich 控制台
 console = Console()
+
+# ============================================================
+# 全局默认配置（修改此处即可调整默认行为）
+# ============================================================
+DEFAULT_WEB_PORT = 8866      # Web 仪表盘默认端口
+DEFAULT_INTERVAL = 5         # 默认抓取间隔（秒）
+MAX_NEWS_CACHE = 500         # 内存中最多保留的新闻条数
+FETCH_CONCURRENCY = 6        # 并发抓取的信号量上限
 
 # ============================================================
 # 预编译正则表达式
@@ -1223,7 +1227,7 @@ def db_get_date_range() -> tuple[str, str, list[str]]:
 # ============================================================
 async def fetch_all_news(cycle: int = 1) -> tuple[list, dict]:
     """并发抓取所有新闻源（共享 httpx client，降低并发峰值）"""
-    semaphore = asyncio.Semaphore(6)
+    semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
 
     async with httpx.AsyncClient(
         timeout=15.0, follow_redirects=True, verify=True,
@@ -1423,7 +1427,7 @@ def _jitter_interval(base: int) -> float:
 # ============================================================
 # Web 服务器
 # ============================================================
-_web_port = 8866
+_web_port = DEFAULT_WEB_PORT
 
 _web_state = {
     "news": [],
@@ -1826,8 +1830,8 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                     new_items.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
                     all_collected_news = new_items + [n for n in all_collected_news if n["title"] not in {x["title"] for x in new_items}]
             # 内存管理：限制累积列表上限，防止长时间运行内存泄漏
-            if len(all_collected_news) > 500:
-                all_collected_news = all_collected_news[:500]
+            if len(all_collected_news) > MAX_NEWS_CACHE:
+                all_collected_news = all_collected_news[:MAX_NEWS_CACHE]
             total_in_db += inserted
             last_new_count = inserted
 
@@ -1937,8 +1941,8 @@ def main():
   python news_monitor.py --export json --start 2024-01-01 --end 2024-01-31
         """
     )
-    parser.add_argument("--port", type=int, default=8866, help="Web 仪表盘端口（默认 8866）")
-    parser.add_argument("--interval", type=int, default=5, help="抓取间隔（秒），默认5")
+    parser.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help=f"Web 仪表盘端口（默认 {DEFAULT_WEB_PORT}）")
+    parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL, help=f"抓取间隔（秒），默认{DEFAULT_INTERVAL}")
     parser.add_argument("--once", action="store_true", help="只抓取一次后退出")
     parser.add_argument("--export", choices=["json", "csv"], help="导出格式 (json 或 csv)")
     parser.add_argument("--output", "-o", help="导出文件路径（默认自动生成）")
