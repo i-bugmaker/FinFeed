@@ -1751,7 +1751,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
     total_in_db = 0
     last_new_count = 0
 
-    # 先统计数据库中已有的新闻数
+    # 先统计数据库中已有的新闻数，并加载已有数据用于即时显示
     try:
         with get_db() as conn:
             c = conn.cursor()
@@ -1759,6 +1759,13 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             total_in_db = c.fetchone()[0]
     except Exception:
         pass
+
+    # 启动时立即从 DB 加载已有新闻，消除"启动中"空白等待
+    all_collected_news = db_get_recent_news(limit=MAX_NEWS_CACHE)
+    _update_web_state(
+        all_collected_news, source_stats, 0, total_in_db,
+        0, "抓取中..."
+    )
 
     if once:
         # 单次模式：不启动 Live，直接打印结果
