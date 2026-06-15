@@ -1442,91 +1442,159 @@ _web_state = {
 }
 
 _WEB_HTML = r"""<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FinFeed 实时监控</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+:root,[data-theme="light"]{
+  --bg:#f5f6f8;--bg-card:#ffffff;--bg-card-alt:#f0f1f3;--bg-hover:#eceef1;
+  --text:#1a1d23;--text2:#5a6070;--text3:#9098a8;
+  --border:#e2e5ea;--border2:#cfd3da;
+  --accent:#2563eb;--accent-h:#1d4ed8;--accent-bg:rgba(37,99,235,.08);
+  --green:#16a34a;--green-bg:rgba(22,163,74,.08);
+  --red:#dc2626;
+  --shadow:0 1px 3px rgba(0,0,0,.06);
+}
+[data-theme="dark"]{
+  --bg:#0d1117;--bg-card:#161b22;--bg-card-alt:#1c2128;--bg-hover:#1c2333;
+  --text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
+  --border:#30363d;--border2:#484f58;
+  --accent:#58a6ff;--accent-h:#79c0ff;--accent-bg:rgba(88,166,255,.1);
+  --green:#3fb950;--green-bg:rgba(63,185,80,.1);
+  --red:#f85149;
+  --shadow:0 1px 3px rgba(0,0,0,.3);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0d1117;color:#c9d1d9;font-family:'Cascadia Code','Consolas','Microsoft YaHei',monospace;padding:16px;font-size:14px}
-.header{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:16px}
-.header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.header h1{color:#58a6ff;font-size:18px;margin-bottom:8px}
-.header h1 span{color:#8b949e;font-size:13px;font-weight:normal;margin-left:12px}
-.export-bar{display:flex;gap:8px;align-items:center;flex-shrink:0}
-.export-bar .btn{background:#238636;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;transition:background .2s;white-space:nowrap}
-.export-bar .btn:hover{background:#2ea043}
-.export-bar select{background:#21262d;color:#c9d1d9;border:1px solid #30363d;padding:5px 8px;border-radius:6px;font-size:13px}
-.stats{display:flex;gap:20px;flex-wrap:wrap;color:#8b949e;font-size:13px}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;font-size:15px;line-height:1.65;transition:background .3s,color .3s}
+.header{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.header-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.header h1{color:var(--accent);font-size:18px;font-weight:700;letter-spacing:-.3px;white-space:nowrap;margin-right:auto}
+.header h1 span{color:var(--text3);font-size:12px;font-weight:400;margin-left:10px}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.toolbar .sep{width:1px;height:18px;background:var(--border);flex-shrink:0}
+.export-bar{display:flex;gap:5px;align-items:center}
+.export-bar select{background:var(--bg-card-alt);color:var(--text);border:1px solid var(--border);padding:4px 7px;border-radius:6px;font-size:12px;font-family:inherit;cursor:pointer}
+.export-bar select:focus{outline:none;border-color:var(--accent)}
+.export-bar .btn{background:var(--accent);color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:opacity .2s}
+.export-bar .btn:hover{opacity:.85}
+.theme-toggle{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--text2);font-size:13px;margin-top:10px}
 .stats .item{display:flex;align-items:center;gap:4px}
-.stats .val{color:#58a6ff;font-weight:bold}
-.stats .new{color:#3fb950}
+.stats .val{color:var(--accent);font-weight:600}
+.stats .new{color:var(--green)}
+.dp-wrap{position:relative}
+.dp-trigger{display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 12px;background:var(--bg-card-alt);border:1px solid var(--border);border-radius:6px;transition:all .2s;user-select:none;white-space:nowrap}
+.dp-trigger:hover{border-color:var(--accent)}
+.dp-trigger.open{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.dp-trigger .ico{font-size:13px;line-height:1}
+.dp-trigger .txt{font-size:12px;color:var(--text2)}
+.dp-trigger .txt.on{color:var(--accent);font-weight:500}
+.dp-reset{background:none;color:var(--text3);border:1px solid var(--border);padding:3px 8px;border-radius:5px;cursor:pointer;font-size:11px;transition:all .2s;white-space:nowrap}
+.dp-reset:hover{border-color:var(--red);color:var(--red)}
+.dp-cal{display:none;position:absolute;top:calc(100% + 8px);right:0;width:306px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:16px;z-index:200;box-shadow:0 8px 30px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06)}
+.dp-cal.open{display:block}
+.dp-cal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.dp-cal-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:-.2px}
+.dp-cal-nav{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:16px;font-weight:300;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1}
+.dp-cal-nav:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.dp-weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:2px}
+.dp-wd{text-align:center;font-size:11px;color:var(--text3);font-weight:600;padding:4px 0;letter-spacing:.3px}
+.dp-grid{display:grid;grid-template-columns:repeat(7,1fr)}
+.dp-cell{height:36px;display:flex;align-items:center;justify-content:center;font-size:13px;border-radius:50%;cursor:pointer;transition:background .1s,color .1s;color:var(--text);position:relative}
+.dp-cell:hover:not(.dis):not(.oth){background:var(--accent-bg);color:var(--accent)}
+.dp-cell.oth{color:var(--text3);opacity:.3;cursor:default;pointer-events:none}
+.dp-cell.dis{color:var(--text3);opacity:.18;cursor:not-allowed;pointer-events:none}
+.dp-cell.in-range{background:var(--accent-bg);border-radius:2px}
+.dp-cell.rs{background:var(--accent);color:#fff;font-weight:600;border-radius:50% 2px 2px 50%}
+.dp-cell.re{background:var(--accent);color:#fff;font-weight:600;border-radius:2px 50% 50% 2px}
+.dp-cell.rs.re{border-radius:50%}
+.dp-cell.today:not(.rs):not(.re){font-weight:700;box-shadow:inset 0 0 0 1.5px var(--accent)}
+.dp-cell.pick-s:not(.rs){background:var(--accent);color:#fff;font-weight:600;border-radius:50% 2px 2px 50%}
+.dp-hint{font-size:11px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);text-align:center}
+.dp-hint b{color:var(--accent);font-weight:500}
 .filters{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.filters span{color:#8b949e;font-size:12px}
-.filters button{background:#21262d;color:#8b949e;border:1px solid #30363d;padding:3px 10px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s;outline:none}
-.filters button:hover{border-color:#58a6ff;color:#58a6ff;background:#1c2333}
-.filters button.active{background:#1f6feb;color:#fff;border-color:#1f6feb;box-shadow:0 0 8px rgba(31,111,235,.4)}
-.filters button:active{transform:scale(.95)}
-table{width:100%;border-collapse:collapse}
-thead th{background:#161b22;color:#f0f6fc;padding:10px 12px;text-align:left;position:sticky;top:0;border-bottom:2px solid #30363d;font-weight:600}
-tbody tr{border-bottom:1px solid #21262d;transition:background .15s}
-tbody tr:hover{background:#161b22}
-tbody td{padding:8px 12px;vertical-align:middle;white-space:nowrap}
-.col-time{color:#8b949e;width:170px;white-space:nowrap;font-size:13px}
-.col-source{width:90px;font-size:13px}
-.col-source span{background:#21262d;padding:2px 8px;border-radius:10px;font-size:12px}
+.filters span{color:var(--text2);font-size:13px;font-weight:500}
+.filters button{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:4px 14px;border-radius:16px;cursor:pointer;font-size:13px;transition:all .2s;outline:none;font-family:inherit}
+.filters button:hover{border-color:var(--accent);color:var(--accent)}
+.filters button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.filters button:active{transform:scale(.96)}
+table{width:100%;border-collapse:collapse;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+thead th{background:var(--bg-card-alt);color:var(--text);padding:11px 16px;text-align:left;position:sticky;top:0;border-bottom:2px solid var(--border);font-weight:600;font-size:14px}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg-hover)}
+tbody td{padding:10px 16px;vertical-align:middle;white-space:nowrap}
+.col-time{color:var(--text3);width:180px;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums}
+.col-source{width:100px;font-size:13px}
+.col-source span{background:var(--bg-card-alt);padding:3px 10px;border-radius:12px;font-size:12px;border:1px solid var(--border)}
 .col-title{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
-.col-title a{color:#c9d1d9;text-decoration:none;transition:color .15s}
-.col-title a:hover{color:#58a6ff}
-.empty{text-align:center;padding:60px;color:#484f58}
+.col-title a{color:var(--text);text-decoration:none;transition:color .15s}
+.col-title a:hover{color:var(--accent)}
+.empty{text-align:center;padding:60px;color:var(--text3)}
 @media(max-width:768px){
-  body{padding:8px;font-size:13px}
-  .header{padding:12px}
-  .header-top{flex-direction:column;gap:8px}
-  .header h1{font-size:15px}
-  .header h1 span{display:block;margin:4px 0 0 0}
+  body{padding:12px;font-size:14px}
+  .header{padding:12px 14px}
+  .header-row{gap:8px}
+  .header h1{font-size:16px;margin-right:0}
+  .header h1 span{display:block;margin:3px 0 0 0}
+  .toolbar{width:100%}
   .stats{gap:10px;font-size:12px}
-  .export-bar{width:100%;justify-content:flex-end}
+  .dp-cal{width:290px;right:0}
+  .dp-cell{height:34px;font-size:12px}
   .filters{gap:6px}
-  .filters button{padding:4px 8px;font-size:11px}
-  table{font-size:12px}
-  thead th{padding:8px 6px;font-size:12px}
-  tbody td{padding:6px;white-space:nowrap}
-  .col-time{width:auto;font-size:11px}
-  .col-source{width:60px;font-size:11px}
-  .col-source span{padding:1px 5px;font-size:10px}
-  .col-title{font-size:12px}
-  .col-title a{font-size:12px}
+  .filters button{padding:4px 10px;font-size:12px}
+  table{font-size:13px}
+  thead th{padding:10px 8px;font-size:13px}
+  tbody td{padding:8px}
+  .col-time{width:auto;font-size:12px}
+  .col-source{width:70px;font-size:12px}
+  .col-source span{padding:2px 6px;font-size:11px}
+  .col-title{font-size:13px}
+  .col-title a{font-size:13px}
 }
 @media(max-width:480px){
   .stats .item{font-size:11px}
   thead th:nth-child(1),.col-time{display:none}
-  .col-source{width:50px}
+  .col-source{width:55px}
+  .dp-cal{width:270px;right:0}
 }
-.range-picker-wrap{display:flex;align-items:center;gap:4px}
-.date-input{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:4px 8px;font-size:13px;font-family:inherit;width:140px;cursor:pointer;transition:border-color .2s}
-.date-input:focus{outline:none;border-color:#58a6ff}
-.date-input::-webkit-calendar-picker-indicator{filter:invert(.7);cursor:pointer}
-.range-result{color:#58a6ff;font-size:13px;white-space:nowrap}
-.range-result.done{cursor:pointer;padding:2px 8px;border-radius:4px;transition:background .2s}
-.range-result.done:hover{background:#1c2333}
-@media(max-width:768px){.date-input{width:130px;font-size:12px}}
-@media(max-width:480px){.date-input{width:110px;font-size:11px}}
 </style>
 </head>
 <body>
 <div class="header">
-<div class="header-top">
+<div class="header-row">
 <h1>&#9608; FinFeed<span id="update-time"></span></h1>
+<div class="toolbar">
 <div class="export-bar">
-<div class="range-picker-wrap">
-<input type="date" id="range-picker" class="date-input">
-<span id="range-show" class="range-result"></span>
-</div>
 <select id="export-format"><option value="json">JSON</option><option value="csv">CSV</option></select>
 <button class="btn" onclick="doExport()">&#128229; 导出</button>
 </div>
+<div class="sep"></div>
+<div class="dp-wrap" id="dp-wrap">
+<div class="dp-trigger" id="dp-trigger" onclick="toggleCal()">
+<span class="ico">&#128197;</span>
+<span class="txt" id="dp-text">日期范围</span>
+</div>
+<div class="dp-cal" id="dp-cal">
+<div class="dp-cal-head">
+<button class="dp-cal-nav" onclick="calNav(-1)">&#8249;</button>
+<span class="dp-cal-title" id="dp-cal-title"></span>
+<button class="dp-cal-nav" onclick="calNav(1)">&#8250;</button>
+</div>
+<div class="dp-weekdays"><span class="dp-wd">一</span><span class="dp-wd">二</span><span class="dp-wd">三</span><span class="dp-wd">四</span><span class="dp-wd">五</span><span class="dp-wd">六</span><span class="dp-wd">日</span></div>
+<div class="dp-grid" id="dp-grid"></div>
+<div class="dp-hint" id="dp-hint">点击选择开始日期</div>
+</div>
+</div>
+<button class="dp-reset" id="dp-reset" onclick="resetRange()" style="display:none">重置</button>
+</div>
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="切换主题">&#9790;</button>
 </div>
 <div class="stats">
 <div class="item">&#128337; 第 <span class="val" id="cycle">0</span> 轮</div>
@@ -1537,26 +1605,38 @@ tbody td{padding:8px 12px;vertical-align:middle;white-space:nowrap}
 </div>
 <div class="filters" id="filters"><span>筛选来源:</span><button class="active" data-source="all">全部</button></div>
 <table>
-<thead><tr><th style="width:170px">时间</th><th style="width:90px">来源</th><th>标题</th></tr></thead>
+<thead><tr><th style="width:180px">时间</th><th style="width:100px">来源</th><th>标题</th></tr></thead>
 <tbody id="news-body"><tr><td colspan="3" class="empty">正在加载...</td></tr></tbody>
 </table>
 <script>
-let allNews=[], activeSource='all', serverOffset=0;
-function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+var allNews=[],activeSource='all',serverOffset=0;
+var rangeStart='',rangeEnd='',availDates=new Set();
+var pickState='start',calYear=0,calMonth=0,calMinDate='',calMaxDate='',calOpen=false;
+
+/* ---- Theme ---- */
+function getTheme(){try{return document.documentElement.getAttribute('data-theme')||'light'}catch(e){return'light'}}
+function setTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  var btn=document.getElementById('theme-btn');
+  btn.innerHTML=t==='dark'?'\u2600':'\u263E';
+  btn.title=t==='dark'?'\u5207\u6362\u5230\u4EAE\u8272\u4E3B\u9898':'\u5207\u6362\u5230\u6697\u8272\u4E3B\u9898';
+}
+function toggleTheme(){setTheme(getTheme()==='dark'?'light':'dark')}
+
+/* ---- Utils ---- */
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function truncate(s,n){return s.length>n?s.slice(0,n)+'...':s}
 function pad(n){return n<10?'0'+n:n}
 function bjNow(){
-  // 基于服务器偏移量计算北京时间，每秒本地刷新
-  const now=new Date(Date.now()+serverOffset);
+  var now=new Date(Date.now()+serverOffset);
   return now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+' '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds())
 }
-// 每秒刷新顶部时钟（不依赖 API 轮询）
-setInterval(()=>{document.getElementById('update-time').textContent=bjNow()},1000);
+setInterval(function(){document.getElementById('update-time').textContent=bjNow()},1000);
+
 async function load(){
   try{
-    const r=await fetch('/api/news');
-    const d=await r.json();
-    // 计算服务器时间与本地时间的偏移量
+    var r=await fetch('/api/news');
+    var d=await r.json();
     if(d.server_ts){serverOffset=(d.server_ts*1000)-Date.now()}
     document.getElementById('cycle').textContent=d.cycle;
     document.getElementById('total').textContent=d.total;
@@ -1564,75 +1644,156 @@ async function load(){
     document.getElementById('status').textContent=d.status;
     document.getElementById('update-time').textContent=bjNow();
     allNews=d.news||[];
-    const sources=[...new Set(allNews.map(n=>n.source))];
-    const fc=document.getElementById('filters');
-    const cur=fc.querySelector('.active');
-    const curSrc=cur?cur.dataset.source:'all';
-    let btns='<span>\u7B5B\u9009\u6765\u6E90:</span><button class="'+(curSrc==='all'?'active':'')+'" data-source="all">\u5168\u90E8</button>';
-    sources.forEach(s=>{btns+='<button class="'+(curSrc===s?'active':'')+'" data-source="'+esc(s)+'">'+esc(s)+'</button>'});
+    var sources=[];var seen={};
+    allNews.forEach(function(n){if(!seen[n.source]){seen[n.source]=1;sources.push(n.source)}});
+    var fc=document.getElementById('filters');
+    var cur=fc.querySelector('.active');
+    var curSrc=cur?cur.dataset.source:'all';
+    var btns='<span>\u7B5B\u9009\u6765\u6E90:</span><button class="'+(curSrc==='all'?'active':'')+'" data-source="all">\u5168\u90E8</button>';
+    sources.forEach(function(s){btns+='<button class="'+(curSrc===s?'active':'')+'" data-source="'+esc(s)+'">'+esc(s)+'</button>'});
     fc.innerHTML=btns;
-    fc.querySelectorAll('button').forEach(b=>b.onclick=()=>{activeSource=b.dataset.source;fc.querySelectorAll('button').forEach(x=>x.classList.remove('active'));b.classList.add('active');render()});
+    fc.querySelectorAll('button').forEach(function(b){b.onclick=function(){activeSource=b.dataset.source;fc.querySelectorAll('button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');render()}});
     render();
   }catch(e){console.error(e)}
 }
 function render(){
-  const tb=document.getElementById('news-body');
-  const filtered=activeSource==='all'?allNews:allNews.filter(n=>n.source===activeSource);
-  if(!filtered.length){tb.innerHTML='<tr><td colspan="3" class="empty">暂无数据</td></tr>';return}
-  tb.innerHTML=filtered.slice(0,300).map(n=>{
-    const link=n.url&&n.url!=='#'&&n.url.startsWith('http')?'<a href="'+esc(n.url)+'" target="_blank" rel="noopener noreferrer">'+esc(truncate(n.title,80))+'</a>':esc(truncate(n.title,80));
+  var tb=document.getElementById('news-body');
+  var filtered=activeSource==='all'?allNews:allNews.filter(function(n){return n.source===activeSource});
+  if(!filtered.length){tb.innerHTML='<tr><td colspan="3" class="empty">\u6682\u65E0\u6570\u636E</td></tr>';return}
+  tb.innerHTML=filtered.slice(0,300).map(function(n){
+    var link=n.url&&n.url!=='#'&&n.url.startsWith('http')?'<a href="'+esc(n.url)+'" target="_blank" rel="noopener noreferrer">'+esc(truncate(n.title,80))+'</a>':esc(truncate(n.title,80));
     return '<tr><td class="col-time">'+esc(n.publish_time||'')+'</td><td class="col-source"><span>'+esc(n.source)+'</span></td><td class="col-title">'+link+'</td></tr>'
   }).join('');
 }
 load();setInterval(load,5000);
-// === 两步日期选择器 ===
-let pickState='start', rangeStart='', rangeEnd='', availDates=new Set();
-async function initRangePicker(){
+
+/* ---- Calendar ---- */
+function dateStr(y,m,d){return y+'-'+pad(m+1)+'-'+pad(d)}
+
+async function initCal(){
   try{
-    const r=await fetch('/api/daterange');
-    const d=await r.json();
+    var r=await fetch('/api/daterange');
+    var d=await r.json();
     if(d.dates&&d.dates.length){
-      const picker=document.getElementById('range-picker');
-      picker.min=d.min; picker.max=d.max;
-      d.dates.forEach(t=>availDates.add(t));
-      picker.addEventListener('change',onDatePick);
+      d.dates.forEach(function(t){availDates.add(t)});
+      calMinDate=d.min;calMaxDate=d.max;
+      var today=new Date();
+      calYear=today.getFullYear();
+      calMonth=today.getMonth();
     }
   }catch(e){}
 }
-function onDatePick(){
-  const picker=document.getElementById('range-picker');
-  const show=document.getElementById('range-show');
-  const val=picker.value;
-  if(!val)return;
-  if(!availDates.has(val)){
-    alert('该日期无新闻数据，请重新选择');
-    picker.value=''; return;
+
+function toggleCal(){
+  calOpen=!calOpen;
+  var cal=document.getElementById('dp-cal');
+  var trig=document.getElementById('dp-trigger');
+  if(calOpen){cal.classList.add('open');trig.classList.add('open');renderCal()}
+  else{cal.classList.remove('open');trig.classList.remove('open')}
+}
+function closeCal(){
+  calOpen=false;
+  document.getElementById('dp-cal').classList.remove('open');
+  document.getElementById('dp-trigger').classList.remove('open');
+}
+function calNav(dir){
+  calMonth+=dir;
+  if(calMonth<0){calMonth=11;calYear--}
+  if(calMonth>11){calMonth=0;calYear++}
+  renderCal();
+}
+
+function renderCal(){
+  var MN=['\u4E00\u6708','\u4E8C\u6708','\u4E09\u6708','\u56DB\u6708','\u4E94\u6708','\u516D\u6708','\u4E03\u6708','\u516B\u6708','\u4E5D\u6708','\u5341\u6708','\u5341\u4E00\u6708','\u5341\u4E8C\u6708'];
+  document.getElementById('dp-cal-title').textContent=calYear+'\u5E74 '+MN[calMonth];
+  var firstDay=new Date(calYear,calMonth,1).getDay();
+  var offset=(firstDay+6)%7;
+  var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  var prevDays=new Date(calYear,calMonth,0).getDate();
+  var today=new Date();
+  var todayStr=dateStr(today.getFullYear(),today.getMonth(),today.getDate());
+  var parts=[];
+  var i,d,ds,cls,has;
+  for(i=offset-1;i>=0;i--){
+    parts.push('<div class="dp-cell oth">'+(prevDays-i)+'</div>');
   }
-  if(pickState==='start'){
-    rangeStart=val; pickState='end';
-    picker.value='';
-  }else if(pickState==='end'){
-    if(val<rangeStart){
-      alert('截止日期不能早于起始日期'); picker.value=''; return;
+  for(d=1;d<=daysInMonth;d++){
+    ds=dateStr(calYear,calMonth,d);
+    cls=['dp-cell'];
+    has=availDates.has(ds);
+    if(!has)cls.push('dis');
+    if(ds===todayStr)cls.push('today');
+    if(rangeStart&&rangeEnd){
+      if(ds===rangeStart)cls.push('rs');
+      if(ds===rangeEnd)cls.push('re');
+      if(ds>rangeStart&&ds<rangeEnd)cls.push('in-range');
+    }else if(rangeStart&&!rangeEnd&&ds===rangeStart){
+      cls.push('pick-s');
     }
-    rangeEnd=val; pickState='done';
-    picker.style.display='none';
-    show.textContent='📅 '+rangeStart+' ~ '+rangeEnd;
-    show.className='range-result done'; show.title='点击重新选择';
-    show.onclick=resetRange;
+    parts.push('<div class="'+cls.join(' ')+'" data-d="'+ds+'">'+d+'</div>');
+  }
+  var total=offset+daysInMonth;
+  var rem=(7-total%7)%7;
+  for(i=1;i<=rem;i++){
+    parts.push('<div class="dp-cell oth">'+i+'</div>');
+  }
+  var grid=document.getElementById('dp-grid');
+  grid.innerHTML=parts.join('');
+  grid.querySelectorAll('.dp-cell:not(.dis):not(.oth)').forEach(function(c){
+    c.addEventListener('click',function(){onDayClick(c.dataset.d)});
+  });
+  var hint=document.getElementById('dp-hint');
+  if(pickState==='start')hint.innerHTML='\u70B9\u51FB\u9009\u62E9\u5F00\u59CB\u65E5\u671F';
+  else if(pickState==='end')hint.innerHTML='\u5DF2\u9009 <b>'+rangeStart+'</b>\uFF0C\u7EE7\u7EED\u9009\u62E9\u622A\u6B62\u65E5\u671F';
+  else hint.innerHTML='<b>'+rangeStart+' ~ '+rangeEnd+'</b>';
+}
+
+function onDayClick(ds){
+  if(pickState==='start'){
+    rangeStart=ds;rangeEnd='';pickState='end';
+    updateUI();renderCal();
+  }else if(pickState==='end'){
+    if(ds<rangeStart){rangeStart=ds;pickState='end';updateUI();renderCal();return}
+    if(ds===rangeStart){rangeEnd=ds;pickState='done';updateUI();renderCal();setTimeout(closeCal,300);return}
+    rangeEnd=ds;pickState='done';updateUI();renderCal();setTimeout(closeCal,300);
+  }else{
+    rangeStart=ds;rangeEnd='';pickState='end';updateUI();renderCal();
   }
 }
-function resetRange(){
-  pickState='start'; rangeStart=''; rangeEnd='';
-  const picker=document.getElementById('range-picker');
-  picker.value=''; picker.style.display='';
-  const show=document.getElementById('range-show');
-  show.textContent=''; show.className='range-result'; show.onclick=null;
+
+function updateUI(){
+  var txt=document.getElementById('dp-text');
+  var rst=document.getElementById('dp-reset');
+  if(rangeStart&&rangeEnd){
+    txt.textContent=rangeStart+' ~ '+rangeEnd;
+    txt.className='txt on';
+    rst.style.display='';
+  }else if(rangeStart){
+    txt.textContent='\u8D77 '+rangeStart;
+    txt.className='txt';
+    rst.style.display='';
+  }else{
+    txt.textContent='\u65E5\u671F\u8303\u56F4';
+    txt.className='txt';
+    rst.style.display='none';
+  }
 }
-initRangePicker();
+
+function resetRange(){
+  rangeStart='';rangeEnd='';pickState='start';
+  updateUI();closeCal();
+}
+
+document.addEventListener('click',function(e){
+  var wrap=document.getElementById('dp-wrap');
+  if(wrap&&!wrap.contains(e.target))closeCal();
+});
+
+initCal();
+
 function doExport(){
-  const fmt=document.getElementById('export-format').value;
-  let url='/api/export?format='+fmt;
+  var fmt=document.getElementById('export-format').value;
+  var url='/api/export?format='+fmt;
   if(rangeStart)url+='&start='+rangeStart;
   if(rangeEnd)url+='&end='+rangeEnd;
   window.open(url,'_blank');
