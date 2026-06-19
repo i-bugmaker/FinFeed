@@ -1741,7 +1741,7 @@ function renderCal(){
   var grid=document.getElementById('dp-grid');
   grid.innerHTML=parts.join('');
   grid.querySelectorAll('.dp-cell:not(.dis):not(.oth)').forEach(function(c){
-    c.addEventListener('click',function(){onDayClick(c.dataset.d)});
+    c.addEventListener('click',function(e){e.stopPropagation();onDayClick(c.dataset.d)});
   });
   var hint=document.getElementById('dp-hint');
   if(pickState==='start')hint.innerHTML='\u70B9\u51FB\u9009\u62E9\u5F00\u59CB\u65E5\u671F';
@@ -1755,7 +1755,6 @@ function onDayClick(ds){
     updateUI();renderCal();
   }else if(pickState==='end'){
     if(ds<rangeStart){rangeStart=ds;pickState='end';updateUI();renderCal();return}
-    if(ds===rangeStart){rangeEnd=ds;pickState='done';updateUI();renderCal();setTimeout(closeCal,300);return}
     rangeEnd=ds;pickState='done';updateUI();renderCal();setTimeout(closeCal,300);
   }else{
     rangeStart=ds;rangeEnd='';pickState='end';updateUI();renderCal();
