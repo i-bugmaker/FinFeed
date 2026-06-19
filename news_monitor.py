@@ -1646,6 +1646,7 @@ async function load(){
     allNews=d.news||[];
     var sources=[];var seen={};
     allNews.forEach(function(n){if(!seen[n.source]){seen[n.source]=1;sources.push(n.source)}});
+    (d.sources||[]).forEach(function(s){if(!seen[s]){seen[s]=1;sources.push(s)}});
     var fc=document.getElementById('filters');
     var cur=fc.querySelector('.active');
     var curSrc=cur?cur.dataset.source:'all';
@@ -1890,7 +1891,7 @@ def _update_web_state(news, stats, cycle, total, new_count, status):
     _web_state["total"] = total
     _web_state["new_count"] = new_count
     _web_state["status"] = status
-    _web_state["sources"] = list(stats.keys())
+    _web_state["sources"] = list(dict.fromkeys(_display_name(k) for k in stats.keys()))
     _web_state["last_update"] = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     _web_state["server_ts"] = time.time()
 
@@ -1966,11 +1967,11 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         def _rebuild_table_if_needed(news, force=False):
             """只在新闻列表变化时重建表格（轻量判断）"""
             nonlocal _cached_table, _last_table_key
-            key = f"{len(news)}|{news[0]['title'] if news else ''}"
+            term_w, term_h = console.size
+            key = f"{len(news)}|{news[0]['title'] if news else ''}|{term_w}x{term_h}"
             if force or key != _last_table_key:
                 _last_table_key = key
-                term_height = console.size.height
-                max_rows = max(10, term_height - 12)
+                max_rows = max(10, term_h - 12)
                 _cached_table = _build_news_table(news, max_rows=max_rows)
             return _cached_table
 
@@ -1982,9 +1983,11 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             fetch_task = asyncio.create_task(fetch_all_news(cycle))
             _last_fetch_sec = -1
             while not fetch_task.done():
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
+                _old_key = _last_table_key
+                _rebuild_table_if_needed(all_collected_news)
                 cur_sec = int(time.time())
-                if cur_sec != _last_fetch_sec:
+                if cur_sec != _last_fetch_sec or _last_table_key != _old_key:
                     _last_fetch_sec = cur_sec
                     render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval, "抓取中...", _cached_table)
             all_news, source_stats = fetch_task.result()
@@ -2016,11 +2019,16 @@ async def monitor_loop(interval: int = 5, once: bool = False):
             table = _rebuild_table_if_needed(all_collected_news, force=True)
             render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
                    f"{status} | {wait_sec:.0f}s后一轮", table)
+            _last_wait_sec = -1
             while time.time() < wait_end:
-                await asyncio.sleep(1.0)
-                remaining = max(0, wait_end - time.time())
-                render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
-                       f"{status} | {remaining:.0f}s后一轮", _cached_table)
+                await asyncio.sleep(0.5)
+                _rebuild_table_if_needed(all_collected_news)
+                cur_sec = int(time.time())
+                if cur_sec != _last_wait_sec:
+                    _last_wait_sec = cur_sec
+                    remaining = max(0, wait_end - time.time())
+                    render(all_collected_news, cycle, total_in_db, last_new_count, source_stats, interval,
+                           f"{status} | {remaining:.0f}s后一轮", _cached_table)
 
     # 尝试 Live 显示模式，失败时降级为简单模式
     _live_simple_last_print = 0.0
@@ -2080,7 +2088,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         with Live(
             _build_display(all_collected_news, 0, total_in_db, 0, source_stats, interval, "启动中..."),
             console=console,
-            refresh_per_second=1,
+            refresh_per_second=4,
             screen=True,
         ) as live:
             await _run_cycles(_live_render)
