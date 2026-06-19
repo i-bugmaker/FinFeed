@@ -1110,7 +1110,42 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_created ON news(created_at ASC)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_title_full_hash ON news(title_full_hash)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_url_hash ON news(url_hash)")
+    # 元数据表：存储运行时状态（如上次退出时间，用于离线补抓）
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
     conn.commit()
+
+
+def db_get_last_exit_ts() -> int:
+    """读取上次程序退出时保存的时间戳（Unix秒），不存在则返回 0"""
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT value FROM metadata WHERE key = 'last_exit_ts'")
+            row = c.fetchone()
+            if row:
+                return int(row["value"])
+    except Exception:
+        pass
+    return 0
+
+
+def db_set_last_exit_ts(ts: int):
+    """保存当前程序的最新活跃时间戳到 metadata 表"""
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES ('last_exit_ts', ?)",
+                (str(ts),),
+            )
+            conn.commit()
+    except Exception:
+        pass
 
 
 @contextmanager
@@ -1923,25 +1958,60 @@ async def monitor_loop(interval: int = 5, once: bool = False):
 
     # 启动时立即从 DB 加载已有新闻，消除"启动中"空白等待
     all_collected_news = db_get_recent_news(limit=MAX_NEWS_CACHE)
+
+    # ============================================================
+    # 离线补抓：读取上次退出时间，初始化增量时间戳
+    # ============================================================
+    _last_exit_ts = db_get_last_exit_ts()
+    _now_ts = int(time.time())
+    _offline_gap_sec = max(0, _now_ts - _last_exit_ts) if _last_exit_ts > 0 else 0
+    _catch_up_needed = _offline_gap_sec > 60  # 离线超过 60 秒才触发补抓
+    _catch_up_status = ""
+
+    if _catch_up_needed:
+        # 将所有来源的增量时间戳初始化为上次退出时间
+        # 这样首次抓取会自动回溯到离线起点之后的新闻
+        for src_name in source_last_ts:
+            source_last_ts[src_name] = _last_exit_ts
+        for ch_name in _thsyc_channel_last_ts:
+            _thsyc_channel_last_ts[ch_name] = _last_exit_ts
+        gap_min = int(_offline_gap_sec // 60)
+        gap_hour = gap_min // 60
+        if gap_hour > 0:
+            _catch_up_status = f"离线 {gap_hour}h{gap_min % 60}min，正在补抓..."
+        else:
+            _catch_up_status = f"离线 {gap_min}min，正在补抓..."
+
     _update_web_state(
         all_collected_news, source_stats, 0, total_in_db,
-        0, "抓取中..."
+        0, _catch_up_status or "抓取中..."
     )
+
+    _last_exit_save_ts = 0  # 上次保存退出时间戳的时刻
 
     if once:
         # 单次模式：不启动 Live，直接打印结果
-        all_news, source_stats = await fetch_all_news(cycle=1)
-        new_hashes, inserted = db_insert_news(all_news)
-        all_collected_news.extend(all_news)
-        all_collected_news.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
-        total_in_db += inserted
-        last_new_count = inserted
+        # 离线补抓：单次模式也支持多轮回溯
+        _once_max_cycles = 5 if _catch_up_needed else 1
+        _once_total_inserted = 0
+        for _oc in range(_once_max_cycles):
+            all_news, source_stats = await fetch_all_news(cycle=_oc + 1)
+            new_hashes, inserted = db_insert_news(all_news)
+            _once_total_inserted += inserted
+            all_collected_news.extend(all_news)
+            all_collected_news.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
+            total_in_db += inserted
+            if inserted == 0 and _oc > 0:
+                break
+        last_new_count = _once_total_inserted
+        db_set_last_exit_ts(int(time.time()))
 
         console.print()
         console.print(Panel(
             f"[bold white on blue] FinFeed 单次抓取完成 [/]"
             f" [cyan]{now_bj().strftime('%Y-%m-%d %H:%M:%S')}[/]"
-            f" | 抓取 {len(all_news)} 条 | 新增入库 {inserted} 条 | 库内共 {total_in_db} 条",
+            f" | 抓取 {len(all_collected_news)} 条 | 新增入库 {_once_total_inserted} 条 | 库内共 {total_in_db} 条"
+            + (f" | [yellow]离线补抓 {_once_max_cycles} 轮[/]" if _catch_up_needed else ""),
             border_style="bright_blue",
         ))
         console.print()
@@ -1959,6 +2029,7 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         render 签名: render(news, cycle, total, new_count, stats, interval, status, table)
         """
         nonlocal cycle, all_collected_news, source_stats, total_in_db, last_new_count
+        nonlocal _last_exit_save_ts
 
         _cached_table: Table | None = None
         _last_table_key = ""
@@ -1973,6 +2044,45 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                 max_rows = max(10, term_h - 12)
                 _cached_table = _build_news_table(news, max_rows=max_rows)
             return _cached_table
+
+        # ============================================================
+        # 离线补抓阶段：多轮快速抓取，逐步追赶离线期间的新闻
+        # ============================================================
+        MAX_CATCH_UP_CYCLES = 10
+        if _catch_up_needed:
+            catch_up_total = 0
+            for cu_cycle in range(1, MAX_CATCH_UP_CYCLES + 1):
+                table = _rebuild_table_if_needed(all_collected_news, force=True)
+                cu_status = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 已补 {catch_up_total} 条"
+                render(all_collected_news, 0, total_in_db, 0, source_stats, interval, cu_status, table)
+
+                all_news, source_stats = await fetch_all_news(cycle=cu_cycle)
+                new_hashes, inserted = db_insert_news(all_news)
+                catch_up_total += inserted
+
+                if all_news:
+                    seen_titles = {n["title"] for n in all_collected_news}
+                    new_items = [n for n in all_news if n["title"] not in seen_titles]
+                    if new_items:
+                        new_items.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
+                        all_collected_news = new_items + [n for n in all_collected_news if n["title"] not in {x["title"] for x in new_items}]
+                        all_collected_news.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
+                if len(all_collected_news) > MAX_NEWS_CACHE:
+                    all_collected_news = all_collected_news[:MAX_NEWS_CACHE]
+                total_in_db += inserted
+
+                cu_status2 = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 本轮 +{inserted} | 累计 +{catch_up_total}"
+                table = _rebuild_table_if_needed(all_collected_news, force=True)
+                render(all_collected_news, 0, total_in_db, catch_up_total, source_stats, interval, cu_status2, table)
+                _update_web_state(all_collected_news, source_stats, 0, total_in_db, catch_up_total, cu_status2)
+
+                # 连续两轮无新增，认为已追上
+                if inserted == 0 and cu_cycle > 1:
+                    break
+                await asyncio.sleep(1)  # 补抓间隔 1 秒，避免请求过快
+
+            _last_exit_save_ts = int(time.time())
+            db_set_last_exit_ts(_last_exit_save_ts)
 
         while True:
             cycle += 1
@@ -1999,11 +2109,18 @@ async def monitor_loop(interval: int = 5, once: bool = False):
                 if new_items:
                     new_items.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
                     all_collected_news = new_items + [n for n in all_collected_news if n["title"] not in {x["title"] for x in new_items}]
+                    all_collected_news.sort(key=lambda x: x.get("publish_ts", 0), reverse=True)
             # 内存管理：限制累积列表上限，防止长时间运行内存泄漏
             if len(all_collected_news) > MAX_NEWS_CACHE:
                 all_collected_news = all_collected_news[:MAX_NEWS_CACHE]
             total_in_db += inserted
             last_new_count = inserted
+
+            # 定期保存最后活跃时间戳（每 60 秒），用于下次启动时离线补抓
+            _now_ts = int(time.time())
+            if _now_ts - _last_exit_save_ts >= 60:
+                _last_exit_save_ts = _now_ts
+                db_set_last_exit_ts(_now_ts)
 
             # 更新状态：等待中（每秒刷新时钟）
             wait_sec = _jitter_interval(interval)
@@ -2097,6 +2214,8 @@ async def monitor_loop(interval: int = 5, once: bool = False):
         await _run_cycles(_simple_render)
     finally:
         _restore_logging()
+        # 退出前保存最后活跃时间戳，供下次启动时离线补抓使用
+        db_set_last_exit_ts(int(time.time()))
 
 
 # ============================================================
@@ -2158,6 +2277,7 @@ def main():
             logger.info(f"数据已保存在: {DB_PATH}")
             print(f"\n监控已停止。所有数据已持久化到: {DB_PATH}")
         finally:
+            db_set_last_exit_ts(int(time.time()))
             if web_server:
                 web_server.shutdown()
 
