@@ -133,11 +133,13 @@ class _WebHandler(BaseHTTPRequestHandler):
 
     def _serve_news(self):
         qs = parse_qs(urlparse(self.path).query)
-        limit = int(qs.get("limit", ["1000"])[0])
+        limit = int(qs.get("limit", ["0"])[0])
         source = qs.get("source", ["all"])[0]
-        if limit > 5000:
-            limit = 5000
-        news = db_get_recent_news(limit=limit, source=source if source != "all" else None)
+        if limit <= 0:
+            limit = -1
+        news = db_get_recent_news(limit=limit if limit > 0 else 100000, source=source if source != "all" else None)
+        if limit > 0:
+            news = news[:limit]
         news_dicts = [n.to_dict() for n in news]
         with _web_state_lock:
             stats = dict(_web_state.get("stats", {}))

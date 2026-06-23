@@ -430,7 +430,7 @@ function render(){
   }
   document.getElementById('filter-count').textContent=filtered.length.toLocaleString();
   if(!filtered.length){tb.innerHTML='<tr><td colspan="5" class="empty"><div class="ico">&#128240;</div>暂无数据</td></tr>';return}
-  tb.innerHTML=filtered.slice(0,1000).map(function(n){
+  tb.innerHTML=filtered.map(function(n){
     var impClass=getImpClass(n.importance||0);
     var sentClass=getSentimentClass(n.sentiment);
     var favClass=n.is_favorite?'active':'';
