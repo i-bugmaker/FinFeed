@@ -322,12 +322,12 @@ def db_get_recent_news(limit=200, source=None) -> list[NewsItem]:
         c = conn.cursor()
         if source and source != "all":
             c.execute(
-                "SELECT * FROM news WHERE source = ? ORDER BY publish_ts DESC, id DESC LIMIT ?",
+                "SELECT * FROM news WHERE source = ? ORDER BY id DESC LIMIT ?",
                 (source, limit),
             )
         else:
             c.execute(
-                "SELECT * FROM news ORDER BY publish_ts DESC, id DESC LIMIT ?",
+                "SELECT * FROM news ORDER BY id DESC LIMIT ?",
                 (limit,),
             )
         return [_row_to_news(row) for row in c.fetchall()]
@@ -358,7 +358,7 @@ def db_get_all_for_export(start_date=None, end_date=None) -> list[NewsItem]:
         if end_date:
             query += " AND publish_time <= ?"
             params.append(end_date + " 23:59:59")
-        query += " ORDER BY publish_ts DESC, id DESC"
+        query += " ORDER BY id DESC"
         c.execute(query, params)
         return [_row_to_news(row) for row in c.fetchall()]
 
@@ -388,7 +388,7 @@ def db_search_news(keyword: str, limit=100) -> list[NewsItem]:
                 """SELECT n.* FROM news n
                    INNER JOIN news_fts f ON n.id = f.rowid
                    WHERE news_fts MATCH ?
-                   ORDER BY n.publish_ts DESC LIMIT ?""",
+                   ORDER BY n.id DESC LIMIT ?""",
                 (keyword, limit),
             )
             return [_row_to_news(row) for row in c.fetchall()]
@@ -396,7 +396,7 @@ def db_search_news(keyword: str, limit=100) -> list[NewsItem]:
             c.execute(
                 """SELECT * FROM news
                    WHERE title LIKE ? OR intro LIKE ?
-                   ORDER BY publish_ts DESC LIMIT ?""",
+                   ORDER BY id DESC LIMIT ?""",
                 (f"%{keyword}%", f"%{keyword}%", limit),
             )
             return [_row_to_news(row) for row in c.fetchall()]
@@ -489,7 +489,7 @@ def db_get_favorites(limit=100) -> list[NewsItem]:
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT * FROM news WHERE is_favorite = 1 ORDER BY publish_ts DESC LIMIT ?",
+            "SELECT * FROM news WHERE is_favorite = 1 ORDER BY id DESC LIMIT ?",
             (limit,),
         )
         return [_row_to_news(row) for row in c.fetchall()]
