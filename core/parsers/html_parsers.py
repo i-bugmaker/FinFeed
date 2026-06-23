@@ -3,6 +3,7 @@
 """HTML 页面类新闻源解析器"""
 
 import re
+import json
 
 import httpx
 from bs4 import BeautifulSoup
@@ -102,34 +103,76 @@ class GelonghuiArticleParser(BaseParser):
 
 
 class FastbullParser(BaseParser):
-    """法布财经 - HTML 页面"""
+    """法布财经 - JSON API"""
 
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
-        soup = BeautifulSoup(response.text, "lxml")
-        _fb_seen = set()
-        for article in soup.select(".news-list"):
-            title_elem = article.select_one(".title_name")
-            if not title_elem:
+        data = response.json()
+
+        if data.get("code") != 0:
+            return news_list
+
+        body_raw = data.get("bodyMessage")
+        if not body_raw:
+            return news_list
+
+        if isinstance(body_raw, str):
+            try:
+                body = json.loads(body_raw)
+            except (json.JSONDecodeError, TypeError):
+                return news_list
+        else:
+            body = body_raw
+
+        items = body.get("pageDatas") or []
+        for item in items:
+            if not isinstance(item, dict):
                 continue
-            title_raw = title_elem.get_text(strip=True)
-            m = re.search(r"【([^】]+)】", title_raw)
-            title = m.group(1).strip() if m else title_raw
-            if len(title) < 4:
+
+            title = (item.get("newsTitle") or "").strip()
+            if not title or len(title) < 4:
                 continue
-            if title in _fb_seen:
-                continue
-            _fb_seen.add(title)
-            date_attr = article.get("data-date", "")
-            ts = int(date_attr) // 1000 if date_attr.isdigit() else 0
+
+            released = item.get("releasedDate") or 0
+            if isinstance(released, (int, float)):
+                ts_ms = int(released)
+                ts = ts_ms // 1000 if ts_ms > 1e12 else ts_ms
+            else:
+                ts = ts_from_bj_str(str(released)) if released else 0
+
             if ts and ts <= self.last_ts:
                 continue
+
             pt = bj_str_from_ts(ts) if ts else ""
+
+            news_id = item.get("newsId") or ""
+            path = item.get("path") or ""
+            if path and not path.startswith("http"):
+                url = f"https://www.fastbull.cn{path}" if path.startswith("/") else f"https://www.fastbull.cn/{path}"
+            elif news_id:
+                url = f"https://www.fastbull.cn/news/{news_id}"
+            else:
+                url = "#"
+
+            intro = ""
+            unscramble = item.get("newsUnscrambleModel") or {}
+            if isinstance(unscramble, dict):
+                intro = (unscramble.get("content") or "").strip()
+            if not intro:
+                ref_info = item.get("refInfo")
+                if isinstance(ref_info, dict):
+                    intro = (ref_info.get("brief") or ref_info.get("summary") or "").strip()
+
+            source_name = (item.get("simWebsiteName") or "").strip()
+            if source_name and source_name != "法布财经":
+                title = f"[{source_name}] {title}"
+
             news_list.append(self._make_news(
                 title=title[:80],
-                url="#",
+                url=url,
                 publish_ts=ts,
                 publish_time=pt,
-                intro="",
+                intro=intro[:150],
             ))
+
         return news_list

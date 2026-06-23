@@ -16,9 +16,11 @@ FinFeed 实时新闻监控 - 主入口
 import os
 import sys
 import time
+import signal
 import logging
 import argparse
 import asyncio
+from typing import Optional
 
 from config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL, MAX_NEWS_CACHE,
@@ -41,6 +43,70 @@ from ui.web.server import start_web_server, update_web_state
 from utils.common import jitter_interval
 
 from rich.live import Live
+
+logger = logging.getLogger("news_monitor")
+
+_shutdown_event = asyncio.Event()
+
+
+def _setup_signal_handlers(loop: asyncio.AbstractEventLoop):
+    """设置信号处理器，支持优雅关闭"""
+    def _signal_handler(sig, frame):
+        logger.info(f"收到信号 {sig}，准备优雅关闭...")
+        _shutdown_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _signal_handler, sig, None)
+        except NotImplementedError:
+            signal.signal(sig, _signal_handler)
+
+
+def _merge_news_list(existing: list, new_items: list, max_count: int) -> list:
+    """合并新闻列表，去重并保持按时间倒序"""
+    if not new_items:
+        return existing
+    if not existing:
+        return new_items[:max_count]
+
+    seen_titles = {n.title for n in existing}
+    unique_new = [n for n in new_items if n.title not in seen_titles]
+    if not unique_new:
+        return existing
+
+    merged = unique_new + existing
+    merged.sort(key=lambda x: x.publish_ts, reverse=True)
+    return merged[:max_count]
+
+
+def _setup_catch_up(last_exit_ts: int) -> tuple[bool, str]:
+    """设置离线补抓状态"""
+    now_ts = int(time.time())
+    offline_gap_sec = max(0, now_ts - last_exit_ts) if last_exit_ts > 0 else 0
+    catch_up_needed = offline_gap_sec > OFFLINE_GAP_THRESHOLD
+    catch_up_status = ""
+
+    if catch_up_needed:
+        from config.sources import get_enabled_sources, THSYC_CHANNELS
+        from core.fetcher import _parsers
+
+        for src in get_enabled_sources():
+            set_parser_last_ts(src.name, last_exit_ts)
+
+        if "同花顺原创" in _parsers:
+            parser = _parsers["同花顺原创"]
+            if hasattr(parser, '_channel_last_ts'):
+                for ch in THSYC_CHANNELS:
+                    parser._channel_last_ts[ch["name"]] = last_exit_ts
+
+        gap_min = int(offline_gap_sec // 60)
+        gap_hour = gap_min // 60
+        if gap_hour > 0:
+            catch_up_status = f"离线 {gap_hour}h{gap_min % 60}min，正在补抓..."
+        else:
+            catch_up_status = f"离线 {gap_min}min，正在补抓..."
+
+    return catch_up_needed, catch_up_status
 
 
 def setup_logging():

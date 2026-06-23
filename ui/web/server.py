@@ -16,6 +16,7 @@ import os
 import csv
 import json
 import time
+import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -28,6 +29,8 @@ from storage.database import (
 )
 from storage.models import NewsItem
 
+logger = logging.getLogger("news_monitor")
+
 _web_state = {
     "news": [],
     "stats": {},
@@ -39,26 +42,34 @@ _web_state = {
     "last_update": "",
     "server_ts": time.time(),
 }
+_web_state_lock = threading.Lock()
 
 _template_cache: str | None = None
 _dashboard_cache: str | None = None
+_template_lock = threading.Lock()
 
 
 def _get_template() -> str:
-    """获取 HTML 模板（带缓存）"""
+    """获取 HTML 模板（带缓存，线程安全）"""
     global _template_cache
-    if _template_cache is not None:
-        return _template_cache
+    with _template_lock:
+        if _template_cache is not None:
+            return _template_cache
     template_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "templates", "index.html"
     )
     try:
         with open(template_path, "r", encoding="utf-8") as f:
-            _template_cache = f.read()
-    except Exception:
-        _template_cache = "<h1>Template not found</h1>"
-    return _template_cache
+            content = f.read()
+        with _template_lock:
+            _template_cache = content
+            return _template_cache
+    except Exception as e:
+        logger.warning(f"加载模板失败: {e}")
+        with _template_lock:
+            _template_cache = "<h1>Template not found</h1>"
+            return _template_cache
 
 
 def _get_dashboard_html() -> str:
@@ -120,7 +131,8 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _serve_news(self):
-        state = dict(_web_state)
+        with _web_state_lock:
+            state = dict(_web_state)
         state["server_ts"] = time.time()
         data = json.dumps(state, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
@@ -337,15 +349,19 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> HTTPServer:
 
 def update_web_state(news, stats, cycle, total, new_count, status):
     """更新 Web 仪表盘共享状态（线程安全）"""
-    _web_state["news"] = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:300]]
-    _web_state["stats"] = stats
-    _web_state["cycle"] = cycle
-    _web_state["total"] = total
-    _web_state["new_count"] = new_count
-    _web_state["status"] = status
-    _web_state["sources"] = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
-    _web_state["last_update"] = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-    _web_state["server_ts"] = time.time()
+    news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:300]]
+    sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
+    last_update = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+    with _web_state_lock:
+        _web_state["news"] = news_dicts
+        _web_state["stats"] = stats
+        _web_state["cycle"] = cycle
+        _web_state["total"] = total
+        _web_state["new_count"] = new_count
+        _web_state["status"] = status
+        _web_state["sources"] = sources_list
+        _web_state["last_update"] = last_update
+        _web_state["server_ts"] = time.time()
 
 
 _DASHBOARD_HTML = r"""<!DOCTYPE html>

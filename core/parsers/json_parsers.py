@@ -4,9 +4,7 @@
 
 import re
 import json
-import hashlib
-from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from datetime import datetime
 
 import httpx
 
@@ -14,7 +12,7 @@ from .base import BaseParser
 from storage.models import NewsItem
 from utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_url_date, _RE_HHMM, _RE_MD_HHMM, TZ_BJ
 from utils.http_utils import strip_html
-from config.settings import get_display_name, SOURCE_SKIP_REQ_TRACE
+from config.settings import get_display_name
 from config.sources import THSYC_CHANNELS, THSYC_BASE_URL
 
 

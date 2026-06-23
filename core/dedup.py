@@ -11,6 +11,7 @@
 """
 
 import time
+import logging
 from typing import Optional
 
 from config.settings import SIMHASH_THRESHOLD, ENABLE_SEMANTIC_DEDUP, DEDUP_RECENT_DAYS
@@ -21,6 +22,8 @@ from utils.hash_utils import (
 )
 from storage.models import NewsItem
 from storage.database import get_db
+
+logger = logging.getLogger("news_monitor")
 
 
 class DedupEngine:
@@ -65,8 +68,8 @@ class DedupEngine:
                             sim = hex_to_simhash(row[0]) if isinstance(row[0], str) else row[0]
                             if sim:
                                 self._simhashes.append(sim)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"从数据库加载去重哈希失败: {e}")
         self._loaded = True
 
     def is_duplicate(self, news: NewsItem) -> tuple[bool, str]:

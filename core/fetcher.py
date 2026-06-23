@@ -100,7 +100,7 @@ async def fetch_news_from_source(
                 import asyncio
                 await asyncio.sleep(min_interval - elapsed)
 
-        use_shared = client is not None
+        use_shared = client is not None and source.verify_ssl
         if use_shared:
             http_client = client
         else:
@@ -110,8 +110,6 @@ async def fetch_news_from_source(
 
         try:
             kwargs = {"url": source.url, "headers": dict(source.headers)}
-            if not ssl_ctx:
-                kwargs["verify"] = False
 
             method = source.method
             if source.params and source_name not in SOURCE_SKIP_REQ_TRACE:
@@ -142,32 +140,35 @@ async def fetch_news_from_source(
                 response = await http_client.post(**kwargs)
             else:
                 response = await http_client.get(**kwargs)
+
+            if not hasattr(response, 'client'):
+                response.client = http_client
+
+            if min_interval > 0:
+                _last_source_req[source_name] = time.time()
+
+            if response.status_code == 429:
+                retry_after_str = (response.headers.get("Retry-After") or "").strip()
+                retry_after = int(retry_after_str) if retry_after_str.isdigit() else 60
+                logger.warning(f"{source_name} 触发速率限制 (429)，冷却 {retry_after}s")
+                _rate_blocked_until[source_name] = time.time() + retry_after + 30
+                health_monitor.record_failure(source_name, "HTTP 429 Too Many Requests")
+                return news_list
+
+            if response.status_code != 200:
+                logger.warning(f"获取{source_name}失败：HTTP {response.status_code}")
+                health_monitor.record_failure(source_name, f"HTTP {response.status_code}")
+                return news_list
+
+            parser = _get_parser(source)
+            news_list = await parser.parse(response)
+            parser.update_last_ts(news_list)
+
+            latency = time.time() - start_time
+            health_monitor.record_success(source_name, latency)
         finally:
             if not use_shared:
                 await http_client.aclose()
-
-        if min_interval > 0:
-            _last_source_req[source_name] = time.time()
-
-        if response.status_code == 429:
-            retry_after_str = (response.headers.get("Retry-After") or "").strip()
-            retry_after = int(retry_after_str) if retry_after_str.isdigit() else 60
-            logger.warning(f"{source_name} 触发速率限制 (429)，冷却 {retry_after}s")
-            _rate_blocked_until[source_name] = time.time() + retry_after + 30
-            health_monitor.record_failure(source_name, "HTTP 429 Too Many Requests")
-            return news_list
-
-        if response.status_code != 200:
-            logger.warning(f"获取{source_name}失败：HTTP {response.status_code}")
-            health_monitor.record_failure(source_name, f"HTTP {response.status_code}")
-            return news_list
-
-        parser = _get_parser(source)
-        news_list = await parser.parse(response)
-        parser.update_last_ts(news_list)
-
-        latency = time.time() - start_time
-        health_monitor.record_success(source_name, latency)
 
     except httpx.ConnectTimeout:
         logger.warning(f"获取{source_name}失败：连接超时")

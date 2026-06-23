@@ -9,6 +9,7 @@
 """
 
 import time
+import logging
 from typing import Optional
 
 from config.settings import (
@@ -17,6 +18,8 @@ from config.settings import (
 )
 from storage.models import SourceHealth
 from storage.database import get_db
+
+logger = logging.getLogger("news_monitor")
 
 
 class HealthMonitor:
@@ -49,8 +52,8 @@ class HealthMonitor:
                         circuit_open_ts=row["circuit_open_ts"] or 0,
                     )
                     self._health[sh.source_name] = sh
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"从数据库加载健康状态失败: {e}")
         self._loaded = True
 
     def _save_to_db(self, sh: SourceHealth):
@@ -72,8 +75,8 @@ class HealthMonitor:
                     ),
                 )
                 conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"保存健康状态到数据库失败 [{sh.source_name}]: {e}")
 
     def _get_or_create(self, source_name: str) -> SourceHealth:
         if source_name not in self._health:

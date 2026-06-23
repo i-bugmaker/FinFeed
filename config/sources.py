@@ -156,13 +156,15 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
     ),
     NewsSource(
         name="法布财经",
-        url="https://www.fastbull.com/cn/express-news",
+        url="https://api.fastbull.cn/fastbull-news-service/api/getNewsPageByTagIds",
         parser_type="fastbull",
         headers={
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.fastbull.com/",
-            "Accept": "text/html",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.fastbull.cn/",
+            "Accept": "application/json",
+            "Origin": "https://www.fastbull.cn",
         },
+        params={"pageNo": 1, "pageSize": 30},
     ),
     NewsSource(
         name="企查查",

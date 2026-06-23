@@ -12,6 +12,7 @@
 
 import sqlite3
 import time
+import logging
 from contextlib import contextmanager
 from typing import Optional
 
@@ -21,6 +22,8 @@ from config.settings import (
 from utils.time_utils import now_bj, bj_str_from_ts
 from utils.hash_utils import compute_title_full_hash, compute_url_hash, simhash_to_hex, hex_to_simhash
 from storage.models import NewsItem
+
+logger = logging.getLogger("news_monitor")
 
 
 _db_conn: Optional[sqlite3.Connection] = None
@@ -145,6 +148,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 keywords TEXT DEFAULT '[]',
+                description TEXT DEFAULT '',
+                is_enabled INTEGER DEFAULT 1,
                 created_at TEXT
             )
         """)
@@ -184,26 +189,34 @@ def init_db():
 def _row_to_news(row: sqlite3.Row) -> NewsItem:
     """将数据库行转换为 NewsItem"""
     import json
+
+    def _safe_get(row_obj, key, default):
+        try:
+            val = row_obj[key]
+            return val if val is not None else default
+        except (KeyError, IndexError):
+            return default
+
     return NewsItem(
-        id=row["id"],
-        title=row["title"],
-        url=row["url"] or "#",
-        source=row["source"],
-        publish_time=row["publish_time"] or "",
-        publish_ts=row["publish_ts"] or 0,
-        intro=row["intro"] or "",
-        title_full_hash=row["title_full_hash"] or "",
-        url_hash=row["url_hash"] or "",
-        simhash=hex_to_simhash(row["simhash"]) if "simhash" in row.keys() and row["simhash"] else 0,
-        created_at=row["created_at"] or "",
-        category=row["category"] if "category" in row.keys() else "",
-        sentiment=row["sentiment"] if "sentiment" in row.keys() else "neutral",
-        importance=row["importance"] if "importance" in row.keys() else 0.0,
-        keywords=json.loads(row["keywords"]) if "keywords" in row.keys() and row["keywords"] else [],
-        stocks=json.loads(row["stocks"]) if "stocks" in row.keys() and row["stocks"] else [],
-        is_read=bool(row["is_read"]) if "is_read" in row.keys() else False,
-        is_favorite=bool(row["is_favorite"]) if "is_favorite" in row.keys() else False,
-        tags=json.loads(row["tags"]) if "tags" in row.keys() and row["tags"] else [],
+        id=_safe_get(row, "id", None),
+        title=_safe_get(row, "title", ""),
+        url=_safe_get(row, "url", "#") or "#",
+        source=_safe_get(row, "source", ""),
+        publish_time=_safe_get(row, "publish_time", ""),
+        publish_ts=_safe_get(row, "publish_ts", 0) or 0,
+        intro=_safe_get(row, "intro", ""),
+        title_full_hash=_safe_get(row, "title_full_hash", ""),
+        url_hash=_safe_get(row, "url_hash", ""),
+        simhash=hex_to_simhash(_safe_get(row, "simhash", "")) if _safe_get(row, "simhash", "") else 0,
+        created_at=_safe_get(row, "created_at", ""),
+        category=_safe_get(row, "category", ""),
+        sentiment=_safe_get(row, "sentiment", "neutral") or "neutral",
+        importance=_safe_get(row, "importance", 0.0) or 0.0,
+        keywords=json.loads(_safe_get(row, "keywords", "[]") or "[]") if _safe_get(row, "keywords", "") else [],
+        stocks=json.loads(_safe_get(row, "stocks", "[]") or "[]") if _safe_get(row, "stocks", "") else [],
+        is_read=bool(_safe_get(row, "is_read", 0)) if _safe_get(row, "is_read", None) is not None else False,
+        is_favorite=bool(_safe_get(row, "is_favorite", 0)) if _safe_get(row, "is_favorite", None) is not None else False,
+        tags=json.loads(_safe_get(row, "tags", "[]") or "[]") if _safe_get(row, "tags", "") else [],
     )
 
 
