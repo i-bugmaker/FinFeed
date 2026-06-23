@@ -149,6 +149,10 @@ tbody td{padding:9px 14px;vertical-align:middle}
 .stats-block .stat-label{color:var(--text2)}
 .stats-block .stat-val{color:var(--text);font-weight:500}
 
+.load-more-wrap{text-align:center;padding:16px 0}
+.load-more-btn{background:var(--bg-card);border:1px solid var(--border);color:var(--text);padding:8px 24px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;transition:all .2s}
+.load-more-btn:hover{background:var(--bg-card-alt);border-color:var(--accent);color:var(--accent)}
+
 .detail-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .detail-modal.open{display:flex}
 .detail-content{background:var(--bg-card);border-radius:16px;max-width:700px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -259,6 +263,9 @@ tbody td{padding:9px 14px;vertical-align:middle}
 </tr></thead>
 <tbody id="news-body"><tr><td colspan="5" class="empty"><div class="ico">&#128240;</div>正在加载...</td></tr></tbody>
 </table>
+<div class="load-more-wrap">
+  <button id="load-more" class="load-more-btn" style="display:none" onclick="loadMore()">加载更多</button>
+</div>
 </div>
 
 <div class="sidebar">
@@ -311,6 +318,7 @@ var allNews=[],activeSource='all',serverOffset=0,searchMode=false,searchResults=
 var rangeStart='',rangeEnd='',availDates=new Set();
 var pickState='start',calYear=0,calMonth=0,calMinDate='',calMaxDate='',calOpen=false;
 var currentDetailId=0,currentDetailUrl='';
+var displayLimit=500;
 
 /* ---- Theme ---- */
 function getTheme(){try{return document.documentElement.getAttribute('data-theme')||'light'}catch(e){return'light'}}
@@ -430,7 +438,8 @@ function render(){
   }
   document.getElementById('filter-count').textContent=filtered.length.toLocaleString();
   if(!filtered.length){tb.innerHTML='<tr><td colspan="5" class="empty"><div class="ico">&#128240;</div>暂无数据</td></tr>';return}
-  tb.innerHTML=filtered.map(function(n){
+  var displayCount=Math.min(displayLimit,filtered.length);
+  tb.innerHTML=filtered.slice(0,displayCount).map(function(n){
     var impClass=getImpClass(n.importance||0);
     var sentClass=getSentimentClass(n.sentiment);
     var favClass=n.is_favorite?'active':'';
@@ -445,6 +454,17 @@ function render(){
       '<td style="text-align:center"><button class="fav-btn '+favClass+'" onclick="event.stopPropagation();toggleFav('+n.id+',this)" title="收藏">&#11088;</button></td>'+
       '</tr>';
   }).join('');
+  var loadMore=document.getElementById('load-more');
+  if(displayCount<filtered.length){
+    loadMore.style.display='block';
+    loadMore.textContent='加载更多（已显示 '+displayCount+' / '+filtered.length+' 条）';
+  }else{
+    loadMore.style.display='none';
+  }
+}
+function loadMore(){
+  displayLimit+=500;
+  render();
 }
 load();setInterval(load,5000);
 
