@@ -12,7 +12,7 @@ import httpx
 
 from .base import BaseParser
 from storage.models import NewsItem
-from utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_url_date, _RE_HHMM, _RE_MD_HHMM
+from utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_url_date, _RE_HHMM, _RE_MD_HHMM, TZ_BJ
 from utils.http_utils import strip_html
 from config.settings import get_display_name, SOURCE_SKIP_REQ_TRACE
 from config.sources import THSYC_CHANNELS, THSYC_BASE_URL
@@ -303,6 +303,7 @@ class CninfoParser(BaseParser):
         news_list = []
         data = response.json()
         announcements = data.get("announcements") or []
+        now_ts = int(datetime.now(TZ_BJ).timestamp())
         for idx, item in enumerate(announcements):
             title_raw = (item.get("announcementTitle") or "").strip()
             if not title_raw:
@@ -318,13 +319,7 @@ class CninfoParser(BaseParser):
                     title = title[len(sec_name):].lstrip()
             if sec_name:
                 title = f"{sec_name}：{title}"
-            ts_ms = item.get("announcementTime", 0) or 0
-            ts = int(ts_ms) // 1000 if ts_ms > 1e12 else (int(ts_ms) if ts_ms else 0)
-            if ts:
-                dt = datetime.fromtimestamp(ts)
-                if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
-                    now_ts = int(datetime.now().timestamp())
-                    ts = now_ts - idx
+            ts = now_ts - idx
             if ts and ts <= self.last_ts:
                 continue
             pt = bj_str_from_ts(ts) if ts else ""
