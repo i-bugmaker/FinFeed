@@ -301,7 +301,8 @@ class CninfoParser(BaseParser):
         news_list = []
         data = response.json()
         announcements = data.get("announcements") or []
-        for item in announcements:
+        now_ts = int(datetime.now(TZ_BJ).timestamp())
+        for idx, item in enumerate(announcements):
             title_raw = (item.get("announcementTitle") or "").strip()
             if not title_raw:
                 continue
@@ -316,11 +317,7 @@ class CninfoParser(BaseParser):
                     title = title[len(sec_name):].lstrip()
             if sec_name:
                 title = f"{sec_name}：{title}"
-            ts_ms = item.get("announcementTime") or 0
-            if isinstance(ts_ms, (int, float)) and ts_ms > 0:
-                ts = int(ts_ms // 1000) if ts_ms > 1e12 else int(ts_ms)
-            else:
-                ts = 0
+            ts = now_ts - idx
             if ts and ts <= self.last_ts:
                 continue
             pt = bj_str_from_ts(ts) if ts else ""
