@@ -26,6 +26,7 @@ from utils.time_utils import now_bj
 from storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
     db_toggle_favorite, db_get_favorites, db_mark_read, db_get_news_by_id,
+    db_get_recent_news,
 )
 from storage.models import NewsItem
 
@@ -131,10 +132,33 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _serve_news(self):
+        qs = parse_qs(urlparse(self.path).query)
+        limit = int(qs.get("limit", ["1000"])[0])
+        source = qs.get("source", ["all"])[0]
+        if limit > 5000:
+            limit = 5000
+        news = db_get_recent_news(limit=limit, source=source if source != "all" else None)
+        news_dicts = [n.to_dict() for n in news]
         with _web_state_lock:
-            state = dict(_web_state)
-        state["server_ts"] = time.time()
-        data = json.dumps(state, ensure_ascii=False).encode("utf-8")
+            stats = dict(_web_state.get("stats", {}))
+            cycle = _web_state.get("cycle", 0)
+            total = _web_state.get("total", 0)
+            new_count = _web_state.get("new_count", 0)
+            status = _web_state.get("status", "运行中")
+            sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
+            last_update = _web_state.get("last_update", "")
+        result = {
+            "news": news_dicts,
+            "stats": stats,
+            "cycle": cycle,
+            "total": total,
+            "new_count": new_count,
+            "status": status,
+            "sources": sources_list,
+            "last_update": last_update,
+            "server_ts": time.time(),
+        }
+        data = json.dumps(result, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -349,7 +373,7 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> HTTPServer:
 
 def update_web_state(news, stats, cycle, total, new_count, status):
     """更新 Web 仪表盘共享状态（线程安全）"""
-    news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:300]]
+    news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:500]]
     sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
     last_update = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     with _web_state_lock:
