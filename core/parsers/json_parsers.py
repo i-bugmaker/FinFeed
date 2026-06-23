@@ -5,6 +5,7 @@
 import re
 import json
 import hashlib
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
@@ -302,7 +303,7 @@ class CninfoParser(BaseParser):
         news_list = []
         data = response.json()
         announcements = data.get("announcements") or []
-        for item in announcements:
+        for idx, item in enumerate(announcements):
             title_raw = (item.get("announcementTitle") or "").strip()
             if not title_raw:
                 continue
@@ -319,6 +320,11 @@ class CninfoParser(BaseParser):
                 title = f"{sec_name}：{title}"
             ts_ms = item.get("announcementTime", 0) or 0
             ts = int(ts_ms) // 1000 if ts_ms > 1e12 else (int(ts_ms) if ts_ms else 0)
+            if ts:
+                dt = datetime.fromtimestamp(ts)
+                if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+                    now_ts = int(datetime.now().timestamp())
+                    ts = now_ts - idx
             if ts and ts <= self.last_ts:
                 continue
             pt = bj_str_from_ts(ts) if ts else ""
