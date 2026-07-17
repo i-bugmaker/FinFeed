@@ -46,30 +46,39 @@ _web_state = {
 _web_state_lock = threading.Lock()
 
 _template_cache: str | None = None
+_template_mtime: float = 0
 _dashboard_cache: str | None = None
 _template_lock = threading.Lock()
 
 
 def _get_template() -> str:
-    """获取 HTML 模板（带缓存，线程安全）"""
-    global _template_cache
-    with _template_lock:
-        if _template_cache is not None:
-            return _template_cache
+    """获取 HTML 模板（带文件修改时间检测，支持开发热重载）"""
+    global _template_cache, _template_mtime
     template_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "templates", "index.html"
     )
     try:
+        current_mtime = os.path.getmtime(template_path)
+    except OSError:
+        current_mtime = 0
+    
+    with _template_lock:
+        if _template_cache is not None and current_mtime <= _template_mtime:
+            return _template_cache
+    
+    try:
         with open(template_path, "r", encoding="utf-8") as f:
             content = f.read()
         with _template_lock:
             _template_cache = content
+            _template_mtime = current_mtime
             return _template_cache
     except Exception as e:
         logger.warning(f"加载模板失败: {e}")
         with _template_lock:
-            _template_cache = "<h1>Template not found</h1>"
+            if _template_cache is None:
+                _template_cache = "<h1>Template not found</h1>"
             return _template_cache
 
 

@@ -1,25 +1,0 @@
-0 
-
- ============================================
-   FinFeed News Monitor
- ============================================
-
-  [1] Start Monitor (default)
-  [2] Fetch once then exit
-  [3] Export data
-  [4] Install dependencies
-  [5] Clean cache and export files
-  [0] Exit
-
-Select option [1]: 
- ============================================
-   FinFeed Monitor - Running
- ============================================
-
-  Port: 8866
-  Dashboard: http://localhost:8866
-  Big Screen: http://localhost:8866/dashboard
-  Stop: Ctrl+C
-
- ============================================
-
