@@ -114,16 +114,6 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
         },
     ),
     NewsSource(
-        name="雪球",
-        url="https://xueqiu.com/u/5124430882",
-        parser_type="xueqiu",
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://xueqiu.com/",
-            "Accept": "text/html",
-        },
-    ),
-    NewsSource(
         name="金十数据",
         url="https://www.jin10.com/flash_newest.js",
         parser_type="jin10",

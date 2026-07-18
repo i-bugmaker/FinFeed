@@ -18,55 +18,6 @@ from utils.time_utils import (
 from config.settings import get_display_name
 
 
-class XueqiuParser(BaseParser):
-    """雪球 - HTML 页面"""
-
-    async def parse(self, response: httpx.Response) -> list[NewsItem]:
-        news_list = []
-        _RE_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}")
-        soup = BeautifulSoup(response.text, "lxml")
-        articles = soup.select(".timeline__item, .status-item, [class*='timeline'] li, [class*='status'] li")
-        if not articles:
-            articles = soup.find_all("li")
-        for article in articles:
-            content_elem = article.select_one(".content, [class*='content'], p")
-            time_elem = article.select_one(".time, [class*='time'], [class*='date']")
-            title_elem = article.select_one(".title, [class*='title']")
-            if not content_elem:
-                continue
-            content = content_elem.get_text(strip=True)[:80]
-            if len(content) < 4:
-                continue
-            ts, pt = 0, ""
-            if time_elem:
-                time_text = time_elem.get_text(strip=True)
-                if time_text and _RE_DATE_PREFIX.match(time_text):
-                    try:
-                        from datetime import datetime, timezone
-                        dt = datetime.strptime(time_text[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                        ts = int(dt.timestamp())
-                        pt = bj_str_from_ts(ts)
-                    except ValueError:
-                        pass
-            if ts and ts <= self.last_ts:
-                continue
-            link = "#"
-            a_tag = article.find("a", href=True)
-            if a_tag:
-                link = a_tag["href"]
-                if not link.startswith("http"):
-                    link = f"https://xueqiu.com{link}"
-            title = title_elem.get_text(strip=True) if title_elem else content[:60]
-            news_list.append(self._make_news(
-                title=title[:80],
-                url=link,
-                publish_ts=ts,
-                publish_time=pt,
-                intro=content[:150],
-            ))
-        return news_list
-
-
 class GelonghuiArticleParser(BaseParser):
     """格隆汇文章 - HTML 页面"""
 
