@@ -97,14 +97,7 @@ class FastbullParser(BaseParser):
 
             pt = bj_str_from_ts(ts) if ts else ""
 
-            news_id = item.get("newsId") or ""
-            path = item.get("path") or ""
-            if path and not path.startswith("http"):
-                url = f"https://www.fastbull.cn{path}" if path.startswith("/") else f"https://www.fastbull.cn/{path}"
-            elif news_id:
-                url = f"https://www.fastbull.cn/news/{news_id}"
-            else:
-                url = "#"
+            url = "#"
 
             intro = ""
             unscramble = item.get("newsUnscrambleModel") or {}
