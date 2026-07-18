@@ -45,10 +45,12 @@ class NewsDatabase:
 
         self._conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
         self._conn.row_factory = sqlite3.Row
+        self._conn.text_factory = str
         if USE_WAL_MODE:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA cache_size=-20000")
+        self._conn.execute("PRAGMA encoding='UTF-8'")
 
         return self._conn
 
