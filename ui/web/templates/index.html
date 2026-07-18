@@ -45,12 +45,12 @@ body{
   transition:background .3s,color .3s;
 }
 
-.header{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:12px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
-.header-row{display:flex;align-items:center;gap:16px;flex-wrap:nowrap;overflow-x:auto}
-.header h1{color:var(--accent);font-size:var(--fs-lg);font-weight:700;letter-spacing:-.3px;white-space:nowrap;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.header{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
+.header-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.header h1{color:var(--accent);font-size:var(--fs-lg);font-weight:700;letter-spacing:-.3px;white-space:nowrap;display:flex;align-items:center;gap:8px;flex-shrink:0}
 .header h1 .sub{color:var(--text3);font-size:var(--fs-xs);font-weight:400;white-space:nowrap}
 
-.toolbar{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.toolbar{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .toolbar .sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
 
 .search-box{position:relative;display:flex;align-items:center}
@@ -58,14 +58,14 @@ body{
   background:var(--bg-card-alt);
   color:var(--text);
   border:1px solid var(--border);
-  padding:7px 32px 7px 30px;
+  padding:6px 30px 6px 28px;
   border-radius:8px;
   font-size:var(--fs-xs);
   font-family:inherit;
-  width:180px;
-  transition:all .2s;
+  width:170px;
+  transition:border-color .2s,box-shadow .2s;
 }
-.search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);width:220px}
+.search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
 .search-box .ico{position:absolute;left:12px;color:var(--text3);font-size:var(--fs-md);pointer-events:none}
 .search-clear{position:absolute;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;width:24px;height:24px;border-radius:50%;display:none;align-items:center;justify-content:center;transition:all .15s;line-height:1}
 .search-clear:hover{background:var(--border);color:var(--text)}
@@ -208,7 +208,7 @@ tbody td{padding:12px 16px;vertical-align:middle}
 @media(max-width:1024px){
   .content-grid{grid-template-columns:1fr}
   .sidebar{display:none}
-  .header-row{flex-wrap:wrap}
+  .header-row{flex-wrap:wrap;gap:8px}
   .stats{margin-left:0}
 }
 @media(max-width:768px){
@@ -218,7 +218,6 @@ tbody td{padding:12px 16px;vertical-align:middle}
   .header h1{font-size:var(--fs-md);margin-right:0}
   .toolbar{gap:6px}
   .search-box input{width:140px}
-  .search-box input:focus{width:160px}
   .stats{gap:10px;font-size:11px;margin-left:0;flex-wrap:wrap}
   .filters{gap:6px}
   .filters button{padding:5px 12px;font-size:var(--fs-xs)}
@@ -236,7 +235,6 @@ tbody td{padding:12px 16px;vertical-align:middle}
 }
 @media(max-width:480px){
   .search-box input{width:120px}
-  .search-box input:focus{width:140px}
   .toolbar .sep{display:none}
   .export-bar .btn, .export-bar select{font-size:11px}
   thead th:nth-child(2),.col-time{display:none}
@@ -288,7 +286,6 @@ tbody td{padding:12px 16px;vertical-align:middle}
 </div>
 </div>
 <button class="dp-reset" id="dp-reset" onclick="resetRange()" style="display:none">重置</button>
-<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="切换主题">&#9790;</button>
 </div>
 <div class="stats">
 <div class="item">&#128337;<span id="cycle">0</span>轮</div>
@@ -297,6 +294,7 @@ tbody td{padding:12px 16px;vertical-align:middle}
 <div class="item">&#128240;<span id="status" class="status-ok">启动中</span></div>
 <div class="item">&#128193;<span id="filter-count">0</span>条</div>
 </div>
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="切换主题">&#9790;</button>
 </div>
 </div>
 

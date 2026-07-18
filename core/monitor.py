@@ -109,9 +109,8 @@ class MonitorManager:
 
         for cu_cycle in range(1, MAX_CATCH_UP_CYCLES + 1):
             cu_status = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 已补 {catch_up_total} 条"
-            table = build_news_table(self._all_collected_news, max_rows=max(10, console.size[1] - 15))
             render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
-                   self._source_stats, DEFAULT_INTERVAL, cu_status, table)
+                   self._source_stats, DEFAULT_INTERVAL, cu_status)
 
             all_news, stats, inserted = await self._pipeline.run_cycle(cycle=cu_cycle, catch_up_mode=True)
             catch_up_total += inserted
@@ -121,9 +120,8 @@ class MonitorManager:
             self._merge_news(all_news)
 
             cu_status2 = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 本轮 +{inserted} | 累计 +{catch_up_total}"
-            table = build_news_table(self._all_collected_news, max_rows=max(10, console.size[1] - 15))
             render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
-                   self._source_stats, DEFAULT_INTERVAL, cu_status2, table)
+                   self._source_stats, DEFAULT_INTERVAL, cu_status2)
             update_web_state(self._all_collected_news, self._source_stats, 0,
                              self._total_in_db, catch_up_total, cu_status2)
 
@@ -139,13 +137,11 @@ class MonitorManager:
     async def _run_normal_cycle(self, interval: int, render: Callable) -> bool:
         """执行正常抓取周期"""
         self._cycle += 1
-        table = build_news_table(self._all_collected_news, max_rows=max(10, console.size[1] - 15))
         render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-               self._source_stats, interval, "抓取中...", table)
+               self._source_stats, interval, "抓取中...")
 
         fetch_task = asyncio.create_task(self._pipeline.run_cycle(cycle=self._cycle, catch_up_mode=False))
         last_fetch_sec = -1
-        cached_table = table
 
         while not fetch_task.done() and not self._shutdown_event.is_set():
             await asyncio.sleep(0.5)
@@ -153,7 +149,7 @@ class MonitorManager:
             if cur_sec != last_fetch_sec:
                 last_fetch_sec = cur_sec
                 render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-                       self._source_stats, interval, "抓取中...", cached_table)
+                       self._source_stats, interval, "抓取中...")
 
         if self._shutdown_event.is_set():
             return False
@@ -183,9 +179,8 @@ class MonitorManager:
         )
 
         wait_end = time.time() + wait_sec
-        table = build_news_table(self._all_collected_news, max_rows=max(10, console.size[1] - 15))
         render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-               self._source_stats, interval, f"{status} | {wait_sec:.0f}s后一轮", table)
+               self._source_stats, interval, f"{status} | {wait_sec:.0f}s后一轮")
 
         last_wait_sec = -1
         while time.time() < wait_end and not self._shutdown_event.is_set():
@@ -195,7 +190,7 @@ class MonitorManager:
                 last_wait_sec = cur_sec
                 remaining = max(0, wait_end - time.time())
                 render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-                       self._source_stats, interval, f"{status} | {remaining:.0f}s后一轮", table)
+                       self._source_stats, interval, f"{status} | {remaining:.0f}s后一轮")
 
         return not self._shutdown_event.is_set()
 
@@ -263,10 +258,10 @@ class MonitorManager:
             0, catch_up_status or "抓取中..."
         )
 
-        def live_render(news, cyc, total, new_ct, stats, itv, st, table):
+        def live_render(news, cyc, total, new_ct, stats, itv, st, table=None):
             from rich.live import Live
             nonlocal live
-            live.update(build_display(news, cyc, total, new_ct, stats, itv, st, web_port=web_port, table=table))
+            live.update(build_display(news, cyc, total, new_ct, stats, itv, st, web_port=web_port))
 
         def simple_render(news, cyc, total, new_ct, stats, itv, st, table):
             nonlocal last_print
@@ -306,7 +301,7 @@ class MonitorManager:
                 build_display(self._all_collected_news, 0, self._total_in_db, 0,
                               self._source_stats, interval, "启动中...", web_port=web_port),
                 console=console,
-                refresh_per_second=4,
+                refresh_per_second=10,
                 screen=True,
             ) as live:
                 await self._run_cycles(interval, live_render, catch_up_needed)
