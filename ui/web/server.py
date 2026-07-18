@@ -8,7 +8,6 @@
 - 日期范围选择
 - JSON/CSV 导出
 - FTS5 全文搜索
-- 收藏/标记/已读状态管理
 - 健康检查端点
 """
 
@@ -25,8 +24,7 @@ from config.settings import get_display_name, DEFAULT_WEB_PORT
 from utils.time_utils import now_bj
 from storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
-    db_toggle_favorite, db_get_favorites, db_mark_read, db_get_news_by_id,
-    db_get_recent_news,
+    db_get_news_by_id, db_get_recent_news,
 )
 from storage.models import NewsItem
 
@@ -107,8 +105,6 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._serve_export(parsed.query)
         elif parsed.path.startswith("/api/daterange"):
             self._serve_daterange()
-        elif parsed.path.startswith("/api/favorites"):
-            self._serve_favorites()
         elif parsed.path.startswith("/api/detail"):
             self._serve_detail()
         elif parsed.path.startswith("/api/health"):
@@ -122,15 +118,7 @@ class _WebHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else ""
-
-        if parsed.path.startswith("/api/favorite/toggle"):
-            self._handle_favorite_toggle(body)
-        elif parsed.path.startswith("/api/read"):
-            self._handle_mark_read(body)
-        else:
-            self.send_error(404)
+        self.send_error(404)
 
     def _serve_html(self):
         data = _get_template().encode("utf-8")
@@ -245,20 +233,6 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _serve_favorites(self):
-        news = db_get_favorites(limit=200)
-        result = {
-            "count": len(news),
-            "news": [n.to_dict() for n in news],
-        }
-        data = json.dumps(result, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
     def _serve_detail(self):
         qs = parse_qs(urlparse(self.path).query)
         news_id = int(qs.get("id", ["0"])[0])
@@ -305,45 +279,6 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
-
-    def _handle_favorite_toggle(self, body: str):
-        try:
-            data = json.loads(body) if body else {}
-            news_id = data.get("id", 0)
-            if news_id:
-                new_state = db_toggle_favorite(int(news_id))
-                result = {"success": True, "is_favorite": new_state}
-            else:
-                result = {"success": False, "error": "Invalid id"}
-        except Exception as e:
-            result = {"success": False, "error": str(e)}
-        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Content-Length", str(len(resp)))
-        self.end_headers()
-        self.wfile.write(resp)
-
-    def _handle_mark_read(self, body: str):
-        try:
-            data = json.loads(body) if body else {}
-            news_id = data.get("id", 0)
-            is_read = data.get("is_read", True)
-            if news_id:
-                db_mark_read(int(news_id), is_read)
-                result = {"success": True}
-            else:
-                result = {"success": False, "error": "Invalid id"}
-        except Exception as e:
-            result = {"success": False, "error": str(e)}
-        resp = json.dumps(result, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Content-Length", str(len(resp)))
-        self.end_headers()
-        self.wfile.write(resp)
 
     def _serve_stats(self):
         from analysis.stats import get_dashboard_stats

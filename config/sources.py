@@ -215,6 +215,16 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         },
     ),
+    NewsSource(
+        name="每经网",
+        url="https://live.nbd.com.cn/",
+        parser_type="nbd",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://live.nbd.com.cn/",
+            "Accept": "text/html",
+        },
+    ),
 ]
 
 # ============================================================

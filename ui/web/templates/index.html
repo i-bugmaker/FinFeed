@@ -163,10 +163,7 @@ tbody td{padding:12px 16px;vertical-align:middle}
 .sentiment-negative{background:var(--red);box-shadow:0 0 8px var(--red-bg)}
 .sentiment-neutral{background:var(--text3)}
 
-.fav-btn{background:none;border:none;cursor:pointer;font-size:18px;padding:6px;border-radius:8px;opacity:.25;transition:all .2s;color:var(--orange);line-height:1}
-.fav-btn:hover{opacity:1;transform:scale(1.3)}
-.fav-btn.active{opacity:1;animation:favPop .3s var(--ease-out)}
-@keyframes favPop{0%{transform:scale(1)}50%{transform:scale(1.4)}100%{transform:scale(1)}}
+
 
 .empty{text-align:center;padding:70px 20px;color:var(--text3)}
 .empty .ico{font-size:52px;margin-bottom:14px;opacity:.4}
@@ -324,7 +321,6 @@ tbody td{padding:12px 16px;vertical-align:middle}
 <th style="width:160px">时间</th>
 <th style="width:100px">来源</th>
 <th>标题</th>
-<th style="width:60px;text-align:center">收藏</th>
 </tr></thead>
 <tbody id="news-body"></tbody>
 </table>
@@ -593,6 +589,12 @@ function render(highlightNew){
       return d>=rangeStart&&d<=rangeEnd;
     });
   }
+  filtered.sort(function(a,b){
+    var tsA=a.publish_ts||0;
+    var tsB=b.publish_ts||0;
+    if(tsB!==tsA)return tsB-tsA;
+    return (b.id||0)-(a.id||0);
+  });
   document.getElementById('filter-count').textContent=filtered.length.toLocaleString();
   
   if(!filtered.length){
@@ -612,7 +614,6 @@ function render(highlightNew){
     var impInfo=getImpInfo(n.importance||0);
     var sentClass=getSentimentClass(n.sentiment);
     var sentTitle=getSentimentTitle(n.sentiment);
-    var favClass=n.is_favorite?'active':'';
     var srcStyle=getSourceStyle(n.source);
     var isNew=highlightNew&&!existingIds[n.id];
     var titleDisplay=currentSearchKeyword?highlightText(n.title,currentSearchKeyword):esc(n.title);
@@ -628,7 +629,6 @@ function render(highlightNew){
       '<td class="col-time">'+esc(n.publish_time||'')+'</td>'+
       '<td class="col-source"><span class="src-tag" style="'+srcStyle+'">'+esc(n.source)+'</span></td>'+
       '<td class="col-title"><span class="sentiment-dot '+sentClass+'" title="'+sentTitle+'"></span>'+linkHtml+'</td>'+
-      '<td style="text-align:center"><button class="fav-btn '+favClass+'" onclick="toggleFav('+n.id+',this)" title="'+(n.is_favorite?'取消收藏':'收藏')+'">'+(n.is_favorite?'&#9733;':'&#9734;')+'</button></td>'+
       '</tr>';
   }).join('');
   var loadMore=document.getElementById('load-more');
@@ -813,31 +813,6 @@ function doExport(){
   showToast('正在导出 '+fmt.toUpperCase()+' 文件...','info','导出',1500);
 }
 function goDashboard(){window.open('/dashboard','_blank')}
-
-/* ---- Favorite ---- */
-async function toggleFav(id,btn){
-  try{
-    var r=await fetch('/api/favorite/toggle',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({id:id})
-    });
-    if(!r.ok)throw new Error('操作失败');
-    var d=await r.json();
-    if(d.success){
-      btn.innerHTML=d.is_favorite?'&#9733;':'&#9734;';
-      btn.title=d.is_favorite?'取消收藏':'收藏';
-      if(d.is_favorite){btn.classList.add('active')}
-      else{btn.classList.remove('active')}
-      var news=searchMode?searchResults:allNews;
-      var item=news.find(function(n){return n.id===id});
-      if(item)item.is_favorite=d.is_favorite;
-      showToast(d.is_favorite?'已添加到收藏':'已取消收藏',d.is_favorite?'success':'info',null,1500);
-    }
-  }catch(e){
-    showToast('收藏操作失败: '+e.message,'error');
-  }
-}
 
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){closeCal();clearSearch()}

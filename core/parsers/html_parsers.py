@@ -4,6 +4,7 @@
 
 import re
 import json
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from bs4 import BeautifulSoup
@@ -173,6 +174,57 @@ class FastbullParser(BaseParser):
                 publish_ts=ts,
                 publish_time=pt,
                 intro=intro[:150],
+            ))
+
+        return news_list
+
+
+class NBDParser(BaseParser):
+    """每经网 - HTML 页面"""
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        news_list = []
+        soup = BeautifulSoup(response.text, "lxml")
+        today_str = now_bj().strftime("%Y-%m-%d")
+        bj_tz = timezone(timedelta(hours=8))
+
+        for item in soup.select("li"):
+            time_elem = item.select_one(".li-title .title-p span")
+            title_elem = item.select_one(".li-text h1")
+            content_link = item.select_one(".li-text a.item_content")
+            content_elem = item.select_one(".li-text a.item_content p")
+
+            if not time_elem or not title_elem or not content_link:
+                continue
+
+            time_str = time_elem.get_text(strip=True)
+            title = title_elem.get_text(strip=True)
+            url = content_link.get("href", "#")
+            content = content_elem.get_text(strip=True) if content_elem else ""
+
+            if not title or len(title) < 4:
+                continue
+
+            if not re.match(r"\d{2}:\d{2}:\d{2}", time_str):
+                continue
+
+            try:
+                dt = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+                dt = dt.replace(tzinfo=bj_tz)
+                ts = int(dt.timestamp())
+                pt = bj_str_from_ts(ts)
+            except ValueError:
+                continue
+
+            if ts and ts <= self.last_ts:
+                continue
+
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro=content[:150],
             ))
 
         return news_list

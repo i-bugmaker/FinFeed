@@ -212,7 +212,7 @@ async def monitor_loop(interval: int = 5, once: bool = False, web_port: int = DE
             key = f"{len(news)}|{news[0].title if news else ''}|{term_w}x{term_h}"
             if force or key != _last_table_key:
                 _last_table_key = key
-                max_rows = max(10, term_h - 12)
+                max_rows = max(10, term_h - 15)
                 _cached_table = build_news_table(news, max_rows=max_rows)
             return _cached_table
 
