@@ -60,3 +60,29 @@ class RSSParser(BaseParser):
                 intro=intro,
             ))
         return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：RSS源通常只返回最新数据，尝试获取当前数据"""
+        if not self._catch_up_mode or self.last_ts <= 0:
+            return []
+
+        try:
+            resp = await http_client.get(
+                self.source.url,
+                headers=dict(self.source.headers)
+            )
+
+            if resp.status_code != 200:
+                return []
+
+            news_list = await self.parse(resp)
+            catch_up_start_ts = self.get_catch_up_start_ts()
+            filtered = [n for n in news_list if n.publish_ts > catch_up_start_ts]
+
+            if filtered:
+                self.last_ts = max(n.publish_ts for n in filtered if n.publish_ts > 0)
+
+            return filtered
+
+        except Exception:
+            return []

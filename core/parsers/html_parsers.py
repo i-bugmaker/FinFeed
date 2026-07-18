@@ -53,6 +53,10 @@ class GelonghuiArticleParser(BaseParser):
             ))
         return news_list
 
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：格隆汇文章页面不支持分页，返回空"""
+        return []
+
 
 class FastbullParser(BaseParser):
     """法布财经 - JSON API"""
@@ -122,6 +126,34 @@ class FastbullParser(BaseParser):
 
         return news_list
 
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：通过分页获取历史数据"""
+        if not self._catch_up_mode or self.last_ts <= 0:
+            return []
+
+        params = dict(self.source.params)
+        params["pageSize"] = 50
+
+        logger = __import__('logging').getLogger("news_monitor")
+        logger.info(f"法布财经补抓模式：开始分页补抓")
+
+        all_news = await self._paginated_fetch(
+            http_client,
+            self.source.url,
+            params,
+            page_param="pageNo",
+            max_pages=50,
+            items_per_page=50
+        )
+
+        all_news.sort(key=lambda x: x.publish_ts, reverse=True)
+        logger.info(f"法布财经补抓完成：共获取{len(all_news)}条历史新闻")
+
+        if all_news:
+            self.last_ts = max(n.publish_ts for n in all_news if n.publish_ts > 0)
+
+        return all_news
+
 
 class NBDParser(BaseParser):
     """每经网 - HTML 页面"""
@@ -172,3 +204,7 @@ class NBDParser(BaseParser):
             ))
 
         return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：每经网只显示当天数据，返回空"""
+        return []

@@ -65,15 +65,19 @@ class NewsPipeline:
         if callback in self._callbacks:
             self._callbacks.remove(callback)
 
-    async def run_cycle(self, cycle: int = 1) -> tuple[list[NewsItem], dict[str, int], int]:
+    async def run_cycle(self, cycle: int = 1, catch_up_mode: bool = False) -> tuple[list[NewsItem], dict[str, int], int]:
         """执行一轮完整的抓取流程
+
+        Args:
+            cycle: 当前轮次
+            catch_up_mode: 是否为补抓模式
 
         Returns:
             (所有新闻列表, 各源统计, 新增入库数量)
         """
         self._ensure_init()
 
-        all_news, source_stats = await fetch_all_news(cycle=cycle)
+        all_news, source_stats = await fetch_all_news(cycle=cycle, catch_up_mode=catch_up_mode)
 
         deduped_news = self._dedup_engine.batch_dedup(all_news)
 
