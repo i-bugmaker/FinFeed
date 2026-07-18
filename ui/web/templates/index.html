@@ -571,7 +571,10 @@ function render(highlightNew){
     if(tsB!==tsA)return tsB-tsA;
     return (b.id||0)-(a.id||0);
   });
-  document.getElementById('filter-count').textContent=filtered.length.toLocaleString();
+  var totalEl=document.getElementById('total');
+  var dbTotal=parseInt(totalEl.textContent.replace(/,/g,''))||0;
+  var showCount=(activeSource==='all'&&!rangeStart&&!rangeEnd&&!searchMode)?dbTotal:filtered.length;
+  document.getElementById('filter-count').textContent=showCount.toLocaleString();
   
   if(!filtered.length){
     var emptyTitle=searchMode?'未找到相关新闻':(rangeStart?'该日期范围内暂无数据':'暂无数据');
