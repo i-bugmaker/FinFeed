@@ -215,6 +215,46 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "Accept": "text/html",
         },
     ),
+    NewsSource(
+        name="凤凰财经",
+        url="https://finance.ifeng.com/",
+        parser_type="ifeng",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://finance.ifeng.com/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="界面新闻",
+        url="https://www.jiemian.com/",
+        parser_type="jiemian",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.jiemian.com/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="澎湃新闻",
+        url="https://www.thepaper.cn/",
+        parser_type="thepaper",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.thepaper.cn/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="和讯网",
+        url="https://stock.hexun.com/",
+        parser_type="hexun",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://stock.hexun.com/",
+            "Accept": "text/html",
+        },
+    ),
 ]
 
 # ============================================================

@@ -208,3 +208,235 @@ class NBDParser(BaseParser):
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
         """补抓模式：每经网只显示当天数据，返回空"""
         return []
+
+
+class HexunParser(BaseParser):
+    """和讯网 - HTML 页面"""
+
+    _RE_HEXUN_URL = re.compile(r"/(\d{4})-(\d{2})-(\d{2})/(\d+)\.html")
+    _RE_CLEAN_TITLE = re.compile(r"^[•●■★◆●\s]+|[•●■★◆●\s]+$")
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        news_list = []
+        html_text = response.content.decode("gbk", errors="replace")
+        soup = BeautifulSoup(html_text, "lxml")
+        bj_tz = timezone(timedelta(hours=8))
+
+        for item in soup.find_all("a"):
+            url = item.get("href", "")
+            if not url:
+                continue
+
+            if url.startswith("//"):
+                url = "https:" + url
+            elif not url.startswith("http"):
+                continue
+
+            if "stock.hexun.com/" not in url and "news.hexun.com/" not in url:
+                continue
+
+            m = self._RE_HEXUN_URL.search(url)
+            if not m:
+                continue
+
+            year, month, day, news_id = int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)
+
+            title = item.get_text(strip=True)
+            if not title or len(title) < 4:
+                continue
+
+            title = self._RE_CLEAN_TITLE.sub("", title)
+
+            if not title or len(title) < 4:
+                continue
+
+            if "注册资本" in title or "成立" in title:
+                continue
+
+            try:
+                dt = datetime(year, month, day, 0, 0, 0, tzinfo=bj_tz)
+                ts = int(dt.timestamp())
+                pt = bj_str_from_ts(ts)
+            except ValueError:
+                continue
+
+            if ts and ts <= self.last_ts:
+                continue
+
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro="",
+            ))
+
+        news_list = list({n.url: n for n in news_list}.values())
+        return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：和讯网页面不支持分页，返回空"""
+        return []
+
+
+class IfengParser(BaseParser):
+    """凤凰财经 - HTML 页面"""
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        news_list = []
+        soup = BeautifulSoup(response.text, "lxml")
+        today_str = now_bj().strftime("%Y-%m-%d")
+        bj_tz = timezone(timedelta(hours=8))
+
+        for item in soup.find_all("a"):
+            url = item.get("href", "")
+            if not url or not url.startswith("http"):
+                continue
+
+            if "finance.ifeng.com/c/" not in url:
+                continue
+
+            title = item.get_text(strip=True)
+            if not title or len(title) < 4:
+                continue
+
+            try:
+                dt = datetime.strptime(today_str, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=bj_tz)
+                ts = int(dt.timestamp())
+                pt = bj_str_from_ts(ts)
+            except ValueError:
+                continue
+
+            if ts and ts <= self.last_ts:
+                continue
+
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro="",
+            ))
+
+        news_list = list({n.url: n for n in news_list}.values())
+        return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：凤凰财经页面不支持分页，返回空"""
+        return []
+
+
+class JiemianParser(BaseParser):
+    """界面新闻 - HTML 页面"""
+
+    _RE_JIEMIAN_URL = re.compile(r"/article/(\d+)\.html")
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        news_list = []
+        soup = BeautifulSoup(response.text, "lxml")
+        today_str = now_bj().strftime("%Y-%m-%d")
+        bj_tz = timezone(timedelta(hours=8))
+
+        for item in soup.find_all("a"):
+            url = item.get("href", "")
+            if not url or not url.startswith("http"):
+                continue
+
+            if "jiemian.com/article/" not in url:
+                continue
+
+            m = self._RE_JIEMIAN_URL.search(url)
+            if not m:
+                continue
+
+            title = item.get_text(strip=True)
+            if not title or len(title) < 4:
+                continue
+
+            try:
+                dt = datetime.strptime(today_str, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=bj_tz)
+                ts = int(dt.timestamp())
+                pt = bj_str_from_ts(ts)
+            except ValueError:
+                continue
+
+            if ts and ts <= self.last_ts:
+                continue
+
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro="",
+            ))
+
+        news_list = list({n.url: n for n in news_list}.values())
+        return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：界面新闻页面不支持分页，返回空"""
+        return []
+
+
+class ThePaperParser(BaseParser):
+    """澎湃新闻 - HTML 页面"""
+
+    _RE_THEPAPER_URL = re.compile(r"/newsDetail_forward_(\d+)")
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        news_list = []
+        soup = BeautifulSoup(response.text, "lxml")
+        today_str = now_bj().strftime("%Y-%m-%d")
+        bj_tz = timezone(timedelta(hours=8))
+
+        for item in soup.find_all("a"):
+            url = item.get("href", "")
+            if not url:
+                continue
+
+            if url.startswith("//"):
+                url = "https:" + url
+            elif url.startswith("/"):
+                url = "https://www.thepaper.cn" + url
+            elif not url.startswith("http"):
+                continue
+
+            if "thepaper.cn/newsDetail_forward_" not in url:
+                continue
+
+            m = self._RE_THEPAPER_URL.search(url)
+            if not m:
+                continue
+
+            title = item.get_text(strip=True)
+            if not title or len(title) < 4:
+                continue
+
+            try:
+                dt = datetime.strptime(today_str, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=bj_tz)
+                ts = int(dt.timestamp())
+                pt = bj_str_from_ts(ts)
+            except ValueError:
+                continue
+
+            if ts and ts <= self.last_ts:
+                continue
+
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro="",
+            ))
+
+        news_list = list({n.url: n for n in news_list}.values())
+        return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：澎湃新闻页面不支持分页，返回空"""
+        return []
