@@ -553,16 +553,12 @@ body {
         <h3>⭐ 重要性分布</h3>
         <div class="chart" id="importanceChart"></div>
     </div>
-    <div class="chart-box">
-        <h3>🔥 热门关键词</h3>
-        <div class="chart" id="keywordChart"></div>
-    </div>
 </div>
 
 <div class="footer">FinFeed 实时财经新闻监控系统 | 数据每 30 秒自动刷新</div>
 
 <script>
-let sourceChart, trendChart, sentimentChart, categoryChart, importanceChart, keywordChart;
+let sourceChart, trendChart, sentimentChart, categoryChart, importanceChart;
 let lastData = null;
 
 function getTheme() {
@@ -622,7 +618,6 @@ function setTheme(t) {
         sentimentChart.dispose();
         categoryChart.dispose();
         importanceChart.dispose();
-        keywordChart.dispose();
     }
     initCharts();
     if (lastData) updateCharts(lastData);
@@ -643,14 +638,12 @@ function initCharts() {
     sentimentChart = echarts.init(document.getElementById('sentimentChart'));
     categoryChart = echarts.init(document.getElementById('categoryChart'));
     importanceChart = echarts.init(document.getElementById('importanceChart'));
-    keywordChart = echarts.init(document.getElementById('keywordChart'));
     window.addEventListener('resize', () => {
         sourceChart.resize();
         trendChart.resize();
         sentimentChart.resize();
         categoryChart.resize();
         importanceChart.resize();
-        keywordChart.resize();
     });
 }
 
@@ -763,25 +756,6 @@ function updateCharts(data) {
                 }
             },
             barWidth: '50%'
-        }]
-    });
-
-    const kwData = data.top_keywords.slice(0, 10).reverse();
-    keywordChart.setOption({
-        tooltip: { trigger: 'item' },
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-        xAxis: { type: 'value', axisLabel: { color: c.axis }, splitLine: { lineStyle: { color: c.split } } },
-        yAxis: { type: 'category', data: kwData.map(d => d.keyword), axisLabel: { color: c.axis } },
-        series: [{
-            type: 'bar',
-            data: kwData.map(d => d.count),
-            itemStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                    { offset: 0, color: c.kwGrad1 },
-                    { offset: 1, color: c.kwGrad2 }
-                ])
-            },
-            barWidth: '60%'
         }]
     });
 }

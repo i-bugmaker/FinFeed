@@ -181,17 +181,6 @@ tbody td{padding:12px 16px;vertical-align:middle}
 .side-card:hover{box-shadow:var(--shadow-lg)}
 .side-card h3{font-size:var(--fs-sm);font-weight:600;color:var(--text);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px}
 
-.hot-list{list-style:none}
-.hot-list li{padding:8px 0;display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-sm);border-bottom:1px solid var(--bg-card-alt);cursor:pointer;transition:all .15s;border-radius:4px;margin:0 -4px;padding-left:4px;padding-right:4px}
-.hot-list li:last-child{border-bottom:none}
-.hot-list li:hover{background:var(--bg-hover)}
-.hot-list .kw{color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;display:flex;align-items:center;gap:8px}
-.hot-list .rank{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-xs);font-weight:700;background:var(--bg-card-alt);color:var(--text3);flex-shrink:0}
-.hot-list li:nth-child(1) .rank{background:var(--red);color:#fff}
-.hot-list li:nth-child(2) .rank{background:var(--orange);color:#fff}
-.hot-list li:nth-child(3) .rank{background:var(--accent);color:#fff}
-.hot-list .cnt{color:var(--text3);font-size:var(--fs-xs);background:var(--bg-card-alt);padding:2px 8px;border-radius:10px;font-variant-numeric:tabular-nums}
-
 .stats-block .stat-row{display:flex;justify-content:space-between;padding:8px 0;font-size:var(--fs-sm);align-items:center}
 .stats-block .stat-label{color:var(--text2);display:flex;align-items:center;gap:6px}
 .stats-block .stat-val{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;transition:all .3s}
@@ -330,11 +319,6 @@ tbody td{padding:12px 16px;vertical-align:middle}
 </div>
 
 <div class="sidebar">
-<div class="side-card">
-<h3>&#128293; 热门关键词</h3>
-<ul class="hot-list" id="hot-keywords">
-</ul>
-</div>
 <div class="side-card stats-block">
 <h3>&#128202; 数据统计</h3>
 <div class="stat-row"><span class="stat-label">新闻总数</span><span class="stat-val" id="stat-total">0</span></div>
@@ -565,13 +549,7 @@ async function loadStats(){
     animateNumber(document.getElementById('stat-pos'),d.sentiment_stats.positive);
     animateNumber(document.getElementById('stat-neu'),d.sentiment_stats.neutral);
     animateNumber(document.getElementById('stat-neg'),d.sentiment_stats.negative);
-    var kwList=document.getElementById('hot-keywords');
-    if(d.top_keywords&&d.top_keywords.length){
-      kwList.innerHTML=d.top_keywords.slice(0,10).map(function(k,i){
-        return '<li onclick="searchKeyword(\''+esc(k.keyword.replace(/'/g,"\\'"))+'\')" title="点击搜索: '+esc(k.keyword)+'"><span class="kw"><span class="rank">'+(i+1)+'</span>'+esc(k.keyword)+'</span><span class="cnt">'+k.count+'</span></li>';
-      }).join('');
-    }
-  }catch(e){}
+      }catch(e){}
 }
 
 function searchKeyword(kw){
@@ -609,7 +587,7 @@ function render(highlightNew){
   var existingIds={};
   tb.querySelectorAll('tr[data-id]').forEach(function(tr){existingIds[tr.dataset.id]=true});
   
-  var displayCount=Math.min(displayLimit,filtered.length);
+  var displayCount=activeSource==='all'?Math.min(displayLimit,filtered.length):filtered.length;
   tb.innerHTML=filtered.slice(0,displayCount).map(function(n){
     var impInfo=getImpInfo(n.importance||0);
     var sentClass=getSentimentClass(n.sentiment);

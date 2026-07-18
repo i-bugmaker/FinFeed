@@ -1,6 +1,30 @@
 @echo off
 cd /d "%~dp0"
 
+if "%1"=="/menu" goto menu
+if "%1"=="menu" goto menu
+
+call :check_python
+call :check_deps
+cls
+echo.
+echo  ============================================
+echo    FinFeed Monitor - Running
+echo  ============================================
+echo.
+echo   Port: 8866
+echo   Dashboard: http://localhost:8866
+echo   Big Screen: http://localhost:8866/dashboard
+echo   Stop: Ctrl+C
+echo.
+echo  ============================================
+echo.
+python "%~dp0main.py" %*
+echo.
+echo  [Done] Monitor stopped
+pause
+goto menu
+
 :menu
 cls
 echo.

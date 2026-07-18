@@ -6,4 +6,3 @@ from .text_analyzer import (
 )
 from .sentiment import analyze_sentiment, get_sentiment_label
 from .importance import compute_importance, get_importance_level
-from .hotspot import HotspotTracker, get_hotspot_tracker

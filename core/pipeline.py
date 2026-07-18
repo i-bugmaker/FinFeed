@@ -16,7 +16,6 @@ from storage.models import NewsItem
 from analysis.text_analyzer import extract_keywords_simple, extract_stock_codes, classify_news
 from analysis.sentiment import analyze_sentiment
 from analysis.importance import compute_importance
-from analysis.hotspot import get_hotspot_tracker
 
 logger = logging.getLogger("news_monitor")
 
@@ -81,11 +80,6 @@ class NewsPipeline:
         enriched_news = _enrich_news(deduped_news)
 
         inserted_items, inserted_count = db_insert_news(enriched_news)
-
-        # 更新热点追踪器
-        if inserted_items:
-            tracker = get_hotspot_tracker()
-            tracker.add_news(inserted_items)
 
         if inserted_items and self._callbacks:
             for cb in self._callbacks:
