@@ -9,7 +9,6 @@ TZ_BJ = timezone(timedelta(hours=8))
 
 _RE_DIGITS = re.compile(r"(\d+)")
 _RE_HHMM = re.compile(r"(\d{1,2}):(\d{2})")
-_RE_HHMMSS = re.compile(r"(\d{1,2}):(\d{2}):(\d{2})")
 _RE_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}")
 _RE_MDHM = re.compile(r"^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$")
 _RE_MD_HHMM = re.compile(r"(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})")

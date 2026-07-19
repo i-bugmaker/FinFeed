@@ -115,6 +115,7 @@ SOURCE_SKIP_REQ_TRACE = {"21经济网", "巨潮公告", "格隆汇快讯"}
 MAX_CATCH_UP_CYCLES = 10
 CATCH_UP_INTERVAL = 1
 OFFLINE_GAP_THRESHOLD = 60
+CATCH_UP_MAX_DAYS = 7
 
 # ============================================================
 # 断路器配置

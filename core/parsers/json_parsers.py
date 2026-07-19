@@ -5,13 +5,17 @@
 import re
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+_RE_HHMM = re.compile(r"(\d{1,2}):(\d{2})")
+_RE_MD_HHMM = re.compile(r"(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})")
+TZ_BJ = timezone(timedelta(hours=8))
 
 import httpx
 
 from .base import BaseParser
 from storage.models import NewsItem
-from utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_url_date, _RE_HHMM, _RE_MD_HHMM, TZ_BJ
+from utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_url_date
 from utils.http_utils import strip_html
 from config.settings import get_display_name
 from config.sources import THSYC_CHANNELS, THSYC_BASE_URL

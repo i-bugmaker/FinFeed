@@ -13,12 +13,3 @@ def jitter_interval(base: int, jitter_ratio: float = 0.3) -> float:
     lo = base * (1 - jitter_ratio)
     hi = base * (1 + jitter_ratio)
     return random.uniform(lo, hi)
-
-
-def truncate_text(text: str, max_len: int, suffix: str = "...") -> str:
-    """截断文本到指定长度"""
-    if not text:
-        return ""
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - len(suffix)] + suffix

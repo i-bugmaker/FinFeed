@@ -13,6 +13,7 @@ from typing import Optional, Dict, List, Callable
 from config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL, MAX_NEWS_CACHE,
     MAX_CATCH_UP_CYCLES, CATCH_UP_INTERVAL, OFFLINE_GAP_THRESHOLD,
+    CATCH_UP_MAX_DAYS,
 )
 from storage.database import (
     db_get_recent_news, db_count_news,
@@ -28,8 +29,6 @@ from ui.web.server import update_web_state
 from utils.common import jitter_interval
 
 logger = logging.getLogger("news_monitor")
-
-CATCH_UP_MAX_DAYS = 7
 
 
 class MonitorManager:

@@ -18,9 +18,8 @@ from storage.models import NewsItem
 from utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_relative_time
 from utils.http_utils import strip_html
 from config.sources import NewsSource
-from config.settings import get_display_name
+from config.settings import get_display_name, CATCH_UP_MAX_DAYS
 
-CATCH_UP_MAX_DAYS = 7
 CATCH_UP_MIN_INTERVAL = 0.3
 
 
