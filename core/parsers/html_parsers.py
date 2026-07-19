@@ -210,8 +210,34 @@ class NBDParser(BaseParser):
         return []
 
 
+def _extract_time_from_parent(elem, max_levels: int = 5) -> str:
+    """从元素向上查找父容器，提取时间文本"""
+    container = elem
+    for _ in range(max_levels):
+        if container is None:
+            break
+        for t_elem in container.find_all(["p", "span", "div"], recursive=False):
+            text = t_elem.get_text(strip=True)
+            if text and len(text) < 30:
+                ts = parse_relative_time(text)
+                if ts > 0:
+                    return text
+        all_text = container.get_text(" ", strip=True)
+        rel_m = re.search(r"(\d+\s*(?:分钟|小时|天)前)", all_text)
+        if rel_m:
+            return rel_m.group(1)
+        time_m = re.search(r"(\d{1,2}:\d{2}(?::\d{2})?)", all_text)
+        if time_m:
+            return time_m.group(1)
+        date_m = re.search(r"(\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{2})", all_text)
+        if date_m:
+            return date_m.group(1)
+        container = container.parent
+    return ""
+
+
 class HexunParser(BaseParser):
-    """和讯网 - HTML 页面"""
+    """和讯网 - HTML 页面（仅从URL提取日期，页面无具体时间信息）"""
 
     _RE_HEXUN_URL = re.compile(r"/(\d{4})-(\d{2})-(\d{2})/(\d+)\.html")
     _RE_CLEAN_TITLE = re.compile(r"^[•●■★◆●\s]+|[•●■★◆●\s]+$")
@@ -253,12 +279,19 @@ class HexunParser(BaseParser):
             if "注册资本" in title or "成立" in title:
                 continue
 
-            try:
-                dt = datetime(year, month, day, 0, 0, 0, tzinfo=bj_tz)
-                ts = int(dt.timestamp())
-                pt = bj_str_from_ts(ts)
-            except ValueError:
-                continue
+            ts = 0
+            time_str = _extract_time_from_parent(item)
+            if time_str:
+                ts = parse_relative_time(time_str)
+
+            if ts <= 0:
+                try:
+                    dt = datetime(year, month, day, 0, 0, 0, tzinfo=bj_tz)
+                    ts = int(dt.timestamp())
+                except ValueError:
+                    continue
+
+            pt = bj_str_from_ts(ts)
 
             if ts and ts <= self.last_ts:
                 continue
@@ -279,34 +312,79 @@ class HexunParser(BaseParser):
         return []
 
 
+def _find_link_near_time(time_elem, max_levels: int = 5):
+    """从时间元素向上查找包含它的链接元素"""
+    container = time_elem
+    for _ in range(max_levels):
+        if container is None:
+            break
+        if container.name == "a" and container.get("href"):
+            return container
+        for link in container.find_all("a", href=True, recursive=False):
+            return link
+        container = container.parent
+    return None
+
+
 class IfengParser(BaseParser):
     """凤凰财经 - HTML 页面"""
+
+    _RE_IFENG_VALID = re.compile(r"ifeng\.com/c/")
 
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
         soup = BeautifulSoup(response.text, "lxml")
-        today_str = now_bj().strftime("%Y-%m-%d")
-        bj_tz = timezone(timedelta(hours=8))
 
-        for item in soup.find_all("a"):
-            url = item.get("href", "")
-            if not url or not url.startswith("http"):
+        time_elems = soup.find_all(class_=lambda x: x and "newsFeedTime" in str(x))
+        seen_urls = set()
+
+        for time_elem in time_elems:
+            time_str = time_elem.get_text(strip=True)
+            if not time_str:
                 continue
 
-            if "finance.ifeng.com/c/" not in url:
+            ts = parse_relative_time(time_str)
+            if ts <= 0:
                 continue
 
-            title = item.get_text(strip=True)
+            link_elem = None
+            container = time_elem
+            for _ in range(5):
+                if container is None:
+                    break
+                if container.name == "a" and container.get("href"):
+                    href = container.get("href", "")
+                    if self._RE_IFENG_VALID.search(href):
+                        link_elem = container
+                        break
+                container = container.parent
+
+            if not link_elem:
+                continue
+
+            url = link_elem.get("href", "")
+            if not url:
+                continue
+            if url.startswith("//"):
+                url = "https:" + url
+            elif not url.startswith("http"):
+                url = "https://finance.ifeng.com" + url
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            title_elem = link_elem.find(["h2", "h3", "h4", "p", "span"], class_=lambda x: x and ("title" in str(x).lower() or "name" in str(x).lower()))
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+            else:
+                all_text = link_elem.get_text(" ", strip=True)
+                title = re.sub(r"\d{2}-\d{2}\s+\d{2}:\d{2}.*$", "", all_text).strip()
+                title = re.sub(r"\d+评$", "", title).strip()
+
             if not title or len(title) < 4:
                 continue
 
-            try:
-                dt = datetime.strptime(today_str, "%Y-%m-%d")
-                dt = dt.replace(tzinfo=bj_tz)
-                ts = int(dt.timestamp())
-                pt = bj_str_from_ts(ts)
-            except ValueError:
-                continue
+            pt = bj_str_from_ts(ts)
 
             if ts and ts <= self.last_ts:
                 continue
@@ -319,7 +397,6 @@ class IfengParser(BaseParser):
                 intro="",
             ))
 
-        news_list = list({n.url: n for n in news_list}.values())
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
@@ -338,33 +415,51 @@ class JiemianParser(BaseParser):
         today_str = now_bj().strftime("%Y-%m-%d")
         bj_tz = timezone(timedelta(hours=8))
 
-        for item in soup.find_all("a"):
-            url = item.get("href", "")
-            if not url or not url.startswith("http"):
+        news_items = {}
+
+        for t_elem in soup.find_all(["span", "div"], class_=lambda x: x and ("date" in str(x).lower() or "time" in str(x).lower())):
+            time_text = t_elem.get_text(strip=True)
+            if not time_text or len(time_text) > 30:
                 continue
 
-            if "jiemian.com/article/" not in url:
+            ts = parse_relative_time(time_text)
+            if ts <= 0:
                 continue
 
-            m = self._RE_JIEMIAN_URL.search(url)
-            if not m:
+            container = t_elem
+            link_elem = None
+            for _ in range(6):
+                if container is None:
+                    break
+                for link in container.find_all("a", href=True):
+                    href = link.get("href", "")
+                    if "jiemian.com/article/" in href or (href.startswith("/article/") and href.endswith(".html")):
+                        title_text = link.get_text(strip=True)
+                        if title_text and len(title_text) >= 6:
+                            link_elem = link
+                            break
+                if link_elem:
+                    break
+                container = container.parent
+
+            if not link_elem:
                 continue
 
-            title = item.get_text(strip=True)
-            if not title or len(title) < 4:
-                continue
+            url = link_elem.get("href", "")
+            if url.startswith("//"):
+                url = "https:" + url
+            elif url.startswith("/"):
+                url = "https://www.jiemian.com" + url
 
-            try:
-                dt = datetime.strptime(today_str, "%Y-%m-%d")
-                dt = dt.replace(tzinfo=bj_tz)
-                ts = int(dt.timestamp())
-                pt = bj_str_from_ts(ts)
-            except ValueError:
-                continue
+            if url not in news_items:
+                title = link_elem.get_text(strip=True)
+                if title and len(title) >= 4:
+                    news_items[url] = (title, ts)
 
+        for url, (title, ts) in news_items.items():
+            pt = bj_str_from_ts(ts)
             if ts and ts <= self.last_ts:
                 continue
-
             news_list.append(self._make_news(
                 title=title[:80],
                 url=url,
@@ -373,7 +468,57 @@ class JiemianParser(BaseParser):
                 intro="",
             ))
 
-        news_list = list({n.url: n for n in news_list}.values())
+        seen_urls = {n.url for n in news_list}
+        for item in soup.find_all("a"):
+            url = item.get("href", "")
+            if not url:
+                continue
+            if url.startswith("//"):
+                url = "https:" + url
+            elif url.startswith("/"):
+                url = "https://www.jiemian.com" + url
+            elif not url.startswith("http"):
+                continue
+
+            if "jiemian.com/article/" not in url:
+                continue
+            if url in seen_urls:
+                continue
+
+            title = item.get_text(strip=True)
+            if not title or len(title) < 4:
+                continue
+
+            ts = 0
+            container = item
+            for _ in range(6):
+                if container is None:
+                    break
+                for elem in container.find_all(["span", "div", "p"], string=True):
+                    text = elem.get_text(strip=True)
+                    if text:
+                        t_ts = parse_relative_time(text)
+                        if t_ts > 0:
+                            ts = t_ts
+                            break
+                if ts > 0:
+                    break
+                container = container.parent
+
+            if ts <= 0:
+                continue
+
+            pt = bj_str_from_ts(ts)
+            if ts and ts <= self.last_ts:
+                continue
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro="",
+            ))
+
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
@@ -392,6 +537,64 @@ class ThePaperParser(BaseParser):
         today_str = now_bj().strftime("%Y-%m-%d")
         bj_tz = timezone(timedelta(hours=8))
 
+        news_items = {}
+
+        for t_elem in soup.find_all(["p", "span", "div"], class_=lambda x: x and "author_time" in str(x).lower()):
+            time_text = t_elem.get_text(strip=True)
+            ts = parse_relative_time(time_text)
+            if ts <= 0:
+                continue
+
+            container = t_elem
+            link_elem = None
+            for _ in range(6):
+                if container is None:
+                    break
+                if container.name == "a" and container.get("href"):
+                    href = container.get("href", "")
+                    if "newsDetail_forward_" in href:
+                        link_elem = container
+                        break
+                for link in container.find_all("a", href=True):
+                    href = link.get("href", "")
+                    if "newsDetail_forward_" in href:
+                        title_text = link.get_text(strip=True)
+                        if title_text and len(title_text) >= 4:
+                            link_elem = link
+                            break
+                if link_elem:
+                    break
+                container = container.parent
+
+            if not link_elem:
+                continue
+
+            url = link_elem.get("href", "")
+            if url.startswith("//"):
+                url = "https:" + url
+            elif url.startswith("/"):
+                url = "https://www.thepaper.cn" + url
+
+            if url not in news_items:
+                title = link_elem.get_text(strip=True)
+                title = re.sub(r"^推荐", "", title).strip()
+                title = re.sub(r"^\d{1,2}:\d{2}\s*", "", title).strip()
+                if title and len(title) >= 4:
+                    news_items[url] = (title, ts)
+
+        for url, (title, ts) in news_items.items():
+            pt = bj_str_from_ts(ts)
+            if ts and ts <= self.last_ts:
+                continue
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro="",
+            ))
+
+        seen_urls = {n.url for n in news_list}
         for item in soup.find_all("a"):
             url = item.get("href", "")
             if not url:
@@ -406,26 +609,40 @@ class ThePaperParser(BaseParser):
 
             if "thepaper.cn/newsDetail_forward_" not in url:
                 continue
-
-            m = self._RE_THEPAPER_URL.search(url)
-            if not m:
+            if url in seen_urls:
                 continue
 
             title = item.get_text(strip=True)
             if not title or len(title) < 4:
                 continue
 
-            try:
-                dt = datetime.strptime(today_str, "%Y-%m-%d")
-                dt = dt.replace(tzinfo=bj_tz)
-                ts = int(dt.timestamp())
-                pt = bj_str_from_ts(ts)
-            except ValueError:
+            title = re.sub(r"^推荐", "", title).strip()
+            title = re.sub(r"^\d{1,2}:\d{2}\s*", "", title).strip()
+            if not title:
                 continue
 
+            ts = 0
+            container = item
+            for _ in range(5):
+                if container is None:
+                    break
+                for elem in container.find_all(["p", "span", "div"]):
+                    text = elem.get_text(strip=True)
+                    if text:
+                        t_ts = parse_relative_time(text)
+                        if t_ts > 0:
+                            ts = t_ts
+                            break
+                if ts > 0:
+                    break
+                container = container.parent
+
+            if ts <= 0:
+                continue
+
+            pt = bj_str_from_ts(ts)
             if ts and ts <= self.last_ts:
                 continue
-
             news_list.append(self._make_news(
                 title=title[:80],
                 url=url,
@@ -434,7 +651,6 @@ class ThePaperParser(BaseParser):
                 intro="",
             ))
 
-        news_list = list({n.url: n for n in news_list}.values())
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:

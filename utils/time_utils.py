@@ -9,9 +9,13 @@ TZ_BJ = timezone(timedelta(hours=8))
 
 _RE_DIGITS = re.compile(r"(\d+)")
 _RE_HHMM = re.compile(r"(\d{1,2}):(\d{2})")
+_RE_HHMMSS = re.compile(r"(\d{1,2}):(\d{2}):(\d{2})")
 _RE_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}")
 _RE_MDHM = re.compile(r"^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$")
 _RE_MD_HHMM = re.compile(r"(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})")
+_RE_MDHM_SLASH = re.compile(r"(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})")
+_RE_RELATIVE = re.compile(r"(\d+)\s*(分钟|小时|天)前")
+_RE_JUST_HHMM = re.compile(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$")
 
 
 def now_bj() -> datetime:
@@ -87,37 +91,56 @@ def bj_str_from_ts(ts: int) -> str:
 
 
 def parse_relative_time(time_str: str) -> int:
-    """解析相对时间字符串，如 '5分钟前', '2小时前', '昨天 23:05', '今天 22:58'"""
+    """解析相对时间字符串
+
+    支持格式:
+      - '5分钟前', '2小时前', '3天前'（可包含其他前缀文本如'澎湃评论9小时前'）
+      - '昨天 23:05', '今天 22:58'
+      - 'HH:MM' 或 'HH:MM:SS'（当天时间）
+      - 'MM-DD HH:MM' 如 '07-18 18:06'
+      - 'MM/DD HH:MM' 如 '07/18 21:39'
+      - '刚刚'
+    """
     now = now_bj()
     if not time_str:
         return 0
+    time_str = time_str.strip()
     try:
-        if "分钟前" in time_str:
-            m = _RE_DIGITS.search(time_str)
-            if m:
-                return int((now - timedelta(minutes=int(m.group(1)))).replace(tzinfo=TZ_BJ).timestamp())
-        elif "小时前" in time_str:
-            m = _RE_DIGITS.search(time_str)
-            if m:
-                return int((now - timedelta(hours=int(m.group(1)))).replace(tzinfo=TZ_BJ).timestamp())
-        elif "天前" in time_str:
-            m = _RE_DIGITS.search(time_str)
-            if m:
-                return int((now - timedelta(days=int(m.group(1)))).replace(tzinfo=TZ_BJ).timestamp())
-        elif time_str.startswith("昨天"):
+        if "刚刚" in time_str:
+            return int(now.replace(tzinfo=TZ_BJ).timestamp())
+
+        rel_m = _RE_RELATIVE.search(time_str)
+        if rel_m:
+            num = int(rel_m.group(1))
+            unit = rel_m.group(2)
+            if unit == "分钟":
+                return int((now - timedelta(minutes=num)).replace(tzinfo=TZ_BJ).timestamp())
+            elif unit == "小时":
+                return int((now - timedelta(hours=num)).replace(tzinfo=TZ_BJ).timestamp())
+            elif unit == "天":
+                return int((now - timedelta(days=num)).replace(tzinfo=TZ_BJ).timestamp())
+
+        if "昨天" in time_str:
             m = _RE_HHMM.search(time_str)
             if m:
                 hour, minute = int(m.group(1)), int(m.group(2))
                 dt = (now - timedelta(days=1)).replace(hour=hour, minute=minute, second=0)
                 return int(dt.replace(tzinfo=TZ_BJ).timestamp())
-        elif time_str.startswith("今天"):
+        if "今天" in time_str:
             m = _RE_HHMM.search(time_str)
             if m:
                 hour, minute = int(m.group(1)), int(m.group(2))
                 dt = now.replace(hour=hour, minute=minute, second=0)
                 return int(dt.replace(tzinfo=TZ_BJ).timestamp())
-        elif "前天" in time_str:
-            return int((now - timedelta(days=2)).replace(hour=0, minute=0, second=0, tzinfo=TZ_BJ).timestamp())
+        if "前天" in time_str:
+            m = _RE_HHMM.search(time_str)
+            if m:
+                hour, minute = int(m.group(1)), int(m.group(2))
+                dt = (now - timedelta(days=2)).replace(hour=hour, minute=minute, second=0)
+            else:
+                dt = now - timedelta(days=2)
+            return int(dt.replace(tzinfo=TZ_BJ).timestamp())
+
         m = _RE_MDHM.match(time_str)
         if m:
             month, day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
@@ -126,6 +149,28 @@ def parse_relative_time(time_str: str) -> int:
             if ts > int(now.replace(tzinfo=TZ_BJ).timestamp()):
                 dt = dt.replace(year=dt.year - 1)
             return int(dt.replace(tzinfo=TZ_BJ).timestamp())
+
+        m = _RE_MDHM_SLASH.search(time_str)
+        if m:
+            month, day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+            dt = now.replace(month=month, day=day, hour=hour, minute=minute, second=0)
+            ts = int(dt.replace(tzinfo=TZ_BJ).timestamp())
+            if ts > int(now.replace(tzinfo=TZ_BJ).timestamp()):
+                dt = dt.replace(year=dt.year - 1)
+            return int(dt.replace(tzinfo=TZ_BJ).timestamp())
+
+        m = _RE_JUST_HHMM.match(time_str)
+        if m:
+            hour, minute = int(m.group(1)), int(m.group(2))
+            second = int(m.group(3)) if m.group(3) else 0
+            dt = now.replace(hour=hour, minute=minute, second=second)
+            ts = int(dt.replace(tzinfo=TZ_BJ).timestamp())
+            now_ts = int(now.replace(tzinfo=TZ_BJ).timestamp())
+            if ts > now_ts + 60:
+                dt = dt - timedelta(days=1)
+                ts = int(dt.replace(tzinfo=TZ_BJ).timestamp())
+            return ts
+
     except (ValueError, AttributeError):
         pass
     return 0
