@@ -14,7 +14,7 @@ from .json_parsers import (
     Jingji21Parser, WallStreetCNParser, Jin10Parser,
     GelonghuiLiveParser, QCCParser, CninfoParser, THSYCParser,
 )
-from .html_parsers import GelonghuiArticleParser, FastbullParser, NBDParser, HexunParser, IfengParser, JiemianParser, ThePaperParser
+from .html_parsers import GelonghuiArticleParser, FastbullParser, NBDParser, HexunParser, IfengParser, JiemianParser, ThePaperParser, YicaiParser
 from .rss_parsers import RSSParser
 
 
@@ -37,6 +37,7 @@ PARSER_MAP = {
     "ifeng": IfengParser,
     "jiemian": JiemianParser,
     "thepaper": ThePaperParser,
+    "yicai": YicaiParser,
     "rss": RSSParser,
 }
 

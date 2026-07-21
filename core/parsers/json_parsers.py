@@ -518,14 +518,10 @@ class CninfoParser(BaseParser):
                     title = title[len(sec_name):].lstrip()
             if sec_name:
                 title = f"{sec_name}：{title}"
-            ts_ms = item.get("announcementTime") or 0
-            if isinstance(ts_ms, (int, float)) and ts_ms > 0:
-                ts = int(ts_ms // 1000) if ts_ms > 1e12 else int(ts_ms)
-            else:
-                ts = 0
-            if ts and ts <= self.last_ts:
+            current_ts = int(time.time())
+            if current_ts <= self.last_ts:
                 continue
-            pt = bj_str_from_ts(ts) if ts else ""
+            pt = bj_str_from_ts(current_ts)
             adjunct_url = item.get("adjunctUrl", "") or ""
             if adjunct_url:
                 url = f"http://static.cninfo.com.cn/{adjunct_url}"
@@ -536,7 +532,7 @@ class CninfoParser(BaseParser):
             news_list.append(self._make_news(
                 title=title[:80],
                 url=url,
-                publish_ts=ts,
+                publish_ts=current_ts,
                 publish_time=pt,
                 intro=intro[:150],
             ))
@@ -601,14 +597,10 @@ class CninfoParser(BaseParser):
                                 title = title[len(sec_name):].lstrip()
                         if sec_name:
                             title = f"{sec_name}：{title}"
-                        ts_ms = item.get("announcementTime") or 0
-                        if isinstance(ts_ms, (int, float)) and ts_ms > 0:
-                            ts = int(ts_ms // 1000) if ts_ms > 1e12 else int(ts_ms)
-                        else:
-                            ts = 0
-                        if ts and ts <= catch_up_start_ts:
+                        current_ts = int(time.time())
+                        if current_ts <= catch_up_start_ts:
                             continue
-                        pt = bj_str_from_ts(ts) if ts else ""
+                        pt = bj_str_from_ts(current_ts)
                         adjunct_url = item.get("adjunctUrl", "") or ""
                         if adjunct_url:
                             url = f"http://static.cninfo.com.cn/{adjunct_url}"
@@ -619,7 +611,7 @@ class CninfoParser(BaseParser):
                         page_news.append(self._make_news(
                             title=title[:80],
                             url=url,
-                            publish_ts=ts,
+                            publish_ts=current_ts,
                             publish_time=pt,
                             intro=intro[:150],
                         ))

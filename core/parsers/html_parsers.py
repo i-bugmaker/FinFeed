@@ -237,14 +237,39 @@ def _extract_time_from_parent(elem, max_levels: int = 5) -> str:
 
 
 class HexunParser(BaseParser):
-    """和讯网 - HTML 页面（仅从URL提取日期，页面无具体时间信息）"""
+    """和讯网 - HTML 页面（使用浏览器渲染绕过反爬虫）"""
 
     _RE_HEXUN_URL = re.compile(r"/(\d{4})-(\d{2})-(\d{2})/(\d+)\.html")
     _RE_CLEAN_TITLE = re.compile(r"^[•●■★◆●\s]+|[•●■★◆●\s]+$")
+    _RE_OBFUSCATED = re.compile(r"<script>window\._[A-Za-z]+")
 
-    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+    @staticmethod
+    def _is_obfuscated(html_text: str) -> bool:
+        """检测页面是否被反爬混淆"""
+        return bool(HexunParser._RE_OBFUSCATED.search(html_text[:500]))
+
+    @staticmethod
+    async def _fetch_with_browser(url: str, headers: dict) -> str:
+        """使用浏览器渲染获取页面内容"""
+        try:
+            from playwright.async_api import async_playwright
+
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page(user_agent=headers.get("User-Agent", ""))
+                await page.goto(url, timeout=30000)
+                await page.wait_for_load_state("networkidle", timeout=15000)
+                content = await page.content()
+                await browser.close()
+                return content
+        except Exception as e:
+            logger = __import__('logging').getLogger("news_monitor")
+            logger.warning(f"和讯网浏览器渲染失败: {str(e)[:80]}")
+            return ""
+
+    async def _parse_html(self, html_text: str) -> list[NewsItem]:
+        """解析HTML文本提取新闻"""
         news_list = []
-        html_text = response.content.decode("gbk", errors="replace")
         soup = BeautifulSoup(html_text, "lxml")
         bj_tz = timezone(timedelta(hours=8))
 
@@ -306,6 +331,21 @@ class HexunParser(BaseParser):
 
         news_list = list({n.url: n for n in news_list}.values())
         return news_list
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        html_text = response.content.decode("gbk", errors="replace")
+
+        if self._is_obfuscated(html_text):
+            logger = __import__('logging').getLogger("news_monitor")
+            logger.info("和讯网页面被反爬混淆，尝试浏览器渲染")
+            browser_html = await self._fetch_with_browser(
+                self.source.url, dict(self.source.headers)
+            )
+            if browser_html:
+                return await self._parse_html(browser_html)
+            return []
+
+        return await self._parse_html(html_text)
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
         """补抓模式：和讯网页面不支持分页，返回空"""
@@ -656,3 +696,112 @@ class ThePaperParser(BaseParser):
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
         """补抓模式：澎湃新闻页面不支持分页，返回空"""
         return []
+
+
+class YicaiParser(BaseParser):
+    """第一财经 - JSON API"""
+
+    async def parse(self, response: httpx.Response) -> list[NewsItem]:
+        news_list = []
+        bj_tz = timezone(timedelta(hours=8))
+
+        try:
+            data = response.json()
+        except (json.JSONDecodeError, TypeError):
+            return news_list
+
+        if not isinstance(data, list):
+            return news_list
+
+        seen_urls = set()
+
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            title = (item.get("NewsTitle") or "").strip()
+            if not title or len(title) < 4:
+                continue
+
+            url = item.get("url", "")
+            if url.startswith("/"):
+                url = "https://www.yicai.com" + url
+            elif not url.startswith("http"):
+                url = "#"
+
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            ts = 0
+            create_date = item.get("CreateDate", "")
+            if create_date:
+                try:
+                    if "T" in create_date:
+                        dt = datetime.strptime(create_date, "%Y-%m-%dT%H:%M:%S")
+                    else:
+                        dt = datetime.strptime(create_date, "%Y-%m-%d %H:%M:%S")
+                    dt = dt.replace(tzinfo=bj_tz)
+                    ts = int(dt.timestamp())
+                except ValueError:
+                    pass
+
+            if ts <= 0:
+                datekey = item.get("datekey", "")
+                hm = item.get("hm", "")
+                if datekey and hm:
+                    try:
+                        date_str = datekey.replace(".", "-")
+                        dt = datetime.strptime(f"{date_str} {hm}", "%Y-%m-%d %H:%M")
+                        dt = dt.replace(tzinfo=bj_tz)
+                        ts = int(dt.timestamp())
+                    except ValueError:
+                        pass
+
+            if ts <= 0:
+                continue
+
+            pt = bj_str_from_ts(ts)
+
+            if ts and ts <= self.last_ts:
+                continue
+
+            intro = ""
+            content = item.get("LiveContent", "")
+            if content:
+                intro = re.sub(r"<[^>]+>", "", content).strip()[:150]
+
+            news_list.append(self._make_news(
+                title=title[:80],
+                url=url,
+                publish_ts=ts,
+                publish_time=pt,
+                intro=intro,
+            ))
+
+        return news_list
+
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：通过分页获取历史数据"""
+        if not self._catch_up_mode or self.last_ts <= 0:
+            return []
+
+        logger = __import__('logging').getLogger("news_monitor")
+        logger.info(f"第一财经补抓模式：开始分页补抓")
+
+        all_news = await self._paginated_fetch(
+            http_client,
+            "https://www.yicai.com/api/ajax/getbrieflist",
+            {"page": 1, "pagesize": 50, "id": 0},
+            page_param="page",
+            max_pages=50,
+            items_per_page=50
+        )
+
+        all_news.sort(key=lambda x: x.publish_ts, reverse=True)
+        logger.info(f"第一财经补抓完成：共获取{len(all_news)}条历史新闻")
+
+        if all_news:
+            self.last_ts = max(n.publish_ts for n in all_news if n.publish_ts > 0)
+
+        return all_news

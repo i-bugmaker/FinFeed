@@ -224,13 +224,25 @@ class NewsDatabase:
             except (KeyError, IndexError):
                 return default
 
+        source = _safe_get(row, "source", "")
+        publish_time = _safe_get(row, "publish_time", "")
+        publish_ts = _safe_get(row, "publish_ts", 0) or 0
+
+        if source == "巨潮公告":
+            created_at_val = _safe_get(row, "created_at", "")
+            if created_at_val:
+                publish_time = created_at_val
+                import time
+                from utils.time_utils import ts_from_bj_str
+                publish_ts = ts_from_bj_str(created_at_val)
+
         return NewsItem(
             id=_safe_get(row, "id", None),
             title=_safe_get(row, "title", ""),
             url=_safe_get(row, "url", "#") or "#",
-            source=_safe_get(row, "source", ""),
-            publish_time=_safe_get(row, "publish_time", ""),
-            publish_ts=_safe_get(row, "publish_ts", 0) or 0,
+            source=source,
+            publish_time=publish_time,
+            publish_ts=publish_ts,
             intro=_safe_get(row, "intro", ""),
             title_full_hash=_safe_get(row, "title_full_hash", ""),
             url_hash=_safe_get(row, "url_hash", ""),

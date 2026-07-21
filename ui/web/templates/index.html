@@ -341,8 +341,15 @@ var SOURCE_COLORS={
   "东方财富":"#ff9500","华尔街见闻":"#00d4ff","金十数据":"#d4a017","格隆汇":"#68af00",
   "格隆汇文章":"#68af00","格隆汇快讯":"#68af00","雪球":"#0066ff","法布财经":"#00a0e9",
   "巨潮公告":"#ff6600","雅虎财经":"#888888","21经济网":"#0078ff","企查查":"#aa66ff",
-  "cnBeta":"#00b0ff"
+  "cnBeta":"#00b0ff","每经网":"#00c853","凤凰财经":"#1e88e5","界面新闻":"#66bb6a",
+  "澎湃新闻":"#ef5350","和讯网":"#7e57c2"
 };
+function hashColor(str){
+  var hash=0,i,l=str.length;
+  for(i=0;i<l;i++){hash=str.charCodeAt(i)+((hash<<5)-hash)}
+  var h=Math.abs(hash)%360;
+  return 'hsl('+h+',65%,55%)';
+}
 var allNews=[],prevNewsIds=new Set(),activeSource='all',serverOffset=0,searchMode=false,searchResults=[];
 var rangeStart='',rangeEnd='',availDates=new Set();
 var pickState='start',calYear=0,calMonth=0,calMinDate='',calMaxDate='',calOpen=false;
@@ -405,7 +412,7 @@ function getSentimentTitle(s){
   return'中性情绪';
 }
 function getSourceStyle(source){
-  var color=SOURCE_COLORS[source]||'#888888';
+  var color=SOURCE_COLORS[source]||hashColor(source);
   return'background:'+color+'20;color:'+color+';border-color:'+color+'40';
 }
 function highlightText(text,keyword){
@@ -794,7 +801,7 @@ function doExport(){
   window.open(url,'_blank');
   showToast('正在导出 '+fmt.toUpperCase()+' 文件...','info','导出',1500);
 }
-function goDashboard(){window.open('/dashboard','_blank')}
+function goDashboard(){window.location.href='/dashboard'}
 
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){closeCal();clearSearch()}

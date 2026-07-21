@@ -255,6 +255,17 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "Accept": "text/html",
         },
     ),
+    NewsSource(
+        name="第一财经",
+        url="https://www.yicai.com/api/ajax/getbrieflist",
+        parser_type="yicai",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.yicai.com/brief/",
+            "Accept": "application/json",
+        },
+        params={"page": 1, "pagesize": 20, "id": 0},
+    ),
 ]
 
 # ============================================================

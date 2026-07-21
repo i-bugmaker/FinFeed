@@ -157,26 +157,38 @@ def get_total_news(hours: Optional[int] = None) -> int:
         return c.fetchone()[0]
 
 
-def get_dashboard_stats() -> dict:
-    """获取仪表盘汇总数据"""
+def get_dashboard_stats(range_type: str = "24h") -> dict:
+    """获取仪表盘汇总数据
+
+    Args:
+        range_type: 时间范围类型，支持 "24h", "7d", "30d"
+    """
+    hours_map = {
+        "24h": 24,
+        "7d": 168,
+        "30d": 720,
+    }
+    hours = hours_map.get(range_type, 24)
+
     total = get_total_news()
-    total_24h = get_total_news(24)
-    source_stats = get_source_stats(24)
-    category_stats = get_category_stats(24)
-    sentiment_stats = get_sentiment_stats(24)
-    importance_dist = get_importance_distribution(24)
-    time_trend = get_time_trend(24, 1)
-    top_keywords = get_top_keywords(24, 20)
+    total_range = get_total_news(hours)
+    source_stats = get_source_stats(hours)
+    category_stats = get_category_stats(hours)
+    sentiment_stats = get_sentiment_stats(hours)
+    importance_dist = get_importance_distribution(hours)
+    bucket_hours = 1 if hours <= 24 else 6 if hours <= 168 else 24
+    time_trend = get_time_trend(hours, bucket_hours)
+    top_keywords = get_top_keywords(hours, 20)
 
     return {
         "total_news": total,
-        "total_24h": total_24h,
+        "total_24h": total_range,
         "source_count": len(source_stats),
         "source_stats": source_stats,
         "category_stats": category_stats,
         "sentiment_stats": sentiment_stats,
         "importance_distribution": importance_dist,
         "time_trend": time_trend,
-        "top_keywords": [{"keyword": kw, "count": cnt} for kw, cnt in top_keywords],
+        "keyword_stats": [{"word": kw, "count": cnt} for kw, cnt in top_keywords],
         "update_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
     }
