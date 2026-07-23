@@ -266,6 +266,16 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
         },
         params={"page": 1, "pagesize": 20, "id": 0},
     ),
+    NewsSource(
+        name="韭研公社",
+        url="https://www.jiuyangongshe.com",
+        parser_type="jiuyan",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.jiuyangongshe.com/",
+            "Accept": "text/html",
+        },
+    ),
 ]
 
 # ============================================================

@@ -72,6 +72,7 @@ SOURCE_TIMEOUTS: dict[str, float] = {
     "法布财经": 12.0,
     "同花顺原创": 15.0,
     "巨潮公告": 12.0,
+    "韭研公社": 20.0,
 }
 DEFAULT_TIMEOUT = 8.0
 

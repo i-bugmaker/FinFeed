@@ -528,7 +528,7 @@ async function load(){
     var btns='<span class="label">来源:</span><button class="'+(curSrc==='all'?'active':'')+'" data-source="all">全部</button>';
     sources.forEach(function(s){btns+='<button class="'+(curSrc===s?'active':'')+'" data-source="'+esc(s)+'">'+esc(s)+'</button>'});
     fc.innerHTML=btns;
-    fc.querySelectorAll('button').forEach(function(b){b.onclick=function(){activeSource=b.dataset.source;fc.querySelectorAll('button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');render()}});
+    fc.querySelectorAll('button').forEach(function(b){b.onclick=function(){activeSource=b.dataset.source;fc.querySelectorAll('button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');if(activeSource==='all'){load()}else{loadSourceData(activeSource)}}});
     
     if(hasNew&&!isFirstLoad&&d.new_count>0){
       showToast('新增 '+d.new_count+' 条新闻','success',null,2000);
@@ -631,6 +631,17 @@ function render(highlightNew){
 function loadMore(){
   displayLimit+=500;
   render();
+}
+async function loadSourceData(source){
+  try{
+    var r=await fetch('/api/news?source='+encodeURIComponent(source));
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var d=await r.json();
+    allNews=d.news||[];
+    render();
+  }catch(e){
+    showToast('加载数据源失败: '+e.message,'error');
+  }
 }
 load();setInterval(load,5000);
 
