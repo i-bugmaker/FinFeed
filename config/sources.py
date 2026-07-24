@@ -279,6 +279,82 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
 ]
 
 # ============================================================
+# 舆情论坛数据源（独立模块）
+# ============================================================
+FORUM_SOURCES: list[NewsSource] = [
+    NewsSource(
+        name="新浪股吧",
+        url="http://guba.sina.com.cn/",
+        parser_type="sina_stock_bar",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "http://guba.sina.com.cn/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="东方财富热门股吧",
+        url="https://guba.eastmoney.com/",
+        parser_type="eastmoney_forum",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://guba.eastmoney.com/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="东方财富茅台股吧",
+        url="https://guba.eastmoney.com/list,600519.html",
+        parser_type="eastmoney_forum",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://guba.eastmoney.com/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="东方财富宁德股吧",
+        url="https://guba.eastmoney.com/list,300750.html",
+        parser_type="eastmoney_forum",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://guba.eastmoney.com/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="东方财富比亚迪股吧",
+        url="https://guba.eastmoney.com/list,002594.html",
+        parser_type="eastmoney_forum",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://guba.eastmoney.com/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="财联社快讯",
+        url="https://www.cls.cn/telegraph",
+        parser_type="cls_forum",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.cls.cn/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="同花顺投顾",
+        url="http://t.10jqka.com.cn",
+        parser_type="ths_stock_bar",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "http://t.10jqka.com.cn/",
+            "Accept": "text/html",
+        },
+    ),
+]
+
+# ============================================================
 # 同花顺原创栏目配置
 # ============================================================
 THSYC_CHANNELS = [
@@ -304,5 +380,10 @@ def get_source_by_name(name: str) -> Optional[NewsSource]:
 
 
 def get_enabled_sources() -> list[NewsSource]:
-    """获取所有启用的新闻源"""
-    return [s for s in FINANCE_NEWS_SOURCES if s.enabled]
+    """获取所有启用的新闻源（包含舆情论坛源）"""
+    return [s for s in FINANCE_NEWS_SOURCES + FORUM_SOURCES if s.enabled]
+
+
+def get_forum_sources() -> list[NewsSource]:
+    """获取所有舆情论坛数据源"""
+    return [s for s in FORUM_SOURCES if s.enabled]

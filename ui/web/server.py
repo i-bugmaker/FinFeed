@@ -21,7 +21,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from config.settings import get_display_name, DEFAULT_WEB_PORT
-from config.sources import get_enabled_sources
+from config.sources import get_enabled_sources, get_forum_sources
 from utils.time_utils import now_bj
 from storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
@@ -50,6 +50,8 @@ _dashboard_cache: str | None = None
 _dashboard_mtime: float = 0
 _about_cache: str | None = None
 _about_mtime: float = 0
+_sentiment_cache: str | None = None
+_sentiment_mtime: float = 0
 _template_lock = threading.Lock()
 
 
@@ -148,6 +150,37 @@ def _get_about_html() -> str:
             return _about_cache
 
 
+def _get_sentiment_html() -> str:
+    """获取舆情页面 HTML（带文件修改时间检测）"""
+    global _sentiment_cache, _sentiment_mtime
+    sentiment_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "templates", "sentiment.html"
+    )
+    try:
+        current_mtime = os.path.getmtime(sentiment_path)
+    except OSError:
+        current_mtime = 0
+    
+    with _template_lock:
+        if _sentiment_cache is not None and current_mtime <= _sentiment_mtime:
+            return _sentiment_cache
+    
+    try:
+        with open(sentiment_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        with _template_lock:
+            _sentiment_cache = content
+            _sentiment_mtime = current_mtime
+            return _sentiment_cache
+    except Exception as e:
+        logger.warning(f"加载舆情页面模板失败: {e}")
+        with _template_lock:
+            if _sentiment_cache is None:
+                _sentiment_cache = "<h1>Sentiment template not found</h1>"
+            return _sentiment_cache
+
+
 class _WebHandler(BaseHTTPRequestHandler):
     """Web 仪表盘 HTTP 请求处理器"""
 
@@ -160,20 +193,22 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._serve_news()
         elif parsed.path.startswith("/api/search"):
             self._serve_search()
-        elif parsed.path.startswith("/api/export"):
-            self._serve_export(parsed.query)
-        elif parsed.path.startswith("/api/daterange"):
-            self._serve_daterange()
         elif parsed.path.startswith("/api/detail"):
             self._serve_detail()
         elif parsed.path.startswith("/api/health"):
             self._serve_health()
         elif parsed.path.startswith("/api/stats"):
             self._serve_stats()
+        elif parsed.path.startswith("/api/sentiment"):
+            self._serve_sentiment_api()
+        elif parsed.path.startswith("/api/"):
+            self._serve_news()
         elif parsed.path.startswith("/dashboard"):
             self._serve_dashboard()
         elif parsed.path.startswith("/about"):
             self._serve_about()
+        elif parsed.path.startswith("/sentiment"):
+            self._serve_sentiment()
         else:
             self.send_error(404)
 
@@ -196,6 +231,8 @@ class _WebHandler(BaseHTTPRequestHandler):
         if limit > 10000:
             limit = 10000
         news = db_get_recent_news(limit=limit, source=source if source != "all" else None)
+        forum_source_names = {s.name for s in get_forum_sources()}
+        news = [n for n in news if n.source not in forum_source_names]
         news_dicts = [n.to_dict() for n in news]
         with _web_state_lock:
             stats = dict(_web_state.get("stats", {}))
@@ -204,12 +241,12 @@ class _WebHandler(BaseHTTPRequestHandler):
             new_count = _web_state.get("new_count", 0)
             status = _web_state.get("status", "运行中")
             last_update = _web_state.get("last_update", "")
-        configured_sources = list(dict.fromkeys(get_display_name(s.name) for s in get_enabled_sources()))
+        configured_sources = [get_display_name(s.name) for s in get_enabled_sources() if s.name not in forum_source_names]
         result = {
             "news": news_dicts,
             "stats": stats,
             "cycle": cycle,
-            "total": total,
+            "total": len(news),
             "new_count": new_count,
             "status": status,
             "sources": configured_sources,
@@ -371,6 +408,64 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def _serve_sentiment(self):
+        sentiment_html = _get_sentiment_html()
+        data = sentiment_html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_sentiment_api(self):
+        try:
+            qs = parse_qs(urlparse(self.path).query)
+            limit = int(qs.get("limit", ["2000"])[0])
+            source = qs.get("source", ["all"])[0]
+            if limit > 10000:
+                limit = 10000
+
+            forum_source_names = [get_display_name(s.name) for s in get_forum_sources()]
+            if source != "all":
+                news = db_get_recent_news(limit=limit, source=source)
+            else:
+                news = []
+                for src_name in forum_source_names:
+                    src_news = db_get_recent_news(limit=limit // max(len(forum_source_names), 1) + 50, source=src_name)
+                    news.extend(src_news)
+
+            news.sort(key=lambda x: x.publish_ts, reverse=True)
+            news = news[:limit]
+
+            news_dicts = [n.to_dict() for n in news]
+            result = {
+                "news": news_dicts,
+                "stats": {},
+                "cycle": 0,
+                "total": len(news),
+                "new_count": 0,
+                "status": "运行中",
+                "sources": [get_display_name(s) for s in forum_source_names],
+                "last_update": "",
+                "server_ts": time.time(),
+            }
+            data = json.dumps(result, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            import traceback
+            logger = __import__('logging').getLogger("news_monitor")
+            logger.error(f"舆情API错误: {e}")
+            logger.error(traceback.format_exc())
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(f"Error: {e}".encode("utf-8"))
 
     def log_message(self, fmt, *args):
         pass

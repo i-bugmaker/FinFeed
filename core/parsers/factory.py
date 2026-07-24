@@ -15,6 +15,7 @@ from .json_parsers import (
     GelonghuiLiveParser, QCCParser, CninfoParser, THSYCParser,
 )
 from .html_parsers import GelonghuiArticleParser, FastbullParser, NBDParser, HexunParser, IfengParser, JiemianParser, ThePaperParser, YicaiParser, JiuyanParser
+from .forum_parsers import EastMoneyForumParser, SinaStockBarParser, CLSForumParser, ThsStockBarParser
 from .rss_parsers import RSSParser
 
 
@@ -40,6 +41,10 @@ PARSER_MAP = {
     "yicai": YicaiParser,
     "jiuyan": JiuyanParser,
     "rss": RSSParser,
+    "eastmoney_forum": EastMoneyForumParser,
+    "sina_stock_bar": SinaStockBarParser,
+    "cls_forum": CLSForumParser,
+    "ths_stock_bar": ThsStockBarParser,
 }
 
 
