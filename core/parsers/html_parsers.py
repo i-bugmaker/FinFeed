@@ -182,14 +182,23 @@ class NBDParser(BaseParser):
             if not title or len(title) < 4:
                 continue
 
-            if not re.match(r"\d{2}:\d{2}:\d{2}", time_str):
-                continue
-
             try:
-                dt = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
-                dt = dt.replace(tzinfo=bj_tz)
-                ts = int(dt.timestamp())
-                pt = bj_str_from_ts(ts)
+                if re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", time_str):
+                    dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                    dt = dt.replace(tzinfo=bj_tz)
+                    ts = int(dt.timestamp())
+                    pt = bj_str_from_ts(ts)
+                elif re.match(r"\d{2}:\d{2}:\d{2}", time_str):
+                    dt = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+                    dt = dt.replace(tzinfo=bj_tz)
+                    ts = int(dt.timestamp())
+                    now_ts = int(datetime.now(bj_tz).timestamp())
+                    if ts > now_ts + 60:
+                        dt = dt - timedelta(days=1)
+                        ts = int(dt.timestamp())
+                    pt = bj_str_from_ts(ts)
+                else:
+                    continue
             except ValueError:
                 continue
 
