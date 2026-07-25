@@ -45,3 +45,22 @@ desktop.ini
 *.tmp
 *.temp
 
+# 旧代码目录（已移入 finfeed/）
+alerts/
+analysis/
+config/
+core/
+storage/
+ui/
+utils/
+
+# 爬虫临时数据
+.firecrawl/
+
+# 运行时输出
+server_output.txt
+
+# 启动脚本（已移入 scripts/）
+start_monitor.bat
+start_web.py
+

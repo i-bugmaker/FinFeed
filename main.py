@@ -21,6 +21,8 @@ import logging
 import argparse
 import asyncio
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "finfeed"))
+
 from config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL, LOG_PATH, LOG_LEVEL,
 )
