@@ -19,6 +19,13 @@ from finfeed.analysis.sentiment import analyze_sentiment
 from finfeed.analysis.importance import compute_importance
 from finfeed.config.settings import CATCH_UP_BATCH_SIZE
 
+try:
+    from finfeed.analysis.stock_names import STOCK_NAMES
+except ImportError:
+    STOCK_NAMES = {}
+
+_STOCK_NAMES_SET = set(STOCK_NAMES.values()) if STOCK_NAMES else set()
+
 logger = logging.getLogger("news_monitor")
 
 NewsCallback = Callable[[list[NewsItem]], None]
@@ -42,10 +49,6 @@ def _format_stock_display(stock_info: dict, stock_name_map: dict) -> str:
 
 def _enrich_news(news_list: list[NewsItem]) -> list[NewsItem]:
     """对新闻进行信息补全：关键词、股票代码、分类、情感、重要性"""
-    try:
-        from finfeed.analysis.stock_names import STOCK_NAMES
-    except ImportError:
-        STOCK_NAMES = {}
     for n in news_list:
         text = f"{n.title} {n.intro}"
         if not n.keywords:
@@ -62,14 +65,13 @@ def _enrich_news(news_list: list[NewsItem]) -> list[NewsItem]:
             n.stocks = stock_displays
         else:
             new_stocks = []
-            known_names = set(STOCK_NAMES.values())
             for s in n.stocks:
                 if isinstance(s, dict):
                     display = _format_stock_display(s, STOCK_NAMES)
                     if display:
                         new_stocks.append(display)
                 elif isinstance(s, str) and s:
-                    if (len(s) == 6 and s.isdigit() and s.startswith(("60", "688", "00", "30"))) or s in known_names:
+                    if (len(s) == 6 and s.isdigit() and s.startswith(("60", "688", "00", "30"))) or s in _STOCK_NAMES_SET:
                         new_stocks.append(s)
             n.stocks = new_stocks
         if not n.category:

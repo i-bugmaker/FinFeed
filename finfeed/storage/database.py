@@ -35,28 +35,33 @@ class NewsDatabase:
 
     def __init__(self):
         self._local = threading.local()
-        self._conn: Optional[sqlite3.Connection] = None
         self._stats_cache: Optional[Dict[str, Any]] = None
         self._stats_cache_ts: float = 0
+        self._lock = threading.Lock()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """获取数据库连接（线程安全）"""
+        """获取数据库连接（线程安全，每个线程独立连接）"""
         if hasattr(self._local, 'conn') and self._local.conn is not None:
-            return self._local.conn
+            try:
+                self._local.conn.execute("SELECT 1")
+                return self._local.conn
+            except sqlite3.Error:
+                pass
 
-        if self._conn is not None:
-            return self._conn
-
-        self._conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.text_factory = str
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
+        conn.row_factory = sqlite3.Row
+        conn.text_factory = str
         if USE_WAL_MODE:
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute("PRAGMA cache_size=-20000")
-        self._conn.execute("PRAGMA encoding='UTF-8'")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-32000")
+        conn.execute("PRAGMA mmap_size=268435456")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA encoding='UTF-8'")
+        conn.execute("PRAGMA busy_timeout=5000")
 
-        return self._conn
+        self._local.conn = conn
+        return conn
 
     @contextmanager
     def get_db(self):
@@ -146,6 +151,9 @@ class NewsDatabase:
             c.execute("CREATE INDEX IF NOT EXISTS idx_sent_pubts ON news(sentiment, publish_ts DESC, id DESC)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_imp_pubts ON news(importance DESC, publish_ts DESC, id DESC)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_composite ON news(source, sentiment, importance, publish_ts DESC, id DESC)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_pubts_id ON news(publish_ts DESC, id DESC)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_fav_pubts ON news(is_favorite, publish_ts DESC, id DESC) WHERE is_favorite=1")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_unread ON news(is_read) WHERE is_read=0")
 
             try:
                 c.execute("""
@@ -225,49 +233,54 @@ class NewsDatabase:
     @staticmethod
     def _row_to_news(row: sqlite3.Row) -> NewsItem:
         """将数据库行转换为 NewsItem"""
-
-        def _safe_get(row_obj, key, default):
-            try:
-                val = row_obj[key]
-                return val if val is not None else default
-            except (KeyError, IndexError):
-                return default
-
-        source = _safe_get(row, "source", "")
-        publish_time = _safe_get(row, "publish_time", "")
-        publish_ts = _safe_get(row, "publish_ts", 0) or 0
+        source = row["source"] if row["source"] is not None else ""
+        publish_time = row["publish_time"] if row["publish_time"] is not None else ""
+        publish_ts = row["publish_ts"] if row["publish_ts"] is not None else 0
 
         if source == "巨潮公告":
-            created_at_val = _safe_get(row, "created_at", "")
+            created_at_val = row["created_at"] if "created_at" in row.keys() else ""
             if created_at_val:
                 publish_time = created_at_val
                 publish_ts = ts_from_bj_str(created_at_val)
 
-        simhash_val = _safe_get(row, "simhash", "")
-        keywords_val = _safe_get(row, "keywords", "[]") or "[]"
-        stocks_val = _safe_get(row, "stocks", "[]") or "[]"
-        tags_val = _safe_get(row, "tags", "[]") or "[]"
+        simhash_val = row["simhash"] if row["simhash"] is not None else ""
+        keywords_val = row["keywords"] if row["keywords"] is not None else "[]"
+        stocks_val = row["stocks"] if row["stocks"] is not None else "[]"
+        tags_val = row["tags"] if row["tags"] is not None else "[]"
+
+        try:
+            keywords = json.loads(keywords_val) if keywords_val else []
+        except (json.JSONDecodeError, TypeError):
+            keywords = []
+        try:
+            stocks = json.loads(stocks_val) if stocks_val else []
+        except (json.JSONDecodeError, TypeError):
+            stocks = []
+        try:
+            tags = json.loads(tags_val) if tags_val else []
+        except (json.JSONDecodeError, TypeError):
+            tags = []
 
         return NewsItem(
-            id=_safe_get(row, "id", None),
-            title=_safe_get(row, "title", ""),
-            url=_safe_get(row, "url", "#") or "#",
+            id=row["id"] if "id" in row.keys() else None,
+            title=row["title"] if row["title"] is not None else "",
+            url=(row["url"] if row["url"] is not None else "#") or "#",
             source=source,
             publish_time=publish_time,
             publish_ts=publish_ts,
-            intro=_safe_get(row, "intro", ""),
-            title_full_hash=_safe_get(row, "title_full_hash", ""),
-            url_hash=_safe_get(row, "url_hash", ""),
+            intro=row["intro"] if row["intro"] is not None else "",
+            title_full_hash=row["title_full_hash"] if row["title_full_hash"] is not None else "",
+            url_hash=row["url_hash"] if row["url_hash"] is not None else "",
             simhash=hex_to_simhash(simhash_val) if simhash_val else 0,
-            created_at=_safe_get(row, "created_at", ""),
-            category=_safe_get(row, "category", ""),
-            sentiment=_safe_get(row, "sentiment", "neutral") or "neutral",
-            importance=_safe_get(row, "importance", 0.0) or 0.0,
-            keywords=json.loads(keywords_val) if keywords_val else [],
-            stocks=json.loads(stocks_val) if stocks_val else [],
-            is_read=bool(_safe_get(row, "is_read", 0)) if _safe_get(row, "is_read", None) is not None else False,
-            is_favorite=bool(_safe_get(row, "is_favorite", 0)) if _safe_get(row, "is_favorite", None) is not None else False,
-            tags=json.loads(tags_val) if tags_val else [],
+            created_at=row["created_at"] if "created_at" in row.keys() and row["created_at"] is not None else "",
+            category=row["category"] if row["category"] is not None else "",
+            sentiment=(row["sentiment"] if row["sentiment"] is not None else "neutral") or "neutral",
+            importance=row["importance"] if row["importance"] is not None else 0.0,
+            keywords=keywords,
+            stocks=stocks,
+            is_read=bool(row["is_read"]) if "is_read" in row.keys() and row["is_read"] is not None else False,
+            is_favorite=bool(row["is_favorite"]) if "is_favorite" in row.keys() and row["is_favorite"] is not None else False,
+            tags=tags,
         )
 
     def insert_news(self, news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:
@@ -551,6 +564,8 @@ class NewsDatabase:
             )
             return [self._row_to_news(row) for row in c.fetchall()]
 
+    _QUERY_NEWS_COLUMNS = "id, title, url, source, publish_time, publish_ts, intro, title_full_hash, url_hash, simhash, created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite, tags"
+
     def query_news(
         self,
         limit: int = 50,
@@ -608,19 +623,17 @@ class NewsDatabase:
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         with self.get_db() as c:
-            if count_only or keyword:
-                count_query = f"SELECT COUNT(*) as cnt FROM news WHERE {where_clause}"
-                c.execute(count_query, params)
-                total = c.fetchone()["cnt"]
-            else:
-                c.execute(f"SELECT COUNT(*) as cnt FROM news WHERE {where_clause}", params)
-                total = c.fetchone()["cnt"]
+            c.execute(f"SELECT COUNT(*) as cnt FROM news WHERE {where_clause}", params)
+            total = c.fetchone()["cnt"]
+
+            if count_only:
+                return [], total
 
             if keyword:
                 try:
                     fts_query = keyword.replace('"', '""')
                     data_query = f"""
-                        SELECT n.* FROM news n
+                        SELECT n.{self._QUERY_NEWS_COLUMNS} FROM news n
                         INNER JOIN news_fts f ON n.id = f.rowid
                         WHERE news_fts MATCH ? AND ({where_clause.replace('source', 'n.source').replace('publish_ts', 'n.publish_ts').replace('sentiment', 'n.sentiment').replace('is_favorite', 'n.is_favorite').replace('importance', 'n.importance').replace('stocks', 'n.stocks')})
                         ORDER BY n.publish_ts DESC, n.id DESC
@@ -630,7 +643,7 @@ class NewsDatabase:
                 except Exception:
                     like_clause = f"({where_clause}) AND (title LIKE ? OR intro LIKE ?)"
                     data_query = f"""
-                        SELECT * FROM news
+                        SELECT {self._QUERY_NEWS_COLUMNS} FROM news
                         WHERE {like_clause}
                         ORDER BY publish_ts DESC, id DESC
                         LIMIT ? OFFSET ?
@@ -638,7 +651,7 @@ class NewsDatabase:
                     c.execute(data_query, params + [f"%{keyword}%", f"%{keyword}%", limit, offset])
             else:
                 data_query = f"""
-                    SELECT * FROM news
+                    SELECT {self._QUERY_NEWS_COLUMNS} FROM news
                     WHERE {where_clause}
                     ORDER BY publish_ts DESC, id DESC
                     LIMIT ? OFFSET ?
@@ -659,34 +672,35 @@ class NewsDatabase:
             day_ago = now_ts - 86400
             week_ago = now_ts - 7 * 86400
 
-            c.execute("SELECT COUNT(*) as cnt FROM news")
-            total = c.fetchone()["cnt"]
-
-            c.execute("SELECT COUNT(*) as cnt FROM news WHERE publish_ts >= ?", (day_ago,))
-            total_24h = c.fetchone()["cnt"]
-
-            c.execute("SELECT COUNT(*) as cnt FROM news WHERE is_favorite = 1")
-            fav_count = c.fetchone()["cnt"]
-
-            c.execute("SELECT COUNT(*) as cnt FROM news WHERE is_read = 0")
-            unread_count = c.fetchone()["cnt"]
-
-            c.execute("SELECT COUNT(DISTINCT source) as cnt FROM news")
-            source_count = c.fetchone()["cnt"]
+            c.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN publish_ts >= ? THEN 1 ELSE 0 END) as total_24h,
+                    SUM(CASE WHEN is_favorite = 1 THEN 1 ELSE 0 END) as fav_count,
+                    SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_count,
+                    COUNT(DISTINCT source) as source_count
+                FROM news
+            """, (day_ago,))
+            row = c.fetchone()
+            total = row["total"] or 0
+            total_24h = row["total_24h"] or 0
+            fav_count = row["fav_count"] or 0
+            unread_count = row["unread_count"] or 0
+            source_count = row["source_count"] or 0
 
             c.execute(
                 "SELECT sentiment, COUNT(*) as cnt FROM news GROUP BY sentiment"
             )
             sentiment_stats = {"positive": 0, "negative": 0, "neutral": 0}
-            for row in c.fetchall():
-                s = row["sentiment"] or "neutral"
-                sentiment_stats[s] = row["cnt"]
+            for r in c.fetchall():
+                s = r["sentiment"] or "neutral"
+                sentiment_stats[s] = r["cnt"]
 
             c.execute(
                 "SELECT source, COUNT(*) as cnt FROM news WHERE publish_ts >= ? GROUP BY source ORDER BY cnt DESC",
                 (week_ago,),
             )
-            source_stats = {row["source"]: row["cnt"] for row in c.fetchall()}
+            source_stats = {r["source"]: r["cnt"] for r in c.fetchall()}
 
             c.execute(
                 """SELECT strftime('%m-%d %H:00', publish_ts, 'unixepoch', 'localtime') as hour_bucket,
@@ -695,12 +709,12 @@ class NewsDatabase:
                    GROUP BY hour_bucket ORDER BY hour_bucket""",
                 (day_ago,),
             )
-            time_trend = [{"time": row["hour_bucket"] or "", "count": row["cnt"]} for row in c.fetchall()]
+            time_trend = [{"time": r["hour_bucket"] or "", "count": r["cnt"]} for r in c.fetchall()]
 
             c.execute(
                 "SELECT category, COUNT(*) as cnt FROM news WHERE category != '' GROUP BY category ORDER BY cnt DESC"
             )
-            category_stats = {row["category"]: row["cnt"] for row in c.fetchall()}
+            category_stats = {r["category"]: r["cnt"] for r in c.fetchall()}
 
             importance_dist = {"极重要": 0, "重要": 0, "一般": 0, "较低": 0, "低": 0}
             c.execute(
@@ -714,8 +728,8 @@ class NewsDatabase:
                     END as level, COUNT(*) as cnt
                    FROM news GROUP BY level"""
             )
-            for row in c.fetchall():
-                importance_dist[row["level"]] = row["cnt"]
+            for r in c.fetchall():
+                importance_dist[r["level"]] = r["cnt"]
 
             result = {
                 "total_news": total,

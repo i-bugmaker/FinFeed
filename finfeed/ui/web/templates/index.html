@@ -299,6 +299,7 @@ let state = {
   total: 0,
   sources: [],
   news: [],
+  newsIdMap: new Map(),
   charts: {},
   sse: null,
   lastServerTs: 0,
@@ -307,6 +308,7 @@ let state = {
 };
 let abortController = null;
 let loadTimer = null;
+let chartUpdateTimer = null;
 
 const srcColorMap = {};
 function hashColor(str){
@@ -414,6 +416,13 @@ function getDateRangeParams(range){
   }
 }
 
+function rebuildNewsIdMap(){
+  state.newsIdMap.clear();
+  for(const item of state.news){
+    state.newsIdMap.set(item.id, item);
+  }
+}
+
 async function loadNews(reset=false){
   if(reset){
     if(abortController){abortController.abort();}
@@ -421,6 +430,7 @@ async function loadNews(reset=false){
     if(loadTimer){clearTimeout(loadTimer);loadTimer=null;}
     state.offset=0;
     state.news=[];
+    state.newsIdMap.clear();
     state.hasMore=true;
     document.getElementById('endIndicator').style.display='none';
   }
@@ -442,7 +452,7 @@ async function loadNews(reset=false){
     if(state.endDate)params.set('end',state.endDate);
     if(state.stockFilter)params.set('stock',state.stockFilter);
 
-    const resp=await fetch(`/api/news?${params}`,{signal:abortController?abortController.signal:undefined});
+    const resp=await fetch(`/api/news?${params}`,{signal:abortController?abortController.signal:undefined,cache:'no-store'});
     const data=await resp.json();
     if(!data||data.error)throw new Error(data.error||'加载失败');
     const newItems=data.news||[];
@@ -452,10 +462,10 @@ async function loadNews(reset=false){
 
     if(reset){
       state.news=newItems;
-      renderSourceFilters();
     }else{
       state.news=[...state.news,...newItems];
     }
+    rebuildNewsIdMap();
 
     state.hasMore=!!data.has_more;
     if(data.next_offset!==undefined&&data.next_offset!==null){
@@ -466,8 +476,9 @@ async function loadNews(reset=false){
 
     renderNews(reset);
     if(reset){
+      renderSourceFilters();
       renderStats();
-      updateCharts(state.stats);
+      scheduleChartUpdate(state.stats);
     }
     state.lastServerTs=data.server_ts||Date.now()/1000;
 
@@ -489,6 +500,11 @@ async function loadNews(reset=false){
   }
 }
 
+function scheduleChartUpdate(stats){
+  if(chartUpdateTimer)clearTimeout(chartUpdateTimer);
+  chartUpdateTimer=setTimeout(()=>updateCharts(stats), 100);
+}
+
 function renderSourceFilters(){
   const el=document.getElementById('sourceFilters');
   if(!el)return;
@@ -500,6 +516,44 @@ function renderSourceFilters(){
   el.innerHTML=html;
 }
 
+function renderNewsItem(item){
+  const color=getSrcColor(item.source);
+  const isNew=item.publish_ts && item.publish_ts>state.lastServerTs-300;
+  const tr=document.createElement('tr');
+  tr.className=item.is_read?'':'unread';
+  tr.dataset.id=String(item.id);
+  tr.innerHTML=`
+    <td class="col-fav"><button class="fav-btn ${item.is_favorite?'active':''}" onclick="apiToggleFavorite(${item.id},this)" title="${item.is_favorite?'取消收藏':'收藏'}">${item.is_favorite?'★':'☆'}</button></td>
+    <td class="col-imp">${impBadge(item.importance)}</td>
+    <td class="col-time">${fmtTime(item.publish_ts)}</td>
+    <td class="col-source"><span class="src-tag" style="color:${color};background:${color}15;border-color:${color}40" onclick="setSource('${(item.source||'').replace(/'/g,"\\'")}')">${escHtml(item.source)}</span></td>
+    <td class="col-title">${sentDot(item.sentiment)}<a href="${escHtml(item.url)}" target="_blank" rel="noopener" onclick="apiMarkRead(${item.id})">${highlight(item.title,state.keyword)}${isNew?'<span class="new-badge">NEW</span>':''}</a></td>
+  `;
+  return tr;
+}
+
+function prependNewsItems(items){
+  if(!items.length)return;
+  const tbody=document.getElementById('newsBody');
+  if(!tbody)return;
+  const emptyRow=tbody.querySelector('tr td[colspan]');
+  if(emptyRow)tbody.innerHTML='';
+  const frag=document.createDocumentFragment();
+  for(let i=items.length-1;i>=0;i--){
+    const item=items[i];
+    if(!state.newsIdMap.has(item.id)){
+      state.news.unshift(item);
+      state.newsIdMap.set(item.id,item);
+      frag.insertBefore(renderNewsItem(item),frag.firstChild);
+    }
+  }
+  if(frag.firstChild){
+    tbody.insertBefore(frag,tbody.firstChild);
+  }
+  state.total+=items.length;
+  renderStats();
+}
+
 function renderNews(reset=false){
   const tbody=document.getElementById('newsBody');
   if(!state.news.length){
@@ -507,26 +561,24 @@ function renderNews(reset=false){
     return;
   }
 
-  function renderItem(item){
-    const color=getSrcColor(item.source);
-    const isNew=item.publish_ts && item.publish_ts>state.lastServerTs-300;
-    return `<tr class="${item.is_read?'':'unread'}" data-id="${item.id}">
-      <td class="col-fav"><button class="fav-btn ${item.is_favorite?'active':''}" onclick="apiToggleFavorite(${item.id},this)" title="${item.is_favorite?'取消收藏':'收藏'}">${item.is_favorite?'★':'☆'}</button></td>
-      <td class="col-imp">${impBadge(item.importance)}</td>
-      <td class="col-time">${fmtTime(item.publish_ts)}</td>
-      <td class="col-source"><span class="src-tag" style="color:${color};background:${color}15;border-color:${color}40" onclick="setSource('${(item.source||'').replace(/'/g,"\\'")}')">${escHtml(item.source)}</span></td>
-      <td class="col-title">${sentDot(item.sentiment)}<a href="${escHtml(item.url)}" target="_blank" rel="noopener" onclick="apiMarkRead(${item.id})">${highlight(item.title,state.keyword)}${isNew?'<span class="new-badge">NEW</span>':''}</a></td>
-    </tr>`;
-  }
-
   if(reset){
-    tbody.innerHTML=state.news.map(renderItem).join('');
-    window.scrollTo({top:0,behavior:'smooth'});
+    tbody.innerHTML='';
+    const frag=document.createDocumentFragment();
+    for(const item of state.news){
+      frag.appendChild(renderNewsItem(item));
+    }
+    tbody.appendChild(frag);
+    window.scrollTo({top:0,behavior:'instant'});
   }else{
-    const existingCount=tbody.querySelectorAll('tr[data-id]').length;
-    const newItems=state.news.slice(existingCount);
+    const existingIds=new Set();
+    tbody.querySelectorAll('tr[data-id]').forEach(tr=>existingIds.add(Number(tr.dataset.id)));
+    const newItems=state.news.filter(n=>!existingIds.has(n.id));
     if(newItems.length){
-      tbody.insertAdjacentHTML('beforeend',newItems.map(renderItem).join(''));
+      const frag=document.createDocumentFragment();
+      for(const item of newItems){
+        frag.appendChild(renderNewsItem(item));
+      }
+      tbody.appendChild(frag);
     }
   }
 }
@@ -596,11 +648,6 @@ function checkAndLoadMore(){
   }
 }
 
-function handleScroll(){
-  checkAndLoadMore();
-}
-window.addEventListener('scroll',handleScroll,{passive:true});
-
 function initCharts(){
   const c=getThemeColors();
   const trendEl=document.getElementById('trendChart');
@@ -645,6 +692,10 @@ function updateCharts(stats){
   }
 }
 
+function isDefaultFilter(){
+  return state.offset===0&&!state.keyword&&state.source==='all'&&state.sentiment==='all'&&state.minImportance===0&&state.dateRange==='all'&&!state.stockFilter;
+}
+
 function connectSSE(){
   if(state.sse)return;
   try{
@@ -658,7 +709,9 @@ function connectSSE(){
         const d=JSON.parse(e.data);
         if(d.type==='new_news'&&d.items&&d.items.length){
           toast(`收到 ${d.count} 条新闻`,'new','新消息');
-          if(state.offset===0&&!state.keyword&&state.source==='all'&&state.sentiment==='all'&&state.minImportance===0&&state.dateRange==='all'){
+          if(isDefaultFilter()){
+            prependNewsItems(d.items);
+          }else if(state.offset===0){
             loadNews(true);
           }
         }
@@ -683,9 +736,21 @@ let searchTimer;
 searchInput.addEventListener('input',()=>{
   searchClear.classList.toggle('show',!!searchInput.value);
   clearTimeout(searchTimer);
-  searchTimer=setTimeout(()=>{state.keyword=searchInput.value.trim();loadNews(true);},400);
+  searchTimer=setTimeout(()=>{state.keyword=searchInput.value.trim();loadNews(true);},300);
 });
 searchClear.addEventListener('click',()=>{searchInput.value='';state.keyword='';searchClear.classList.remove('show');loadNews(true);searchInput.focus();});
+
+let scrollTicking=false;
+function handleScroll(){
+  if(!scrollTicking){
+    scrollTicking=true;
+    requestAnimationFrame(()=>{
+      checkAndLoadMore();
+      scrollTicking=false;
+    });
+  }
+}
+window.addEventListener('scroll',handleScroll,{passive:true});
 
 initCharts();
 loadNews(true);

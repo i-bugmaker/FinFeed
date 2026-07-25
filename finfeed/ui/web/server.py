@@ -16,13 +16,27 @@ import os
 import csv
 import io
 import json
+import gzip
 import time
+import socket
 import logging
 import threading
 import queue
+from functools import lru_cache
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+
+
+class DualStackThreadingHTTPServer(ThreadingHTTPServer):
+    """支持IPv4/IPv6双栈的线程HTTP服务器"""
+    address_family = socket.AF_INET6
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()
 
 from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT
 from finfeed.config.sources import get_enabled_sources, get_forum_sources
@@ -60,6 +74,30 @@ _forum_source_names: list | None = None
 _forum_source_set: set | None = None
 _configured_sources: list | None = None
 _sources_cache_lock = threading.Lock()
+
+_api_cache = {}
+_api_cache_lock = threading.Lock()
+API_CACHE_TTL = 2
+
+
+def _cache_get(key: str):
+    with _api_cache_lock:
+        entry = _api_cache.get(key)
+        if entry and time.time() - entry[0] < API_CACHE_TTL:
+            return entry[1]
+        if key in _api_cache:
+            del _api_cache[key]
+        return None
+
+
+def _cache_set(key: str, value):
+    with _api_cache_lock:
+        _api_cache[key] = (time.time(), value)
+
+
+def invalidate_api_cache():
+    with _api_cache_lock:
+        _api_cache.clear()
 
 
 def _get_cached_sources():
@@ -284,6 +322,12 @@ class _WebHandler(BaseHTTPRequestHandler):
             if params["source"] and params["source"] not in configured_sources and params["source"] != "all":
                 params["source"] = None
 
+            cache_key = f"news:{json.dumps(params, sort_keys=True, default=str)}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                self._send_json(cached, max_age=1)
+                return
+
             db_kwargs = {
                 "limit": params["page_size"],
                 "offset": params["offset"],
@@ -305,7 +349,8 @@ class _WebHandler(BaseHTTPRequestHandler):
             result = _build_news_response(
                 news_items, db_total, params["offset"], params["page_size"], configured_sources
             )
-            self._send_json(result)
+            _cache_set(cache_key, result)
+            self._send_json(result, max_age=1)
         except Exception as e:
             import traceback
             logger.error(f"新闻API错误: {e}")
@@ -316,6 +361,12 @@ class _WebHandler(BaseHTTPRequestHandler):
         try:
             params = self._parse_query_params(urlparse(self.path).query)
             forum_source_names, _, _ = _get_cached_sources()
+
+            cache_key = f"sentiment:{json.dumps(params, sort_keys=True, default=str)}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                self._send_json(cached, max_age=1)
+                return
 
             if params["source"] and params["source"] in forum_source_names:
                 db_kwargs = {
@@ -348,7 +399,8 @@ class _WebHandler(BaseHTTPRequestHandler):
             result = _build_news_response(
                 news_items, db_total, params["offset"], params["page_size"], forum_source_names
             )
-            self._send_json(result)
+            _cache_set(cache_key, result)
+            self._send_json(result, max_age=1)
         except Exception as e:
             import traceback
             logger.error(f"舆情API错误: {e}")
@@ -470,6 +522,7 @@ class _WebHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "error": "Invalid id"}, status=400)
                 return
             new_state = db_toggle_favorite(news_id)
+            invalidate_api_cache()
             self._send_json({"success": True, "is_favorite": new_state})
         except Exception as e:
             self._send_json({"success": False, "error": str(e)}, status=500)
@@ -482,6 +535,7 @@ class _WebHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "error": "Invalid id"}, status=400)
                 return
             db_mark_read(news_id, is_read)
+            invalidate_api_cache()
             self._send_json({"success": True})
         except Exception as e:
             self._send_json({"success": False, "error": str(e)}, status=500)
@@ -580,12 +634,23 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_json(self, data: dict, status: int = 200):
-        resp = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    def _send_json(self, data: dict, status: int = 200, max_age: int = 0):
+        resp = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        accept_encoding = self.headers.get("Accept-Encoding", "")
+        use_gzip = "gzip" in accept_encoding and len(resp) > 500
+
+        if use_gzip:
+            resp = gzip.compress(resp, compresslevel=1)
+
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Cache-Control", "no-cache")
+        if max_age > 0:
+            self.send_header("Cache-Control", f"private, max-age={max_age}")
+        else:
+            self.send_header("Cache-Control", "no-cache")
+        if use_gzip:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(resp)))
         self.end_headers()
         self.wfile.write(resp)
@@ -606,10 +671,13 @@ def _sse_broadcast(message: dict):
             _sse_clients.discard(q)
 
 
-def start_web_server(port: int = DEFAULT_WEB_PORT) -> ThreadingHTTPServer:
-    """在后台线程启动 Web 仪表盘服务"""
-    server = ThreadingHTTPServer(("0.0.0.0", port), _WebHandler)
-    server.daemon_threads = True
+def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServer:
+    """在后台线程启动 Web 仪表盘服务（支持IPv4/IPv6双栈）"""
+    try:
+        server = DualStackThreadingHTTPServer(("::", port), _WebHandler)
+    except OSError:
+        server = ThreadingHTTPServer(("0.0.0.0", port), _WebHandler)
+        server.daemon_threads = True
     t = threading.Thread(
         target=server.serve_forever, daemon=True, name="web-dashboard"
     )
@@ -650,6 +718,7 @@ def update_web_state(news, stats, cycle, total, new_count, status):
         _web_state["latest_ts"] = max(latest_ts, old_latest)
 
     if new_items:
+        invalidate_api_cache()
         _sse_broadcast({
             "type": "new_news",
             "items": new_items[:20],

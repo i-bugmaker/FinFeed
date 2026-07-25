@@ -231,7 +231,8 @@ class NewsFetcher:
 
         async with httpx.AsyncClient(
             timeout=15.0, follow_redirects=True, verify=True,
-            limits=httpx.Limits(max_connections=10, max_keepalive_connections=6),
+            http2=True,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10, keepalive_expiry=30),
         ) as shared_client:
 
             async def _fetch_with_sem(source: NewsSource):
