@@ -64,3 +64,12 @@ server_output.txt
 start_monitor.bat
 start_web.py
 
+# 调试/探测脚本
+probe_*.py
+debug_*.py
+check_*.py
+test_*.py
+clean_db.py
+fetch_sina.py
+/*.html
+

@@ -50,7 +50,7 @@ class SinaParser(BaseParser):
 
 
 class CLSParser(BaseParser):
-    """财联社 - JSON API（需签名认证）"""
+    """财联社电报 - 使用 /api/cache 无签名API"""
 
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
@@ -61,76 +61,38 @@ class CLSParser(BaseParser):
             if ts and ts <= self.last_ts:
                 continue
             pt = bj_str_from_ts(ts) if ts else ""
-            title = (a.get("title") or a.get("brief", "") or "无标题").strip()[:50]
-            url = f"https://www.cls.cn/detail/{a.get('id', '')}" if a.get("id") else (a.get("shareurl", "#"))
+            title = (a.get("title") or a.get("brief", "") or "").strip()
+            content = (a.get("content", "") or a.get("brief", "") or "").strip()
+            title = re.sub(r'<[^>]+>', '', title)
+            content = re.sub(r'<[^>]+>', '', content)
+            if not title and content:
+                title = content[:80]
+            if not title:
+                continue
+            url = a.get("shareurl", "") or f"https://www.cls.cn/detail/{a.get('id', '')}"
             news_list.append(self._make_news(
-                title=title or "无标题",
+                title=title[:100],
                 url=url,
                 publish_ts=ts,
                 publish_time=pt,
-                intro=(a.get("brief", "") or a.get("content", "") or "")[:150],
+                intro=content[:200],
             ))
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
-        """补抓模式：通过last_time参数获取历史数据"""
+        """补抓模式：使用api/cache端点获取最新一批数据"""
         if not self._catch_up_mode or self.last_ts <= 0:
             return []
-
-        all_news = []
-        catch_up_start_ts = self.get_catch_up_start_ts()
-        current_last_time = catch_up_start_ts
-        logger.info(f"财联社补抓模式：从 {bj_str_from_ts(catch_up_start_ts)} 开始")
-
-        max_rounds = 50
-        round_num = 1
-        while round_num <= max_rounds:
-            try:
-                cls_params = {
-                    "app": "CailianpressWeb",
-                    "os": "web",
-                    "sv": "8.4.6",
-                    "rn": "20",
-                    "last_time": str(int(current_last_time)),
-                }
-                qs = urlencode(sorted(cls_params.items()))
-                cls_params["sign"] = hashlib.md5(hashlib.sha1(qs.encode()).hexdigest().encode()).hexdigest()
-
-                resp = await http_client.get(
-                    self.source.url,
-                    headers=dict(self.source.headers),
-                    params=cls_params
-                )
-
-                if resp.status_code != 200:
-                    break
-
-                news_list = await self.parse(resp)
-                if not news_list:
-                    break
-
-                all_news.extend(news_list)
-                logger.debug(f"财联社补抓：第{round_num}轮，新增{len(news_list)}条")
-
-                min_ts = min(n.publish_ts for n in news_list if n.publish_ts > 0)
-                if min_ts <= catch_up_start_ts or min_ts == current_last_time:
-                    break
-
-                current_last_time = min_ts
-                round_num += 1
-                await asyncio.sleep(0.5)
-
-            except Exception as e:
-                logger.warning(f"财联社补抓失败：{str(e)[:80]}")
-                break
-
-        all_news.sort(key=lambda x: x.publish_ts, reverse=True)
-        logger.info(f"财联社补抓完成：共获取{len(all_news)}条历史新闻")
-
-        if all_news:
-            self.last_ts = max(n.publish_ts for n in all_news if n.publish_ts > 0)
-
-        return all_news
+        try:
+            resp = await http_client.get(
+                self.source.url,
+                headers=dict(self.source.headers),
+            )
+            if resp.status_code == 200:
+                return await self.parse(resp)
+        except Exception as e:
+            logger.warning(f"财联社补抓失败：{str(e)[:80]}")
+        return []
 
 
 class THSParser(BaseParser):

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinFeed - 项目介绍</title>
+<style>
+:root,[data-theme="dark"]{
+  --bg:#0d1117;--bg-card:#161b22;--bg-card-alt:#1c2128;--bg-hover:#1c2333;
+  --text:#e6edf3;--text2:#9ba5b2;--text3:#6e7681;
+  --border:#30363d;--border2:#484f58;
+  --accent:#58a6ff;--accent-h:#79c0ff;--accent-bg:rgba(88,166,255,.1);
+  --green:#3fb950;--green-bg:rgba(63,185,80,.1);
+  --red:#f85149;--red-bg:rgba(248,81,73,.1);
+  --orange:#d29922;--orange-bg:rgba(210,153,34,.1);
+  --purple:#bc8cff;--purple-bg:rgba(188,140,255,.1);
+  --shadow:0 1px 3px rgba(0,0,0,.3);--shadow-lg:0 4px 12px rgba(0,0,0,.4);
+  --fs-xs:12px;--fs-sm:13px;--fs-base:15px;--fs-md:16px;--fs-lg:18px;--fs-xl:20px;--fs-2xl:24px;--fs-3xl:32px;
+  --lh-base:1.7;
+}
+[data-theme="light"]{
+  --bg:#f5f6f8;--bg-card:#ffffff;--bg-card-alt:#f0f1f3;--bg-hover:#eceef1;
+  --text:#1a1d23;--text2:#4a5060;--text3:#7a8298;
+  --border:#dde0e6;--border2:#cfd3da;
+  --accent:#2563eb;--accent-h:#1d4ed8;--accent-bg:rgba(37,99,235,.08);
+  --green:#16a34a;--green-bg:rgba(22,163,74,.08);
+  --red:#dc2626;--red-bg:rgba(220,38,38,.08);
+  --orange:#ea580c;--orange-bg:rgba(234,88,12,.08);
+  --purple:#9333ea;--purple-bg:rgba(147,51,234,.08);
+  --shadow:0 1px 3px rgba(0,0,0,.06);--shadow-lg:0 4px 12px rgba(0,0,0,.1);
+  --fs-xs:12px;--fs-sm:13px;--fs-base:15px;--fs-md:16px;--fs-lg:18px;--fs-xl:20px;--fs-2xl:24px;--fs-3xl:32px;
+  --lh-base:1.7;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Source Han Sans CN","WenQuanYi Micro Hei",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  line-height:var(--lh-base);
+}
+.header{
+  background:var(--bg-card);
+  border-bottom:1px solid var(--border);
+  padding:16px 24px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.header h1{color:var(--accent);font-size:var(--fs-xl);font-weight:700;letter-spacing:2px}
+.header-links{display:flex;gap:16px}
+.header-links a{color:var(--text2);text-decoration:none;font-size:var(--fs-sm);padding:6px 12px;border-radius:6px}
+.header-links a:hover{color:var(--accent);background:var(--accent-bg)}
+.hero{padding:60px 24px;text-align:center;background:linear-gradient(180deg,var(--accent-bg) 0%,transparent 100%)}
+.hero h1{font-size:var(--fs-3xl);color:var(--accent);margin-bottom:16px}
+.hero p{font-size:var(--fs-lg);color:var(--text2);max-width:800px;margin:0 auto}
+.container{max-width:1000px;margin:0 auto;padding:40px 24px}
+.section{margin-bottom:60px}
+.section-title{font-size:var(--fs-2xl);color:var(--text);font-weight:600;margin-bottom:24px;display:flex;align-items:center;gap:12px}
+.section-title::before{content:'';width:4px;height:24px;background:var(--accent);border-radius:2px}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;transition:border-color 0.2s}
+.card:hover{border-color:var(--accent)}
+.card-icon{font-size:32px;margin-bottom:16px}
+.card-title{font-size:var(--fs-lg);font-weight:600;color:var(--text);margin-bottom:8px}
+.card-desc{font-size:var(--fs-sm);color:var(--text2);line-height:1.6}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px}
+.feature-item{display:flex;gap:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.feature-icon{font-size:28px;color:var(--accent);flex-shrink:0}
+.feature-content h3{font-size:var(--fs-base);font-weight:600;color:var(--text);margin-bottom:6px}
+.feature-content p{font-size:var(--fs-sm);color:var(--text2)}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.stat-box{text-align:center;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px}
+.stat-box .number{font-size:40px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.stat-box .label{font-size:var(--fs-sm);color:var(--text2);margin-top:8px}
+.source-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
+.source-tag{background:var(--bg-card-alt);color:var(--text);padding:8px 14px;border-radius:6px;text-align:center;font-size:var(--fs-sm)}
+.timeline{position:relative;padding-left:30px}
+.timeline-item{position:relative;margin-bottom:32px}
+.timeline-item::before{content:'';position:absolute;left:-26px;top:4px;width:12px;height:12px;background:var(--accent);border-radius:50%}
+.timeline-item::after{content:'';position:absolute;left:-22px;top:18px;width:2px;height:calc(100% + 16px);background:var(--border)}
+.timeline-item:last-child::after{display:none}
+.timeline-date{font-size:var(--fs-xs);color:var(--accent);font-weight:500;margin-bottom:4px}
+.timeline-title{font-size:var(--fs-base);font-weight:600;color:var(--text);margin-bottom:6px}
+.timeline-desc{font-size:var(--fs-sm);color:var(--text2)}
+.theme-toggle{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.footer{text-align:center;padding:32px;background:var(--bg-card);border-top:1px solid var(--border);color:var(--text3);font-size:var(--fs-xs)}
+@media(max-width:768px){
+  .hero{padding:40px 24px}
+  .hero h1{font-size:var(--fs-2xl)}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .feature-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>FinFeed</h1>
+    <div class="header-links">
+        <a href="/">首页</a>
+        <a href="/dashboard">大屏</a>
+        <a href="/about">关于</a>
+        <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="切换主题">&#9790;</button>
+    </div>
+</div>
+
+<div class="hero">
+    <h1>📊 FinFeed 实时财经新闻监控系统</h1>
+    <p>一站式财经新闻数据抓取、分析与可视化平台，支持多源聚合、智能分析和实时监控</p>
+</div>
+
+<div class="container">
+    <div class="section">
+        <h2 class="section-title">核心功能</h2>
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-icon">🌐</div>
+                <h3 class="card-title">多源新闻聚合</h3>
+                <p class="card-desc">支持20+主流财经新闻源，包括财联社、东方财富、新浪财经、金十数据等，实时抓取最新财经资讯</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🤖</div>
+                <h3 class="card-title">智能分析引擎</h3>
+                <p class="card-desc">内置情绪分析、重要性评估、关键词提取、分类自动标注等AI分析能力</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📈</div>
+                <h3 class="card-title">数据可视化大屏</h3>
+                <p class="card-desc">实时数据大屏展示，包含来源分布、发布趋势、情绪分布、分类统计等多维度图表</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">💾</div>
+                <h3 class="card-title">离线数据缓存</h3>
+                <p class="card-desc">支持7天离线数据回溯，本地SQLite数据库存储，确保数据安全可靠</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📤</div>
+                <h3 class="card-title">多格式导出</h3>
+                <p class="card-desc">支持JSON、CSV、Excel、Markdown等多种格式导出，方便数据二次分析</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🕐</div>
+                <h3 class="card-title">定时自动抓取</h3>
+                <p class="card-desc">支持自定义抓取间隔，后台自动运行，数据实时更新</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">技术架构</h2>
+        <div class="feature-grid">
+            <div class="feature-item">
+                <div class="feature-icon">🔧</div>
+                <div class="feature-content">
+                    <h3>模块化设计</h3>
+                    <p>核心模块分离：抓取器(Fetcher)、解析器(Parser)、存储(Storage)、分析(Analysis)、UI(Web)，各模块独立可扩展</p>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">🔄</div>
+                <div class="feature-content">
+                    <h3>增量更新机制</h3>
+                    <p>基于时间戳的增量抓取，避免重复请求，提高效率，支持断点续传和离线回补</p>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">🔒</div>
+                <div class="feature-content">
+                    <h3>防重复去重</h3>
+                    <p>基于URL哈希和标题哈希的双重去重机制，确保每条新闻只存储一次</p>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">⚡</div>
+                <div class="feature-content">
+                    <h3>高性能存储</h3>
+                    <p>SQLite WAL模式，支持并发读写，缓存大小优化，确保大规模数据快速存取</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">数据统计</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="number">20+</div>
+                <div class="label">新闻来源</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">500+</div>
+                <div class="label">单次抓取</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">7天</div>
+                <div class="label">离线回溯</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">30秒</div>
+                <div class="label">自动刷新</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">支持的新闻来源</h2>
+        <div class="source-list">
+            <div class="source-tag">财联社</div>
+            <div class="source-tag">东方财富</div>
+            <div class="source-tag">新浪财经</div>
+            <div class="source-tag">金十数据</div>
+            <div class="source-tag">同花顺</div>
+            <div class="source-tag">界面新闻</div>
+            <div class="source-tag">澎湃新闻</div>
+            <div class="source-tag">凤凰财经</div>
+            <div class="source-tag">和讯网</div>
+            <div class="source-tag">每经网</div>
+            <div class="source-tag">格隆汇</div>
+            <div class="source-tag">21经济网</div>
+            <div class="source-tag">华尔街见闻</div>
+            <div class="source-tag">雅虎财经</div>
+            <div class="source-tag">巨潮公告</div>
+            <div class="source-tag">企查查</div>
+            <div class="source-tag">财联社电报</div>
+            <div class="source-tag">法布财经</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">更新日志</h2>
+        <div class="timeline">
+            <div class="timeline-item">
+                <div class="timeline-date">2026-07-19</div>
+                <div class="timeline-title">大屏功能全面升级</div>
+                <div class="timeline-desc">移除热点关键词云图，优化5列图表布局，增加重要性指示条，统一视觉风格，修复全屏切换问题</div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">2026-07-19</div>
+                <div class="timeline-title">代码清理与优化</div>
+                <div class="timeline-desc">移除测试文件、缓存文件、死代码，统一CATCH_UP_MAX_DAYS常量，优化代码结构</div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">2026-07-19</div>
+                <div class="timeline-title">时间解析修复</div>
+                <div class="timeline-desc">修复澎湃新闻、凤凰财经、界面新闻时间显示为00:00:00的问题，调整相对时间解析逻辑</div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">2026-07-18</div>
+                <div class="timeline-title">新增HTML解析器</div>
+                <div class="timeline-desc">新增凤凰财经、界面新闻、澎湃新闻、和讯网HTML解析器，支持URL去重</div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">2026-07-18</div>
+                <div class="timeline-title">离线回补功能</div>
+                <div class="timeline-desc">实现Cninfo巨潮公告7天离线回补，添加CATCH_UP_MAX_DAYS常量和通用分页机制</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">改进建议</h2>
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:12px">🔮 未来规划</h3>
+            <ul style="color:var(--text2);font-size:var(--fs-sm);line-height:1.8;list-style-position:inside">
+                <li><strong>实时推送</strong>：支持WebSocket实时推送，新闻即时通知</li>
+                <li><strong>股票关联</strong>：自动识别新闻涉及的股票代码，关联行情数据</li>
+                <li><strong>智能预警</strong>：基于情绪和重要性的智能预警系统</li>
+                <li><strong>API接口</strong>：提供RESTful API，支持第三方集成</li>
+                <li><strong>移动端适配</strong>：优化移动端体验，支持PWA</li>
+                <li><strong>多语言支持</strong>：支持中英文双语界面</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    FinFeed 实时财经新闻监控系统 | 基于 Python + ECharts 构建
+</div>
+
+<script>
+function getTheme() {
+    try { return document.documentElement.getAttribute('data-theme') || 'dark'; }
+    catch(e) { return 'dark'; }
+}
+
+function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    const btn = document.getElementById('theme-btn');
+    btn.innerHTML = t === 'dark' ? '\u2600' : '\u263E';
+    btn.title = t === 'dark' ? '切换到亮色主题' : '切换到暗色主题';
+    try { localStorage.setItem('finfeed_theme', t); } catch(e) {}
+}
+
+function toggleTheme() {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
+try {
+    const saved = localStorage.getItem('finfeed_theme');
+    if (saved) setTheme(saved);
+} catch(e) {}
+</script>
+</body>
+</html>
