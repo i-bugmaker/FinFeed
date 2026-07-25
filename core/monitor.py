@@ -45,6 +45,9 @@ class MonitorManager:
         self._cycle = 0
         self._shutdown_event = asyncio.Event()
         self._last_exit_save_ts = 0
+        self._catch_up_task: Optional[asyncio.Task] = None
+        self._catch_up_completed = False
+        self._catch_up_total = 0
 
     def _setup_catch_up(self) -> tuple[bool, str]:
         """设置离线补抓状态"""
@@ -103,15 +106,24 @@ class MonitorManager:
             self._all_collected_news = self._all_collected_news[:MAX_NEWS_CACHE]
 
     async def _run_catch_up(self, render: Callable) -> int:
-        """执行离线补抓"""
+        """执行离线补抓（后台异步执行）"""
         catch_up_total = 0
+        from config.settings import CATCH_UP_SOURCES_PER_CYCLE, CATCH_UP_INTERVAL
 
         for cu_cycle in range(1, MAX_CATCH_UP_CYCLES + 1):
+            if self._shutdown_event.is_set():
+                break
+
             cu_status = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 已补 {catch_up_total} 条"
             render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
                    self._source_stats, DEFAULT_INTERVAL, cu_status)
+            update_web_state(self._all_collected_news, self._source_stats, 0,
+                             self._total_in_db, catch_up_total, cu_status)
 
-            all_news, stats, inserted = await self._pipeline.run_cycle(cycle=cu_cycle, catch_up_mode=True)
+            all_news, stats, inserted = await self._pipeline.run_cycle(
+                cycle=cu_cycle, catch_up_mode=True,
+                sources_per_cycle=CATCH_UP_SOURCES_PER_CYCLE
+            )
             catch_up_total += inserted
             self._source_stats = stats
             self._total_in_db += inserted
@@ -126,12 +138,25 @@ class MonitorManager:
 
             if inserted == 0 and cu_cycle > 1:
                 break
+
             await asyncio.sleep(CATCH_UP_INTERVAL)
+
+            await asyncio.sleep(0.5)
 
         self._last_exit_save_ts = int(time.time())
         db_set_last_exit_ts(self._last_exit_save_ts)
+        self._catch_up_completed = True
 
         return catch_up_total
+
+    async def _background_catch_up(self, render: Callable):
+        """后台补抓任务"""
+        try:
+            self._catch_up_total = await self._run_catch_up(render)
+            logger.info(f"后台补抓完成，共补抓 {self._catch_up_total} 条")
+        except Exception as e:
+            logger.error(f"后台补抓异常: {e}")
+            self._catch_up_completed = True
 
     async def _run_normal_cycle(self, interval: int, render: Callable) -> bool:
         """执行正常抓取周期"""
@@ -196,11 +221,19 @@ class MonitorManager:
     async def _run_cycles(self, interval: int, render: Callable, catch_up_needed: bool) -> None:
         """运行监控循环"""
         if catch_up_needed:
-            await self._run_catch_up(render)
+            self._catch_up_task = asyncio.create_task(self._background_catch_up(render))
+            logger.info("后台补抓任务已启动")
 
         while True:
             if not await self._run_normal_cycle(interval, render):
                 break
+
+            if self._catch_up_task and self._catch_up_task.done():
+                try:
+                    self._catch_up_task.result()
+                except Exception as e:
+                    logger.error(f"后台补抓任务异常: {e}")
+                self._catch_up_task = None
 
     async def run_once(self) -> tuple[int, int, int]:
         """只抓取一次"""
@@ -315,6 +348,8 @@ class MonitorManager:
     def shutdown(self):
         """停止监控"""
         self._shutdown_event.set()
+        if self._catch_up_task and not self._catch_up_task.done():
+            logger.info("后台补抓任务将在当前循环完成后停止")
 
     @property
     def all_collected_news(self) -> List[NewsItem]:

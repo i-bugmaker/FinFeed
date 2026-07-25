@@ -114,9 +114,18 @@ SOURCE_SKIP_REQ_TRACE = {"21经济网", "巨潮公告", "格隆汇快讯"}
 # 离线补抓配置
 # ============================================================
 MAX_CATCH_UP_CYCLES = 10
-CATCH_UP_INTERVAL = 1
+CATCH_UP_INTERVAL = 2
 OFFLINE_GAP_THRESHOLD = 60
 CATCH_UP_MAX_DAYS = 7
+
+# 补抓专用并发控制（低于正常抓取，避免影响前端）
+CATCH_UP_CONCURRENCY = 2
+# 补抓每批入库数量（减少数据库压力）
+CATCH_UP_BATCH_SIZE = 50
+# 补抓模式下每个源的最小请求间隔（秒）
+CATCH_UP_MIN_INTERVAL = 3
+# 补抓后台运行时，每次循环处理的源数量
+CATCH_UP_SOURCES_PER_CYCLE = 3
 
 # ============================================================
 # 断路器配置

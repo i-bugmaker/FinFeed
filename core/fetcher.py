@@ -218,21 +218,30 @@ class NewsFetcher:
         return news_list
 
     async def fetch_all_news(
-        self, cycle: int = 1, catch_up_mode: bool = False
+        self, cycle: int = 1, catch_up_mode: bool = False, sources_per_cycle: int = 0
     ) -> Tuple[List[NewsItem], Dict[str, int]]:
         """并发抓取所有新闻源
 
         Args:
             cycle: 当前轮次（用于分级调度）
             catch_up_mode: 是否为补抓模式
+            sources_per_cycle: 每轮处理的源数量（0表示全部，补抓模式下使用）
 
         Returns:
             (所有新闻列表, 各源抓取数量统计)
         """
         import asyncio
+        from config.settings import CATCH_UP_CONCURRENCY, CATCH_UP_MIN_INTERVAL
 
-        semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+        concurrency = CATCH_UP_CONCURRENCY if catch_up_mode else FETCH_CONCURRENCY
+        semaphore = asyncio.Semaphore(concurrency)
+
         sources = get_enabled_sources()
+        if catch_up_mode and sources_per_cycle > 0:
+            start_idx = (cycle - 1) * sources_per_cycle
+            sources = sources[start_idx:start_idx + sources_per_cycle]
+            if not sources:
+                return [], {}
 
         async with httpx.AsyncClient(
             timeout=15.0, follow_redirects=True, verify=True,
@@ -243,6 +252,8 @@ class NewsFetcher:
                 if should_skip_source(source.name, cycle) and not catch_up_mode:
                     return source.name, []
                 async with semaphore:
+                    if catch_up_mode:
+                        await asyncio.sleep(CATCH_UP_MIN_INTERVAL)
                     return source.name, await self.fetch_news_from_source(source, shared_client, catch_up_mode)
 
             tasks = [asyncio.create_task(_fetch_with_sem(s)) for s in sources]
@@ -308,6 +319,6 @@ async def fetch_news_from_source(
     return await get_fetcher().fetch_news_from_source(source, client, catch_up_mode)
 
 
-async def fetch_all_news(cycle: int = 1, catch_up_mode: bool = False) -> Tuple[List[NewsItem], Dict[str, int]]:
+async def fetch_all_news(cycle: int = 1, catch_up_mode: bool = False, sources_per_cycle: int = 0) -> Tuple[List[NewsItem], Dict[str, int]]:
     """并发抓取所有新闻源"""
-    return await get_fetcher().fetch_all_news(cycle, catch_up_mode)
+    return await get_fetcher().fetch_all_news(cycle, catch_up_mode, sources_per_cycle)

@@ -65,25 +65,41 @@ class NewsPipeline:
         if callback in self._callbacks:
             self._callbacks.remove(callback)
 
-    async def run_cycle(self, cycle: int = 1, catch_up_mode: bool = False) -> tuple[list[NewsItem], dict[str, int], int]:
+    async def run_cycle(self, cycle: int = 1, catch_up_mode: bool = False, sources_per_cycle: int = 0) -> tuple[list[NewsItem], dict[str, int], int]:
         """执行一轮完整的抓取流程
 
         Args:
             cycle: 当前轮次
             catch_up_mode: 是否为补抓模式
+            sources_per_cycle: 每轮处理的源数量（0表示全部，补抓模式下使用）
 
         Returns:
             (所有新闻列表, 各源统计, 新增入库数量)
         """
         self._ensure_init()
 
-        all_news, source_stats = await fetch_all_news(cycle=cycle, catch_up_mode=catch_up_mode)
+        all_news, source_stats = await fetch_all_news(cycle=cycle, catch_up_mode=catch_up_mode, sources_per_cycle=sources_per_cycle)
+
+        if not all_news:
+            return all_news, source_stats, 0
 
         deduped_news = self._dedup_engine.batch_dedup(all_news)
 
-        enriched_news = _enrich_news(deduped_news)
-
-        inserted_items, inserted_count = db_insert_news(enriched_news)
+        if catch_up_mode:
+            from config.settings import CATCH_UP_BATCH_SIZE
+            enriched_news = _enrich_news(deduped_news)
+            inserted_count = 0
+            inserted_items = []
+            for i in range(0, len(enriched_news), CATCH_UP_BATCH_SIZE):
+                batch = enriched_news[i:i + CATCH_UP_BATCH_SIZE]
+                batch_inserted, batch_count = db_insert_news(batch)
+                inserted_count += batch_count
+                inserted_items.extend(batch_inserted)
+                if catch_up_mode and i + CATCH_UP_BATCH_SIZE < len(enriched_news):
+                    await __import__('asyncio').sleep(0.5)
+        else:
+            enriched_news = _enrich_news(deduped_news)
+            inserted_items, inserted_count = db_insert_news(enriched_news)
 
         if inserted_items and self._callbacks:
             for cb in self._callbacks:
