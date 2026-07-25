@@ -412,3 +412,8 @@ def get_enabled_sources() -> list[NewsSource]:
 def get_forum_sources() -> list[NewsSource]:
     """获取所有舆情论坛数据源"""
     return [s for s in FORUM_SOURCES if s.enabled]
+
+
+def get_forum_source_names() -> set[str]:
+    """获取所有舆情论坛数据源的名称集合"""
+    return {s.name for s in FORUM_SOURCES}

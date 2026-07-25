@@ -599,7 +599,7 @@ function connectSSE(){
     state.sse.addEventListener('news',(e)=>{
       try{
         const d=JSON.parse(e.data);
-        if(d.type==='new_news'&&d.items&&d.items.length){
+        if(d.type==='new_news'&&d.category==='forum'&&d.items&&d.items.length){
           toast(`收到 ${d.count} 条新帖子`,'new','新消息');
           if(state.offset<=PAGE_SIZE&&!state.keyword&&state.source==='all'&&state.sentiment==='all'&&state.dateRange==='all'&&!state.stockFilter){
             loadNews(true);

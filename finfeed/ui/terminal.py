@@ -16,8 +16,18 @@ from rich.style import Style
 from finfeed.config.settings import (
     get_source_color, get_display_name, DEFAULT_WEB_PORT,
 )
+from finfeed.config.sources import get_forum_source_names
 from finfeed.utils.time_utils import now_bj
 from finfeed.storage.models import NewsItem
+
+_FORUM_SOURCE_NAMES = get_forum_source_names()
+
+
+def _filter_forum_content(news_list: list[NewsItem], source_stats: dict[str, int]) -> tuple[list[NewsItem], dict[str, int]]:
+    """过滤掉舆情相关的新闻和统计数据，仅保留财经新闻"""
+    filtered_news = [n for n in news_list if n.source not in _FORUM_SOURCE_NAMES]
+    filtered_stats = {name: cnt for name, cnt in source_stats.items() if name not in _FORUM_SOURCE_NAMES}
+    return filtered_news, filtered_stats
 
 console = Console()
 
@@ -82,6 +92,8 @@ def build_display(
 ) -> Group:
     """构建完整的终端布局"""
     now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+
+    news_list, source_stats = _filter_forum_content(news_list, source_stats)
 
     merged_stats: dict[str, int] = {}
     for name, count in source_stats.items():
@@ -155,6 +167,7 @@ def build_display(
 
 def print_once_result(news_list: list[NewsItem], total_inserted: int, total_in_db: int, catch_up_cycles: int = 0):
     """单次模式打印结果"""
+    news_list, _ = _filter_forum_content(news_list, {})
     console.print()
     catch_up_str = f" │ [yellow]离线补抓 {catch_up_cycles} 轮[/]" if catch_up_cycles > 0 else ""
     console.print(Panel(
@@ -168,7 +181,7 @@ def print_once_result(news_list: list[NewsItem], total_inserted: int, total_in_d
                 Text.assemble(
                     (now_bj().strftime('%Y-%m-%d %H:%M:%S'), "cyan"),
                     (" │ ", "dim"),
-                    ("抓取 ", "dim"),
+                    ("抓取(财经新闻) ", "dim"),
                     (f"{len(news_list)}", "bold bright_white"),
                     (" 条 │ ", "dim"),
                     ("新增入库 ", "dim"),
