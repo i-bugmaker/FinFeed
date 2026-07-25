@@ -46,13 +46,13 @@ desktop.ini
 *.temp
 
 # 旧代码目录（已移入 finfeed/）
-alerts/
-analysis/
-config/
-core/
-storage/
-ui/
-utils/
+/alerts/
+/analysis/
+/config/
+/core/
+/storage/
+/ui/
+/utils/
 
 # 爬虫临时数据
 .firecrawl/
