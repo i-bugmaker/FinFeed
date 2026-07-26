@@ -48,6 +48,16 @@ class SinaParser(BaseParser):
             ))
         return news_list
 
+    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """补抓模式：通过分页获取历史数据"""
+        if not self._catch_up_mode or self.last_ts <= 0:
+            return []
+        params = {"pageid": "153", "lid": "2509", "num": "50"}
+        return await self._catch_up_paginated(
+            http_client, self.source.url.split("?")[0], params,
+            page_param="page", max_pages=10, items_per_page=50
+        )
+
 
 class CLSParser(BaseParser):
     """财联社电报 - 使用 /api/cache 无签名API"""
@@ -89,7 +99,10 @@ class CLSParser(BaseParser):
                 headers=dict(self.source.headers),
             )
             if resp.status_code == 200:
-                return await self.parse(resp)
+                news_list = await self.parse(resp)
+                if news_list:
+                    self.last_ts = max(n.publish_ts for n in news_list if n.publish_ts > 0)
+                return news_list
         except Exception as e:
             logger.warning(f"财联社补抓失败：{str(e)[:80]}")
         return []
@@ -134,7 +147,7 @@ class THSParser(BaseParser):
         params = dict(self.source.params)
         return await self._catch_up_paginated(
             http_client, self.source.url, params,
-            page_param="page", max_pages=50, items_per_page=20
+            page_param="page", max_pages=10, items_per_page=20
         )
 
 
@@ -144,7 +157,8 @@ class EastMoneyParser(BaseParser):
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
         data = response.json()
-        for a in data.get("data", {}).get("fastNewsList", []):
+        data_section = data.get("data") or {}
+        for a in data_section.get("fastNewsList", []) or []:
             st = a.get("showTime", "")
             ts = ts_from_bj_str(st)
             if ts and ts <= self.last_ts:
@@ -222,7 +236,7 @@ class Jingji21Parser(BaseParser):
         params = dict(self.source.params)
         return await self._catch_up_paginated(
             http_client, self.source.url, params,
-            page_param="page", max_pages=50, items_per_page=20
+            page_param="page", max_pages=10, items_per_page=20
         )
 
 
@@ -406,10 +420,10 @@ class GelonghuiLiveParser(BaseParser):
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
         """补抓模式：通过分页获取历史数据"""
         params = dict(self.source.params)
-        params["limit"] = 50
+        params["pageSize"] = 50
         return await self._catch_up_paginated(
             http_client, self.source.url, params,
-            page_param="page", max_pages=50, items_per_page=50
+            page_param="pageNo", max_pages=10, items_per_page=50
         )
 
 
@@ -539,7 +553,7 @@ class CninfoParser(BaseParser):
             se_date = f"{date_str}~{date_str}"
 
             page_num = 1
-            max_pages = 50
+            max_pages = 10
             while page_num <= max_pages:
                 try:
                     params = dict(self.source.params)

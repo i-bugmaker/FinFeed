@@ -145,15 +145,12 @@ class FastbullParser(BaseParser):
             self.source.url,
             params,
             page_param="pageNo",
-            max_pages=50,
+            max_pages=10,
             items_per_page=50
         )
 
         all_news.sort(key=lambda x: x.publish_ts, reverse=True)
         logger.info(f"法布财经补抓完成：共获取{len(all_news)}条历史新闻")
-
-        if all_news:
-            self.last_ts = max(n.publish_ts for n in all_news if n.publish_ts > 0)
 
         return all_news
 
@@ -803,15 +800,12 @@ class YicaiParser(BaseParser):
             "https://www.yicai.com/api/ajax/getbrieflist",
             {"page": 1, "pagesize": 50, "id": 0},
             page_param="page",
-            max_pages=50,
+            max_pages=10,
             items_per_page=50
         )
 
         all_news.sort(key=lambda x: x.publish_ts, reverse=True)
         logger.info(f"第一财经补抓完成：共获取{len(all_news)}条历史新闻")
-
-        if all_news:
-            self.last_ts = max(n.publish_ts for n in all_news if n.publish_ts > 0)
 
         return all_news
 

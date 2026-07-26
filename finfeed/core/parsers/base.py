@@ -52,10 +52,6 @@ class BaseParser(ABC):
         """解析 HTTP 响应，返回新闻列表"""
         pass
 
-    async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
-        """补抓模式：获取历史数据（默认实现为空，子类可覆盖）"""
-        return []
-
     def _get_logger(self):
         """获取日志记录器"""
         return logger
@@ -66,7 +62,7 @@ class BaseParser(ABC):
         url: str,
         params: Dict[str, Any],
         page_param: str = "page",
-        max_pages: int = 50,
+        max_pages: int = 15,
         items_per_page: int = 20,
         sleep_interval: float = CATCH_UP_MIN_INTERVAL,
     ) -> list[NewsItem]:
@@ -87,47 +83,61 @@ class BaseParser(ABC):
         all_news = []
         page_num = 1
         logger = self._get_logger()
+        catch_up_start_ts = self.get_catch_up_start_ts()
 
-        while page_num <= max_pages:
-            try:
-                page_params = dict(params)
-                page_params[page_param] = page_num
+        saved_last_ts = self.last_ts
+        self.last_ts = 0
 
-                if self.source.method == "POST":
-                    resp = await http_client.post(
-                        url,
-                        headers=dict(self.source.headers),
-                        data=page_params
-                    )
-                else:
-                    resp = await http_client.get(
-                        url,
-                        headers=dict(self.source.headers),
-                        params=page_params
-                    )
+        try:
+            while page_num <= max_pages:
+                try:
+                    page_params = dict(params)
+                    page_params[page_param] = page_num
 
-                if resp.status_code != 200:
-                    logger.warning(f"{self.source.name} 补抓请求失败：HTTP {resp.status_code}")
+                    if self.source.method == "POST":
+                        resp = await http_client.post(
+                            url,
+                            headers=dict(self.source.headers),
+                            data=page_params
+                        )
+                    else:
+                        resp = await http_client.get(
+                            url,
+                            headers=dict(self.source.headers),
+                            params=page_params
+                        )
+
+                    if resp.status_code != 200:
+                        logger.warning(f"{self.source.name} 补抓请求失败：HTTP {resp.status_code}")
+                        break
+
+                    news_list = await self.parse(resp)
+                    if not news_list:
+                        break
+
+                    all_news.extend(news_list)
+
+                    oldest_ts = min((n.publish_ts for n in news_list if n.publish_ts > 0), default=int(time.time()))
+                    if oldest_ts <= catch_up_start_ts:
+                        break
+
+                    if len(news_list) < items_per_page:
+                        break
+
+                    page_num += 1
+                    await asyncio.sleep(sleep_interval)
+
+                except Exception as e:
+                    logger.warning(f"{self.source.name} 补抓失败：{str(e)[:80]}")
                     break
+        finally:
+            self.last_ts = saved_last_ts
 
-                news_list = await self.parse(resp)
-                if not news_list:
-                    break
+        filtered = [n for n in all_news if n.publish_ts > catch_up_start_ts]
+        if filtered:
+            self.last_ts = max(n.publish_ts for n in filtered if n.publish_ts > 0)
 
-                all_news.extend(news_list)
-                logger.debug(f"{self.source.name} 补抓：第{page_num}页，新增{len(news_list)}条")
-
-                if len(news_list) < items_per_page:
-                    break
-
-                page_num += 1
-                await asyncio.sleep(sleep_interval)
-
-            except Exception as e:
-                logger.warning(f"{self.source.name} 补抓失败：{str(e)[:80]}")
-                break
-
-        return all_news
+        return filtered
 
     async def _catch_up_single_request(self, http_client, url: str, params: Optional[Dict[str, Any]] = None) -> list[NewsItem]:
         """单次请求补抓（适用于不支持分页的源）
@@ -181,7 +191,7 @@ class BaseParser(ABC):
         url: str,
         params: Dict[str, Any],
         page_param: str = "page",
-        max_pages: int = 50,
+        max_pages: int = 15,
         items_per_page: int = 20,
         sleep_interval: float = CATCH_UP_MIN_INTERVAL,
     ) -> list[NewsItem]:
@@ -205,18 +215,12 @@ class BaseParser(ABC):
         logger = self._get_logger()
         logger.info(f"{self.source.name}补抓模式：开始分页补抓")
 
-        all_news = await self._paginated_fetch(
+        filtered = await self._paginated_fetch(
             http_client, url, params, page_param, max_pages, items_per_page, sleep_interval
         )
 
-        catch_up_start_ts = self.get_catch_up_start_ts()
-        filtered = [n for n in all_news if n.publish_ts > catch_up_start_ts]
-
         filtered.sort(key=lambda x: x.publish_ts, reverse=True)
         logger.info(f"{self.source.name}补抓完成：共获取{len(filtered)}条历史新闻")
-
-        if filtered:
-            self.last_ts = max(n.publish_ts for n in filtered if n.publish_ts > 0)
 
         return filtered
 

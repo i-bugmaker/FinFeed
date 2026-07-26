@@ -13,12 +13,12 @@ from typing import Optional, Dict, List, Callable
 from finfeed.config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL, MAX_NEWS_CACHE,
     MAX_CATCH_UP_CYCLES, CATCH_UP_INTERVAL, OFFLINE_GAP_THRESHOLD,
-    CATCH_UP_MAX_DAYS,
+    CATCH_UP_MAX_DAYS, CATCH_UP_CONCURRENCY, CATCH_UP_MIN_INTERVAL,
 )
 from finfeed.storage.database import (
     db_get_recent_news, db_count_news,
     db_get_last_exit_ts, db_set_last_exit_ts,
-    db_get_all_source_last_ts,
+    db_get_all_source_last_ts, db_insert_news,
 )
 from finfeed.storage.models import NewsItem
 from .pipeline import get_pipeline
@@ -106,15 +106,17 @@ class MonitorManager:
             self._all_collected_news = self._all_collected_news[:MAX_NEWS_CACHE]
 
     async def _run_catch_up(self, render: Callable) -> int:
-        """执行离线补抓（后台异步执行）"""
+        """执行离线补抓（先完成补抓再开始正常循环，避免 last_ts 被覆盖）"""
         catch_up_total = 0
-        from finfeed.config.settings import CATCH_UP_SOURCES_PER_CYCLE, CATCH_UP_INTERVAL
+        from finfeed.config.settings import CATCH_UP_INTERVAL
 
-        for cu_cycle in range(1, MAX_CATCH_UP_CYCLES + 1):
-            if self._shutdown_event.is_set():
-                break
+        cu_cycle = 0
+        max_cycles = 3
 
-            cu_status = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 已补 {catch_up_total} 条"
+        while cu_cycle < max_cycles and not self._shutdown_event.is_set():
+            cu_cycle += 1
+
+            cu_status = f"补抓第{cu_cycle}/{max_cycles}轮 | 已补{catch_up_total}条"
             render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
                    self._source_stats, DEFAULT_INTERVAL, cu_status)
             update_web_state(self._all_collected_news, self._source_stats, 0,
@@ -122,26 +124,22 @@ class MonitorManager:
 
             all_news, stats, inserted = await self._pipeline.run_cycle(
                 cycle=cu_cycle, catch_up_mode=True,
-                sources_per_cycle=CATCH_UP_SOURCES_PER_CYCLE
+                sources_per_cycle=0
             )
             catch_up_total += inserted
-            self._source_stats = stats
+            self._source_stats.update(stats)
             self._total_in_db += inserted
 
             self._merge_news(all_news)
 
-            cu_status2 = f"补抓 {cu_cycle}/{MAX_CATCH_UP_CYCLES} | 本轮 +{inserted} | 累计 +{catch_up_total}"
+            cu_status2 = f"补抓第{cu_cycle}/{max_cycles}轮 | 本轮+{inserted} | 累计+{catch_up_total}"
             render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
                    self._source_stats, DEFAULT_INTERVAL, cu_status2)
             update_web_state(self._all_collected_news, self._source_stats, 0,
                              self._total_in_db, catch_up_total, cu_status2)
 
-            if inserted == 0 and cu_cycle > 1:
-                break
-
-            await asyncio.sleep(CATCH_UP_INTERVAL)
-
-            await asyncio.sleep(0.5)
+            if cu_cycle < max_cycles:
+                await asyncio.sleep(CATCH_UP_INTERVAL)
 
         self._last_exit_save_ts = int(time.time())
         db_set_last_exit_ts(self._last_exit_save_ts)
@@ -221,19 +219,25 @@ class MonitorManager:
     async def _run_cycles(self, interval: int, render: Callable, catch_up_needed: bool) -> None:
         """运行监控循环"""
         if catch_up_needed:
-            self._catch_up_task = asyncio.create_task(self._background_catch_up(render))
-            logger.info("后台补抓任务已启动")
+            logger.info("开始补抓历史数据，补抓完成后将进入实时监控...")
+            try:
+                self._catch_up_total = await self._run_catch_up(render)
+                logger.info(f"补抓完成，共补抓 {self._catch_up_total} 条历史新闻")
+            except Exception as e:
+                logger.error(f"补抓过程异常: {e}", exc_info=True)
+            self._catch_up_completed = True
+            self._last_exit_save_ts = int(time.time())
+            db_set_last_exit_ts(self._last_exit_save_ts)
+
+            self._all_collected_news = db_get_recent_news(limit=MAX_NEWS_CACHE)
+            try:
+                self._total_in_db = db_count_news()
+            except Exception:
+                pass
 
         while True:
             if not await self._run_normal_cycle(interval, render):
                 break
-
-            if self._catch_up_task and self._catch_up_task.done():
-                try:
-                    self._catch_up_task.result()
-                except Exception as e:
-                    logger.error(f"后台补抓任务异常: {e}")
-                self._catch_up_task = None
 
     async def run_once(self) -> tuple[int, int, int]:
         """只抓取一次"""

@@ -44,7 +44,11 @@ class NewsFetcher:
     def _get_parser(self, source: NewsSource) -> BaseParser:
         """获取或创建源对应的 Parser"""
         if source.name not in self._parsers:
-            self._parsers[source.name] = create_parser(source)
+            parser = create_parser(source)
+            saved_ts = db_get_source_last_ts(source.name)
+            if saved_ts > 0:
+                parser.last_ts = saved_ts
+            self._parsers[source.name] = parser
         return self._parsers[source.name]
 
     def init_all_parsers(self):
@@ -231,7 +235,6 @@ class NewsFetcher:
 
         async with httpx.AsyncClient(
             timeout=15.0, follow_redirects=True, verify=True,
-            http2=True,
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10, keepalive_expiry=30),
         ) as shared_client:
 
