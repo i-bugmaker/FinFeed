@@ -45,9 +45,10 @@ from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
 from finfeed.storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
     db_get_news_by_id, db_get_recent_news, db_mark_read, db_toggle_favorite,
-    db_query_news, db_get_statistics, db_get_favorites,
+    db_query_news, db_get_statistics, db_get_favorites, get_db,
 )
 from finfeed.storage.models import NewsItem
+from finfeed.core.health import get_health_monitor
 
 logger = logging.getLogger("news_monitor")
 
@@ -590,6 +591,77 @@ class _WebHandler(BaseHTTPRequestHandler):
             stats["cycle"] = _web_state.get("cycle", 0)
             stats["status"] = _web_state.get("status", "运行中")
             stats["new_count"] = _web_state.get("new_count", 0)
+
+        source_list = []
+        try:
+            health_monitor = get_health_monitor()
+            all_health = health_monitor.get_all_health()
+            enabled_sources = get_enabled_sources()
+
+            now_ts = int(time.time())
+            day_ago = now_ts - 86400
+
+            with get_db() as c:
+                for s in enabled_sources:
+                    raw_name = s.name
+                    display_name = get_display_name(raw_name)
+                    h = all_health.get(raw_name)
+
+                    c.execute(
+                        "SELECT COUNT(*) as today_count FROM news WHERE source = ? AND publish_ts >= ?",
+                        (display_name, day_ago),
+                    )
+                    row = c.fetchone()
+                    today_count = row["today_count"] if row else 0
+
+                    c.execute(
+                        "SELECT publish_ts FROM news WHERE source = ? ORDER BY publish_ts DESC LIMIT 1",
+                        (display_name,),
+                    )
+                    r2 = c.fetchone()
+                    last_news_ts = r2["publish_ts"] if r2 else 0
+
+                    status = "normal"
+                    if h:
+                        if h.is_circuit_open:
+                            status = "fused"
+                        elif h.consecutive_failures >= 2:
+                            status = "warning"
+                        elif h.total_requests > 0 and h.success_rate < 0.7:
+                            status = "warning"
+                        elif last_news_ts > 0 and (now_ts - last_news_ts) > 3600 * 6:
+                            status = "idle"
+                    else:
+                        if last_news_ts > 0 and (now_ts - last_news_ts) > 3600 * 12:
+                            status = "idle"
+
+                    last_success_str = ""
+                    if h and h.last_success_ts > 0:
+                        last_success_str = bj_str_from_ts(h.last_success_ts)
+                    elif last_news_ts > 0:
+                        last_success_str = bj_str_from_ts(last_news_ts)
+
+                    last_error_str = h.last_error if h and h.last_error else ""
+                    success_rate = round(h.success_rate * 100, 1) if h and h.total_requests > 0 else (100.0 if last_news_ts > 0 else 0)
+                    avg_latency = round(h.avg_latency * 1000, 0) if h else 0
+
+                    source_list.append({
+                        "name": display_name,
+                        "status": status,
+                        "success_rate": success_rate,
+                        "avg_latency": avg_latency,
+                        "today_count": today_count,
+                        "last_update": last_success_str,
+                        "last_error": last_error_str,
+                        "consecutive_failures": h.consecutive_failures if h else 0,
+                        "is_circuit_open": h.is_circuit_open if h else False,
+                    })
+        except Exception as e:
+            import traceback
+            logger.error(f"获取数据源状态失败: {e}")
+            logger.error(traceback.format_exc())
+
+        stats["source_health"] = source_list
         self._send_json(stats)
 
     def _serve_sse(self):
