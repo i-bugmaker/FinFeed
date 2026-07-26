@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """终端 UI 模块（基于 Rich）"""
 
-from typing import Optional
+import asyncio
+from typing import Optional, List, Dict, Callable
 
 from rich import box
 from rich.live import Live
@@ -28,6 +29,7 @@ def _filter_forum_content(news_list: list[NewsItem], source_stats: dict[str, int
     filtered_news = [n for n in news_list if n.source not in _FORUM_SOURCE_NAMES]
     filtered_stats = {name: cnt for name, cnt in source_stats.items() if name not in _FORUM_SOURCE_NAMES}
     return filtered_news, filtered_stats
+
 
 console = Console()
 
@@ -201,3 +203,77 @@ def print_once_result(news_list: list[NewsItem], total_inserted: int, total_in_d
     console.print()
     table = build_news_table(news_list)
     console.print(table)
+
+
+class TerminalUI:
+    """终端 TUI 实时监控界面"""
+
+    def __init__(self, interval: int, web_port: int = DEFAULT_WEB_PORT):
+        self._interval = interval
+        self._web_port = web_port
+        self._news_list: List[NewsItem] = []
+        self._source_stats: Dict[str, int] = {}
+        self._cycle = 0
+        self._total_news = 0
+        self._new_count = 0
+        self._status = "准备中"
+        self._live: Optional[Live] = None
+        self._update_event = asyncio.Event()
+        self._running = False
+
+    def update_data(
+        self,
+        news_list: List[NewsItem],
+        cycle: int,
+        total_news: int,
+        new_count: int,
+        source_stats: Dict[str, int],
+        status: str,
+    ):
+        """更新显示数据"""
+        self._news_list = news_list
+        self._cycle = cycle
+        self._total_news = total_news
+        self._new_count = new_count
+        self._source_stats = source_stats
+        self._status = status
+        self._update_event.set()
+
+    def _render(self) -> Group:
+        """渲染当前状态"""
+        return build_display(
+            news_list=self._news_list,
+            cycle=self._cycle,
+            total_news=self._total_news,
+            new_count=self._new_count,
+            source_stats=self._source_stats,
+            interval=self._interval,
+            status=self._status,
+            web_port=self._web_port,
+        )
+
+    async def run(self):
+        """启动 TUI 主循环"""
+        self._running = True
+        self._update_event.clear()
+
+        try:
+            console.clear()
+            with Live(self._render(), console=console, refresh_per_second=4, transient=True) as self._live:
+                while self._running:
+                    try:
+                        await asyncio.wait_for(self._update_event.wait(), timeout=1.0)
+                        self._live.update(self._render())
+                        self._update_event.clear()
+                    except asyncio.TimeoutError:
+                        pass
+        except Exception:
+            pass
+
+    def stop(self):
+        """停止 TUI"""
+        self._running = False
+        self._update_event.set()
+        if self._live:
+            self._live.stop()
+            self._live = None

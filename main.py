@@ -30,7 +30,7 @@ from finfeed.config.settings import (
 from finfeed.storage.database import init_db, db_set_last_exit_ts
 from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
 from finfeed.core.monitor import get_monitor
-from finfeed.ui.terminal import print_once_result
+from finfeed.ui.terminal import print_once_result, TerminalUI
 from finfeed.ui.web.server import start_web_server, stop_web_server
 
 logger = logging.getLogger("finfeed")
@@ -69,7 +69,7 @@ def setup_logging():
             "%H:%M:%S",
         )
     )
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.WARNING)
     
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
@@ -83,8 +83,9 @@ async def run_once():
 
 
 async def run_continuous(interval: int, web_port: int):
-    """持续监控模式"""
+    """持续监控模式（带TUI）"""
     monitor = get_monitor()
+    terminal_ui = TerminalUI(interval=interval, web_port=web_port)
     
     shutdown_event = asyncio.Event()
     
@@ -98,23 +99,60 @@ async def run_continuous(interval: int, web_port: int):
         except (ValueError, OSError):
             pass
     
-    async def monitor_task():
-        await monitor.run()
+    from finfeed.storage.database import db_get_recent_news, db_get_statistics, db_get_all_source_last_ts
     
-    task = asyncio.create_task(monitor_task())
+    async def update_tui():
+        while not shutdown_event.is_set():
+            try:
+                news = db_get_recent_news(limit=50)
+                stats = db_get_statistics()
+                source_last_ts = db_get_all_source_last_ts()
+                source_stats = {}
+                for src in source_last_ts:
+                    source_stats[src] = source_stats.get(src, 0) + 1
+                
+                status = "运行中" if monitor.is_running else "准备中"
+                if monitor.fetch_count > 0:
+                    status = f"第{monitor.fetch_count}轮"
+                
+                terminal_ui.update_data(
+                    news_list=news,
+                    cycle=monitor.fetch_count,
+                    total_news=stats.get("total", 0),
+                    new_count=monitor.total_new_count,
+                    source_stats=source_stats,
+                    status=status,
+                )
+            except Exception as e:
+                logger.debug(f"TUI更新异常: {e}")
+            await asyncio.sleep(2)
+    
+    tui_task = asyncio.create_task(terminal_ui.run())
+    update_task = asyncio.create_task(update_tui())
+    monitor_task = asyncio.create_task(monitor.run())
     
     await shutdown_event.wait()
     
+    terminal_ui.stop()
     await monitor.shutdown()
     
+    monitor_task.cancel()
     try:
-        await asyncio.wait_for(task, timeout=10)
-    except asyncio.TimeoutError:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await monitor_task
+    except asyncio.CancelledError:
+        pass
+    
+    tui_task.cancel()
+    try:
+        await tui_task
+    except asyncio.CancelledError:
+        pass
+    
+    update_task.cancel()
+    try:
+        await update_task
+    except asyncio.CancelledError:
+        pass
     
     stop_web_server()
     db_set_last_exit_ts(int(time.time()))
