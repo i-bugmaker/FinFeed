@@ -213,6 +213,21 @@ class NewsDatabase:
         except (json.JSONDecodeError, TypeError):
             stocks = []
 
+        importance_val = row["importance"] if row["importance"] is not None else 0.0
+        if importance_val < 2.0:
+            try:
+                from finfeed.analysis.importance import compute_importance
+                title_val = row["title"] if row["title"] is not None else ""
+                intro_val = row["intro"] if row["intro"] is not None else ""
+                importance_val = compute_importance(
+                    title=title_val,
+                    intro=intro_val,
+                    source=source,
+                    stocks_count=len(stocks)
+                )
+            except Exception:
+                importance_val = 5.0 if importance_val <= 0 else importance_val
+
         return NewsItem(
             id=row["id"] if "id" in row.keys() else None,
             title=row["title"] if row["title"] is not None else "",
@@ -224,7 +239,7 @@ class NewsDatabase:
             created_at=row["created_at"] if "created_at" in row.keys() and row["created_at"] is not None else "",
             category=row["category"] if row["category"] is not None else "",
             sentiment=(row["sentiment"] if row["sentiment"] is not None else "neutral") or "neutral",
-            importance=row["importance"] if row["importance"] is not None else 0.0,
+            importance=importance_val,
             keywords=keywords,
             stocks=stocks,
             is_read=bool(row["is_read"]) if "is_read" in row.keys() and row["is_read"] is not None else False,

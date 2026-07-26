@@ -118,6 +118,7 @@ tbody td{padding:18px 20px;vertical-align:middle}
 .imp-h{background:var(--orange);box-shadow:0 2px 8px var(--orange-bg)}
 .imp-m{background:var(--accent);box-shadow:0 2px 8px var(--accent-bg)}
 .imp-l{background:var(--text3);opacity:.7}
+.imp-vl{background:var(--text3);opacity:.45}
 
 .col-time{color:var(--text3);width:180px;white-space:nowrap;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
 .col-source{width:130px;font-size:var(--fs-sm);min-width:130px}
@@ -370,7 +371,7 @@ function impBadge(imp){
   if(imp>=6.5)return`<span class="imp-badge imp-h">重要</span>`;
   if(imp>=5.0)return`<span class="imp-badge imp-m">一般</span>`;
   if(imp>=3.0)return`<span class="imp-badge imp-l">较低</span>`;
-  return'';
+  return`<span class="imp-badge imp-vl">低</span>`;
 }
 
 function sentDot(s){

@@ -13,7 +13,8 @@ from typing import List
 from finfeed.storage.models import NewsItem
 from finfeed.storage.database import db_insert_news
 from finfeed.core.dedup import get_dedup_engine
-from finfeed.analysis.sentiment import analyze_sentiment_async, score_importance
+from finfeed.analysis.sentiment import analyze_sentiment_async
+from finfeed.analysis.importance import compute_importance
 from finfeed.analysis.text_analyzer import extract_keywords_simple
 
 logger = logging.getLogger("news_monitor")
@@ -111,9 +112,14 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
                     item.sentiment = "neutral"
 
             try:
-                item.importance = score_importance(item)
+                item.importance = compute_importance(
+                    title=item.title,
+                    intro=item.intro or "",
+                    source=item.source or "",
+                    stocks_count=len(item.stocks) if item.stocks else 0
+                )
             except Exception:
-                item.importance = 0.0
+                item.importance = 5.0
 
             processed.append(item)
         except Exception as e:
