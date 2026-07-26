@@ -94,14 +94,6 @@ body{
 
 .main-content{min-width:0}
 
-.stats-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px}
-.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
-.stat-card .num{font-size:var(--fs-xl);font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1.2}
-.stat-card .lbl{color:var(--text2);font-size:var(--fs-xs);margin-top:6px}
-.stat-card .num.green{color:var(--green)}
-.stat-card .num.orange{color:var(--orange)}
-.stat-card .num.star{color:var(--star)}
-
 table{width:100%;border-collapse:separate;border-spacing:0;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
 thead th{background:var(--bg-card-alt);color:var(--text);padding:18px 16px;text-align:left;position:sticky;top:0;border-bottom:2px solid var(--border);font-weight:600;font-size:var(--fs-sm);z-index:1;white-space:nowrap}
 tbody tr{border-bottom:1px solid var(--border)}
@@ -243,8 +235,6 @@ tbody td{padding:18px 16px;vertical-align:middle}
     </div>
   </div>
 </div>
-
-<div class="stats-bar" id="statsBar"></div>
 
 <div class="content-grid">
   <div class="main-content">
@@ -456,7 +446,6 @@ async function loadNews(reset=true){
     if(reset){
       state.news=newItems;
       renderSourceFilters();
-      renderStats();
       renderSideStats();
       state.lastServerTs=data.server_ts||Date.now()/1000;
     }else{
@@ -535,18 +524,6 @@ function renderNews(reset=false){
       tbody.insertAdjacentHTML('beforeend',newItems.map(renderItem).join(''));
     }
   }
-}
-
-function renderStats(){
-  const s=state.stats||{};
-  const el=document.getElementById('statsBar');
-  el.innerHTML=`
-    <div class="stat-card"><div class="num">${(s.total_news||0).toLocaleString()}</div><div class="lbl">总数据量</div></div>
-    <div class="stat-card"><div class="num green">+${s.total_24h||0}</div><div class="lbl">24小时新增</div></div>
-    <div class="stat-card"><div class="num star">${s.favorite_count||0}</div><div class="lbl">收藏数量</div></div>
-    <div class="stat-card"><div class="num orange">${state.total.toLocaleString()}</div><div class="lbl">当前筛选</div></div>
-    <div class="stat-card"><div class="num">${s.source_count||0}</div><div class="lbl">舆情来源</div></div>
-  `;
 }
 
 function renderSideStats(){

@@ -13,6 +13,7 @@ from rich.text import Text
 from rich.console import Console, Group
 from rich.align import Align
 from rich.style import Style
+from rich.layout import Layout
 
 from finfeed.config.settings import (
     get_source_color, get_display_name, DEFAULT_WEB_PORT,
@@ -90,7 +91,7 @@ def build_display(
     interval: int,
     status: str,
     web_port: int = DEFAULT_WEB_PORT,
-) -> Group:
+) -> Layout:
     """构建完整的终端布局"""
     now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -136,25 +137,30 @@ def build_display(
         padding=(0, 2),
     )
 
-    term_height = console.size.height
-    max_rows = max(10, term_height - 15)
-    table = build_news_table(news_list, max_rows=max_rows)
-
-    footer_panel = Panel(
-        Align.center(
-            Text.assemble(
-                ("按 Ctrl+C 退出", "dim"),
-                ("  │  ", "dim"),
-                ("网页仪表盘: ", "dim"),
-                (f"http://localhost:{web_port}", Style(color="bright_cyan", link=f"http://localhost:{web_port}", underline=False)),
-            )
-        ),
-        border_style="dim",
-        box=box.SIMPLE,
-        padding=(0, 1),
+    footer_text = Align.center(
+        Text.assemble(
+            ("按 Ctrl+C 退出", "dim"),
+            ("  │  ", "dim"),
+            ("网页仪表盘: ", "dim"),
+            (f"http://localhost:{web_port}", Style(color="bright_cyan", link=f"http://localhost:{web_port}", underline=False)),
+        )
     )
 
-    return Group(header_panel, table, footer_panel)
+    layout = Layout()
+    layout.split_column(
+        Layout(header_panel, name="header", size=4),
+        Layout(name="body"),
+        Layout(footer_text, name="footer", size=1),
+    )
+
+    term_height = console.size.height
+    body_height = term_height - 4 - 1
+    table_overhead = 4
+    max_rows = max(5, body_height - table_overhead)
+    table = build_news_table(news_list, max_rows=max_rows)
+    layout["body"].update(table)
+
+    return layout
 
 
 class TerminalUI:

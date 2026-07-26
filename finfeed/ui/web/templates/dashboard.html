@@ -15,6 +15,7 @@
   --red:#f85149;--red-bg:rgba(248,81,73,.1);
   --orange:#d29922;--orange-bg:rgba(210,153,34,.1);
   --purple:#bc8cff;--purple-bg:rgba(188,140,255,.1);
+  --star:#f0b429;--star-bg:rgba(240,180,41,.15);
   --shadow:0 1px 3px rgba(0,0,0,.3);--shadow-lg:0 4px 12px rgba(0,0,0,.4);
   --fs-xs:14px;--fs-sm:16px;--fs-base:20px;--fs-md:22px;--fs-lg:26px;--fs-xl:30px;
   --lh-base:1.8;--radius:8px;
@@ -29,6 +30,7 @@
   --red:#dc2626;--red-bg:rgba(220,38,38,.08);
   --orange:#ea580c;--orange-bg:rgba(234,88,12,.08);
   --purple:#9333ea;--purple-bg:rgba(147,51,234,.08);
+  --star:#f59e0b;--star-bg:rgba(245,158,11,.1);
   --shadow:0 1px 3px rgba(0,0,0,.06);--shadow-lg:0 4px 12px rgba(0,0,0,.1);
   --fs-xs:14px;--fs-sm:16px;--fs-base:20px;--fs-md:22px;--fs-lg:26px;--fs-xl:30px;
   --lh-base:1.8;--radius:8px;
@@ -313,6 +315,14 @@ body {
         <div class="change" id="hourlyChange"></div>
     </div>
     <div class="stat-card">
+        <div class="number" style="color:var(--star)" id="favoriteCount">0</div>
+        <div class="label">收藏数量</div>
+    </div>
+    <div class="stat-card">
+        <div class="number" style="color:var(--orange)" id="unreadCount">0</div>
+        <div class="label">未读新闻</div>
+    </div>
+    <div class="stat-card">
         <div class="number" id="sourceCount">0</div>
         <div class="label">信息来源</div>
     </div>
@@ -505,6 +515,8 @@ function updateCharts(data) {
 
     document.getElementById('totalNews').textContent = (data.total_news||0).toLocaleString();
     document.getElementById('total24h').textContent = (data.total_24h||0).toLocaleString();
+    document.getElementById('favoriteCount').textContent = (data.favorite_count||0).toLocaleString();
+    document.getElementById('unreadCount').textContent = (data.unread_count||0).toLocaleString();
     document.getElementById('sourceCount').textContent = data.source_count||0;
 
     const total = (data.sentiment_stats?data.sentiment_stats.positive:0) + (data.sentiment_stats?data.sentiment_stats.negative:0) + (data.sentiment_stats?data.sentiment_stats.neutral:0);

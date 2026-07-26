@@ -70,13 +70,6 @@ body{
 .btn-export{background:var(--green-bg);color:var(--green);border-color:var(--green)}
 .btn-export:hover{background:var(--green);color:#fff}
 
-.stats-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
-.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);text-align:center}
-.stat-card .num{font-size:var(--fs-xl);font-weight:700;color:var(--star);font-variant-numeric:tabular-nums;line-height:1.2}
-.stat-card .num.green{color:var(--green)}
-.stat-card .num.accent{color:var(--accent)}
-.stat-card .lbl{color:var(--text2);font-size:var(--fs-xs);margin-top:6px}
-
 table{width:100%;border-collapse:separate;border-spacing:0;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
 thead th{background:var(--bg-card-alt);color:var(--text);padding:18px 20px;text-align:left;position:sticky;top:0;border-bottom:2px solid var(--border);font-weight:600;font-size:var(--fs-sm);white-space:nowrap}
 tbody tr{border-bottom:1px solid var(--border)}
@@ -172,12 +165,6 @@ tbody td{padding:18px 20px;vertical-align:middle}
   </div>
 </div>
 
-<div class="stats-bar">
-  <div class="stat-card"><div class="num" id="favCount">0</div><div class="lbl">收藏总数</div></div>
-  <div class="stat-card"><div class="num accent" id="favNews">0</div><div class="lbl">新闻收藏</div></div>
-  <div class="stat-card"><div class="num green" id="favSentiment">0</div><div class="lbl">舆情收藏</div></div>
-</div>
-
 <table>
   <thead>
     <tr>
@@ -254,7 +241,6 @@ async function loadFavs(reset=true){
 
     if(reset){
       state.news=newItems;
-      renderStats();
     }else{
       state.news=[...state.news,...newItems];
     }
@@ -278,16 +264,6 @@ async function loadFavs(reset=true){
       setTimeout(checkAndLoadMore, 100);
     }
   }
-}
-
-function renderStats(){
-  const s=state.stats||{};
-  document.getElementById('favCount').textContent=(s.favorite_count||state.total).toLocaleString();
-  const forumSources=new Set(['新浪股吧','东方财富热门股吧','茅台股吧','宁德股吧','比亚迪股吧','财联社快讯','同花顺投顾']);
-  let newsCount=0,sentCount=0;
-  state.news.forEach(n=>{if(forumSources.has(n.source))sentCount++;else newsCount++;});
-  document.getElementById('favNews').textContent=newsCount.toLocaleString();
-  document.getElementById('favSentiment').textContent=sentCount.toLocaleString();
 }
 
 function renderFavs(reset=false){

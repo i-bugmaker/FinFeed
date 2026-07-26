@@ -60,7 +60,7 @@ async def run_continuous(interval: int, web_port: int):
     async def update_tui():
         while not shutdown_event.is_set():
             try:
-                news = db_get_recent_news(limit=50, category="finance")
+                news = db_get_recent_news(limit=200, category="finance")
                 stats = db_get_statistics()
                 source_last_ts = db_get_all_source_last_ts()
                 source_stats = {}
