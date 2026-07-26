@@ -52,7 +52,8 @@ body{
 .nav-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 6px var(--green-bg)}
 .status-dot.error{background:var(--red);box-shadow:0 0 6px var(--red-bg)}
-.status-text{font-size:var(--fs-xs);color:var(--text2)}
+.status-text{font-size:var(--fs-sm);color:var(--text2);white-space:nowrap}
+.nav-clock{font-size:var(--fs-sm);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500;padding:0 8px;border-left:1px solid var(--border);margin-left:4px}
 .theme-toggle{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);width:44px;height:44px;border-radius:var(--radius);cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
 
@@ -179,6 +180,7 @@ tbody td{padding:18px 16px;vertical-align:middle}
   body{padding:12px}
   .nav-inner{flex-direction:column;align-items:stretch}
   .nav-links{justify-content:center}
+  .nav-clock{display:none}
   .toolbar-row{flex-direction:column;align-items:stretch}
   .search-box{min-width:auto}
   .sidebar{grid-template-columns:1fr}
@@ -203,6 +205,7 @@ tbody td{padding:18px 16px;vertical-align:middle}
     <div class="nav-right">
       <span class="status-dot" id="statusDot"></span>
       <span class="status-text" id="statusText">连接中...</span>
+      <span class="nav-clock" id="navClock">--:--:--</span>
       <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="切换主题">🌙</button>
     </div>
   </div>
@@ -359,6 +362,16 @@ function fmtTime(ts){
   const pad=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+function updateClock(){
+  const now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const str=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const el=document.getElementById('navClock');
+  if(el)el.textContent=str;
+}
+setInterval(updateClock,1000);
+updateClock();
 
 function sentDot(s){
   if(s==='positive')return'<span class="sent-dot sent-pos"></span>';

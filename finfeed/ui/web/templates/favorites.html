@@ -50,7 +50,8 @@ body{
 .nav-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 6px var(--green-bg)}
 .status-dot.error{background:var(--red);box-shadow:0 0 6px var(--red-bg)}
-.status-text{font-size:var(--fs-xs);color:var(--text2)}
+.status-text{font-size:var(--fs-sm);color:var(--text2);white-space:nowrap}
+.nav-clock{font-size:var(--fs-sm);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500;padding:0 8px;border-left:1px solid var(--border);margin-left:4px}
 .theme-toggle{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);width:44px;height:44px;border-radius:var(--radius);cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
 
@@ -125,6 +126,7 @@ tbody td{padding:18px 20px;vertical-align:middle}
 @media(max-width:768px){
   body{padding:12px}
   .nav-inner{flex-direction:column;align-items:stretch}
+  .nav-clock{display:none}
   .toolbar{flex-direction:column;align-items:stretch}
   .search-box{min-width:auto}
   .col-time{width:130px;font-size:var(--fs-xs)}
@@ -147,6 +149,7 @@ tbody td{padding:18px 20px;vertical-align:middle}
     <div class="nav-right">
       <span class="status-dot" id="statusDot"></span>
       <span class="status-text" id="statusText">连接中...</span>
+      <span class="nav-clock" id="navClock">--:--:--</span>
       <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="切换主题">🌙</button>
     </div>
   </div>
@@ -211,6 +214,8 @@ try{const s=localStorage.getItem('finfeed_theme');if(s)setTheme(s);}catch(e){}
 function escHtml(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function highlight(t,kw){if(!kw||!t)return escHtml(t);try{return escHtml(t).replace(new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi'),'<mark>$1</mark>');}catch(e){return escHtml(t);}}
 function fmtTime(ts){if(!ts)return'-';const d=new Date(ts*1000);const p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+function updateClock(){const now=new Date();const p=n=>String(n).padStart(2,'0');const str=`${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;const el=document.getElementById('navClock');if(el)el.textContent=str;}
+setInterval(updateClock,1000);updateClock();
 function toast(msg,type='info'){const c=document.getElementById('toastContainer');const icons={success:'✅',error:'❌',info:'ℹ️'};const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span class="toast-icon">${icons[type]||'ℹ️'}</span><div class="toast-content"><div class="toast-msg">${msg}</div></div><button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;c.appendChild(el);setTimeout(()=>{el.classList.add('toast-out');setTimeout(()=>el.remove(),300);},3500);}
 function toggleExportMenu(){document.getElementById('exportDropdown').classList.toggle('show');}
 document.addEventListener('click',(e)=>{if(!e.target.closest('.export-menu'))document.getElementById('exportDropdown').classList.remove('show');});

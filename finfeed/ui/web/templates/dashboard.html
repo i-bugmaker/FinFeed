@@ -57,8 +57,8 @@ body {
 .nav-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 6px var(--green-bg)}
 .status-dot.error{background:var(--red);box-shadow:0 0 6px var(--red-bg)}
-.status-text{font-size:var(--fs-xs);color:var(--text2)}
-.update-time{font-size:var(--fs-xs);color:var(--text3)}
+.status-text{font-size:var(--fs-sm);color:var(--text2);white-space:nowrap}
+.nav-clock{font-size:var(--fs-sm);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500;padding:0 8px;border-left:1px solid var(--border);margin-left:4px}
 .fullscreen-btn{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-xs);font-family:inherit;font-weight:500;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .fullscreen-btn:hover{opacity:.9}
 .theme-toggle{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);width:44px;height:44px;border-radius:var(--radius);cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -277,7 +277,7 @@ body {
     }
     .nav-inner{gap:12px}
     .nav-links{order:3;width:100%;justify-content:center}
-    .update-time{display:none}
+    .nav-clock{display:none}
 }
 </style>
 </head>
@@ -292,9 +292,9 @@ body {
       <a href="/dashboard" class="nav-link active" id="nav-dashboard">📊 数据大屏</a>
     </nav>
     <div class="nav-right">
-      <span class="update-time" id="updateTime">加载中...</span>
       <span class="status-dot" id="statusDot"></span>
       <span class="status-text" id="statusText">加载中...</span>
+      <span class="nav-clock" id="navClock">--:--:--</span>
       <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏显示">🔍 全屏</button>
       <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="切换主题">🌙</button>
     </div>
@@ -470,6 +470,19 @@ try {
     if (saved) setTheme(saved);
 } catch(e) {}
 
+function formatNow(){
+    const now=new Date();
+    const pad=n=>String(n).padStart(2,'0');
+    return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+function updateClock(){
+    const t=formatNow();
+    const el=document.getElementById('navClock');
+    if(el)el.textContent=t;
+}
+setInterval(updateClock,1000);
+updateClock();
+
 function initCharts() {
     sourceChart = echarts.init(document.getElementById('sourceChart'));
     trendChart = echarts.init(document.getElementById('trendChart'));
@@ -497,8 +510,6 @@ function updateCharts(data) {
     const total = (data.sentiment_stats?data.sentiment_stats.positive:0) + (data.sentiment_stats?data.sentiment_stats.negative:0) + (data.sentiment_stats?data.sentiment_stats.neutral:0);
     const posRate = total > 0 ? ((data.sentiment_stats.positive / total) * 100).toFixed(1) + '%' : '-';
     document.getElementById('posRate').textContent = posRate;
-
-    document.getElementById('updateTime').textContent = data.update_time||'';
 
     if (data.total_change !== undefined) {
         const tc = document.getElementById('totalChange');
