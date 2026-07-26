@@ -140,24 +140,15 @@ def build_display(
     max_rows = max(10, term_height - 15)
     table = build_news_table(news_list, max_rows=max_rows)
 
-    footer_parts = [
-        ("按 Ctrl+C 退出", "dim"),
-        ("  │  ", "dim"),
-        ("网页仪表盘: ", "dim"),
-        (f"http://localhost:{web_port}", Style(color="bright_cyan", link=f"http://localhost:{web_port}", underline=False)),
-    ]
-    if source_stats:
-        footer_parts.append(("  │  ", "dim"))
-        footer_parts.append(("数据来源: ", "dim"))
-        source_items = list(source_stats.items())
-        for i, (name, cnt) in enumerate(source_items):
-            if i > 0:
-                footer_parts.append((" ", "dim"))
-            dname = get_display_name(name)
-            footer_parts.append((f"{dname}({cnt})", get_source_color(name)))
-
     footer_panel = Panel(
-        Align.center(Text.assemble(*footer_parts)),
+        Align.center(
+            Text.assemble(
+                ("按 Ctrl+C 退出", "dim"),
+                ("  │  ", "dim"),
+                ("网页仪表盘: ", "dim"),
+                (f"http://localhost:{web_port}", Style(color="bright_cyan", link=f"http://localhost:{web_port}", underline=False)),
+            )
+        ),
         border_style="dim",
         box=box.SIMPLE,
         padding=(0, 1),
@@ -181,6 +172,7 @@ class TerminalUI:
         self._live: Optional[Live] = None
         self._update_event = asyncio.Event()
         self._running = False
+        self._last_size = (0, 0)
 
     def update_data(
         self,
@@ -213,28 +205,37 @@ class TerminalUI:
             web_port=self._web_port,
         )
 
+    def _size_changed(self) -> bool:
+        """检测终端窗口尺寸是否变化"""
+        current = (console.size.width, console.size.height)
+        if current != self._last_size:
+            self._last_size = current
+            return True
+        return False
+
     async def run(self):
         """启动 TUI 主循环（alternate screen 防闪烁）"""
         self._running = True
         self._update_event.clear()
+        self._last_size = (console.size.width, console.size.height)
 
         try:
             with Live(
                 self._render(),
                 console=console,
                 screen=True,
-                refresh_per_second=2,
+                refresh_per_second=4,
                 transient=False,
                 vertical_overflow="ellipsis",
             ) as self._live:
                 while self._running:
                     try:
-                        await asyncio.wait_for(self._update_event.wait(), timeout=10.0)
+                        await asyncio.wait_for(self._update_event.wait(), timeout=0.5)
                         if self._running:
                             self._live.update(self._render(), refresh=True)
                         self._update_event.clear()
                     except asyncio.TimeoutError:
-                        if self._running:
+                        if self._running and self._size_changed():
                             self._live.update(self._render(), refresh=True)
         except Exception:
             pass
