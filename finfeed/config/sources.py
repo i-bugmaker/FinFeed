@@ -276,6 +276,16 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "Accept": "text/html",
         },
     ),
+    NewsSource(
+        name="萝卜投研",
+        url="https://robo.datayes.com/",
+        parser_type="luobo",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://robo.datayes.com/",
+            "Accept": "text/html",
+        },
+    ),
 ]
 
 # ============================================================
