@@ -581,6 +581,9 @@ class NewsDatabase:
         count_only: bool = False,
         source_include_list: Optional[list] = None,
         source_exclude_list: Optional[list] = None,
+        source_not_like: Optional[str] = None,
+        source_like: Optional[str] = None,
+        category: Optional[str] = None,
     ) -> Tuple[List[NewsItem], int]:
         """通用新闻查询方法，支持分页、筛选
 
@@ -601,6 +604,15 @@ class NewsDatabase:
             placeholders = ",".join("?" * len(source_exclude_list))
             conditions.append(f"source NOT IN ({placeholders})")
             params.extend(source_exclude_list)
+        if source_not_like:
+            conditions.append("source NOT LIKE ?")
+            params.append(source_not_like)
+        if source_like:
+            conditions.append("source LIKE ?")
+            params.append(source_like)
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
         if start_ts is not None:
             conditions.append("publish_ts >= ?")
             params.append(start_ts)
@@ -900,6 +912,9 @@ def db_query_news(
     min_importance: Optional[float] = None,
     source_include_list: Optional[list] = None,
     source_exclude_list: Optional[list] = None,
+    source_not_like: Optional[str] = None,
+    source_like: Optional[str] = None,
+    category: Optional[str] = None,
 ) -> Tuple[List[NewsItem], int]:
     """通用新闻查询"""
     return get_db_manager().query_news(
@@ -907,6 +922,8 @@ def db_query_news(
         start_ts=start_ts, end_ts=end_ts, sentiment=sentiment,
         is_favorite=is_favorite, stock_name=stock_name, min_importance=min_importance,
         source_include_list=source_include_list, source_exclude_list=source_exclude_list,
+        source_not_like=source_not_like, source_like=source_like,
+        category=category,
     )
 
 

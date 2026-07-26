@@ -73,6 +73,7 @@ _template_lock = threading.Lock()
 _forum_source_raw_names: list | None = None
 _forum_source_raw_set: set | None = None
 _forum_source_display_names: list | None = None
+_forum_source_display_set: set | None = None
 _finance_source_display_names: list | None = None
 _sources_cache_lock = threading.Lock()
 
@@ -102,18 +103,19 @@ def invalidate_api_cache():
 
 
 def _get_cached_sources():
-    global _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _finance_source_display_names
+    global _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
     with _sources_cache_lock:
         if _forum_source_raw_names is None:
             forum_sources = get_forum_sources()
             _forum_source_raw_names = [s.name for s in forum_sources]
             _forum_source_raw_set = set(_forum_source_raw_names)
             _forum_source_display_names = [get_display_name(s.name) for s in forum_sources]
+            _forum_source_display_set = set(_forum_source_display_names)
             _finance_source_display_names = [
                 get_display_name(s.name) for s in get_enabled_sources()
                 if s.name not in _forum_source_raw_set
             ]
-        return _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _finance_source_display_names
+        return _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
 
 
 _template_cache_map = {
@@ -323,7 +325,7 @@ class _WebHandler(BaseHTTPRequestHandler):
     def _serve_news(self):
         try:
             params = self._parse_query_params(urlparse(self.path).query)
-            forum_raw_names, forum_raw_set, forum_display_names, finance_display_names = _get_cached_sources()
+            forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = _get_cached_sources()
 
             if params["source"] and params["source"] not in finance_display_names and params["source"] != "all":
                 params["source"] = None
@@ -349,7 +351,7 @@ class _WebHandler(BaseHTTPRequestHandler):
             if params["source"]:
                 db_kwargs["source"] = params["source"]
             else:
-                db_kwargs["source_exclude_list"] = forum_raw_names
+                db_kwargs["category"] = "finance"
             
             news_items, db_total = db_query_news(**db_kwargs)
             result = _build_news_response(
@@ -366,7 +368,7 @@ class _WebHandler(BaseHTTPRequestHandler):
     def _serve_sentiment_api(self):
         try:
             params = self._parse_query_params(urlparse(self.path).query)
-            forum_raw_names, forum_raw_set, forum_display_names, finance_display_names = _get_cached_sources()
+            forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = _get_cached_sources()
 
             cache_key = f"sentiment:{json.dumps(params, sort_keys=True, default=str)}"
             cached = _cache_get(cache_key)
@@ -386,6 +388,7 @@ class _WebHandler(BaseHTTPRequestHandler):
                     "is_favorite": params["is_favorite"],
                     "stock_name": params["stock"],
                     "min_importance": params["min_importance"],
+                    "category": "forum",
                 }
             else:
                 db_kwargs = {
@@ -398,7 +401,7 @@ class _WebHandler(BaseHTTPRequestHandler):
                     "is_favorite": params["is_favorite"],
                     "stock_name": params["stock"],
                     "min_importance": params["min_importance"],
-                    "source_include_list": forum_raw_names,
+                    "category": "forum",
                 }
 
             news_items, db_total = db_query_news(**db_kwargs)
@@ -695,7 +698,6 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServ
 def update_web_state(news, stats, cycle, total, new_count, status):
     """更新 Web 仪表盘共享状态（线程安全）"""
     news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:500]]
-    _, forum_raw_set, _, _ = _get_cached_sources()
     sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
     last_update = now_bj().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -715,8 +717,8 @@ def update_web_state(news, stats, cycle, total, new_count, status):
             for n in news_dicts:
                 if n.get("publish_ts", 0) > old_latest:
                     new_items.append(n)
-                    src = n.get("source", "")
-                    if src in forum_raw_set:
+                    cat = n.get("category", "")
+                    if cat == "forum":
                         new_forum_items.append(n)
                     else:
                         new_finance_items.append(n)

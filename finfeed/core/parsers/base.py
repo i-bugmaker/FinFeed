@@ -233,6 +233,7 @@ class BaseParser(ABC):
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=intro[:150] if len(intro) > 150 else intro,
+            category="finance",
         )
 
     def _is_newer_than_last(self, ts: int) -> bool:
