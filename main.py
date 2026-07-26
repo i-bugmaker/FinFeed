@@ -20,30 +20,105 @@ import signal
 import logging
 import argparse
 import asyncio
+from logging.handlers import RotatingFileHandler
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "finfeed"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config.settings import (
+from finfeed.config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL, LOG_PATH, LOG_LEVEL,
 )
-from storage.database import init_db, db_set_last_exit_ts
-from storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
-from core.monitor import MonitorManager
-from ui.terminal import print_once_result
-from ui.web.server import start_web_server
+from finfeed.storage.database import init_db, db_set_last_exit_ts
+from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
+from finfeed.core.monitor import get_monitor
+from finfeed.ui.terminal import print_once_result
+from finfeed.ui.web.server import start_web_server, stop_web_server
 
-logger = logging.getLogger("news_monitor")
+logger = logging.getLogger("finfeed")
 
 
 def setup_logging():
-    """配置日志"""
-    file_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
-    )
+    """配置日志（支持轮转）"""
+    log_dir = os.path.dirname(LOG_PATH)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    
     root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+    
+    if root_logger.handlers:
+        for h in root_logger.handlers[:]:
+            root_logger.removeHandler(h)
+    
+    file_handler = RotatingFileHandler(
+        LOG_PATH,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        )
+    )
+    
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(message)s",
+            "%H:%M:%S",
+        )
+    )
+    console_handler.setLevel(logging.INFO)
+    
     root_logger.addHandler(file_handler)
-    root_logger.setLevel(getattr(logging, LOG_LEVEL, logging.WARNING))
+    root_logger.addHandler(console_handler)
+
+
+async def run_once():
+    """单次抓取模式"""
+    monitor = get_monitor()
+    total_new = await monitor.run_single_fetch()
+    return total_new
+
+
+async def run_continuous(interval: int, web_port: int):
+    """持续监控模式"""
+    monitor = get_monitor()
+    
+    shutdown_event = asyncio.Event()
+    
+    def signal_handler():
+        logger.info("收到关闭信号，准备优雅关闭...")
+        shutdown_event.set()
+    
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, lambda s, f: signal_handler())
+        except (ValueError, OSError):
+            pass
+    
+    async def monitor_task():
+        await monitor.run()
+    
+    task = asyncio.create_task(monitor_task())
+    
+    await shutdown_event.wait()
+    
+    await monitor.shutdown()
+    
+    try:
+        await asyncio.wait_for(task, timeout=10)
+    except asyncio.TimeoutError:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    
+    stop_web_server()
+    db_set_last_exit_ts(int(time.time()))
+    logger.info("FinFeed 已完全关闭")
 
 
 def main():
@@ -89,31 +164,36 @@ def main():
         print(f"\n导出完成: {count} 条新闻已保存到 {output_path}")
     else:
         web_server = None
-        monitor = MonitorManager()
+        monitor = get_monitor()
 
         def signal_handler(sig, frame):
             logger.info(f"收到信号 {sig}，准备优雅关闭...")
-            monitor.shutdown()
+            asyncio.get_event_loop().call_soon_threadsafe(
+                lambda: asyncio.create_task(monitor.shutdown())
+            )
 
         try:
             for sig in (signal.SIGINT, signal.SIGTERM):
-                signal.signal(sig, signal_handler)
+                try:
+                    signal.signal(sig, signal_handler)
+                except (ValueError, OSError):
+                    pass
 
             web_server = start_web_server(port=args.port)
 
             if args.once:
-                total_inserted, total_news, catch_up_cycles = asyncio.run(monitor.run_once())
-                print_once_result(monitor.all_collected_news, total_inserted, monitor.total_in_db, catch_up_cycles)
+                total_new = asyncio.run(run_once())
+                print_once_result([], total_new, 0, 0)
             else:
-                asyncio.run(monitor.run_continuous(interval=args.interval, web_port=args.port))
+                asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
 
         except KeyboardInterrupt:
             logging.info("\n用户中断，正在退出...")
             print(f"\n监控已停止。数据已持久化。")
         finally:
+            if not args.once:
+                stop_web_server()
             db_set_last_exit_ts(int(time.time()))
-            if web_server:
-                web_server.shutdown()
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ import socket
 import logging
 import threading
 import queue
+from typing import Optional, Dict, List, Any, Tuple, Set
 from functools import lru_cache
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -462,9 +463,15 @@ class _WebHandler(BaseHTTPRequestHandler):
         if fmt == "csv":
             buf = io.StringIO()
             w = csv.writer(buf)
-            w.writerow(["标题", "链接", "来源", "发布时间", "时间戳", "简介", "情绪", "重要性"])
+            w.writerow(["标题", "链接", "来源", "分类", "发布时间", "时间戳", "简介", "情绪", "重要性", "关键词", "关联股票", "已收藏"])
             for n in news:
-                w.writerow([n.title, n.url, n.source, n.publish_time, n.publish_ts, n.intro, n.sentiment, n.importance])
+                w.writerow([
+                    n.title, n.url, n.source, n.category, n.publish_time, n.publish_ts,
+                    n.intro, n.sentiment, n.importance,
+                    ",".join(n.keywords) if n.keywords else "",
+                    ",".join(n.stocks) if n.stocks else "",
+                    "是" if n.is_favorite else "否",
+                ])
             data = buf.getvalue().encode("utf-8-sig")
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
@@ -682,11 +689,13 @@ def _sse_broadcast(message: dict):
 
 def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServer:
     """在后台线程启动 Web 仪表盘服务（支持IPv4/IPv6双栈）"""
+    global _global_server
     try:
         server = DualStackThreadingHTTPServer(("::", port), _WebHandler)
     except OSError:
         server = ThreadingHTTPServer(("0.0.0.0", port), _WebHandler)
         server.daemon_threads = True
+    _global_server = server
     t = threading.Thread(
         target=server.serve_forever, daemon=True, name="web-dashboard"
     )
@@ -751,3 +760,27 @@ def update_web_state(news, stats, cycle, total, new_count, status):
                 "count": len(new_forum_items),
                 "ts": time.time(),
             })
+
+
+_global_server: Optional[DualStackThreadingHTTPServer] = None
+
+
+def stop_web_server(timeout: float = 5.0) -> None:
+    """优雅停止Web服务器
+    
+    关闭所有SSE连接，停止接受新请求，等待现有请求完成
+    """
+    global _global_server
+    
+    with _sse_clients_lock:
+        for q in _sse_clients:
+            try:
+                q.put_nowait({"type": "shutdown"})
+            except Exception:
+                pass
+        _sse_clients.clear()
+    
+    if _global_server:
+        threading.Thread(target=_global_server.shutdown, daemon=True).start()
+        _global_server = None
+        logger.info("Web服务器已发送关闭信号")

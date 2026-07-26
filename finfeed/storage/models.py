@@ -15,19 +15,15 @@ class NewsItem:
     publish_time: str = ""
     publish_ts: int = 0
     intro: str = ""
-    title_full_hash: str = ""
-    url_hash: str = ""
-    simhash: int = 0
     id: Optional[int] = None
     created_at: str = ""
     category: str = ""
     sentiment: str = "neutral"
     importance: float = 0.0
-    keywords: list = field(default_factory=list)
-    stocks: list = field(default_factory=list)
+    keywords: list[str] = field(default_factory=list)
+    stocks: list[str] = field(default_factory=list)
     is_read: bool = False
     is_favorite: bool = False
-    tags: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -45,7 +41,6 @@ class NewsItem:
             "stocks": self.stocks,
             "is_read": self.is_read,
             "is_favorite": self.is_favorite,
-            "tags": self.tags,
         }
 
 

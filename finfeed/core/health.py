@@ -34,8 +34,7 @@ class HealthMonitor:
         if self._loaded:
             return
         try:
-            with get_db() as conn:
-                c = conn.cursor()
+            with get_db() as c:
                 c.execute("SELECT * FROM source_health")
                 for row in c.fetchall():
                     sh = SourceHealth(
@@ -59,8 +58,7 @@ class HealthMonitor:
     def _save_to_db(self, sh: SourceHealth):
         """保存单个源的健康状态到数据库"""
         try:
-            with get_db() as conn:
-                c = conn.cursor()
+            with get_db() as c:
                 c.execute(
                     """INSERT OR REPLACE INTO source_health
                        (source_name, total_requests, success_count, failure_count,
@@ -74,7 +72,6 @@ class HealthMonitor:
                         1 if sh.is_circuit_open else 0, sh.circuit_open_ts,
                     ),
                 )
-                conn.commit()
         except Exception as e:
             logger.warning(f"保存健康状态到数据库失败 [{sh.source_name}]: {e}")
 

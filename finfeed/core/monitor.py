@@ -1,371 +1,345 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""监控管理器
+"""新闻监控主循环
 
-封装监控循环、补抓逻辑和状态管理。
+功能：
+- 定时抓取新闻
+- 离线补抓（动态轮次，基于离线时长）
+- 状态推送（WebSocket/SSE）
+- 优雅关闭
 """
 
+import asyncio
 import time
 import logging
-import asyncio
-from typing import Optional, Dict, List, Callable
+from typing import Callable, Optional, List, Dict
 
-from finfeed.config.settings import (
-    DEFAULT_WEB_PORT, DEFAULT_INTERVAL, MAX_NEWS_CACHE,
-    MAX_CATCH_UP_CYCLES, CATCH_UP_INTERVAL, OFFLINE_GAP_THRESHOLD,
-    CATCH_UP_MAX_DAYS, CATCH_UP_CONCURRENCY, CATCH_UP_MIN_INTERVAL,
-)
-from finfeed.storage.database import (
-    db_get_recent_news, db_count_news,
-    db_get_last_exit_ts, db_set_last_exit_ts,
-    db_get_all_source_last_ts, db_insert_news,
-)
-from finfeed.storage.models import NewsItem
-from .pipeline import get_pipeline
-from .fetcher import set_parser_last_ts, init_all_parsers, get_fetcher
-from .health import get_health_monitor
-from finfeed.ui.terminal import console, build_display, build_news_table
-from finfeed.ui.web.server import update_web_state
-from finfeed.utils.common import jitter_interval
+from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE
+from .fetcher import get_fetcher, fetch_all_news
+from .pipeline import process_and_store
+from finfeed.storage.database import db_get_last_exit_ts, db_set_last_exit_ts, db_get_all_source_last_ts
+from finfeed.core.health import get_health_monitor
+from finfeed.config.sources import get_forum_source_names
 
 logger = logging.getLogger("news_monitor")
 
 
-class MonitorManager:
-    """监控管理器"""
+class NewsMonitor:
+    """新闻监控器"""
 
     def __init__(self):
-        self._pipeline = None
-        self._health_monitor = None
-        self._fetcher = None
-        self._all_collected_news: List[NewsItem] = []
-        self._source_stats: Dict[str, int] = {}
-        self._total_in_db = 0
-        self._last_new_count = 0
-        self._cycle = 0
+        self._running = False
         self._shutdown_event = asyncio.Event()
-        self._last_exit_save_ts = 0
-        self._catch_up_task: Optional[asyncio.Task] = None
-        self._catch_up_completed = False
-        self._catch_up_total = 0
+        self._push_callback: Optional[Callable] = None
+        self._push_queue: asyncio.Queue = asyncio.Queue()
+        self._push_task: Optional[asyncio.Task] = None
+        self._fetch_count = 0
+        self._total_new = 0
 
-    def _setup_catch_up(self) -> tuple[bool, str]:
-        """设置离线补抓状态"""
-        now_ts = int(time.time())
-        last_exit_ts = db_get_last_exit_ts()
-        offline_gap_sec = max(0, now_ts - last_exit_ts) if last_exit_ts > 0 else 0
-        catch_up_needed = offline_gap_sec > OFFLINE_GAP_THRESHOLD
-        catch_up_status = ""
+    def set_push_callback(self, callback: Callable) -> None:
+        """设置推送回调函数"""
+        self._push_callback = callback
 
-        max_back_ts = now_ts - CATCH_UP_MAX_DAYS * 24 * 3600
-
-        if catch_up_needed:
-            from finfeed.config.sources import get_enabled_sources, THSYC_CHANNELS
-
-            source_last_ts_map = db_get_all_source_last_ts()
-
-            for src in get_enabled_sources():
-                saved_ts = source_last_ts_map.get(src.name, last_exit_ts)
-                effective_ts = min(saved_ts, last_exit_ts) if saved_ts > 0 else last_exit_ts
-                effective_ts = max(effective_ts, max_back_ts)
-                set_parser_last_ts(src.name, effective_ts)
-
-            parsers = get_fetcher()._parsers
-            if "同花顺原创" in parsers:
-                parser = parsers["同花顺原创"]
-                if hasattr(parser, '_channel_last_ts'):
-                    for ch in THSYC_CHANNELS:
-                        parser._channel_last_ts[ch["name"]] = max(last_exit_ts, max_back_ts)
-
-            gap_min = int(offline_gap_sec // 60)
-            gap_hour = gap_min // 60
-            if gap_hour > 0:
-                catch_up_status = f"离线 {gap_hour}h{gap_min % 60}min，正在补抓..."
-            else:
-                catch_up_status = f"离线 {gap_min}min，正在补抓..."
-
-        return catch_up_needed, catch_up_status
-
-    def _merge_news(self, new_items: List[NewsItem]) -> None:
-        """合并新闻列表，去重并保持按时间倒序"""
-        if not new_items:
-            return
-
-        seen_titles = {n.title for n in self._all_collected_news}
-        unique_new = [n for n in new_items if n.title not in seen_titles]
-
-        if unique_new:
-            unique_new.sort(key=lambda x: x.publish_ts, reverse=True)
-            self._all_collected_news = unique_new + [
-                n for n in self._all_collected_news
-                if n.title not in {x.title for x in unique_new}
-            ]
-            self._all_collected_news.sort(key=lambda x: x.publish_ts, reverse=True)
-
-        if len(self._all_collected_news) > MAX_NEWS_CACHE:
-            self._all_collected_news = self._all_collected_news[:MAX_NEWS_CACHE]
-
-    async def _run_catch_up(self, render: Callable) -> int:
-        """执行离线补抓（先完成补抓再开始正常循环，避免 last_ts 被覆盖）"""
-        catch_up_total = 0
-        from finfeed.config.settings import CATCH_UP_INTERVAL
-
-        cu_cycle = 0
-        max_cycles = 3
-
-        while cu_cycle < max_cycles and not self._shutdown_event.is_set():
-            cu_cycle += 1
-
-            cu_status = f"补抓第{cu_cycle}/{max_cycles}轮 | 已补{catch_up_total}条"
-            render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
-                   self._source_stats, DEFAULT_INTERVAL, cu_status)
-            update_web_state(self._all_collected_news, self._source_stats, 0,
-                             self._total_in_db, catch_up_total, cu_status)
-
-            all_news, stats, inserted = await self._pipeline.run_cycle(
-                cycle=cu_cycle, catch_up_mode=True,
-                sources_per_cycle=0
-            )
-            catch_up_total += inserted
-            self._source_stats.update(stats)
-            self._total_in_db += inserted
-
-            self._merge_news(all_news)
-
-            cu_status2 = f"补抓第{cu_cycle}/{max_cycles}轮 | 本轮+{inserted} | 累计+{catch_up_total}"
-            render(self._all_collected_news, 0, self._total_in_db, catch_up_total,
-                   self._source_stats, DEFAULT_INTERVAL, cu_status2)
-            update_web_state(self._all_collected_news, self._source_stats, 0,
-                             self._total_in_db, catch_up_total, cu_status2)
-
-            if cu_cycle < max_cycles:
-                await asyncio.sleep(CATCH_UP_INTERVAL)
-
-        self._last_exit_save_ts = int(time.time())
-        db_set_last_exit_ts(self._last_exit_save_ts)
-        self._catch_up_completed = True
-
-        return catch_up_total
-
-    async def _background_catch_up(self, render: Callable):
-        """后台补抓任务"""
-        try:
-            self._catch_up_total = await self._run_catch_up(render)
-            logger.info(f"后台补抓完成，共补抓 {self._catch_up_total} 条")
-        except Exception as e:
-            logger.error(f"后台补抓异常: {e}")
-            self._catch_up_completed = True
-
-    async def _run_normal_cycle(self, interval: int, render: Callable) -> bool:
-        """执行正常抓取周期"""
-        self._cycle += 1
-        render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-               self._source_stats, interval, "抓取中...")
-
-        fetch_task = asyncio.create_task(self._pipeline.run_cycle(cycle=self._cycle, catch_up_mode=False))
-        last_fetch_sec = -1
-
-        while not fetch_task.done() and not self._shutdown_event.is_set():
-            await asyncio.sleep(0.5)
-            cur_sec = int(time.time())
-            if cur_sec != last_fetch_sec:
-                last_fetch_sec = cur_sec
-                render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-                       self._source_stats, interval, "抓取中...")
-
-        if self._shutdown_event.is_set():
-            return False
-
-        try:
-            all_news, stats, inserted = fetch_task.result()
-        except Exception as e:
-            logger.error(f"抓取周期失败: {e}")
-            return True
-
-        self._source_stats = stats
-        self._total_in_db += inserted
-        self._last_new_count = inserted
-
-        self._merge_news(all_news)
-
-        now_ts = int(time.time())
-        if now_ts - self._last_exit_save_ts >= 60:
-            self._last_exit_save_ts = now_ts
-            db_set_last_exit_ts(now_ts)
-
-        wait_sec = jitter_interval(interval)
-        status = f"新增{inserted}条" if inserted > 0 else "无新内容"
-        update_web_state(
-            self._all_collected_news, self._source_stats, self._cycle,
-            self._total_in_db, self._last_new_count, f"{status} | {wait_sec:.1f}s后一轮"
-        )
-
-        wait_end = time.time() + wait_sec
-        render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-               self._source_stats, interval, f"{status} | {wait_sec:.0f}s后一轮")
-
-        last_wait_sec = -1
-        while time.time() < wait_end and not self._shutdown_event.is_set():
-            await asyncio.sleep(0.5)
-            cur_sec = int(time.time())
-            if cur_sec != last_wait_sec:
-                last_wait_sec = cur_sec
-                remaining = max(0, wait_end - time.time())
-                render(self._all_collected_news, self._cycle, self._total_in_db, self._last_new_count,
-                       self._source_stats, interval, f"{status} | {remaining:.0f}s后一轮")
-
-        return not self._shutdown_event.is_set()
-
-    async def _run_cycles(self, interval: int, render: Callable, catch_up_needed: bool) -> None:
-        """运行监控循环"""
-        if catch_up_needed:
-            logger.info("开始补抓历史数据，补抓完成后将进入实时监控...")
+    async def _push_worker(self) -> None:
+        """推送工作协程：批量处理推送队列，避免阻塞抓取"""
+        while self._running or not self._push_queue.empty():
             try:
-                self._catch_up_total = await self._run_catch_up(render)
-                logger.info(f"补抓完成，共补抓 {self._catch_up_total} 条历史新闻")
+                items: List[Dict] = []
+                try:
+                    first = await asyncio.wait_for(self._push_queue.get(), timeout=0.5)
+                    items.append(first)
+                except asyncio.TimeoutError:
+                    if not self._running and self._push_queue.empty():
+                        break
+                    continue
+
+                while len(items) < 20:
+                    try:
+                        item = self._push_queue.get_nowait()
+                        items.append(item)
+                    except asyncio.QueueEmpty:
+                        break
+
+                if self._push_callback and items:
+                    try:
+                        await self._push_callback(items)
+                    except Exception as e:
+                        logger.debug(f"推送回调异常: {e}")
+
+                for _ in items:
+                    self._push_queue.task_done()
+            except asyncio.CancelledError:
+                break
             except Exception as e:
-                logger.error(f"补抓过程异常: {e}", exc_info=True)
-            self._catch_up_completed = True
-            self._last_exit_save_ts = int(time.time())
-            db_set_last_exit_ts(self._last_exit_save_ts)
+                logger.debug(f"推送工作协程异常: {e}")
+                await asyncio.sleep(0.1)
 
-            self._all_collected_news = db_get_recent_news(limit=MAX_NEWS_CACHE)
+    def _push_news_batch(self, news_items, category: str) -> None:
+        """将新闻条目加入推送队列（非阻塞）"""
+        if not news_items or not self._push_callback:
+            return
+        forum_sources = set(get_forum_source_names())
+        for item in news_items:
             try:
-                self._total_in_db = db_count_news()
+                item_category = category
+                if not item_category:
+                    item_category = "forum" if item.source in forum_sources else "finance"
+                d = item.to_dict()
+                d["category"] = item_category
+                self._push_queue.put_nowait(d)
             except Exception:
                 pass
 
-        while True:
-            if not await self._run_normal_cycle(interval, render):
-                break
+    def _calculate_catchup_cycles(self, offline_seconds: int) -> int:
+        """根据离线时长动态计算需要的补抓轮次
 
-    async def run_once(self) -> tuple[int, int, int]:
-        """只抓取一次"""
-        self._pipeline = get_pipeline()
-        self._health_monitor = get_health_monitor()
-        self._health_monitor.load_from_db()
-        self._fetcher = get_fetcher()
-        init_all_parsers()
+        规则：
+        - <30分钟：无需补抓（实时数据覆盖）
+        - 30分钟-4小时：2轮
+        - 4小时-24小时：5轮
+        - >24小时：10轮（最多）
+        """
+        if offline_seconds < 1800:
+            return 0
+        elif offline_seconds < 14400:
+            return 2
+        elif offline_seconds < 86400:
+            return 5
+        else:
+            return 10
+
+    async def run_catch_up(self) -> int:
+        """执行离线补抓，返回补抓到的新闻总数
+
+        自动根据上次退出时间计算需要的轮次
+        """
+        last_ts = db_get_last_exit_ts()
+        now_ts = int(time.time())
+
+        if last_ts <= 0:
+            logger.info("首次启动，跳过补抓")
+            return 0
+
+        offline_seconds = now_ts - last_ts
+        max_cycles = self._calculate_catchup_cycles(offline_seconds)
+
+        if max_cycles <= 0:
+            logger.info(f"离线时长 {offline_seconds}s，无需补抓")
+            return 0
+
+        logger.info(f"开始离线补抓：离线 {offline_seconds/3600:.1f} 小时，计划 {max_cycles} 轮")
+        total_catchup = 0
+
+        saved_last_ts = db_get_all_source_last_ts()
+        fetcher = get_fetcher()
+        for src_name, ts in saved_last_ts.items():
+            fetcher.set_parser_last_ts(src_name, ts)
+
+        for cycle in range(1, max_cycles + 1):
+            if not self._running:
+                break
+            try:
+                logger.info(f"补抓轮次 {cycle}/{max_cycles}...")
+                all_news, source_stats = await fetch_all_news(
+                    cycle=cycle,
+                    catch_up_mode=True,
+                    sources_per_cycle=CATCH_UP_SOURCES_PER_CYCLE,
+                )
+
+                cycle_new = 0
+                finance_items = []
+                forum_items = []
+                forum_sources = set(get_forum_source_names())
+
+                for src_name, parser in fetcher._parsers.items():
+                    db_set_last_ts = parser.last_ts
+                    from finfeed.storage.database import db_set_source_last_ts
+                    db_set_source_last_ts(src_name, db_set_last_ts)
+
+                for item in all_news:
+                    if item.source in forum_sources:
+                        forum_items.append(item)
+                    else:
+                        finance_items.append(item)
+
+                if finance_items:
+                    n = await process_and_store(finance_items, source_name="finance")
+                    cycle_new += n
+                    if n > 0:
+                        self._push_news_batch(finance_items, "finance")
+                if forum_items:
+                    n = await process_and_store(forum_items, source_name="forum")
+                    cycle_new += n
+                    if n > 0:
+                        self._push_news_batch(forum_items, "forum")
+
+                total_catchup += cycle_new
+                logger.info(f"补抓轮次 {cycle} 完成，本轮新增 {cycle_new} 条")
+
+                if cycle < max_cycles:
+                    await asyncio.sleep(CATCH_UP_CYCLE_INTERVAL)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"补抓轮次 {cycle} 异常: {e}")
+                await asyncio.sleep(2)
+
+        get_health_monitor().reset_circuits()
+        logger.info(f"补抓完成，共新增 {total_catchup} 条新闻")
+        return total_catchup
+
+    async def run_single_fetch(self) -> int:
+        """执行单次抓取（用于手动触发/TUI单次模式）"""
+        try:
+            all_news, source_stats = await fetch_all_news(cycle=self._fetch_count + 1)
+
+            finance_items = []
+            forum_items = []
+            forum_sources = set(get_forum_source_names())
+
+            fetcher = get_fetcher()
+            for src_name, parser in fetcher._parsers.items():
+                from finfeed.storage.database import db_set_source_last_ts
+                db_set_source_last_ts(src_name, parser.last_ts)
+
+            for item in all_news:
+                if item.source in forum_sources:
+                    forum_items.append(item)
+                else:
+                    finance_items.append(item)
+
+            total_new = 0
+            if finance_items:
+                n = await process_and_store(finance_items, source_name="finance")
+                total_new += n
+                if n > 0:
+                    self._push_news_batch(finance_items, "finance")
+            if forum_items:
+                n = await process_and_store(forum_items, source_name="forum")
+                total_new += n
+                if n > 0:
+                    self._push_news_batch(forum_items, "forum")
+
+            self._fetch_count += 1
+            db_set_last_exit_ts(int(time.time()))
+            return total_new
+        except Exception as e:
+            logger.error(f"单次抓取失败: {e}")
+            return 0
+
+    async def run(self) -> None:
+        """启动监控主循环"""
+        if self._running:
+            return
+        self._running = True
+        self._shutdown_event.clear()
+
+        logger.info("新闻监控启动")
+
+        self._push_task = asyncio.create_task(self._push_worker())
 
         try:
-            self._total_in_db = db_count_news()
-        except Exception:
-            pass
+            await self.run_catch_up()
+        except Exception as e:
+            logger.error(f"补抓异常: {e}")
 
-        self._all_collected_news = db_get_recent_news(limit=MAX_NEWS_CACHE)
+        while self._running:
+            try:
+                self._fetch_count += 1
+                cycle_start = time.time()
 
-        catch_up_needed, _ = self._setup_catch_up()
+                all_news, source_stats = await fetch_all_news(cycle=self._fetch_count)
 
-        max_cycles = MAX_CATCH_UP_CYCLES if catch_up_needed else 1
-        total_inserted = 0
+                finance_items = []
+                forum_items = []
+                forum_sources = set(get_forum_source_names())
 
-        for cycle in range(max_cycles):
-            all_news, stats, inserted = await self._pipeline.run_cycle(cycle=cycle + 1, catch_up_mode=catch_up_needed)
-            total_inserted += inserted
-            self._source_stats = stats
-            self._merge_news(all_news)
-            self._total_in_db += inserted
-            if inserted == 0 and cycle > 0:
+                fetcher = get_fetcher()
+                for src_name, parser in fetcher._parsers.items():
+                    from finfeed.storage.database import db_set_source_last_ts
+                    db_set_source_last_ts(src_name, parser.last_ts)
+
+                for item in all_news:
+                    if item.source in forum_sources:
+                        forum_items.append(item)
+                    else:
+                        finance_items.append(item)
+
+                total_new = 0
+                if finance_items:
+                    n = await process_and_store(finance_items, source_name="finance")
+                    total_new += n
+                    if n > 0:
+                        self._push_news_batch(finance_items, "finance")
+                if forum_items:
+                    n = await process_and_store(forum_items, source_name="forum")
+                    total_new += n
+                    if n > 0:
+                        self._push_news_batch(forum_items, "forum")
+
+                self._total_new += total_new
+                db_set_last_exit_ts(int(time.time()))
+
+                elapsed = time.time() - cycle_start
+                logger.debug(f"第 {self._fetch_count} 轮完成，新增 {total_new} 条，耗时 {elapsed:.2f}s")
+
+                sleep_time = max(0.5, FETCH_INTERVAL - elapsed)
+                try:
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=sleep_time)
+                except asyncio.TimeoutError:
+                    pass
+
+            except asyncio.CancelledError:
                 break
+            except Exception as e:
+                logger.error(f"主循环异常: {e}")
+                try:
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    pass
+
+        if self._push_task:
+            await self._push_queue.join()
+            self._push_task.cancel()
+            try:
+                await self._push_task
+            except asyncio.CancelledError:
+                pass
+
+        for src_name, parser in get_fetcher()._parsers.items():
+            from finfeed.storage.database import db_set_source_last_ts
+            db_set_source_last_ts(src_name, parser.last_ts)
 
         db_set_last_exit_ts(int(time.time()))
+        logger.info("新闻监控已停止")
 
-        return total_inserted, len(self._all_collected_news), max_cycles if catch_up_needed else 0
-
-    async def run_continuous(self, interval: int = DEFAULT_INTERVAL, web_port: int = DEFAULT_WEB_PORT) -> None:
-        """连续监控"""
-        self._pipeline = get_pipeline()
-        self._health_monitor = get_health_monitor()
-        self._health_monitor.load_from_db()
-        self._fetcher = get_fetcher()
-        init_all_parsers()
-
-        try:
-            self._total_in_db = db_count_news()
-        except Exception:
-            pass
-
-        self._all_collected_news = db_get_recent_news(limit=MAX_NEWS_CACHE)
-
-        catch_up_needed, catch_up_status = self._setup_catch_up()
-
-        update_web_state(
-            self._all_collected_news, self._source_stats, 0, self._total_in_db,
-            0, catch_up_status or "抓取中..."
-        )
-
-        def live_render(news, cyc, total, new_ct, stats, itv, st, table=None):
-            from rich.live import Live
-            nonlocal live
-            live.update(build_display(news, cyc, total, new_ct, stats, itv, st, web_port=web_port))
-
-        def simple_render(news, cyc, total, new_ct, stats, itv, st, table):
-            nonlocal last_print
-            now = time.time()
-            if now - last_print >= 10:
-                last_print = now
-                console.clear()
-                console.print(build_display(news, cyc, total, new_ct, stats, itv, st, web_port=web_port, table=table))
-
-        root_logger = logging.getLogger()
-        root_orig_handlers = list(root_logger.handlers)
-        nm_logger = logging.getLogger("news_monitor")
-        nm_orig_handlers = list(nm_logger.handlers)
-        nm_orig_propagate = nm_logger.propagate
-
-        def restore_logging():
-            nonlocal logging_restored
-            if logging_restored:
-                return
-            logging_restored = True
-            for h in list(root_logger.handlers):
-                root_logger.removeHandler(h)
-            for h in root_orig_handlers:
-                root_logger.addHandler(h)
-            for h in list(nm_logger.handlers):
-                nm_logger.removeHandler(h)
-            for h in nm_orig_handlers:
-                nm_logger.addHandler(h)
-            nm_logger.propagate = nm_orig_propagate
-
-        logging_restored = False
-        last_print = 0.0
-
-        try:
-            from rich.live import Live
-            with Live(
-                build_display(self._all_collected_news, 0, self._total_in_db, 0,
-                              self._source_stats, interval, "启动中...", web_port=web_port),
-                console=console,
-                refresh_per_second=10,
-                screen=True,
-            ) as live:
-                await self._run_cycles(interval, live_render, catch_up_needed)
-        except Exception:
-            restore_logging()
-            logging.warning("Live 显示模式异常，降级为简单轮询模式", exc_info=True)
-            await self._run_cycles(interval, simple_render, catch_up_needed)
-        finally:
-            restore_logging()
-            db_set_last_exit_ts(int(time.time()))
-
-    def shutdown(self):
-        """停止监控"""
+    async def shutdown(self) -> None:
+        """优雅关闭监控"""
+        if not self._running:
+            return
+        logger.info("正在停止新闻监控...")
+        self._running = False
         self._shutdown_event.set()
-        if self._catch_up_task and not self._catch_up_task.done():
-            logger.info("后台补抓任务将在当前循环完成后停止")
 
     @property
-    def all_collected_news(self) -> List[NewsItem]:
-        """获取所有收集的新闻"""
-        return self._all_collected_news
+    def is_running(self) -> bool:
+        return self._running
 
     @property
-    def source_stats(self) -> Dict[str, int]:
-        """获取各源统计"""
-        return self._source_stats
+    def fetch_count(self) -> int:
+        return self._fetch_count
 
     @property
-    def total_in_db(self) -> int:
-        """获取数据库总条数"""
-        return self._total_in_db
+    def total_new_count(self) -> int:
+        return self._total_new
+
+
+_global_monitor: Optional[NewsMonitor] = None
+
+
+def get_monitor() -> NewsMonitor:
+    """获取全局监控器单例"""
+    global _global_monitor
+    if _global_monitor is None:
+        _global_monitor = NewsMonitor()
+    return _global_monitor

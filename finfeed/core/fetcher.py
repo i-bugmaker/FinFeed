@@ -11,10 +11,8 @@
 
 import asyncio
 import time
-import hashlib
 import logging
 from typing import Optional, Dict, Tuple, List
-from urllib.parse import urlencode
 
 import httpx
 

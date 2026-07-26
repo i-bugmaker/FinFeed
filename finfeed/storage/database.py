@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """SQLite 数据库封装
 
-增强特性：
+特性：
 - WAL 模式提升读写并发性能
-- FTS5 全文检索
-- 增量哈希加载（只加载最近 N 天，降低启动开销）
-- 元数据表存储运行状态
-- 自选股、订阅、标签等新表
+- FTS5 全文检索（触发器自动同步）
+- 线程独立连接
+- 批量插入优化
+- 简洁的核心表结构
 """
 
 import sqlite3
@@ -18,11 +18,8 @@ import json
 from contextlib import contextmanager
 from typing import Optional, Dict, List, Tuple, Any
 
-from finfeed.config.settings import (
-    DB_PATH, USE_WAL_MODE, DEDUP_RECENT_DAYS,
-)
+from finfeed.config.settings import DB_PATH, USE_WAL_MODE
 from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
-from finfeed.utils.hash_utils import compute_title_full_hash, compute_url_hash, simhash_to_hex, hex_to_simhash
 from .models import NewsItem
 
 logger = logging.getLogger("news_monitor")
@@ -31,22 +28,27 @@ logger = logging.getLogger("news_monitor")
 class NewsDatabase:
     """新闻数据库管理器"""
 
-    STAT_CACHE_TTL = 30
+    STAT_CACHE_TTL = 5
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._local = threading.local()
         self._stats_cache: Optional[Dict[str, Any]] = None
         self._stats_cache_ts: float = 0
         self._lock = threading.Lock()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """获取数据库连接（线程安全，每个线程独立连接）"""
-        if hasattr(self._local, 'conn') and self._local.conn is not None:
+        """获取数据库连接（线程安全，每个线程独立连接，自动重连）"""
+        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
+        if conn is not None:
             try:
-                self._local.conn.execute("SELECT 1")
-                return self._local.conn
+                conn.execute("SELECT 1")
+                return conn
             except sqlite3.Error:
-                pass
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                self._local.conn = None
 
         conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
         conn.row_factory = sqlite3.Row
@@ -54,11 +56,12 @@ class NewsDatabase:
         if USE_WAL_MODE:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-32000")
+        conn.execute("PRAGMA cache_size=-64000")
         conn.execute("PRAGMA mmap_size=268435456")
         conn.execute("PRAGMA temp_store=MEMORY")
         conn.execute("PRAGMA encoding='UTF-8'")
         conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA foreign_keys=ON")
 
         self._local.conn = conn
         return conn
@@ -76,133 +79,36 @@ class NewsDatabase:
             logger.error(f"数据库操作失败: {e}")
             raise
 
-    @contextmanager
-    def get_conn_ctx(self):
-        """数据库连接上下文管理器"""
-        conn = self._get_conn()
-        try:
-            yield conn
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"数据库连接操作失败: {e}")
-            raise
-
-    def _migrate_news_columns(self, c):
-        """迁移 news 表，补齐缺失的列"""
-        c.execute("PRAGMA table_info(news)")
-        existing = {row[1] for row in c.fetchall()}
-        expected = {
-            "simhash": "TEXT DEFAULT ''",
-            "category": "TEXT DEFAULT ''",
-            "sentiment": "TEXT DEFAULT 'neutral'",
-            "importance": "REAL DEFAULT 0.0",
-            "keywords": "TEXT DEFAULT '[]'",
-            "stocks": "TEXT DEFAULT '[]'",
-            "is_read": "INTEGER DEFAULT 0",
-            "is_favorite": "INTEGER DEFAULT 0",
-            "tags": "TEXT DEFAULT '[]'",
-        }
-        for col, definition in expected.items():
-            if col not in existing:
-                try:
-                    c.execute(f"ALTER TABLE news ADD COLUMN {col} {definition}")
-                except sqlite3.OperationalError:
-                    pass
-
-    def init_db(self):
+    def init_db(self) -> None:
         """初始化数据库表结构"""
         with self.get_db() as c:
             c.execute("""
                 CREATE TABLE IF NOT EXISTS news (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
-                    url TEXT,
+                    url TEXT NOT NULL DEFAULT '#',
                     source TEXT NOT NULL,
                     publish_time TEXT,
                     publish_ts INTEGER DEFAULT 0,
-                    intro TEXT,
-                    title_hash TEXT,
+                    intro TEXT DEFAULT '',
                     created_at TEXT,
-                    title_full_hash TEXT,
-                    url_hash TEXT,
-                    simhash TEXT DEFAULT '',
                     category TEXT DEFAULT '',
                     sentiment TEXT DEFAULT 'neutral',
                     importance REAL DEFAULT 0.0,
                     keywords TEXT DEFAULT '[]',
                     stocks TEXT DEFAULT '[]',
                     is_read INTEGER DEFAULT 0,
-                    is_favorite INTEGER DEFAULT 0,
-                    tags TEXT DEFAULT '[]'
+                    is_favorite INTEGER DEFAULT 0
                 )
             """)
 
-            self._migrate_news_columns(c)
-
-            c.execute("CREATE INDEX IF NOT EXISTS idx_publish_ts ON news(publish_ts DESC, id DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_created ON news(created_at ASC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_title_full_hash ON news(title_full_hash)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_url_hash ON news(url_hash)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_source ON news(source)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_importance ON news(importance DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_favorite ON news(is_favorite) WHERE is_favorite=1")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_sentiment ON news(sentiment)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_source_pubts ON news(source, publish_ts DESC, id DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_sent_pubts ON news(sentiment, publish_ts DESC, id DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_imp_pubts ON news(importance DESC, publish_ts DESC, id DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_composite ON news(source, sentiment, importance, publish_ts DESC, id DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_pubts_id ON news(publish_ts DESC, id DESC)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_fav_pubts ON news(is_favorite, publish_ts DESC, id DESC) WHERE is_favorite=1")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_unread ON news(is_read) WHERE is_read=0")
-
-            try:
-                c.execute("""
-                    CREATE VIRTUAL TABLE IF NOT EXISTS news_fts USING fts5(
-                        title, intro, content='news', content_rowid='id',
-                        tokenize='unicode61'
-                    )
-                """)
-            except sqlite3.OperationalError:
-                pass
+            self._create_indexes(c)
+            self._setup_fts5(c)
 
             c.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
-                )
-            """)
-
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS watchlist (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    stock_code TEXT NOT NULL,
-                    stock_name TEXT NOT NULL,
-                    added_at TEXT,
-                    UNIQUE(stock_code)
-                )
-            """)
-
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS topics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    keywords TEXT DEFAULT '[]',
-                    description TEXT DEFAULT '',
-                    is_enabled INTEGER DEFAULT 1,
-                    created_at TEXT
-                )
-            """)
-
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS alert_rules (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    rule_type TEXT NOT NULL,
-                    rule_config TEXT NOT NULL,
-                    channel TEXT NOT NULL,
-                    channel_config TEXT NOT NULL,
-                    enabled INTEGER DEFAULT 1,
-                    created_at TEXT
                 )
             """)
 
@@ -230,6 +136,58 @@ class NewsDatabase:
                 )
             """)
 
+    def _create_indexes(self, c: sqlite3.Cursor) -> None:
+        """创建精简后的核心索引"""
+        c.execute("CREATE INDEX IF NOT EXISTS idx_pubts ON news(publish_ts DESC, id DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_source_ts ON news(source, publish_ts DESC, id DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_category_ts ON news(category, publish_ts DESC, id DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_fav_ts ON news(is_favorite, publish_ts DESC, id DESC)")
+        
+        c.execute("PRAGMA index_list('news')")
+        existing_indexes = [row[1] for row in c.fetchall()]
+        if 'idx_url_source' not in existing_indexes:
+            try:
+                c.execute("""
+                    DELETE FROM news
+                    WHERE rowid NOT IN (
+                        SELECT MIN(rowid)
+                        FROM news
+                        GROUP BY url, source
+                    )
+                """)
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_url_source ON news(url, source)")
+            except sqlite3.OperationalError:
+                pass
+
+    def _setup_fts5(self, c: sqlite3.Cursor) -> None:
+        """设置FTS5全文检索及触发器自动同步"""
+        try:
+            c.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS news_fts USING fts5(
+                    title, intro, content='news', content_rowid='id',
+                    tokenize='unicode61'
+                )
+            """)
+
+            c.execute("""
+                CREATE TRIGGER IF NOT EXISTS news_ai AFTER INSERT ON news BEGIN
+                    INSERT INTO news_fts(rowid, title, intro) VALUES (new.id, new.title, new.intro);
+                END
+            """)
+            c.execute("""
+                CREATE TRIGGER IF NOT EXISTS news_ad AFTER DELETE ON news BEGIN
+                    INSERT INTO news_fts(news_fts, rowid, title, intro) VALUES ('delete', old.id, old.title, old.intro);
+                END
+            """)
+            c.execute("""
+                CREATE TRIGGER IF NOT EXISTS news_au AFTER UPDATE ON news BEGIN
+                    INSERT INTO news_fts(news_fts, rowid, title, intro) VALUES ('delete', old.id, old.title, old.intro);
+                    INSERT INTO news_fts(rowid, title, intro) VALUES (new.id, new.title, new.intro);
+                END
+            """)
+        except sqlite3.OperationalError as e:
+            logger.warning(f"FTS5设置失败: {e}")
+
     @staticmethod
     def _row_to_news(row: sqlite3.Row) -> NewsItem:
         """将数据库行转换为 NewsItem"""
@@ -243,23 +201,17 @@ class NewsDatabase:
                 publish_time = created_at_val
                 publish_ts = ts_from_bj_str(created_at_val)
 
-        simhash_val = row["simhash"] if row["simhash"] is not None else ""
         keywords_val = row["keywords"] if row["keywords"] is not None else "[]"
         stocks_val = row["stocks"] if row["stocks"] is not None else "[]"
-        tags_val = row["tags"] if row["tags"] is not None else "[]"
 
         try:
-            keywords = json.loads(keywords_val) if keywords_val else []
+            keywords: List[str] = json.loads(keywords_val) if keywords_val else []
         except (json.JSONDecodeError, TypeError):
             keywords = []
         try:
-            stocks = json.loads(stocks_val) if stocks_val else []
+            stocks: List[str] = json.loads(stocks_val) if stocks_val else []
         except (json.JSONDecodeError, TypeError):
             stocks = []
-        try:
-            tags = json.loads(tags_val) if tags_val else []
-        except (json.JSONDecodeError, TypeError):
-            tags = []
 
         return NewsItem(
             id=row["id"] if "id" in row.keys() else None,
@@ -269,9 +221,6 @@ class NewsDatabase:
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=row["intro"] if row["intro"] is not None else "",
-            title_full_hash=row["title_full_hash"] if row["title_full_hash"] is not None else "",
-            url_hash=row["url_hash"] if row["url_hash"] is not None else "",
-            simhash=hex_to_simhash(simhash_val) if simhash_val else 0,
             created_at=row["created_at"] if "created_at" in row.keys() and row["created_at"] is not None else "",
             category=row["category"] if row["category"] is not None else "",
             sentiment=(row["sentiment"] if row["sentiment"] is not None else "neutral") or "neutral",
@@ -280,11 +229,10 @@ class NewsDatabase:
             stocks=stocks,
             is_read=bool(row["is_read"]) if "is_read" in row.keys() and row["is_read"] is not None else False,
             is_favorite=bool(row["is_favorite"]) if "is_favorite" in row.keys() and row["is_favorite"] is not None else False,
-            tags=tags,
         )
 
     def insert_news(self, news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:
-        """插入新闻到数据库（批量去重优化）
+        """批量插入新闻（优化版：使用INSERT OR IGNORE + (url,source)唯一索引去重）
 
         Args:
             news_list: 新闻条目列表
@@ -295,86 +243,70 @@ class NewsDatabase:
         if not news_list:
             return [], 0
 
+        inserted_items: List[NewsItem] = []
+        now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+
+        rows_to_insert: List[Tuple[Any, ...]] = []
+        for n in news_list:
+            title = n.title.strip()
+            if not title:
+                continue
+            url = (n.url or "#").strip()
+            source = n.source.strip()
+            if not source:
+                continue
+            rows_to_insert.append((
+                title,
+                url,
+                source,
+                n.publish_time,
+                n.publish_ts,
+                n.intro or "",
+                now_str,
+                n.category or "",
+                n.sentiment or "neutral",
+                n.importance or 0.0,
+                json.dumps(n.keywords, ensure_ascii=False),
+                json.dumps(n.stocks, ensure_ascii=False),
+                1 if n.is_read else 0,
+                1 if n.is_favorite else 0,
+                url,
+                source,
+            ))
+
+        if not rows_to_insert:
+            return [], 0
+
         with self.get_db() as c:
-            recent_days_ts = int(time.time()) - DEDUP_RECENT_DAYS * 86400
-            existing_title_hashes = set()
-            existing_url_hashes = set()
+            c.executemany(
+                """INSERT OR IGNORE INTO news
+                   (title, url, source, publish_time, publish_ts, intro,
+                    created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite)
+                   SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM news WHERE url = ? AND source = ? AND title = ?
+                   )
+                """,
+                [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
+                  r[14], r[15], r[0]) for r in rows_to_insert]
+            )
 
-            try:
-                for row in c.execute(
-                    "SELECT title_full_hash FROM news WHERE publish_ts >= ? AND title_full_hash IS NOT NULL",
-                    (recent_days_ts,)
-                ):
-                    if row[0]:
-                        existing_title_hashes.add(row[0])
-                for row in c.execute(
-                    "SELECT url_hash FROM news WHERE publish_ts >= ? AND url_hash IS NOT NULL AND url_hash != ''",
-                    (recent_days_ts,)
-                ):
-                    if row[0]:
-                        existing_url_hashes.add(row[0])
-            except Exception:
-                pass
-
-            inserted_items = []
-            inserted = 0
-            now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute(
+                "SELECT id, title, url, source FROM news WHERE created_at = ? AND id IN (SELECT last_insert_rowid())",
+                (now_str,)
+            )
+            recent_rows = {row["title"]: row for row in c.fetchall()}
 
             for n in news_list:
-                title = n.title
-                url = n.url or "#"
+                if n.title in recent_rows:
+                    row = recent_rows[n.title]
+                    n.id = row["id"]
+                    n.created_at = now_str
+                    inserted_items.append(n)
 
-                title_full_hash = n.title_full_hash or compute_title_full_hash(title)
-                if title_full_hash in existing_title_hashes:
-                    continue
-
-                url_hash = n.url_hash or compute_url_hash(url)
-                if url_hash and url_hash in existing_url_hashes:
-                    continue
-
-                title_hash = f"{title[:30]}|{n.source}"
-                simhash_hex = simhash_to_hex(n.simhash) if n.simhash else ""
-
-                try:
-                    c.execute(
-                        """INSERT OR IGNORE INTO news
-                           (title, url, source, publish_time, publish_ts, intro,
-                            title_hash, created_at, title_full_hash, url_hash, simhash,
-                            category, sentiment, importance, keywords, stocks, is_read, is_favorite, tags)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            title, url, n.source, n.publish_time, n.publish_ts, n.intro,
-                            title_hash, now_str, title_full_hash, url_hash, simhash_hex,
-                            n.category, n.sentiment, n.importance,
-                            json.dumps(n.keywords, ensure_ascii=False),
-                            json.dumps(n.stocks, ensure_ascii=False),
-                            1 if n.is_read else 0,
-                            1 if n.is_favorite else 0,
-                            json.dumps(n.tags, ensure_ascii=False),
-                        ),
-                    )
-                    if c.rowcount > 0:
-                        new_id = c.lastrowid
-                        n.id = new_id
-                        n.created_at = now_str
-                        inserted_items.append(n)
-                        inserted += 1
-                        existing_title_hashes.add(title_full_hash)
-                        if url_hash:
-                            existing_url_hashes.add(url_hash)
-                        try:
-                            c.execute(
-                                "INSERT INTO news_fts(rowid, title, intro) VALUES (?, ?, ?)",
-                                (new_id, title, n.intro or "")
-                            )
-                        except Exception:
-                            pass
-                except sqlite3.IntegrityError:
-                    pass
-
-        if inserted > 0:
+        if inserted_items:
             self.invalidate_stats_cache()
-        return inserted_items, inserted
+        return inserted_items, len(inserted_items)
 
     def get_recent_news(self, limit: int = 200, source: Optional[str] = None) -> List[NewsItem]:
         """从数据库获取最近的新闻"""
@@ -402,7 +334,8 @@ class NewsDatabase:
                 return self._row_to_news(row)
             return None
 
-    def get_all_for_export(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[NewsItem]:
+    def get_all_for_export(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
+                           category: Optional[str] = None) -> List[NewsItem]:
         """获取所有新闻用于导出"""
         with self.get_db() as c:
             query = "SELECT * FROM news WHERE 1=1"
@@ -413,6 +346,9 @@ class NewsDatabase:
             if end_date:
                 query += " AND publish_time <= ?"
                 params.append(end_date + " 23:59:59")
+            if category:
+                query += " AND category = ?"
+                params.append(category)
             query += " ORDER BY publish_ts DESC, id DESC"
             c.execute(query, params)
             return [self._row_to_news(row) for row in c.fetchall()]
@@ -433,14 +369,17 @@ class NewsDatabase:
 
     def search_news(self, keyword: str, limit: int = 100) -> List[NewsItem]:
         """全文搜索新闻"""
+        if not keyword:
+            return []
         with self.get_db() as c:
             try:
+                escaped = keyword.replace('"', '""')
                 c.execute(
                     """SELECT n.* FROM news n
                        INNER JOIN news_fts f ON n.id = f.rowid
                        WHERE news_fts MATCH ?
                        ORDER BY n.publish_ts DESC, n.id DESC LIMIT ?""",
-                    (keyword, limit),
+                    (f'"{escaped}"', limit),
                 )
                 return [self._row_to_news(row) for row in c.fetchall()]
             except Exception:
@@ -464,7 +403,7 @@ class NewsDatabase:
             pass
         return 0
 
-    def set_last_exit_ts(self, ts: int):
+    def set_last_exit_ts(self, ts: int) -> None:
         """保存当前程序的最新活跃时间戳"""
         try:
             with self.get_db() as c:
@@ -487,7 +426,7 @@ class NewsDatabase:
             pass
         return 0
 
-    def set_source_last_ts(self, source_name: str, ts: int):
+    def set_source_last_ts(self, source_name: str, ts: int) -> None:
         """保存指定源的增量时间戳"""
         try:
             with self.get_db() as c:
@@ -520,7 +459,7 @@ class NewsDatabase:
         except Exception:
             return default
 
-    def set_metadata(self, key: str, value: str):
+    def set_metadata(self, key: str, value: str) -> None:
         """设置元数据"""
         try:
             with self.get_db() as c:
@@ -531,7 +470,7 @@ class NewsDatabase:
         except Exception:
             pass
 
-    def mark_read(self, news_id: int, is_read: bool = True):
+    def mark_read(self, news_id: int, is_read: bool = True) -> None:
         """标记新闻已读/未读"""
         with self.get_db() as c:
             c.execute(
@@ -564,7 +503,7 @@ class NewsDatabase:
             )
             return [self._row_to_news(row) for row in c.fetchall()]
 
-    _QUERY_NEWS_COLUMNS = "id, title, url, source, publish_time, publish_ts, intro, title_full_hash, url_hash, simhash, created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite, tags"
+    _QUERY_NEWS_COLUMNS = "id, title, url, source, publish_time, publish_ts, intro, created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite"
 
     def query_news(
         self,
@@ -579,10 +518,8 @@ class NewsDatabase:
         stock_name: Optional[str] = None,
         min_importance: Optional[float] = None,
         count_only: bool = False,
-        source_include_list: Optional[list] = None,
-        source_exclude_list: Optional[list] = None,
-        source_not_like: Optional[str] = None,
-        source_like: Optional[str] = None,
+        source_include_list: Optional[List[str]] = None,
+        source_exclude_list: Optional[List[str]] = None,
         category: Optional[str] = None,
     ) -> Tuple[List[NewsItem], int]:
         """通用新闻查询方法，支持分页、筛选
@@ -590,7 +527,7 @@ class NewsDatabase:
         Returns:
             (新闻列表, 总数)
         """
-        conditions = []
+        conditions: List[str] = []
         params: List[Any] = []
 
         if source and source != "all":
@@ -604,12 +541,6 @@ class NewsDatabase:
             placeholders = ",".join("?" * len(source_exclude_list))
             conditions.append(f"source NOT IN ({placeholders})")
             params.extend(source_exclude_list)
-        if source_not_like:
-            conditions.append("source NOT LIKE ?")
-            params.append(source_not_like)
-        if source_like:
-            conditions.append("source LIKE ?")
-            params.append(source_like)
         if category:
             conditions.append("category = ?")
             params.append(category)
@@ -643,38 +574,39 @@ class NewsDatabase:
 
             if keyword:
                 try:
-                    fts_query = keyword.replace('"', '""')
+                    escaped = keyword.replace('"', '""')
+                    fts_query = f'"{escaped}"'
                     data_query = f"""
                         SELECT n.{self._QUERY_NEWS_COLUMNS} FROM news n
                         INNER JOIN news_fts f ON n.id = f.rowid
-                        WHERE news_fts MATCH ? AND ({where_clause.replace('source', 'n.source').replace('publish_ts', 'n.publish_ts').replace('sentiment', 'n.sentiment').replace('is_favorite', 'n.is_favorite').replace('importance', 'n.importance').replace('stocks', 'n.stocks')})
+                        WHERE news_fts MATCH ? AND ({where_clause.replace('source', 'n.source').replace('publish_ts', 'n.publish_ts').replace('sentiment', 'n.sentiment').replace('is_favorite', 'n.is_favorite').replace('importance', 'n.importance').replace('stocks', 'n.stocks').replace('category', 'n.category')})
                         ORDER BY n.publish_ts DESC, n.id DESC
                         LIMIT ? OFFSET ?
                     """
                     c.execute(data_query, [fts_query] + params + [limit, offset])
+                    items = [self._row_to_news(row) for row in c.fetchall()]
+                    return items, total
                 except Exception:
-                    like_clause = f"({where_clause}) AND (title LIKE ? OR intro LIKE ?)"
-                    data_query = f"""
-                        SELECT {self._QUERY_NEWS_COLUMNS} FROM news
-                        WHERE {like_clause}
-                        ORDER BY publish_ts DESC, id DESC
-                        LIMIT ? OFFSET ?
-                    """
-                    c.execute(data_query, params + [f"%{keyword}%", f"%{keyword}%", limit, offset])
-            else:
-                data_query = f"""
-                    SELECT {self._QUERY_NEWS_COLUMNS} FROM news
-                    WHERE {where_clause}
-                    ORDER BY publish_ts DESC, id DESC
-                    LIMIT ? OFFSET ?
-                """
-                c.execute(data_query, params + [limit, offset])
+                    pass
 
+            like_clause = f"({where_clause})"
+            like_params = list(params)
+            if keyword:
+                like_clause += " AND (title LIKE ? OR intro LIKE ?)"
+                like_params.extend([f"%{keyword}%", f"%{keyword}%"])
+
+            data_query = f"""
+                SELECT {self._QUERY_NEWS_COLUMNS} FROM news
+                WHERE {like_clause}
+                ORDER BY publish_ts DESC, id DESC
+                LIMIT ? OFFSET ?
+            """
+            c.execute(data_query, like_params + [limit, offset])
             items = [self._row_to_news(row) for row in c.fetchall()]
             return items, total
 
     def get_statistics(self) -> Dict[str, Any]:
-        """获取增强统计信息（带缓存，默认30秒TTL）"""
+        """获取统计信息（带短TTL缓存）"""
         now = time.time()
         if self._stats_cache is not None and (now - self._stats_cache_ts) < self.STAT_CACHE_TTL:
             return dict(self._stats_cache)
@@ -760,7 +692,7 @@ class NewsDatabase:
             self._stats_cache_ts = now
             return result
 
-    def invalidate_stats_cache(self):
+    def invalidate_stats_cache(self) -> None:
         """强制失效统计缓存（在插入新数据后调用）"""
         self._stats_cache = None
         self._stats_cache_ts = 0
@@ -772,44 +704,32 @@ class NewsDatabase:
             row = c.fetchone()
             return row["cnt"] if row else 0
 
-    def close(self):
+    def close(self) -> None:
         """关闭数据库连接"""
-        if self._conn:
+        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
+        if conn:
             try:
-                self._conn.close()
+                conn.close()
             except Exception:
                 pass
-            self._conn = None
+            self._local.conn = None
 
 
 _global_db: Optional[NewsDatabase] = None
+_db_lock = threading.Lock()
 
 
 def get_db_manager() -> NewsDatabase:
-    """获取全局数据库管理器单例"""
+    """获取全局数据库管理器单例（线程安全）"""
     global _global_db
     if _global_db is None:
-        _global_db = NewsDatabase()
+        with _db_lock:
+            if _global_db is None:
+                _global_db = NewsDatabase()
     return _global_db
 
 
-def get_conn() -> sqlite3.Connection:
-    """获取数据库连接（单例）"""
-    return get_db_manager()._get_conn()
-
-
-@contextmanager
-def get_db():
-    """数据库上下文管理器"""
-    with get_db_manager().get_conn_ctx() as conn:
-        try:
-            yield conn
-        except Exception:
-            conn.rollback()
-            raise
-
-
-def init_db():
+def init_db() -> None:
     """初始化数据库表结构"""
     get_db_manager().init_db()
 
@@ -829,9 +749,10 @@ def db_get_news_by_id(news_id: int) -> Optional[NewsItem]:
     return get_db_manager().get_news_by_id(news_id)
 
 
-def db_get_all_for_export(start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[NewsItem]:
+def db_get_all_for_export(start_date: Optional[str] = None, end_date: Optional[str] = None,
+                          category: Optional[str] = None) -> List[NewsItem]:
     """获取所有新闻用于导出"""
-    return get_db_manager().get_all_for_export(start_date, end_date)
+    return get_db_manager().get_all_for_export(start_date, end_date, category)
 
 
 def db_get_date_range() -> Tuple[str, str, List[str]]:
@@ -849,7 +770,7 @@ def db_get_last_exit_ts() -> int:
     return get_db_manager().get_last_exit_ts()
 
 
-def db_set_last_exit_ts(ts: int):
+def db_set_last_exit_ts(ts: int) -> None:
     """保存当前程序的最新活跃时间戳"""
     get_db_manager().set_last_exit_ts(ts)
 
@@ -859,7 +780,7 @@ def db_get_source_last_ts(source_name: str) -> int:
     return get_db_manager().get_source_last_ts(source_name)
 
 
-def db_set_source_last_ts(source_name: str, ts: int):
+def db_set_source_last_ts(source_name: str, ts: int) -> None:
     """保存指定源的增量时间戳"""
     get_db_manager().set_source_last_ts(source_name, ts)
 
@@ -874,12 +795,12 @@ def db_get_metadata(key: str, default: str = "") -> str:
     return get_db_manager().get_metadata(key, default)
 
 
-def db_set_metadata(key: str, value: str):
+def db_set_metadata(key: str, value: str) -> None:
     """设置元数据"""
     get_db_manager().set_metadata(key, value)
 
 
-def db_mark_read(news_id: int, is_read: bool = True):
+def db_mark_read(news_id: int, is_read: bool = True) -> None:
     """标记新闻已读/未读"""
     get_db_manager().mark_read(news_id, is_read)
 
@@ -910,10 +831,8 @@ def db_query_news(
     is_favorite: Optional[bool] = None,
     stock_name: Optional[str] = None,
     min_importance: Optional[float] = None,
-    source_include_list: Optional[list] = None,
-    source_exclude_list: Optional[list] = None,
-    source_not_like: Optional[str] = None,
-    source_like: Optional[str] = None,
+    source_include_list: Optional[List[str]] = None,
+    source_exclude_list: Optional[List[str]] = None,
     category: Optional[str] = None,
 ) -> Tuple[List[NewsItem], int]:
     """通用新闻查询"""
@@ -922,7 +841,6 @@ def db_query_news(
         start_ts=start_ts, end_ts=end_ts, sentiment=sentiment,
         is_favorite=is_favorite, stock_name=stock_name, min_importance=min_importance,
         source_include_list=source_include_list, source_exclude_list=source_exclude_list,
-        source_not_like=source_not_like, source_like=source_like,
         category=category,
     )
 
@@ -932,6 +850,18 @@ def db_get_statistics() -> Dict[str, Any]:
     return get_db_manager().get_statistics()
 
 
-def db_invalidate_stats_cache():
+def db_invalidate_stats_cache() -> None:
     """强制失效统计缓存"""
     get_db_manager().invalidate_stats_cache()
+
+
+def db_close() -> None:
+    """关闭数据库连接"""
+    get_db_manager().close()
+
+
+@contextmanager
+def get_db():
+    """模块级数据库上下文管理器（兼容旧代码）"""
+    with get_db_manager().get_db() as c:
+        yield c

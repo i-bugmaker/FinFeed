@@ -25,6 +25,27 @@ logger = logging.getLogger("news_monitor")
 
 CATCH_UP_MIN_INTERVAL = 0.3
 
+_PARSER_REGISTRY: Dict[str, type] = {}
+
+
+def register_parser(parser_type: str):
+    """解析器注册装饰器
+    
+    使用方法:
+        @register_parser("sina")
+        class SinaParser(BaseParser):
+            ...
+    """
+    def decorator(cls):
+        _PARSER_REGISTRY[parser_type] = cls
+        return cls
+    return decorator
+
+
+def get_registered_parsers() -> Dict[str, type]:
+    """获取所有已注册的解析器"""
+    return dict(_PARSER_REGISTRY)
+
 
 class BaseParser(ABC):
     """解析器基类"""

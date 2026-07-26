@@ -4,5 +4,5 @@ from .text_analyzer import (
     extract_keywords_simple,
     classify_news,
 )
-from .sentiment import analyze_sentiment, get_sentiment_label
+from .sentiment import analyze_sentiment, score_importance
 from .importance import compute_importance, get_importance_level

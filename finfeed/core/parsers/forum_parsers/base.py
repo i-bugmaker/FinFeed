@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""论坛舆情解析器基类"""
+"""论坛舆情解析器基类
+
+包含：
+- BrowserManager：线程/协程安全的Playwright浏览器管理器，带自动重试和资源清理
+- BaseForumParser：论坛解析器基类
+- BaseHtmlForumParser：HTML论坛解析器基类（CSS选择器驱动）
+- BaseJsonForumParser：JSON API论坛解析器基类
+"""
 
 import re
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
@@ -24,32 +32,44 @@ logger = logging.getLogger("news_monitor")
 
 
 class BrowserManager:
-    _instance = None
-    _browser = None
-    _semaphore = None
-    _initialized = False
-    _lock = None
+    """安全的Playwright浏览器管理器
+
+    修复点：
+    - 正确的async单例初始化
+    - 失败后指数退避重试，不会永久禁用
+    - 页面超时和资源正确清理
+    - 支持优雅关闭
+    """
+
+    _instance: Optional["BrowserManager"] = None
+    _lock = asyncio.Lock()
+
+    def __init__(self) -> None:
+        self._browser = None
+        self._playwright = None
+        self._semaphore = asyncio.Semaphore(1)
+        self._initialized = False
+        self._init_failed_count = 0
+        self._next_retry_ts = 0
 
     @classmethod
-    async def get_instance(cls):
-        import asyncio
-        if cls._lock is None:
-            cls._lock = asyncio.Lock()
-        if cls._semaphore is None:
-            cls._semaphore = asyncio.Semaphore(1)
+    async def get_instance(cls) -> "BrowserManager":
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:
                     cls._instance = cls()
         return cls._instance
 
-    async def _init_browser(self):
-        if self._browser is not None:
-            return
+    async def _init_browser(self) -> bool:
+        now = asyncio.get_event_loop().time()
+        if self._init_failed_count > 0 and now < self._next_retry_ts:
+            return False
+        if self._browser is not None and self._initialized:
+            return True
         try:
             from playwright.async_api import async_playwright
-            p = await async_playwright().__aenter__()
-            self._browser = await p.chromium.launch(
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
                 headless=True,
                 args=[
                     "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
@@ -58,38 +78,93 @@ class BrowserManager:
                 ]
             )
             self._initialized = True
+            self._init_failed_count = 0
             logger.info("浏览器管理器初始化成功")
+            return True
         except Exception as e:
-            logger.error(f"浏览器初始化失败: {str(e)[:100]}")
+            self._init_failed_count += 1
+            wait_seconds = min(30 * self._init_failed_count, 300)
+            self._next_retry_ts = now + wait_seconds
+            logger.warning(f"浏览器初始化失败 ({self._init_failed_count}次)，{wait_seconds}s后重试: {str(e)[:80]}")
             self._initialized = False
+            await self._cleanup()
+            return False
 
-    async def fetch(self, url: str, headers: dict, timeout: int = 30000) -> str:
-        import asyncio
+    async def _cleanup(self) -> None:
+        if self._browser is not None:
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
+        if self._playwright is not None:
+            try:
+                await self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+        self._initialized = False
+
+    async def close(self) -> None:
+        """关闭浏览器并释放资源（优雅关闭时调用）"""
+        async with self._semaphore:
+            await self._cleanup()
+
+    async def fetch(self, url: str, headers: dict, timeout_ms: int = 30000) -> str:
+        """使用浏览器渲染页面并返回HTML内容"""
         async with self._semaphore:
             try:
                 if not self._initialized:
-                    await self._init_browser()
-                if not self._browser or not self._initialized:
+                    if not await self._init_browser():
+                        return ""
+                if not self._browser:
                     return ""
-                page = await self._browser.new_page(user_agent=headers.get("User-Agent", ""))
-                await page.set_extra_http_headers(headers)
+                page = None
                 try:
-                    await page.goto(url, timeout=timeout)
-                    await page.wait_for_load_state("networkidle", timeout=min(timeout, 15000))
-                    await page.wait_for_timeout(1500)
+                    page = await self._browser.new_page(
+                        user_agent=headers.get("User-Agent", ""),
+                        bypass_csp=True,
+                    )
+                    if headers:
+                        await page.set_extra_http_headers(headers)
+                    try:
+                        await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                        await page.wait_for_timeout(1500)
+                    except Exception as e:
+                        logger.debug(f"页面加载超时/异常({url}): {str(e)[:60]}")
                     content = await page.content()
                     return content
                 finally:
-                    await page.close()
+                    if page is not None:
+                        try:
+                            await page.close()
+                        except Exception:
+                            pass
             except Exception as e:
                 logger.warning(f"浏览器渲染失败({url}): {str(e)[:80]}")
                 self._initialized = False
+                self._init_failed_count += 1
+                self._next_retry_ts = asyncio.get_event_loop().time() + 60
                 return ""
 
+    async def __aenter__(self) -> "BrowserManager":
+        await self._init_browser()
+        return self
 
-async def fetch_with_browser(url: str, headers: dict, timeout: int = 30000) -> str:
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()
+
+
+async def fetch_with_browser(url: str, headers: dict, timeout_ms: int = 30000) -> str:
+    """便捷函数：使用单例浏览器获取页面HTML"""
     manager = await BrowserManager.get_instance()
-    return await manager.fetch(url, headers, timeout)
+    return await manager.fetch(url, headers, timeout_ms)
+
+
+async def close_browser_manager() -> None:
+    """关闭浏览器管理器（优雅关闭时调用）"""
+    if BrowserManager._instance is not None:
+        await BrowserManager._instance.close()
 
 
 class BaseForumParser(BaseParser):
@@ -124,6 +199,7 @@ class BaseForumParser(BaseParser):
             ("中国石油", "601857", "中国石油", "sh"),
             ("长城军工", "601606", "长城军工", "sh"),
             ("通富微电", "002156", "通富微电", "sz"),
+            ("紫光", "000938", "紫光股份", "sz"),
         ]
         for kw, code, sname, market in stock_map:
             if kw in name or code in name:
@@ -181,7 +257,7 @@ class BaseForumParser(BaseParser):
     async def _try_browser_render(self) -> str:
         try:
             return await fetch_with_browser(
-                self.source.url, dict(self.source.headers), timeout=45000
+                self.source.url, dict(self.source.headers), timeout_ms=45000
             )
         except Exception:
             return ""
