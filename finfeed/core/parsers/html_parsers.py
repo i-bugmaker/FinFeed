@@ -889,7 +889,7 @@ class LuoBoParser(BaseParser):
 
         pt = bj_str_from_ts(ts)
 
-        if ts and ts <= self.last_ts:
+        if not self._catch_up_mode and ts and ts <= self.last_ts:
             return None
 
         intro = ""
@@ -997,10 +997,13 @@ class LuoBoParser(BaseParser):
         bj_tz = timezone(timedelta(hours=8))
         seen_urls = set()
         headers = dict(self.source.headers)
+        logger.info(f"萝卜投研开始解析，last_ts={self.last_ts}")
 
         for url in self.SOURCE_URLS:
             try:
+                logger.info(f"萝卜投研浏览器渲染中...")
                 data_list = await self._fetch_with_browser(url, headers)
+                logger.info(f"萝卜投研浏览器渲染完成，获取到 {len(data_list)} 个API响应")
                 for data in data_list:
                     if not isinstance(data, dict):
                         continue
@@ -1010,6 +1013,7 @@ class LuoBoParser(BaseParser):
                     items = feed_data.get("list", [])
                     if not isinstance(items, list):
                         continue
+                    logger.info(f"萝卜投研解析到 {len(items)} 条原始数据")
                     for item in items:
                         news = self._parse_feed_item(item, bj_tz, seen_urls)
                         if news:
@@ -1017,14 +1021,19 @@ class LuoBoParser(BaseParser):
             except Exception as e:
                 logger.warning(f"萝卜投研浏览器解析失败({url}): {str(e)[:80]}")
 
+        logger.info(f"萝卜投研浏览器解析结果: {len(news_list)} 条")
+
         if not news_list:
+            logger.info(f"萝卜投研浏览器解析为空，尝试HTML备用方案")
             try:
                 html_news = self._parse_html_fallback(response.text, bj_tz, seen_urls)
+                logger.info(f"萝卜投研HTML备用方案解析到 {len(html_news)} 条")
                 news_list.extend(html_news)
             except Exception as e:
                 logger.warning(f"萝卜投研HTML解析失败: {str(e)[:80]}")
 
         news_list.sort(key=lambda x: x.publish_ts, reverse=True)
+        logger.info(f"萝卜投研最终解析结果: {len(news_list)} 条")
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
@@ -1033,10 +1042,13 @@ class LuoBoParser(BaseParser):
         bj_tz = timezone(timedelta(hours=8))
         seen_urls = set()
         headers = dict(self.source.headers)
+        logger.info(f"萝卜投研补抓模式开始，_catch_up_mode={self._catch_up_mode}, last_ts={self.last_ts}")
 
         for url in self.SOURCE_URLS:
             try:
+                logger.info(f"萝卜投研补抓浏览器渲染中...")
                 data_list = await self._fetch_with_browser(url, headers)
+                logger.info(f"萝卜投研补抓浏览器渲染完成，获取到 {len(data_list)} 个API响应")
                 for data in data_list:
                     if not isinstance(data, dict):
                         continue
@@ -1046,6 +1058,7 @@ class LuoBoParser(BaseParser):
                     items = feed_data.get("list", [])
                     if not isinstance(items, list):
                         continue
+                    logger.info(f"萝卜投研补抓解析到 {len(items)} 条原始数据")
                     for item in items:
                         news = self._parse_feed_item(item, bj_tz, seen_urls)
                         if news:
@@ -1053,6 +1066,7 @@ class LuoBoParser(BaseParser):
             except Exception as e:
                 logger.warning(f"萝卜投研补抓失败({url}): {str(e)[:80]}")
 
+        logger.info(f"萝卜投研补抓最终结果: {len(news_list)} 条")
         news_list.sort(key=lambda x: x.publish_ts, reverse=True)
         if news_list:
             self.last_ts = max(n.publish_ts for n in news_list if n.publish_ts > 0)
@@ -1139,7 +1153,7 @@ class JiuyanParser(BaseParser):
 
         pt = bj_str_from_ts(ts)
 
-        if ts and ts <= self.last_ts:
+        if not self._catch_up_mode and ts and ts <= self.last_ts:
             return None
 
         intro = ""

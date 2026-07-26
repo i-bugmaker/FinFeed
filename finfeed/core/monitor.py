@@ -117,10 +117,10 @@ class NewsMonitor:
         now_ts = int(time.time())
 
         if last_ts <= 0:
-            logger.info("首次启动，跳过补抓")
-            return 0
-
-        offline_seconds = now_ts - last_ts
+            logger.info("首次启动，执行初始化补抓")
+            offline_seconds = 86400
+        else:
+            offline_seconds = now_ts - last_ts
         max_cycles = self._calculate_catchup_cycles(offline_seconds)
 
         if max_cycles <= 0:
@@ -136,7 +136,7 @@ class NewsMonitor:
             fetcher.set_parser_last_ts(src_name, ts)
 
         for cycle in range(1, max_cycles + 1):
-            if not self._running:
+            if not self._running and self._shutdown_event.is_set():
                 break
             try:
                 logger.info(f"补抓轮次 {cycle}/{max_cycles}...")
@@ -184,7 +184,7 @@ class NewsMonitor:
                 logger.error(f"补抓轮次 {cycle} 异常: {e}")
                 await asyncio.sleep(2)
 
-        get_health_monitor().reset_circuits()
+        get_health_monitor()
         logger.info(f"补抓完成，共新增 {total_catchup} 条新闻")
         return total_catchup
 
