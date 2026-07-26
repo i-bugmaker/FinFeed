@@ -17,62 +17,19 @@ import os
 import sys
 import time
 import signal
-import logging
 import argparse
 import asyncio
-from logging.handlers import RotatingFileHandler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finfeed.config.settings import (
-    DEFAULT_WEB_PORT, DEFAULT_INTERVAL, LOG_PATH, LOG_LEVEL,
+    DEFAULT_WEB_PORT, DEFAULT_INTERVAL,
 )
 from finfeed.storage.database import init_db, db_set_last_exit_ts
 from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
 from finfeed.core.monitor import get_monitor
 from finfeed.ui.terminal import print_once_result, TerminalUI
 from finfeed.ui.web.server import start_web_server, stop_web_server
-
-logger = logging.getLogger("finfeed")
-
-
-def setup_logging():
-    """配置日志（支持轮转）"""
-    log_dir = os.path.dirname(LOG_PATH)
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
-    
-    root_logger = logging.getLogger()
-    root_logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-    
-    if root_logger.handlers:
-        for h in root_logger.handlers[:]:
-            root_logger.removeHandler(h)
-    
-    file_handler = RotatingFileHandler(
-        LOG_PATH,
-        maxBytes=10 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            "%Y-%m-%d %H:%M:%S",
-        )
-    )
-    
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(message)s",
-            "%H:%M:%S",
-        )
-    )
-    console_handler.setLevel(logging.WARNING)
-    
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
 
 
 async def run_once():
@@ -90,7 +47,6 @@ async def run_continuous(interval: int, web_port: int):
     shutdown_event = asyncio.Event()
     
     def signal_handler():
-        logger.info("收到关闭信号，准备优雅关闭...")
         shutdown_event.set()
     
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -104,7 +60,7 @@ async def run_continuous(interval: int, web_port: int):
     async def update_tui():
         while not shutdown_event.is_set():
             try:
-                news = db_get_recent_news(limit=50)
+                news = db_get_recent_news(limit=50, category="finance")
                 stats = db_get_statistics()
                 source_last_ts = db_get_all_source_last_ts()
                 source_stats = {}
@@ -123,9 +79,9 @@ async def run_continuous(interval: int, web_port: int):
                     source_stats=source_stats,
                     status=status,
                 )
-            except Exception as e:
-                logger.debug(f"TUI更新异常: {e}")
-            await asyncio.sleep(2)
+            except Exception:
+                pass
+            await asyncio.sleep(5)
     
     tui_task = asyncio.create_task(terminal_ui.run())
     update_task = asyncio.create_task(update_tui())
@@ -156,7 +112,6 @@ async def run_continuous(interval: int, web_port: int):
     
     stop_web_server()
     db_set_last_exit_ts(int(time.time()))
-    logger.info("FinFeed 已完全关闭")
 
 
 def main():
@@ -184,7 +139,6 @@ def main():
     args = parser.parse_args()
 
     init_db()
-    setup_logging()
 
     if args.export:
         fmt = "markdown" if args.export == "md" else args.export
@@ -205,7 +159,6 @@ def main():
         monitor = get_monitor()
 
         def signal_handler(sig, frame):
-            logger.info(f"收到信号 {sig}，准备优雅关闭...")
             asyncio.get_event_loop().call_soon_threadsafe(
                 lambda: asyncio.create_task(monitor.shutdown())
             )
@@ -226,7 +179,6 @@ def main():
                 asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
 
         except KeyboardInterrupt:
-            logging.info("\n用户中断，正在退出...")
             print(f"\n监控已停止。数据已持久化。")
         finally:
             if not args.once:

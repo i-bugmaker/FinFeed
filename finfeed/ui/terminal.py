@@ -220,6 +220,7 @@ class TerminalUI:
         self._live: Optional[Live] = None
         self._update_event = asyncio.Event()
         self._running = False
+        self._prev_render = None
 
     def update_data(
         self,
@@ -259,10 +260,10 @@ class TerminalUI:
 
         try:
             console.clear()
-            with Live(self._render(), console=console, refresh_per_second=4, transient=True) as self._live:
+            with Live(self._render(), console=console, refresh_per_second=1, transient=True) as self._live:
                 while self._running:
                     try:
-                        await asyncio.wait_for(self._update_event.wait(), timeout=1.0)
+                        await asyncio.wait_for(self._update_event.wait(), timeout=5.0)
                         self._live.update(self._render())
                         self._update_event.clear()
                     except asyncio.TimeoutError:

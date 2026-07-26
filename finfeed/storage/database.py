@@ -308,13 +308,19 @@ class NewsDatabase:
             self.invalidate_stats_cache()
         return inserted_items, len(inserted_items)
 
-    def get_recent_news(self, limit: int = 200, source: Optional[str] = None) -> List[NewsItem]:
+    def get_recent_news(self, limit: int = 200, source: Optional[str] = None,
+                        category: Optional[str] = None) -> List[NewsItem]:
         """从数据库获取最近的新闻"""
         with self.get_db() as c:
             if source and source != "all":
                 c.execute(
                     "SELECT * FROM news WHERE source = ? ORDER BY publish_ts DESC, id DESC LIMIT ?",
                     (source, limit),
+                )
+            elif category:
+                c.execute(
+                    "SELECT * FROM news WHERE category = ? ORDER BY publish_ts DESC, id DESC LIMIT ?",
+                    (category, limit),
                 )
             else:
                 c.execute(
@@ -739,9 +745,10 @@ def db_insert_news(news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:
     return get_db_manager().insert_news(news_list)
 
 
-def db_get_recent_news(limit: int = 200, source: Optional[str] = None) -> List[NewsItem]:
+def db_get_recent_news(limit: int = 200, source: Optional[str] = None,
+                       category: Optional[str] = None) -> List[NewsItem]:
     """从数据库获取最近的新闻"""
-    return get_db_manager().get_recent_news(limit, source)
+    return get_db_manager().get_recent_news(limit, source, category)
 
 
 def db_get_news_by_id(news_id: int) -> Optional[NewsItem]:
