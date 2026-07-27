@@ -842,8 +842,8 @@ class LuoBoParser(BaseParser):
                             json_data = await response.json()
                             if json_data.get("code") == 1 and json_data.get("data"):
                                 all_data.append(json_data)
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"萝卜投研响应解析失败: {e}")
 
                 page.on('response', handle_response)
 
@@ -1103,8 +1103,8 @@ class JiuyanParser(BaseParser):
                             json_data = await response.json()
                             if 'data' in json_data and isinstance(json_data['data'], list) and len(json_data['data']) > 0:
                                 all_data.append(json_data)
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"九言公社响应解析失败: {e}")
 
                 page.on('response', handle_response)
 

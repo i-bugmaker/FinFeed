@@ -12,12 +12,15 @@
 import asyncio
 import time
 import logging
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List
 
 from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE
 from .fetcher import get_fetcher, fetch_all_news
 from .pipeline import process_and_store
-from finfeed.storage.database import db_get_last_exit_ts, db_set_last_exit_ts, db_get_all_source_last_ts, db_get_statistics
+from finfeed.storage.database import (
+    db_get_last_exit_ts, db_set_last_exit_ts, db_get_all_source_last_ts,
+    db_set_source_last_ts,
+)
 from finfeed.core.health import get_health_monitor
 from finfeed.config.sources import get_forum_source_names
 
@@ -31,8 +34,6 @@ class NewsMonitor:
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._push_callback: Optional[Callable] = None
-        self._push_queue: asyncio.Queue = asyncio.Queue()
-        self._push_task: Optional[asyncio.Task] = None
         self._fetch_count = 0
         self._total_new = 0
 
@@ -40,46 +41,9 @@ class NewsMonitor:
         """设置推送回调函数"""
         self._push_callback = callback
 
-    async def _push_worker(self) -> None:
-        """推送工作协程：批量处理推送队列，避免阻塞抓取"""
-        while self._running or not self._push_queue.empty():
-            try:
-                items: List[Dict] = []
-                try:
-                    first = await asyncio.wait_for(self._push_queue.get(), timeout=0.5)
-                    items.append(first)
-                except asyncio.TimeoutError:
-                    if not self._running and self._push_queue.empty():
-                        break
-                    continue
-
-                while len(items) < 20:
-                    try:
-                        item = self._push_queue.get_nowait()
-                        items.append(item)
-                    except asyncio.QueueEmpty:
-                        break
-
-                if self._push_callback and items:
-                    try:
-                        await self._push_callback(items)
-                    except Exception as e:
-                        logger.debug(f"推送回调异常: {e}")
-
-                for _ in items:
-                    self._push_queue.task_done()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.debug(f"推送工作协程异常: {e}")
-                await asyncio.sleep(0.1)
-
     def _push_news_batch(self, news_items, category: str) -> None:
-        """将新闻条目推送到 Web 端（直接调用）"""
-        logger.info(f"_push_news_batch 被调用: news_items={len(news_items) if news_items else 0}, callback={self._push_callback is not None}")
+        """将新闻条目推送到 Web 端（异步调用回调，不阻塞主流程）"""
         if not news_items or not self._push_callback:
-            if not self._push_callback:
-                logger.warning("_push_callback 为 None，无法推送")
             return
         forum_sources = set(get_forum_source_names())
         items = []
@@ -93,15 +57,13 @@ class NewsMonitor:
                 items.append(d)
             except Exception as e:
                 logger.error(f"转换新闻失败: {e}")
-        
+
         if items:
             try:
                 asyncio.create_task(self._push_callback(items))
                 logger.info(f"推送 {len(items)} 条新闻到 Web 端")
             except Exception as e:
                 logger.error(f"推送失败: {e}")
-        else:
-            logger.info("items 为空，跳过推送")
 
     def _calculate_catchup_cycles(self, offline_seconds: int) -> int:
         """根据离线时长动态计算需要的补抓轮次
@@ -120,6 +82,38 @@ class NewsMonitor:
             return 5
         else:
             return 10
+
+    async def _process_fetched(self, all_news: list, fetcher) -> int:
+        """处理抓取到的新闻：写入源时间戳、分类、入库、推送
+
+        三种抓取模式（catch_up / single / 主循环）共用的核心处理逻辑。
+        返回新增条数。
+        """
+        forum_sources = set(get_forum_source_names())
+
+        for src_name, parser in fetcher._parsers.items():
+            db_set_source_last_ts(src_name, parser.last_ts)
+
+        finance_items = []
+        forum_items = []
+        for item in all_news:
+            if item.source in forum_sources:
+                forum_items.append(item)
+            else:
+                finance_items.append(item)
+
+        total_new = 0
+        if finance_items:
+            n = await process_and_store(finance_items, source_name="finance")
+            total_new += n
+            if n > 0:
+                self._push_news_batch(finance_items, "finance")
+        if forum_items:
+            n = await process_and_store(forum_items, source_name="forum")
+            total_new += n
+            if n > 0:
+                self._push_news_batch(forum_items, "forum")
+        return total_new
 
     async def run_catch_up(self) -> int:
         """执行离线补抓，返回补抓到的新闻总数
@@ -153,39 +147,12 @@ class NewsMonitor:
                 break
             try:
                 logger.info(f"补抓轮次 {cycle}/{max_cycles}...")
-                all_news, source_stats = await fetch_all_news(
+                all_news, _ = await fetch_all_news(
                     cycle=cycle,
                     catch_up_mode=True,
                     sources_per_cycle=CATCH_UP_SOURCES_PER_CYCLE,
                 )
-
-                cycle_new = 0
-                finance_items = []
-                forum_items = []
-                forum_sources = set(get_forum_source_names())
-
-                for src_name, parser in fetcher._parsers.items():
-                    db_set_last_ts = parser.last_ts
-                    from finfeed.storage.database import db_set_source_last_ts
-                    db_set_source_last_ts(src_name, db_set_last_ts)
-
-                for item in all_news:
-                    if item.source in forum_sources:
-                        forum_items.append(item)
-                    else:
-                        finance_items.append(item)
-
-                if finance_items:
-                    n = await process_and_store(finance_items, source_name="finance")
-                    cycle_new += n
-                    if n > 0:
-                        self._push_news_batch(finance_items, "finance")
-                if forum_items:
-                    n = await process_and_store(forum_items, source_name="forum")
-                    cycle_new += n
-                    if n > 0:
-                        self._push_news_batch(forum_items, "forum")
-
+                cycle_new = await self._process_fetched(all_news, fetcher)
                 total_catchup += cycle_new
                 logger.info(f"补抓轮次 {cycle} 完成，本轮新增 {cycle_new} 条")
 
@@ -204,34 +171,9 @@ class NewsMonitor:
     async def run_single_fetch(self) -> int:
         """执行单次抓取（用于手动触发/TUI单次模式）"""
         try:
-            all_news, source_stats = await fetch_all_news(cycle=self._fetch_count + 1)
-
-            finance_items = []
-            forum_items = []
-            forum_sources = set(get_forum_source_names())
-
+            all_news, _ = await fetch_all_news(cycle=self._fetch_count + 1)
             fetcher = get_fetcher()
-            for src_name, parser in fetcher._parsers.items():
-                from finfeed.storage.database import db_set_source_last_ts
-                db_set_source_last_ts(src_name, parser.last_ts)
-
-            for item in all_news:
-                if item.source in forum_sources:
-                    forum_items.append(item)
-                else:
-                    finance_items.append(item)
-
-            total_new = 0
-            if finance_items:
-                n = await process_and_store(finance_items, source_name="finance")
-                total_new += n
-                if n > 0:
-                    self._push_news_batch(finance_items, "finance")
-            if forum_items:
-                n = await process_and_store(forum_items, source_name="forum")
-                total_new += n
-                if n > 0:
-                    self._push_news_batch(forum_items, "forum")
+            total_new = await self._process_fetched(all_news, fetcher)
 
             self._fetch_count += 1
             db_set_last_exit_ts(int(time.time()))
@@ -249,44 +191,19 @@ class NewsMonitor:
 
         logger.info("新闻监控启动")
 
-        self._push_task = asyncio.create_task(self._push_worker())
-
         try:
             await self.run_catch_up()
         except Exception as e:
             logger.error(f"补抓异常: {e}")
 
+        fetcher = get_fetcher()
         while self._running:
             try:
                 self._fetch_count += 1
                 cycle_start = time.time()
 
-                all_news, source_stats = await fetch_all_news(cycle=self._fetch_count)
-
-                finance_items = []
-                forum_items = []
-                forum_sources = set(get_forum_source_names())
-
-                fetcher = get_fetcher()
-                for src_name, parser in fetcher._parsers.items():
-                    from finfeed.storage.database import db_set_source_last_ts
-                    db_set_source_last_ts(src_name, parser.last_ts)
-
-                for item in all_news:
-                    if item.source in forum_sources:
-                        forum_items.append(item)
-                    else:
-                        finance_items.append(item)
-
-                total_new = 0
-                if finance_items:
-                    n = await process_and_store(finance_items, source_name="finance")
-                    total_new += n
-                    logger.info(f"第 {self._fetch_count} 轮: finance 处理 {len(finance_items)} 条, 新增 {n} 条")
-                if forum_items:
-                    n = await process_and_store(forum_items, source_name="forum")
-                    total_new += n
-                    logger.info(f"第 {self._fetch_count} 轮: forum 处理 {len(forum_items)} 条, 新增 {n} 条")
+                all_news, _ = await fetch_all_news(cycle=self._fetch_count)
+                total_new = await self._process_fetched(all_news, fetcher)
 
                 self._total_new += total_new
                 db_set_last_exit_ts(int(time.time()))
@@ -315,16 +232,7 @@ class NewsMonitor:
                 except asyncio.TimeoutError:
                     pass
 
-        if self._push_task:
-            await self._push_queue.join()
-            self._push_task.cancel()
-            try:
-                await self._push_task
-            except asyncio.CancelledError:
-                pass
-
-        for src_name, parser in get_fetcher()._parsers.items():
-            from finfeed.storage.database import db_set_source_last_ts
+        for src_name, parser in fetcher._parsers.items():
             db_set_source_last_ts(src_name, parser.last_ts)
 
         db_set_last_exit_ts(int(time.time()))

@@ -19,8 +19,11 @@ import time
 import signal
 import argparse
 import asyncio
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+logger = logging.getLogger("news_monitor")
 
 from finfeed.config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL,
@@ -43,9 +46,9 @@ async def run_continuous(interval: int, web_port: int):
     """持续监控模式（带TUI）"""
     monitor = get_monitor()
     terminal_ui = TerminalUI(interval=interval, web_port=web_port)
-    
+
     from finfeed.storage.database import db_get_recent_news, db_get_statistics, db_get_all_source_last_ts
-    
+
     async def push_callback(total_new):
         news = db_get_recent_news(limit=total_new)
         news = [n.to_dict() for n in news]
@@ -63,20 +66,20 @@ async def run_continuous(interval: int, web_port: int):
             status=f"第{monitor.fetch_count}轮" if monitor.fetch_count > 0 else "运行中",
             force_broadcast=True,
         )
-    
+
     monitor.set_push_callback(push_callback)
-    
+
     shutdown_event = asyncio.Event()
-    
-    def signal_handler():
+
+    def _signal_handler(signum, frame):
         shutdown_event.set()
-    
+
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            signal.signal(sig, lambda s, f: signal_handler())
+            signal.signal(sig, _signal_handler)
         except (ValueError, OSError):
             pass
-    
+
     async def update_tui():
         while not shutdown_event.is_set():
             try:
@@ -86,11 +89,11 @@ async def run_continuous(interval: int, web_port: int):
                 source_stats = {}
                 for src in source_last_ts:
                     source_stats[src] = source_stats.get(src, 0) + 1
-                
+
                 status = "运行中" if monitor.is_running else "准备中"
                 if monitor.fetch_count > 0:
                     status = f"第{monitor.fetch_count}轮"
-                
+
                 terminal_ui.update_data(
                     news_list=news,
                     cycle=monitor.fetch_count,
@@ -99,7 +102,7 @@ async def run_continuous(interval: int, web_port: int):
                     source_stats=source_stats,
                     status=status,
                 )
-                
+
                 news_dicts = [n.to_dict() for n in news]
                 update_web_state(
                     news=news_dicts,
@@ -109,55 +112,46 @@ async def run_continuous(interval: int, web_port: int):
                     new_count=monitor.total_new_count,
                     status=status,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"TUI 更新异常: {e}")
             await asyncio.sleep(5)
-    
+
     tui_task = asyncio.create_task(terminal_ui.run())
     update_task = asyncio.create_task(update_tui())
     monitor_task = asyncio.create_task(monitor.run())
-    
+
     await shutdown_event.wait()
-    
+
     terminal_ui.stop()
     await monitor.shutdown()
-    
-    monitor_task.cancel()
-    try:
-        await monitor_task
-    except asyncio.CancelledError:
-        pass
-    
-    tui_task.cancel()
-    try:
-        await tui_task
-    except asyncio.CancelledError:
-        pass
-    
-    update_task.cancel()
-    try:
-        await update_task
-    except asyncio.CancelledError:
-        pass
-    
+
+    for task in (monitor_task, tui_task, update_task):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
     stop_web_server()
     db_set_last_exit_ts(int(time.time()))
 
 
-def main():
+def _setup_logging():
+    """配置日志系统"""
     import logging
-    import os
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "finfeed.log")
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
-        ]
+        handlers=[logging.FileHandler(log_file, encoding='utf-8')],
     )
-    
+
+
+def main():
+    _setup_logging()
+
     parser = argparse.ArgumentParser(
         description="FinFeed 实时新闻监控",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -197,36 +191,35 @@ def main():
         else:
             count = 0
         print(f"\n导出完成: {count} 条新闻已保存到 {output_path}")
-    else:
-        web_server = None
-        monitor = get_monitor()
+        return
 
-        def signal_handler(sig, frame):
-            asyncio.get_event_loop().call_soon_threadsafe(
-                lambda: asyncio.create_task(monitor.shutdown())
-            )
+    monitor = get_monitor()
 
+    def _signal_handler(signum, frame):
+        asyncio.get_event_loop().call_soon_threadsafe(
+            lambda: asyncio.create_task(monitor.shutdown())
+        )
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                try:
-                    signal.signal(sig, signal_handler)
-                except (ValueError, OSError):
-                    pass
+            signal.signal(sig, _signal_handler)
+        except (ValueError, OSError):
+            pass
 
-            web_server = start_web_server(port=args.port)
+    try:
+        start_web_server(port=args.port)
 
-            if args.once:
-                total_new = asyncio.run(run_once())
-                print_once_result([], total_new, 0, 0)
-            else:
-                asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
-
-        except KeyboardInterrupt:
-            print(f"\n监控已停止。数据已持久化。")
-        finally:
-            if not args.once:
-                stop_web_server()
-            db_set_last_exit_ts(int(time.time()))
+        if args.once:
+            total_new = asyncio.run(run_once())
+            print_once_result([], total_new, 0, 0)
+        else:
+            asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
+    except KeyboardInterrupt:
+        print(f"\n监控已停止。数据已持久化。")
+    finally:
+        if not args.once:
+            stop_web_server()
+        db_set_last_exit_ts(int(time.time()))
 
 
 if __name__ == "__main__":

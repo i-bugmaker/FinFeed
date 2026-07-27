@@ -136,6 +136,16 @@ class NewsDatabase:
                 )
             """)
 
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS stock_meta (
+                    code TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    industry TEXT DEFAULT '',
+                    market TEXT DEFAULT '',
+                    updated_at TEXT
+                )
+            """)
+
     def _create_indexes(self, c: sqlite3.Cursor) -> None:
         """创建精简后的核心索引"""
         c.execute("CREATE INDEX IF NOT EXISTS idx_pubts ON news(publish_ts DESC, id DESC)")
@@ -225,7 +235,8 @@ class NewsDatabase:
                     source=source,
                     stocks_count=len(stocks)
                 )
-            except Exception:
+            except Exception as e:
+                logger.debug(f"重算重要性失败，使用默认值: {e}")
                 importance_val = 5.0 if importance_val <= 0 else importance_val
 
         return NewsItem(
@@ -384,8 +395,8 @@ class NewsDatabase:
                 dates = [r["d"] for r in c.fetchall()]
                 if row and row["min_date"] and row["max_date"]:
                     return row["min_date"][:10], row["max_date"][:10], dates
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"获取日期范围失败: {e}")
             return "", "", []
 
     def search_news(self, keyword: str, limit: int = 100) -> List[NewsItem]:
@@ -403,7 +414,8 @@ class NewsDatabase:
                     (f'"{escaped}"', limit),
                 )
                 return [self._row_to_news(row) for row in c.fetchall()]
-            except Exception:
+            except Exception as e:
+                logger.debug(f"FTS5 搜索失败，回退到 LIKE 查询: {e}")
                 c.execute(
                     """SELECT * FROM news
                        WHERE title LIKE ? OR intro LIKE ?
@@ -420,8 +432,8 @@ class NewsDatabase:
                 row = c.fetchone()
                 if row:
                     return int(row["value"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"读取 last_exit_ts 失败: {e}")
         return 0
 
     def set_last_exit_ts(self, ts: int) -> None:
@@ -432,8 +444,8 @@ class NewsDatabase:
                     "INSERT OR REPLACE INTO metadata (key, value) VALUES ('last_exit_ts', ?)",
                     (str(ts),),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"保存 last_exit_ts 失败: {e}")
 
     def get_source_last_ts(self, source_name: str) -> int:
         """获取指定源的增量时间戳"""
@@ -443,8 +455,8 @@ class NewsDatabase:
                 row = c.fetchone()
                 if row:
                     return int(row["last_ts"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"读取源 {source_name} 时间戳失败: {e}")
         return 0
 
     def set_source_last_ts(self, source_name: str, ts: int) -> None:
@@ -455,8 +467,8 @@ class NewsDatabase:
                     "INSERT OR REPLACE INTO source_last_ts (source_name, last_ts, updated_at) VALUES (?, ?, ?)",
                     (source_name, ts, now_bj().strftime("%Y-%m-%d %H:%M:%S")),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"保存源 {source_name} 时间戳失败: {e}")
 
     def get_all_source_last_ts(self) -> Dict[str, int]:
         """获取所有源的增量时间戳"""
@@ -466,8 +478,8 @@ class NewsDatabase:
                 c.execute("SELECT source_name, last_ts FROM source_last_ts")
                 for row in c.fetchall():
                     result[row["source_name"]] = int(row["last_ts"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"读取所有源时间戳失败: {e}")
         return result
 
     def get_metadata(self, key: str, default: str = "") -> str:
@@ -477,7 +489,8 @@ class NewsDatabase:
                 c.execute("SELECT value FROM metadata WHERE key = ?", (key,))
                 row = c.fetchone()
                 return row["value"] if row else default
-        except Exception:
+        except Exception as e:
+            logger.debug(f"读取元数据 {key} 失败: {e}")
             return default
 
     def set_metadata(self, key: str, value: str) -> None:
@@ -488,8 +501,60 @@ class NewsDatabase:
                     "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
                     (key, value),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"保存元数据 {key} 失败: {e}")
+
+    # -------------------- 股票元数据 --------------------
+    _STOCK_NAME_CACHE: Dict[str, str] = {}
+    _STOCK_CACHE_LOADED = False
+
+    def load_stock_meta_batch(self, stock_map: Dict[str, str]) -> int:
+        """批量写入股票元数据（不存在的才插入，已存在的不覆盖）"""
+        if not stock_map:
+            return 0
+        now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with self.get_db() as c:
+                rows = [(code, name, now_str) for code, name in stock_map.items()]
+                c.executemany(
+                    "INSERT OR IGNORE INTO stock_meta (code, name, updated_at) VALUES (?, ?, ?)",
+                    rows,
+                )
+                return c.rowcount if c.rowcount > 0 else len(rows)
+        except Exception as e:
+            logger.warning(f"批量写入股票元数据失败: {e}")
+            return 0
+
+    def get_stock_name(self, code: str) -> str:
+        """获取股票名称（带内存缓存）"""
+        if not code:
+            return ""
+        if NewsDatabase._STOCK_NAME_CACHE and code in NewsDatabase._STOCK_NAME_CACHE:
+            return NewsDatabase._STOCK_NAME_CACHE[code]
+        try:
+            with self.get_db() as c:
+                c.execute("SELECT name FROM stock_meta WHERE code = ?", (code,))
+                row = c.fetchone()
+                if row:
+                    NewsDatabase._STOCK_NAME_CACHE[code] = row["name"]
+                    return row["name"]
+        except Exception as e:
+            logger.debug(f"查询股票 {code} 名称失败: {e}")
+        return ""
+
+    def get_all_stock_names(self) -> Dict[str, str]:
+        """获取所有股票代码→名称映射"""
+        result: Dict[str, str] = {}
+        try:
+            with self.get_db() as c:
+                c.execute("SELECT code, name FROM stock_meta")
+                for row in c.fetchall():
+                    result[row["code"]] = row["name"]
+                NewsDatabase._STOCK_NAME_CACHE = dict(result)
+                NewsDatabase._STOCK_CACHE_LOADED = True
+        except Exception as e:
+            logger.debug(f"查询所有股票名称失败: {e}")
+        return result
 
     def mark_read(self, news_id: int, is_read: bool = True) -> None:
         """标记新闻已读/未读"""
@@ -607,8 +672,8 @@ class NewsDatabase:
                     c.execute(data_query, [fts_query] + params + [limit, offset])
                     items = [self._row_to_news(row) for row in c.fetchall()]
                     return items, total
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"FTS5 复合查询失败，回退到 LIKE: {e}")
 
             like_clause = f"({where_clause})"
             like_params = list(params)
@@ -753,6 +818,21 @@ def get_db_manager() -> NewsDatabase:
 def init_db() -> None:
     """初始化数据库表结构"""
     get_db_manager().init_db()
+
+
+def db_load_stock_meta_batch(stock_map: Dict[str, str]) -> int:
+    """批量写入股票元数据"""
+    return get_db_manager().load_stock_meta_batch(stock_map)
+
+
+def db_get_stock_name(code: str) -> str:
+    """获取股票名称"""
+    return get_db_manager().get_stock_name(code)
+
+
+def db_get_all_stock_names() -> Dict[str, str]:
+    """获取所有股票代码→名称映射"""
+    return get_db_manager().get_all_stock_names()
 
 
 def db_insert_news(news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:

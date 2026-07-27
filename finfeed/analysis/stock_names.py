@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""A股核心股票名称映射表"""
+"""A股核心股票名称映射表
 
-STOCK_NAMES = {
+本文件维护内置的 fallback 映射，运行时优先从数据库 stock_meta 表读取（支持动态更新）。
+首次启动时若 DB 为空，会自动将本文件的映射写入 DB。
+"""
+
+import logging
+from typing import Dict
+
+logger = logging.getLogger("news_monitor")
+
+# 内置 fallback 映射（DB 不可用或为空时使用）
+STOCK_NAMES: Dict[str, str] = {
     "600519": "贵州茅台",
     "300750": "宁德时代",
     "002594": "比亚迪",
@@ -810,3 +820,28 @@ STOCK_NAMES = {
     "300999": "金龙鱼",
     "605117": "德业股份",
 }
+
+
+def _load_from_db() -> Dict[str, str]:
+    """从数据库加载股票名称映射；DB 为空时写入 fallback 并返回"""
+    try:
+        from finfeed.storage.database import db_get_all_stock_names, db_load_stock_meta_batch
+        db_map = db_get_all_stock_names()
+        if not db_map:
+            # DB 为空，写入 fallback
+            db_load_stock_meta_batch(STOCK_NAMES)
+            return dict(STOCK_NAMES)
+        # 合并：DB 优先，fallback 兜底
+        merged = dict(STOCK_NAMES)
+        merged.update(db_map)
+        return merged
+    except Exception as e:
+        logger.debug(f"从 DB 加载股票名称失败，使用 fallback: {e}")
+        return dict(STOCK_NAMES)
+
+
+# 模块加载时合并 DB 数据
+try:
+    STOCK_NAMES = _load_from_db()
+except Exception as e:
+    logger.debug(f"股票名称初始化失败，使用内置映射: {e}")

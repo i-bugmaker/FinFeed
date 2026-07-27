@@ -3,6 +3,7 @@
 """终端 UI 模块（基于 Rich）"""
 
 import asyncio
+import logging
 from typing import Optional, List, Dict
 
 from rich import box
@@ -13,6 +14,8 @@ from rich.text import Text
 from rich.console import Console, Group
 from rich.align import Align
 from rich.style import Style
+
+logger = logging.getLogger("news_monitor")
 from rich.layout import Layout
 
 from finfeed.config.settings import (
@@ -243,8 +246,8 @@ class TerminalUI:
                     except asyncio.TimeoutError:
                         if self._running and self._size_changed():
                             self._live.update(self._render(), refresh=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"TUI 渲染异常: {e}")
         finally:
             console.show_cursor(True)
 

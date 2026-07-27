@@ -22,6 +22,7 @@ import socket
 import logging
 import threading
 import queue
+import traceback
 from typing import Optional, Dict, List, Any, Tuple, Set
 from functools import lru_cache
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -39,7 +40,7 @@ class DualStackThreadingHTTPServer(ThreadingHTTPServer):
         self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         super().server_bind()
 
-from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT
+from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT, API_CACHE_TTL
 from finfeed.config.sources import get_enabled_sources, get_forum_sources
 from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
 from finfeed.storage.database import (
@@ -81,7 +82,6 @@ _sources_cache_lock = threading.Lock()
 
 _api_cache = {}
 _api_cache_lock = threading.Lock()
-API_CACHE_TTL = 2
 
 
 def _cache_get(key: str):
@@ -185,7 +185,8 @@ def _ts_from_date_str(date_str: str, end_of_day: bool = False) -> int | None:
         if len(date_str) == 10:
             return ts_from_bj_str(date_str + (" 23:59:59" if end_of_day else " 00:00:00"))
         return ts_from_bj_str(date_str)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"日期解析失败 '{date_str}': {e}")
         return None
 
 
@@ -362,7 +363,6 @@ class _WebHandler(BaseHTTPRequestHandler):
             _cache_set(cache_key, result)
             self._send_json(result, max_age=1)
         except Exception as e:
-            import traceback
             logger.error(f"新闻API错误: {e}")
             logger.error(traceback.format_exc())
             self._send_json({"error": str(e)}, status=500)
@@ -413,7 +413,6 @@ class _WebHandler(BaseHTTPRequestHandler):
             _cache_set(cache_key, result)
             self._send_json(result, max_age=1)
         except Exception as e:
-            import traceback
             logger.error(f"舆情API错误: {e}")
             logger.error(traceback.format_exc())
             self._send_json({"error": str(e)}, status=500)
@@ -558,7 +557,6 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._send_json({"success": False, "error": str(e)}, status=500)
 
     def _serve_health(self):
-        from finfeed.core.health import get_health_monitor
         health_monitor = get_health_monitor()
         all_health = health_monitor.get_all_health()
         health_data = {}
@@ -657,7 +655,6 @@ class _WebHandler(BaseHTTPRequestHandler):
                         "is_circuit_open": h.is_circuit_open if h else False,
                     })
         except Exception as e:
-            import traceback
             logger.error(f"获取数据源状态失败: {e}")
             logger.error(traceback.format_exc())
 
@@ -864,8 +861,8 @@ def stop_web_server(timeout: float = 5.0) -> None:
         for q in _sse_clients:
             try:
                 q.put_nowait({"type": "shutdown"})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"SSE 关闭通知失败: {e}")
         _sse_clients.clear()
     
     if _global_server:

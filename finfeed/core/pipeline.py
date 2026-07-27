@@ -12,7 +12,7 @@ from typing import List
 
 from finfeed.storage.models import NewsItem
 from finfeed.storage.database import db_insert_news
-from finfeed.core.dedup import get_dedup_engine
+from finfeed.core.dedup import deduplicate
 from finfeed.analysis.sentiment import analyze_sentiment_async
 from finfeed.analysis.importance import compute_importance
 from finfeed.analysis.text_analyzer import extract_keywords_simple
@@ -102,13 +102,15 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
             if not item.keywords:
                 try:
                     item.keywords = extract_keywords_simple(f"{item.title} {item.intro}", top_n=8)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"关键词提取失败 [{item.source}]: {e}")
                     item.keywords = []
 
             if item.sentiment == "neutral" or not item.sentiment:
                 try:
                     item.sentiment = await analyze_sentiment_async(item)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"情感分析失败 [{item.source}]: {e}")
                     item.sentiment = "neutral"
 
             try:
@@ -118,7 +120,8 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
                     source=item.source or "",
                     stocks_count=len(item.stocks) if item.stocks else 0
                 )
-            except Exception:
+            except Exception as e:
+                logger.debug(f"重要性评分失败 [{item.source}]: {e}")
                 item.importance = 5.0
 
             processed.append(item)
@@ -134,8 +137,7 @@ async def process_and_store(raw_items: List[NewsItem], source_name: str = "") ->
     if not processed:
         return 0
 
-    dedup = get_dedup_engine()
-    processed = dedup.deduplicate(processed)
+    processed = deduplicate(processed)
     inserted, count = db_insert_news(processed)
 
     if count > 0:

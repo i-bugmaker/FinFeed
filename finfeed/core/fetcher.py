@@ -283,30 +283,6 @@ def get_fetcher() -> NewsFetcher:
     return _global_fetcher
 
 
-def init_all_parsers():
-    """初始化所有 Parser（用于预加载）"""
-    get_fetcher().init_all_parsers()
-
-
-def set_parser_last_ts(source_name: str, ts: int):
-    """设置指定源的增量时间戳"""
-    get_fetcher().set_parser_last_ts(source_name, ts)
-
-
-def get_parser_last_ts(source_name: str) -> int:
-    """获取指定源的最新时间戳"""
-    return get_fetcher().get_parser_last_ts(source_name)
-
-
-async def fetch_news_from_source(
-    source: NewsSource,
-    client: Optional[httpx.AsyncClient] = None,
-    catch_up_mode: bool = False,
-) -> List[NewsItem]:
-    """从指定新闻源抓取新闻"""
-    return await get_fetcher().fetch_news_from_source(source, client, catch_up_mode)
-
-
 async def fetch_all_news(cycle: int = 1, catch_up_mode: bool = False, sources_per_cycle: int = 0) -> Tuple[List[NewsItem], Dict[str, int]]:
     """并发抓取所有新闻源"""
     return await get_fetcher().fetch_all_news(cycle, catch_up_mode, sources_per_cycle)

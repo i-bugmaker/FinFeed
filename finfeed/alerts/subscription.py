@@ -9,10 +9,13 @@
 """
 
 import json
+import logging
 import sqlite3
 from typing import Optional
 
 from finfeed.storage.database import get_db
+
+logger = logging.getLogger("news_monitor")
 from finfeed.utils.time_utils import now_bj
 
 
@@ -35,7 +38,8 @@ def add_stock(stock_code: str, stock_name: str = "") -> bool:
             )
             conn.commit()
             return c.rowcount > 0
-        except Exception:
+        except Exception as e:
+            logger.warning(f"添加自选股失败 {stock_code}: {e}")
             return False
 
 
@@ -96,7 +100,8 @@ def add_topic(name: str, keywords: list[str], description: str = "") -> int:
             )
             conn.commit()
             return c.lastrowid
-        except Exception:
+        except Exception as e:
+            logger.warning(f"添加主题订阅失败 {name}: {e}")
             return 0
 
 

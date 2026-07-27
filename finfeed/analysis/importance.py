@@ -10,6 +10,7 @@
 5. 事件类型权重（重大事件加分）
 """
 
+import re
 from typing import Optional
 
 # 来源权重配置
@@ -122,7 +123,6 @@ def compute_importance(title: str, intro: str = "", source: str = "",
         score += 0.5
 
     # 5. 是否包含数字（数据新闻通常更重要）
-    import re
     if re.search(r'\d+(\.\d+)?%', text) or re.search(r'[增减].{0,3}\d+', text):
         score += 0.3
 

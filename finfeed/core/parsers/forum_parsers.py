@@ -1,37 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""论坛舆情解析器 - 兼容层
+"""【DEPRECATED】论坛舆情解析器 - 兼容层
 
-从新的forum_parsers包重新导出所有类，保持向后兼容。
-新代码请直接使用 from .forum_parsers import xxx 导入。
+⚠️ 本文件已废弃，不再被加载。
+
+注意：由于 Python 包优先级，同名包 forum_parsers/ 已实际接管导入，
+本文件被遮蔽（shadow）从未被加载。保留仅为历史参考。
+
+新代码请使用：
+    from finfeed.core.parsers.forum_parsers import xxx
+或细粒度：
+    from finfeed.core.parsers.forum_parsers.eastmoney import EastMoneyStockBarParser
 """
 
-from .forum_parsers import (
-    BaseForumParser,
-    BaseHtmlForumParser,
-    BaseJsonForumParser,
-    EastMoneyStockBarParser,
-    EastMoneyHotBarParser,
-    EastMoneyForumParser,
-    XueqiuHotParser,
-    SinaStockBarParser,
-    ThsAdvisorParser,
-    ThsStockBarParser,
-    ThsLoungeParser,
-    WeiboFinanceParser,
-)
-
-__all__ = [
-    "BaseForumParser",
-    "BaseHtmlForumParser",
-    "BaseJsonForumParser",
-    "EastMoneyStockBarParser",
-    "EastMoneyHotBarParser",
-    "EastMoneyForumParser",
-    "XueqiuHotParser",
-    "SinaStockBarParser",
-    "ThsAdvisorParser",
-    "ThsStockBarParser",
-    "ThsLoungeParser",
-    "WeiboFinanceParser",
-]
+# 此处不执行任何代码（包优先，本文件不会被加载）

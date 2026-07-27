@@ -6,10 +6,13 @@
 """
 
 import time
+import logging
 from collections import Counter, defaultdict
 from typing import Optional
 
 from finfeed.storage.database import get_db
+
+logger = logging.getLogger("news_monitor")
 
 
 def get_source_stats(hours: int = 24) -> dict[str, int]:
@@ -140,8 +143,8 @@ def get_top_keywords(hours: int = 24, limit: int = 20) -> list[tuple[str, int]]:
                 kws = json.loads(row[0])
                 for kw in kws[:3]:
                     counter[kw] += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"关键词 JSON 解析失败: {e}")
         return counter.most_common(limit)
 
 

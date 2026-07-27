@@ -8,6 +8,7 @@
 import os
 import json
 import csv
+from collections import defaultdict, Counter
 from typing import List, Optional
 
 from finfeed.utils.time_utils import now_bj
@@ -72,7 +73,6 @@ def export_to_markdown(output_path: str, news: Optional[List[NewsItem]] = None,
     lines.append("")
 
     if group_by_date:
-        from collections import defaultdict
         date_groups = defaultdict(list)
         for n in items:
             date_key = n.publish_time[:10] if n.publish_time else "未知日期"
@@ -203,7 +203,6 @@ def export_to_excel(output_path: str, news: Optional[List[NewsItem]] = None,
     ws1.column_dimensions["L"].width = 6
 
     ws2 = wb.create_sheet("来源统计")
-    from collections import Counter
     source_counts = Counter(n.source for n in items)
     ws2["A1"] = "来源"
     ws2["B1"] = "数量"
