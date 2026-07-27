@@ -13,6 +13,10 @@ TZ_BJ = timezone(timedelta(hours=8))
 
 STOCK_CODE_FROM_URL = re.compile(r'[=/,_](\d{6})(?:\.html)?[/?]?$')
 STOCK_CODE_PATTERN = re.compile(r'\b(60\d{4}|688\d{3}|00\d{4}|30\d{4})\b')
+# 匹配带 SZ/SH 前缀的代码，如 $多氟多(SZ002407)$ 或 SH688825
+STOCK_CODE_WITH_PREFIX_PATTERN = re.compile(r'(?:SZ|SH|sz|sh)(60\d{4}|688\d{3}|00\d{4}|30\d{4})')
+# 匹配 $名称(SZ代码)$ 格式（雪球/东财常用），用于提取名称
+STOCK_NAME_WITH_CODE_PATTERN = re.compile(r'\$([\u4e00-\u9fa5A-Za-z]{1,10})\s*\((?:SZ|SH|sz|sh)(60\d{4}|688\d{3}|00\d{4}|30\d{4})\)\$')
 
 STOCK_NAME_MAP = {}
 
@@ -62,6 +66,39 @@ def extract_stocks_from_text(text: str, max_count: int = 3) -> list[dict]:
         return []
     stocks = []
     seen = set()
+    # 优先匹配 $名称(SZ代码)$ 格式（雪球/东财常用，可同时拿到名称和代码）
+    for m in STOCK_NAME_WITH_CODE_PATTERN.finditer(text):
+        name = m.group(1)
+        code = m.group(2)
+        if code in seen:
+            continue
+        if code.startswith(("60", "688")):
+            market = "sh"
+        elif code.startswith(("00", "30")):
+            market = "sz"
+        else:
+            continue
+        stocks.append({"code": code, "name": name, "market": market})
+        seen.add(code)
+        if len(stocks) >= max_count:
+            return stocks
+    # 匹配带 SZ/SH 前缀的代码，如 SZ002407、SH688825
+    for m in STOCK_CODE_WITH_PREFIX_PATTERN.finditer(text):
+        code = m.group(1)
+        if code in seen:
+            continue
+        if code.startswith(("60", "688")):
+            market = "sh"
+        elif code.startswith(("00", "30")):
+            market = "sz"
+        else:
+            continue
+        name = STOCK_NAME_MAP.get(code, "")
+        stocks.append({"code": code, "name": name, "market": market})
+        seen.add(code)
+        if len(stocks) >= max_count:
+            return stocks
+    # 匹配独立的6位代码（带词边界）
     for m in STOCK_CODE_PATTERN.finditer(text):
         code = m.group(1)
         if code in seen:
@@ -88,24 +125,30 @@ def extract_stocks_from_text(text: str, max_count: int = 3) -> list[dict]:
     return stocks
 
 
-def merge_stocks(stock_lists: list[list[dict]]) -> list[str]:
+def merge_stocks(stock_lists: list[list[dict]]) -> tuple[list[str], dict[str, str]]:
+    """合并股票列表，返回(代码列表, 代码->名称映射)
+
+    参数:
+        stock_lists: 股票列表的列表，每个元素为 {"code": "002407", "name": "多氟多", "market": "sz"}
+
+    返回:
+        tuple: (codes, name_map)
+            codes: 去重后的股票代码列表（最多5个）
+            name_map: 代码到名称的映射字典（用于保存到 stock_meta）
+    """
     seen_codes = set()
-    result = []
-    known_names = set(STOCK_NAME_MAP.values())
+    codes = []
+    name_map = {}
     for stocks in stock_lists:
         for s in stocks:
             code = s.get("code", "")
             name = s.get("name", "")
             if code and code not in seen_codes:
                 seen_codes.add(code)
-                display_name = name or code
-                if not name and code in STOCK_NAME_MAP:
-                    display_name = STOCK_NAME_MAP[code]
-                result.append(display_name)
-            elif name and name in known_names and name not in seen_codes and not code:
-                seen_codes.add(name)
-                result.append(name)
-    return result[:5]
+                codes.append(code)
+                if name:
+                    name_map[code] = name
+    return codes[:5], name_map
 
 
 def parse_forum_time(time_text: str, base_ts: int = 0) -> int:

@@ -8,14 +8,15 @@
 import re
 import logging
 import time
-from typing import List
+from typing import List, Dict
 
 from finfeed.storage.models import NewsItem
-from finfeed.storage.database import db_insert_news
+from finfeed.storage.database import db_insert_news, db_update_stock_meta
 from finfeed.core.dedup import deduplicate
 from finfeed.analysis.sentiment import analyze_sentiment_async
 from finfeed.analysis.importance import compute_importance
 from finfeed.analysis.text_analyzer import extract_keywords_simple
+from finfeed.core.parsers.forum_parsers.utils import extract_stocks_from_text
 
 logger = logging.getLogger("news_monitor")
 
@@ -98,6 +99,11 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
 
             if item.stocks:
                 item.stocks = _validate_stocks(item.stocks)
+                if item.stocks and (item.category == "forum" or source_name == "xueqiu"):
+                    extracted = extract_stocks_from_text(f"{item.title} {item.intro}", max_count=5)
+                    stock_name_map = {s["code"]: s["name"] for s in extracted if s.get("name")}
+                    if stock_name_map:
+                        db_update_stock_meta(stock_name_map)
 
             if not item.keywords:
                 try:

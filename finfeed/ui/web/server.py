@@ -47,6 +47,7 @@ from finfeed.storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
     db_get_news_by_id, db_get_recent_news, db_mark_read, db_toggle_favorite,
     db_query_news, db_get_statistics, db_get_favorites, get_db,
+    db_get_all_stock_names,
 )
 from finfeed.storage.models import NewsItem
 from finfeed.core.health import get_health_monitor
@@ -233,6 +234,8 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._serve_health()
         elif path.startswith("/api/stats"):
             self._serve_stats()
+        elif path.startswith("/api/stock_names"):
+            self._serve_stock_names()
         elif path.startswith("/api/daterange"):
             self._serve_daterange()
         elif path.startswith("/api/export"):
@@ -582,6 +585,25 @@ class _WebHandler(BaseHTTPRequestHandler):
             "sources": health_data,
         }
         self._send_json(result)
+
+    def _serve_stock_names(self):
+        """返回股票代码->名称映射，供前端展示使用"""
+        cache_key = "stock_names_map"
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            self._send_json(cached, max_age=300)
+            return
+        try:
+            stock_map = db_get_all_stock_names()
+            if not stock_map:
+                from finfeed.analysis.stock_names import STOCK_NAMES
+                stock_map = dict(STOCK_NAMES)
+            result = {"stock_names": stock_map}
+            _cache_set(cache_key, result)
+            self._send_json(result, max_age=300)
+        except Exception as e:
+            logger.error(f"获取股票名称映射失败: {e}")
+            self._send_json({"stock_names": {}}, status=500)
 
     def _serve_stats(self):
         stats = db_get_statistics()

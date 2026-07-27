@@ -112,8 +112,10 @@ tbody td{padding:18px 16px;vertical-align:middle}
 .col-source{width:120px;font-size:var(--fs-sm);min-width:120px}
 .src-tag{padding:6px 12px;border-radius:16px;font-size:var(--fs-xs);font-weight:600;display:inline-block;white-space:nowrap;border:1px solid;cursor:pointer}
 .src-tag:hover{opacity:.8}
-.col-stock{width:150px;font-size:var(--fs-sm);min-width:150px}
+.col-stock{width:180px;font-size:var(--fs-sm);min-width:180px}
 .stock-tag{padding:6px 10px;border-radius:var(--radius);font-size:var(--fs-xs);background:var(--green-bg);color:var(--green);display:inline-block;margin-right:6px;margin-bottom:4px;border:1px solid var(--border);cursor:pointer;white-space:nowrap}
+.stock-tag .stock-code{color:var(--text3);font-size:12px;margin-left:4px}
+.col-stock-empty{color:var(--text3);font-size:var(--fs-sm)}
 .stock-tag:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
 .col-title{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;position:relative}
 .col-title a{color:var(--text);text-decoration:none;font-weight:500}
@@ -178,7 +180,7 @@ tbody td{padding:18px 16px;vertical-align:middle}
   .sidebar{grid-template-columns:1fr}
   .col-time{width:120px;font-size:var(--fs-xs)}
   .col-source{width:100px}
-  .col-stock{width:120px}
+  .col-stock{width:140px}
   .col-intro{display:none}
 }
 </style>
@@ -311,6 +313,24 @@ let state = {
 };
 let abortController = null;
 let loadTimer = null;
+let stockNameMap = {};
+
+async function loadStockNames(){
+  try{
+    const resp=await fetch('/api/stock_names',{cache:'force-cache'});
+    const data=await resp.json();
+    if(data&&data.stock_names){
+      stockNameMap=data.stock_names;
+    }
+  }catch(e){console.warn('加载股票名称映射失败:',e);}
+}
+function formatStockTag(code){
+  const name=stockNameMap[code]||'';
+  if(name){
+    return `<span class="stock-tag" onclick="filterByStock('${escHtml(code).replace(/'/g,"\\'")}'')" title="${escHtml(name)}(${escHtml(code)}) - 点击筛选">${escHtml(name)}<span class="stock-code">${escHtml(code)}</span></span>`;
+  }
+  return `<span class="stock-tag" onclick="filterByStock('${escHtml(code).replace(/'/g,"\\'")}'')" title="${escHtml(code)} - 点击筛选">${escHtml(code)}</span>`;
+}
 
 const srcColorMap = {};
 function hashColor(str){
@@ -505,12 +525,18 @@ function renderNews(reset=false){
   function renderItem(item){
     const color=getSrcColor(item.source);
     const isNew=item.publish_ts && item.publish_ts>state.lastServerTs-300;
-    const stocks=(item.stocks||[]).map(s=>`<span class="stock-tag" onclick="filterByStock('${escHtml(s).replace(/'/g,"\\'")}')" title="点击筛选此股票">${escHtml(s)}</span>`).join('');
+    const stockList=item.stocks||[];
+    let stocksHtml;
+    if(stockList.length===0){
+      stocksHtml='<span class="col-stock-empty">—</span>';
+    }else{
+      stocksHtml=stockList.map(s=>formatStockTag(s)).join('');
+    }
     return `<tr class="${item.is_read?'':'unread'}" data-id="${item.id}">
       <td class="col-fav"><button class="fav-btn ${item.is_favorite?'active':''}" onclick="apiToggleFavorite(${item.id},this)" title="${item.is_favorite?'取消收藏':'收藏'}">${item.is_favorite?'★':'☆'}</button></td>
       <td class="col-time">${fmtTime(item.publish_ts)}</td>
       <td class="col-source"><span class="src-tag" style="color:${color};background:${color}15;border-color:${color}40" onclick="setSource('${(item.source||'').replace(/'/g,"\\'")}')">${escHtml(item.source)}</span></td>
-      <td class="col-stock">${stocks}</td>
+      <td class="col-stock">${stocksHtml}</td>
       <td class="col-title">${sentDot(item.sentiment)}<a href="${escHtml(item.url)}" target="_blank" rel="noopener" onclick="apiMarkRead(${item.id})">${highlight(item.title,state.keyword)}${isNew?'<span class="new-badge">NEW</span>':''}</a></td>
       <td class="col-intro" title="${escHtml(item.intro||'')}">${highlight(item.intro||'',state.keyword)}</td>
     </tr>`;
@@ -637,7 +663,10 @@ searchClear.addEventListener('click',()=>{searchInput.value='';state.keyword='';
 window.addEventListener('scroll',handleScroll,{passive:true});
 
 renderStockFilter();
-loadNews(true);
+(async()=>{
+  await loadStockNames();
+  loadNews(true);
+})();
 connectSSE();
 </script>
 </body>

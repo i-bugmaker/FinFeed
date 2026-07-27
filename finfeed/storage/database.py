@@ -835,6 +835,11 @@ def db_get_all_stock_names() -> Dict[str, str]:
     return get_db_manager().get_all_stock_names()
 
 
+def db_update_stock_meta(stock_map: Dict[str, str]) -> int:
+    """批量更新股票元数据（不存在的才插入，已存在的不覆盖）"""
+    return get_db_manager().load_stock_meta_batch(stock_map)
+
+
 def db_insert_news(news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:
     """插入新闻到数据库"""
     return get_db_manager().insert_news(news_list)

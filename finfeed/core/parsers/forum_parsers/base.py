@@ -241,7 +241,7 @@ class BaseForumParser(BaseParser):
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=intro[:200] if intro else "",
-            stocks=merge_stocks([all_stocks]),
+            stocks=merge_stocks([all_stocks])[0],
             category="forum",
         )
         return news
