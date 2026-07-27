@@ -63,7 +63,7 @@ _web_state = {
     "sources": [],
     "last_update": "",
     "server_ts": time.time(),
-    "latest_ts": 0,
+    "latest_id": 0,
 }
 _web_state_lock = threading.Lock()
 
@@ -662,6 +662,7 @@ class _WebHandler(BaseHTTPRequestHandler):
         self._send_json(stats)
 
     def _serve_sse(self):
+        logger.info(f"SSE连接请求: {self.client_address}")
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -672,6 +673,7 @@ class _WebHandler(BaseHTTPRequestHandler):
         client_queue: queue.Queue = queue.Queue()
         with _sse_clients_lock:
             _sse_clients.add(client_queue)
+            logger.info(f"SSE客户端已连接, 当前客户端数: {len(_sse_clients)}")
 
         try:
             self.wfile.write(b"event: connected\ndata: {\"type\":\"connected\"}\n\n")
@@ -683,14 +685,18 @@ class _WebHandler(BaseHTTPRequestHandler):
                     data_str = json.dumps(msg, ensure_ascii=False)
                     self.wfile.write(f"event: news\ndata: {data_str}\n\n".encode("utf-8"))
                     self.wfile.flush()
+                    logger.debug(f"SSE消息发送: {msg.get('type')}, count={msg.get('count',0)}")
                 except queue.Empty:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
-            pass
+            logger.info(f"SSE连接断开: {self.client_address}")
+        except Exception as e:
+            logger.error(f"SSE异常: {e}")
         finally:
             with _sse_clients_lock:
                 _sse_clients.discard(client_queue)
+                logger.info(f"SSE客户端已断开, 当前客户端数: {len(_sse_clients)}")
 
     def _serve_dashboard(self):
         dashboard_html = _get_dashboard_html()
@@ -785,18 +791,18 @@ def update_web_state(news, stats, cycle, total, new_count, status, force_broadca
     sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
     last_update = now_bj().strftime("%Y-%m-%d %H:%M:%S")
 
-    latest_ts = 0
+    latest_id = 0
     if news_dicts:
         for n in news_dicts:
-            ts = n.get("publish_ts", 0)
-            if ts > latest_ts:
-                latest_ts = ts
+            nid = n.get("id", 0)
+            if nid > latest_id:
+                latest_id = nid
 
     new_items = []
     new_finance_items = []
     new_forum_items = []
     with _web_state_lock:
-        old_latest = _web_state.get("latest_ts", 0)
+        old_latest_id = _web_state.get("latest_id", 0)
         
         if force_broadcast and news_dicts:
             for n in news_dicts:
@@ -806,9 +812,9 @@ def update_web_state(news, stats, cycle, total, new_count, status, force_broadca
                     new_forum_items.append(n)
                 else:
                     new_finance_items.append(n)
-        elif latest_ts > old_latest and news_dicts:
+        elif latest_id > old_latest_id and news_dicts:
             for n in news_dicts:
-                if n.get("publish_ts", 0) > old_latest:
+                if n.get("id", 0) > old_latest_id:
                     new_items.append(n)
                     cat = n.get("category", "")
                     if cat == "forum":
@@ -825,11 +831,15 @@ def update_web_state(news, stats, cycle, total, new_count, status, force_broadca
         _web_state["sources"] = sources_list
         _web_state["last_update"] = last_update
         _web_state["server_ts"] = time.time()
-        _web_state["latest_ts"] = max(latest_ts, old_latest)
+        if new_items:
+            _web_state["latest_id"] = max(latest_id, old_latest_id)
+
+    logger.info(f"update_web_state: force_broadcast={force_broadcast}, news_count={len(news_dicts)}, new_items={len(new_items)}, finance={len(new_finance_items)}, forum={len(new_forum_items)}, old_latest_id={old_latest_id}, latest_id={latest_id}")
 
     if new_items:
         invalidate_api_cache()
         if new_finance_items:
+            logger.info(f"SSE广播finance: {len(new_finance_items)}条, 客户端数: {len(_sse_clients)}")
             _sse_broadcast({
                 "type": "new_news",
                 "category": "finance",
@@ -838,6 +848,7 @@ def update_web_state(news, stats, cycle, total, new_count, status, force_broadca
                 "ts": time.time(),
             })
         if new_forum_items:
+            logger.info(f"SSE广播forum: {len(new_forum_items)}条, 客户端数: {len(_sse_clients)}")
             _sse_broadcast({
                 "type": "new_news",
                 "category": "forum",
@@ -845,6 +856,8 @@ def update_web_state(news, stats, cycle, total, new_count, status, force_broadca
                 "count": len(new_forum_items),
                 "ts": time.time(),
             })
+    else:
+        logger.info(f"update_web_state: 无新新闻可广播, force_broadcast={force_broadcast}, news_dicts_len={len(news_dicts)}")
 
 
 _global_server: Optional[DualStackThreadingHTTPServer] = None

@@ -106,13 +106,9 @@ class NewsMonitor:
         if finance_items:
             n = await process_and_store(finance_items, source_name="finance")
             total_new += n
-            if n > 0:
-                self._push_news_batch(finance_items, "finance")
         if forum_items:
             n = await process_and_store(forum_items, source_name="forum")
             total_new += n
-            if n > 0:
-                self._push_news_batch(forum_items, "forum")
         return total_new
 
     async def run_catch_up(self) -> int:
@@ -166,6 +162,13 @@ class NewsMonitor:
 
         get_health_monitor()
         logger.info(f"补抓完成，共新增 {total_catchup} 条新闻")
+
+        if total_catchup > 0 and self._push_callback:
+            try:
+                await self._push_callback(total_catchup)
+            except Exception as e:
+                logger.error(f"补抓推送失败: {e}", exc_info=True)
+
         return total_catchup
 
     async def run_single_fetch(self) -> int:
