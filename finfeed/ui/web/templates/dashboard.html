@@ -701,9 +701,38 @@ async function loadData() {
     }
 }
 
+function connectSSE(){
+  if(window.sse)return;
+  try{
+    window.sse=new EventSource('/api/events');
+    window.sse.addEventListener('connected',()=>{
+      document.getElementById('statusDot').className='status-dot';
+      document.getElementById('statusText').textContent='实时连接';
+    });
+    window.sse.addEventListener('news',(e)=>{
+      try{
+        const d=JSON.parse(e.data);
+        if(d.type==='new_news'&&d.count>0){
+          loadData();
+        }
+      }catch(err){}
+    });
+    window.sse.onerror=()=>{
+      document.getElementById('statusDot').className='status-dot error';
+      document.getElementById('statusText').textContent='重连中...';
+      window.sse=null;
+      setTimeout(connectSSE,5000);
+    };
+  }catch(e){
+    document.getElementById('statusDot').className='status-dot error';
+    document.getElementById('statusText').textContent='轮询模式';
+    setInterval(loadData,30000);
+  }
+}
+
 initCharts();
 loadData();
-setInterval(loadData, 30000);
+connectSSE();
 </script>
 </body>
 </html>

@@ -697,11 +697,9 @@ function connectSSE(){
     state.sse.addEventListener('news',(e)=>{
       try{
         const d=JSON.parse(e.data);
-        if(d.type==='new_news'&&d.category==='finance'&&d.items&&d.items.length){
+        if(d.type==='new_news'&&d.count>0){
           toast(`收到 ${d.count} 条新闻`,'new','新消息');
-          if(isDefaultFilter()){
-            prependNewsItems(d.items);
-          }else if(state.offset===0){
+          if(state.offset===0){
             loadNews(true);
           }
         }

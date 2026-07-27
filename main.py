@@ -29,7 +29,7 @@ from finfeed.storage.database import init_db, db_set_last_exit_ts
 from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
 from finfeed.core.monitor import get_monitor
 from finfeed.ui.terminal import print_once_result, TerminalUI
-from finfeed.ui.web.server import start_web_server, stop_web_server
+from finfeed.ui.web.server import start_web_server, stop_web_server, update_web_state
 
 
 async def run_once():
@@ -44,6 +44,28 @@ async def run_continuous(interval: int, web_port: int):
     monitor = get_monitor()
     terminal_ui = TerminalUI(interval=interval, web_port=web_port)
     
+    from finfeed.storage.database import db_get_recent_news, db_get_statistics, db_get_all_source_last_ts
+    
+    async def push_callback(total_new):
+        news = db_get_recent_news(limit=total_new)
+        news = [n.to_dict() for n in news]
+        stats = db_get_statistics()
+        source_last_ts = db_get_all_source_last_ts()
+        source_stats = {}
+        for src in source_last_ts:
+            source_stats[src] = source_stats.get(src, 0) + 1
+        update_web_state(
+            news=news,
+            stats=source_stats,
+            cycle=monitor.fetch_count,
+            total=stats.get("total", 0),
+            new_count=total_new,
+            status=f"第{monitor.fetch_count}轮" if monitor.fetch_count > 0 else "运行中",
+            force_broadcast=True,
+        )
+    
+    monitor.set_push_callback(push_callback)
+    
     shutdown_event = asyncio.Event()
     
     def signal_handler():
@@ -54,8 +76,6 @@ async def run_continuous(interval: int, web_port: int):
             signal.signal(sig, lambda s, f: signal_handler())
         except (ValueError, OSError):
             pass
-    
-    from finfeed.storage.database import db_get_recent_news, db_get_statistics, db_get_all_source_last_ts
     
     async def update_tui():
         while not shutdown_event.is_set():
@@ -77,6 +97,16 @@ async def run_continuous(interval: int, web_port: int):
                     total_news=stats.get("total", 0),
                     new_count=monitor.total_new_count,
                     source_stats=source_stats,
+                    status=status,
+                )
+                
+                news_dicts = [n.to_dict() for n in news]
+                update_web_state(
+                    news=news_dicts,
+                    stats=source_stats,
+                    cycle=monitor.fetch_count,
+                    total=stats.get("total", 0),
+                    new_count=monitor.total_new_count,
                     status=status,
                 )
             except Exception:
@@ -115,6 +145,19 @@ async def run_continuous(interval: int, web_port: int):
 
 
 def main():
+    import logging
+    import os
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "finfeed.log")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+        ]
+    )
+    
     parser = argparse.ArgumentParser(
         description="FinFeed 实时新闻监控",
         formatter_class=argparse.RawDescriptionHelpFormatter,

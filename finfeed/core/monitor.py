@@ -17,7 +17,7 @@ from typing import Callable, Optional, List, Dict
 from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE
 from .fetcher import get_fetcher, fetch_all_news
 from .pipeline import process_and_store
-from finfeed.storage.database import db_get_last_exit_ts, db_set_last_exit_ts, db_get_all_source_last_ts
+from finfeed.storage.database import db_get_last_exit_ts, db_set_last_exit_ts, db_get_all_source_last_ts, db_get_statistics
 from finfeed.core.health import get_health_monitor
 from finfeed.config.sources import get_forum_source_names
 
@@ -75,10 +75,14 @@ class NewsMonitor:
                 await asyncio.sleep(0.1)
 
     def _push_news_batch(self, news_items, category: str) -> None:
-        """将新闻条目加入推送队列（非阻塞）"""
+        """将新闻条目推送到 Web 端（直接调用）"""
+        logger.info(f"_push_news_batch 被调用: news_items={len(news_items) if news_items else 0}, callback={self._push_callback is not None}")
         if not news_items or not self._push_callback:
+            if not self._push_callback:
+                logger.warning("_push_callback 为 None，无法推送")
             return
         forum_sources = set(get_forum_source_names())
+        items = []
         for item in news_items:
             try:
                 item_category = category
@@ -86,9 +90,18 @@ class NewsMonitor:
                     item_category = "forum" if item.source in forum_sources else "finance"
                 d = item.to_dict()
                 d["category"] = item_category
-                self._push_queue.put_nowait(d)
-            except Exception:
-                pass
+                items.append(d)
+            except Exception as e:
+                logger.error(f"转换新闻失败: {e}")
+        
+        if items:
+            try:
+                asyncio.create_task(self._push_callback(items))
+                logger.info(f"推送 {len(items)} 条新闻到 Web 端")
+            except Exception as e:
+                logger.error(f"推送失败: {e}")
+        else:
+            logger.info("items 为空，跳过推送")
 
     def _calculate_catchup_cycles(self, offline_seconds: int) -> int:
         """根据离线时长动态计算需要的补抓轮次
@@ -269,19 +282,23 @@ class NewsMonitor:
                 if finance_items:
                     n = await process_and_store(finance_items, source_name="finance")
                     total_new += n
-                    if n > 0:
-                        self._push_news_batch(finance_items, "finance")
+                    logger.info(f"第 {self._fetch_count} 轮: finance 处理 {len(finance_items)} 条, 新增 {n} 条")
                 if forum_items:
                     n = await process_and_store(forum_items, source_name="forum")
                     total_new += n
-                    if n > 0:
-                        self._push_news_batch(forum_items, "forum")
+                    logger.info(f"第 {self._fetch_count} 轮: forum 处理 {len(forum_items)} 条, 新增 {n} 条")
 
                 self._total_new += total_new
                 db_set_last_exit_ts(int(time.time()))
 
+                if total_new > 0 and self._push_callback:
+                    try:
+                        await self._push_callback(total_new)
+                    except Exception as e:
+                        logger.error(f"第 {self._fetch_count} 轮: 推送失败: {e}", exc_info=True)
+
                 elapsed = time.time() - cycle_start
-                logger.debug(f"第 {self._fetch_count} 轮完成，新增 {total_new} 条，耗时 {elapsed:.2f}s")
+                logger.info(f"第 {self._fetch_count} 轮完成，新增 {total_new} 条，耗时 {elapsed:.2f}s")
 
                 sleep_time = max(0.5, FETCH_INTERVAL - elapsed)
                 try:

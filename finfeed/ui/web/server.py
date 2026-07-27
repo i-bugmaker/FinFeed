@@ -749,6 +749,7 @@ class _WebHandler(BaseHTTPRequestHandler):
 
 def _sse_broadcast(message: dict):
     with _sse_clients_lock:
+        client_count = len(_sse_clients)
         dead_clients = set()
         for q in _sse_clients:
             try:
@@ -757,6 +758,8 @@ def _sse_broadcast(message: dict):
                 dead_clients.add(q)
         for q in dead_clients:
             _sse_clients.discard(q)
+        if client_count > 0:
+            logger.info(f"SSE广播: {len(_sse_clients)} 客户端, 消息类型: {message.get('type')}, 数量: {message.get('count', 0)}")
 
 
 def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServer:
@@ -776,8 +779,11 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServ
     return server
 
 
-def update_web_state(news, stats, cycle, total, new_count, status):
-    """更新 Web 仪表盘共享状态（线程安全）"""
+def update_web_state(news, stats, cycle, total, new_count, status, force_broadcast=False):
+    """更新 Web 仪表盘共享状态（线程安全）
+    
+    force_broadcast: 强制广播 SSE 消息，不依赖时间戳比较
+    """
     news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:500]]
     sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
     last_update = now_bj().strftime("%Y-%m-%d %H:%M:%S")
@@ -794,7 +800,16 @@ def update_web_state(news, stats, cycle, total, new_count, status):
     new_forum_items = []
     with _web_state_lock:
         old_latest = _web_state.get("latest_ts", 0)
-        if latest_ts > old_latest and news_dicts:
+        
+        if force_broadcast and news_dicts:
+            for n in news_dicts:
+                new_items.append(n)
+                cat = n.get("category", "")
+                if cat == "forum":
+                    new_forum_items.append(n)
+                else:
+                    new_finance_items.append(n)
+        elif latest_ts > old_latest and news_dicts:
             for n in news_dicts:
                 if n.get("publish_ts", 0) > old_latest:
                     new_items.append(n)
@@ -803,6 +818,7 @@ def update_web_state(news, stats, cycle, total, new_count, status):
                         new_forum_items.append(n)
                     else:
                         new_finance_items.append(n)
+        
         _web_state["news"] = news_dicts
         _web_state["stats"] = stats
         _web_state["cycle"] = cycle
