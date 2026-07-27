@@ -542,18 +542,20 @@ function prependNewsItems(items){
   const emptyRow=tbody.querySelector('tr td[colspan]');
   if(emptyRow)tbody.innerHTML='';
   const frag=document.createDocumentFragment();
+  let added=0;
   for(let i=items.length-1;i>=0;i--){
     const item=items[i];
     if(!state.newsIdMap.has(item.id)){
       state.news.unshift(item);
       state.newsIdMap.set(item.id,item);
       frag.insertBefore(renderNewsItem(item),frag.firstChild);
+      added++;
     }
   }
   if(frag.firstChild){
     tbody.insertBefore(frag,tbody.firstChild);
   }
-  state.total+=items.length;
+  state.total+=added;
 }
 
 function renderNews(reset=false){
@@ -697,9 +699,10 @@ function connectSSE(){
     state.sse.addEventListener('news',(e)=>{
       try{
         const d=JSON.parse(e.data);
-        if(d.type==='new_news'&&d.count>0){
+        if(d.type==='new_news'&&d.category==='finance'&&d.count>0){
           toast(`收到 ${d.count} 条新闻`,'new','新消息');
-          if(d.items&&d.items.length>0){
+          const noFilters=state.source==='all'&&state.keyword===''&&state.sentiment==='all'&&state.minImportance===0&&state.dateRange==='all'&&!state.stockFilter;
+          if(noFilters&&d.items&&d.items.length>0){
             prependNewsItems(d.items);
           }
         }
