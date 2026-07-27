@@ -699,8 +699,8 @@ function connectSSE(){
         const d=JSON.parse(e.data);
         if(d.type==='new_news'&&d.count>0){
           toast(`收到 ${d.count} 条新闻`,'new','新消息');
-          if(state.offset===0){
-            loadNews(true);
+          if(d.items&&d.items.length>0){
+            prependNewsItems(d.items);
           }
         }
       }catch(err){}
