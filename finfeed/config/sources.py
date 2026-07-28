@@ -60,11 +60,11 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
     ),
     NewsSource(
         name="同花顺原创",
-        url="http://yuanchuang.10jqka.com.cn",
+        url="https://yuanchuang.10jqka.com.cn",
         parser_type="ths_yc",
         headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "http://yuanchuang.10jqka.com.cn/",
+            "Referer": "https://yuanchuang.10jqka.com.cn/",
             "Accept": "text/html",
         },
     ),
@@ -403,7 +403,7 @@ THSYC_CHANNELS = [
     {"name": "涨停解密",     "path": "mrnxgg_list"},
     {"name": "深度分析",     "path": "djsdfx_list"},
 ]
-THSYC_BASE_URL = "http://yuanchuang.10jqka.com.cn"
+THSYC_BASE_URL = "https://yuanchuang.10jqka.com.cn"
 
 
 def get_source_by_name(name: str) -> Optional[NewsSource]:

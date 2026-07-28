@@ -640,7 +640,60 @@ class CninfoParser(BaseParser):
 
 
 class THSYCParser(BaseParser):
-    """同花顺原创 - HTML 多栏目"""
+    """同花顺原创 - HTML 多栏目
+
+    增强功能：
+    - 从标题提取股票名称（格式："股票名：..."）
+    - 增加摘要长度到300字符
+    - 在intro中标注子栏目名称
+    - 设置category和stocks字段
+    - 正确处理yuanchuang和stock域名的URL
+    """
+
+    _RE_STOCK_NAME = re.compile(r"^([^：:]+)[：:]")
+    _RE_STOCK_CODE_IN_TITLE = re.compile(r"[（(](\d{6})[）)]")
+
+    def _extract_stock_from_title(self, title: str) -> tuple[str, list[str]]:
+        """从标题提取股票名称和清理后的标题"""
+        stocks = []
+        clean_title = title
+
+        code_match = self._RE_STOCK_CODE_IN_TITLE.search(title)
+        name_match = self._RE_STOCK_NAME.match(title)
+
+        if name_match:
+            stock_name = name_match.group(1).strip()
+            if stock_name and len(stock_name) <= 20:
+                stocks.append(stock_name)
+                clean_title = title
+
+        if code_match:
+            stock_code = code_match.group(1)
+            if stock_code not in stocks:
+                stocks.append(stock_code)
+
+        return clean_title, stocks
+
+    def _make_thsyc_news(self, title: str, url: str, publish_ts: int,
+                          publish_time: str, intro: str, channel_name: str,
+                          stocks: list[str]) -> NewsItem:
+        """构造同花顺原创新闻条目，包含栏目和股票信息"""
+        if not publish_time:
+            publish_time = bj_str_from_ts(publish_ts) if publish_ts else now_bj().strftime("%Y-%m-%d %H:%M:%S")
+
+        channel_prefix = f"【{channel_name}】" if channel_name else ""
+        enhanced_intro = f"{channel_prefix}{intro}" if intro else channel_prefix
+
+        return NewsItem(
+            title=title[:100] if len(title) > 100 else title,
+            url=url or "#",
+            source=get_display_name(self.source.name),
+            publish_time=publish_time,
+            publish_ts=publish_ts,
+            intro=enhanced_intro[:300] if len(enhanced_intro) > 300 else enhanced_intro,
+            category=channel_name or "同花顺原创",
+            stocks=stocks,
+        )
 
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
@@ -680,11 +733,18 @@ class THSYCParser(BaseParser):
                     time_elem = item.select_one(".arc-title span")
                     summary_elem = item.select_one(".arc-cont")
                     time_str = time_elem.get_text(strip=True) if time_elem else ""
-                    summary = summary_elem.get_text(strip=True)[:150] if summary_elem else ""
+                    summary = summary_elem.get_text(strip=True) if summary_elem else ""
 
                     url = title_elem.get("href", "")
-                    if url and not url.startswith("http"):
-                        url = f"{THSYC_BASE_URL}{url}" if url.startswith("/") else url
+                    if url:
+                        url = url.replace("http://", "https://")
+                        if not url.startswith("http"):
+                            if url.startswith("/"):
+                                url = f"https://yuanchuang.10jqka.com.cn{url}"
+                            else:
+                                url = f"{THSYC_BASE_URL}/{url}"
+
+                    clean_title, stocks = self._extract_stock_from_title(title)
 
                     ts = 0
                     url_str = str(url)
@@ -710,12 +770,14 @@ class THSYCParser(BaseParser):
                         continue
 
                     pt = bj_str_from_ts(ts) if ts else ""
-                    ch_news.append(self._make_news(
-                        title=title[:80],
+                    ch_news.append(self._make_thsyc_news(
+                        title=clean_title,
                         url=url or "#",
                         publish_ts=ts,
                         publish_time=pt,
                         intro=summary,
+                        channel_name=ch_name,
+                        stocks=stocks,
                     ))
                     page_has_new = True
 
@@ -775,11 +837,18 @@ class THSYCParser(BaseParser):
                     time_elem = item.select_one(".arc-title span")
                     summary_elem = item.select_one(".arc-cont")
                     time_str = time_elem.get_text(strip=True) if time_elem else ""
-                    summary = summary_elem.get_text(strip=True)[:150] if summary_elem else ""
+                    summary = summary_elem.get_text(strip=True) if summary_elem else ""
 
                     url = title_elem.get("href", "")
-                    if url and not url.startswith("http"):
-                        url = f"{THSYC_BASE_URL}{url}" if url.startswith("/") else url
+                    if url:
+                        url = url.replace("http://", "https://")
+                        if not url.startswith("http"):
+                            if url.startswith("/"):
+                                url = f"https://yuanchuang.10jqka.com.cn{url}"
+                            else:
+                                url = f"{THSYC_BASE_URL}/{url}"
+
+                    clean_title, stocks = self._extract_stock_from_title(title)
 
                     ts = 0
                     url_str = str(url)
@@ -805,12 +874,14 @@ class THSYCParser(BaseParser):
                         continue
 
                     pt = bj_str_from_ts(ts) if ts else ""
-                    ch_news.append(self._make_news(
-                        title=title[:80],
+                    ch_news.append(self._make_thsyc_news(
+                        title=clean_title,
                         url=url or "#",
                         publish_ts=ts,
                         publish_time=pt,
                         intro=summary,
+                        channel_name=ch_name,
+                        stocks=stocks,
                     ))
                     page_has_new = True
 
@@ -820,6 +891,9 @@ class THSYCParser(BaseParser):
                 await asyncio.sleep(0.3)
 
             if ch_news:
+                max_ts = max(n.publish_ts for n in ch_news if n.publish_ts > 0)
+                if max_ts > 0:
+                    _thsyc_channel_last_ts[ch_name] = max_ts
                 news_list.extend(ch_news)
                 logger.debug(f"同花顺原创补抓：{ch_name}，新增{len(ch_news)}条")
 
