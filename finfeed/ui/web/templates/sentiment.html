@@ -150,20 +150,41 @@ tbody td{padding:18px 16px;vertical-align:middle}
 .empty .title{font-size:var(--fs-md);font-weight:500;color:var(--text2);margin-bottom:10px}
 .empty .desc{font-size:var(--fs-sm);color:var(--text3);margin-bottom:16px}
 
-.toast-container{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:10px;pointer-events:none}
-.toast{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:14px;min-width:340px;max-width:460px;pointer-events:auto;border-left:4px solid var(--accent)}
-.toast.success{border-left-color:var(--green)}
-.toast.error{border-left-color:var(--red)}
-.toast.new{border-left-color:var(--orange)}
-.toast .toast-icon{font-size:var(--fs-lg);flex-shrink:0}
-.toast .toast-content{flex:1}
-.toast .toast-title{font-size:var(--fs-sm);font-weight:600;color:var(--text);margin-bottom:4px}
-.toast .toast-msg{font-size:var(--fs-xs);color:var(--text2);line-height:1.6}
-.toast .toast-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;padding:4px;opacity:.6;line-height:1}
-.toast .toast-close:hover{opacity:1}
-.toast-out{opacity:0;pointer-events:none}
+.msg-btn{position:relative;background:none;border:none;color:var(--text2);font-size:var(--fs-lg);cursor:pointer;padding:8px;line-height:1}
+.msg-btn:hover{color:var(--accent)}
+.msg-btn .msg-count{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center}
+.msg-btn.has-new .msg-count{animation:msg-pulse 1.5s infinite}
+@keyframes msg-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.1)}}
+.msg-panel{position:absolute;top:100%;right:0;min-width:360px;max-width:440px;background:var(--bg-card);border:1px solid var(--border);box-shadow:var(--shadow-lg);margin-top:8px;display:none;z-index:3000}
+.msg-panel.show{display:block}
+.msg-panel-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.msg-panel-title{font-size:var(--fs-sm);font-weight:600;color:var(--text)}
+.msg-panel-clear{background:none;border:none;color:var(--text3);font-size:var(--fs-xs);cursor:pointer;padding:4px 8px}
+.msg-panel-clear:hover{color:var(--accent)}
+.msg-panel-list{max-height:400px;overflow-y:auto;padding:8px}
+.msg-item{padding:12px 14px;border-bottom:1px solid var(--border2);cursor:pointer;display:flex;align-items:flex-start;gap:10px}
+.msg-item:hover{background:var(--bg-hover)}
+.msg-item:last-child{border-bottom:none}
+.msg-item .msg-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px}
+.msg-item.read .msg-dot{background:var(--text3)}
+.msg-item .msg-info{flex:1;min-width:0}
+.msg-item .msg-info .msg-title{font-size:var(--fs-xs);font-weight:600;color:var(--text);margin-bottom:2px}
+.msg-item .msg-info .msg-text{font-size:var(--fs-xs);color:var(--text2);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-item .msg-time{font-size:11px;color:var(--text3);flex-shrink:0}
+.msg-empty{padding:32px 18px;text-align:center;color:var(--text3);font-size:var(--fs-sm)}
 
-.new-badge{background:var(--red);color:#fff;font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;margin-left:8px;animation:pulse 2s infinite}
+.toast-wrapper{position:fixed;bottom:24px;right:24px;z-index:2000;pointer-events:none}
+.toast-el{background:rgba(30,41,59,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;min-width:260px;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.24);pointer-events:auto;transform:translateY(20px) scale(.96);opacity:0;transition:transform .35s cubic-bezier(.22,1,.36,1),opacity .3s ease}
+.toast-el.show{transform:translateY(0) scale(1);opacity:1}
+.toast-el.hiding{transform:translateY(20px) scale(.96);opacity:0}
+.toast-el .toast-icon{width:28px;height:28px;border-radius:8px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center;color:#60a5fa;font-size:14px;font-weight:700;flex-shrink:0}
+.toast-el .toast-body{flex:1;min-width:0}
+.toast-el .toast-title{font-size:13px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast-el .toast-msg{font-size:12px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast-el .toast-close{background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:14px;padding:4px;line-height:1;flex-shrink:0}
+.toast-el .toast-close:hover{color:rgba(255,255,255,.8)}
+
+.new-badge{background:var(--red);color:#fff;font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;margin-left:8px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 
 @media(max-width:1200px){
@@ -200,6 +221,18 @@ tbody td{padding:18px 16px;vertical-align:middle}
       <span class="status-dot" id="statusDot"></span>
       <span class="status-text" id="statusText">连接中...</span>
       <span class="nav-clock" id="navClock">--:--:--</span>
+      <div style="position:relative">
+        <button class="msg-btn" id="msgBtn" onclick="toggleMsgPanel()" title="消息通知">🔔</button>
+        <div class="msg-panel" id="msgPanel">
+          <div class="msg-panel-header">
+            <span class="msg-panel-title">消息通知</span>
+            <button class="msg-panel-clear" onclick="clearMessages()">清空</button>
+          </div>
+          <div class="msg-panel-list" id="msgList">
+            <div class="msg-empty">暂无消息</div>
+          </div>
+        </div>
+      </div>
       <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="切换主题">🌙</button>
     </div>
   </div>
@@ -288,8 +321,6 @@ tbody td{padding:18px 16px;vertical-align:middle}
     </div>
   </div>
 </div>
-
-<div class="toast-container" id="toastContainer"></div>
 
 <script>
 const PAGE_SIZE = 30;
@@ -389,15 +420,151 @@ function sentDot(s){
   return'<span class="sent-dot sent-neu"></span>';
 }
 
-function toast(msg,type='info',title=''){
-  const c=document.getElementById('toastContainer');
-  const icons={success:'✅',error:'❌',info:'ℹ️',new:'🆕'};
-  const el=document.createElement('div');
-  el.className=`toast ${type}`;
-  el.innerHTML=`<span class="toast-icon">${icons[type]||'ℹ️'}</span><div class="toast-content">${title?`<div class="toast-title">${title}</div>`:''}<div class="toast-msg">${msg}</div></div><button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
-  c.appendChild(el);
-  setTimeout(()=>{el.classList.add('toast-out');setTimeout(()=>el.remove(),300);},type==='new'?6000:4000);
+let toastTimer=null;
+let toastEl=null;
+
+function showToast(msg,title='新消息',duration=5000){
+  let wrapper=document.querySelector('.toast-wrapper');
+  if(!wrapper){
+    wrapper=document.createElement('div');
+    wrapper.className='toast-wrapper';
+    document.body.appendChild(wrapper);
+  }
+  
+  if(toastEl){
+    toastEl.classList.remove('show');
+    toastEl.classList.add('hiding');
+    setTimeout(()=>{
+      if(toastEl&&toastEl.parentNode){
+        toastEl.parentNode.removeChild(toastEl);
+      }
+      createToast(wrapper,msg,title,duration);
+    },250);
+  }else{
+    createToast(wrapper,msg,title,duration);
+  }
 }
+
+function createToast(wrapper,msg,title,duration){
+  const el=document.createElement('div');
+  el.className='toast-el';
+  el.innerHTML=`
+    <div class="toast-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+    </div>
+    <div class="toast-body">
+      <div class="toast-title">${title}</div>
+      <div class="toast-msg">${msg}</div>
+    </div>
+    <button class="toast-close" onclick="hideToast()">×</button>
+  `;
+  wrapper.appendChild(el);
+  toastEl=el;
+  requestAnimationFrame(()=>{
+    el.classList.add('show');
+  });
+  if(toastTimer)clearTimeout(toastTimer);
+  toastTimer=setTimeout(hideToast,duration);
+}
+
+function hideToast(){
+  if(toastEl){
+    toastEl.classList.remove('show');
+    toastEl.classList.add('hiding');
+    setTimeout(()=>{
+      if(toastEl&&toastEl.parentNode){
+        toastEl.parentNode.removeChild(toastEl);
+      }
+      toastEl=null;
+    },300);
+  }
+  if(toastTimer){
+    clearTimeout(toastTimer);
+    toastTimer=null;
+  }
+}
+
+function toast(msg,type='info'){
+  showToast(msg,type==='success'?'操作成功':type==='error'?'操作失败':'提示',3000);
+}
+
+let msgQueue=[];
+
+function addMessage(msg,title='新消息'){
+  const now=new Date();
+  const timeStr=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  msgQueue.unshift({msg,title,time:timeStr,read:false});
+  if(msgQueue.length>50)msgQueue.pop();
+  updateMsgPanel();
+  updateMsgBadge();
+}
+
+function updateMsgBadge(){
+  const btn=document.getElementById('msgBtn');
+  const unread=msgQueue.filter(m=>!m.read).length;
+  if(unread>0){
+    btn.classList.add('has-new');
+    let badge=btn.querySelector('.msg-count');
+    if(!badge){
+      badge=document.createElement('span');
+      badge.className='msg-count';
+      btn.appendChild(badge);
+    }
+    badge.textContent=unread>99?'99+':unread;
+  }else{
+    btn.classList.remove('has-new');
+    const badge=btn.querySelector('.msg-count');
+    if(badge)badge.remove();
+  }
+}
+
+function updateMsgPanel(){
+  const list=document.getElementById('msgList');
+  if(msgQueue.length===0){
+    list.innerHTML='<div class="msg-empty">暂无消息</div>';
+    return;
+  }
+  list.innerHTML=msgQueue.map((m,i)=>`
+    <div class="msg-item ${m.read?'read':''}" onclick="markMsgRead(${i})">
+      <span class="msg-dot"></span>
+      <div class="msg-info">
+        <div class="msg-title">${m.title}</div>
+        <div class="msg-text">${m.msg}</div>
+      </div>
+      <span class="msg-time">${m.time}</span>
+    </div>
+  `).join('');
+}
+
+function markMsgRead(index){
+  msgQueue[index].read=true;
+  updateMsgPanel();
+  updateMsgBadge();
+}
+
+function clearMessages(){
+  msgQueue=[];
+  updateMsgPanel();
+  updateMsgBadge();
+}
+
+function toggleMsgPanel(){
+  const panel=document.getElementById('msgPanel');
+  panel.classList.toggle('show');
+  if(panel.classList.contains('show')){
+    msgQueue.forEach(m=>m.read=true);
+    updateMsgPanel();
+    updateMsgBadge();
+  }
+}
+
+document.addEventListener('click',(e)=>{
+  const panel=document.getElementById('msgPanel');
+  const btn=document.getElementById('msgBtn');
+  if(panel&&panel.classList.contains('show')&&!e.target.closest('#msgBtn')&&!e.target.closest('#msgPanel')){
+    panel.classList.remove('show');
+  }
+});
 
 async function apiToggleFavorite(id,btn){
   try{
@@ -616,7 +783,7 @@ function connectSSE(){
       try{
         const d=JSON.parse(e.data);
         if(d.type==='new_news'&&d.category==='forum'&&d.items&&d.items.length){
-          toast(`收到 ${d.count} 条新帖子`,'new','新消息');
+          showToast(`收到 ${d.count} 条新帖子`,'新消息');
           if(state.offset<=PAGE_SIZE&&!state.keyword&&state.source==='all'&&state.sentiment==='all'&&state.dateRange==='all'&&!state.stockFilter){
             loadNews(true);
           }
