@@ -69,6 +69,16 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
         },
     ),
     NewsSource(
+        name="同花顺财经",
+        url="https://news.10jqka.com.cn/today_list/",
+        parser_type="ths_finance",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://news.10jqka.com.cn/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
         name="东方财富",
         url="https://np-listapi.eastmoney.com/comm/web/getFastNewsList",
         parser_type="eastmoney",
@@ -404,6 +414,22 @@ THSYC_CHANNELS = [
     {"name": "深度分析",     "path": "djsdfx_list"},
 ]
 THSYC_BASE_URL = "https://yuanchuang.10jqka.com.cn"
+
+# ============================================================
+# 同花顺财经栏目配置（news.10jqka.com.cn）
+# ============================================================
+THSFINANCE_CHANNELS = [
+    {"name": "财经要闻", "path": "today_list"},
+    {"name": "宏观经济", "path": "cjzx_list"},
+    {"name": "产经新闻", "path": "cjkx_list"},
+    {"name": "国际财经", "path": "guojicj_list"},
+    {"name": "金融市场", "path": "jrsc_list"},
+    {"name": "公司新闻", "path": "fssgsxw_list"},
+    {"name": "区域经济", "path": "region_list"},
+    {"name": "财经评论", "path": "fortune_list"},
+    {"name": "财经人物", "path": "cjrw_list"},
+]
+THSFINANCE_BASE_URL = "https://news.10jqka.com.cn"
 
 
 def get_source_by_name(name: str) -> Optional[NewsSource]:

@@ -871,7 +871,7 @@ class LuoBoParser(BaseParser):
         if not title or len(title) < 4:
             return None
 
-        url = f"https://robo.datayes.com/v2/article/{feed_id}"
+        url = f"https://robo.datayes.com/v2/details/feed/{feed_id}"
         if url in seen_urls:
             return None
         seen_urls.add(url)
@@ -921,15 +921,19 @@ class LuoBoParser(BaseParser):
             if not href:
                 continue
 
-            if href.startswith("/v2/article/") or href.startswith("v2/article/"):
-                article_id = href.replace("/v2/article/", "").replace("v2/article/", "").strip()
+            if href.startswith("/v2/details/feed/") or href.startswith("v2/details/feed/") or href.startswith("/v2/article/") or href.startswith("v2/article/"):
+                article_id = href.replace("/v2/details/feed/", "").replace("v2/details/feed/", "").replace("/v2/article/", "").replace("v2/article/", "").strip()
                 if not article_id or not article_id.isdigit():
                     continue
-                url = f"https://robo.datayes.com/v2/article/{article_id}"
+                url = f"https://robo.datayes.com/v2/details/feed/{article_id}"
             elif href.startswith("http") and "robo.datayes.com" in href:
                 url = href
-                if "/v2/article/" in href:
+                if "/v2/details/feed/" in href:
+                    article_id = href.split("/v2/details/feed/")[-1].split("/")[0]
+                    url = f"https://robo.datayes.com/v2/details/feed/{article_id}"
+                elif "/v2/article/" in href:
                     article_id = href.split("/v2/article/")[-1].split("/")[0]
+                    url = f"https://robo.datayes.com/v2/details/feed/{article_id}"
                 else:
                     continue
             else:
@@ -967,11 +971,18 @@ class LuoBoParser(BaseParser):
             if not href:
                 continue
 
-            if href.startswith("/v2/article/"):
-                article_id = href.replace("/v2/article/", "").strip()
-                url = f"https://robo.datayes.com/v2/article/{article_id}"
+            if href.startswith("/v2/details/feed/") or href.startswith("/v2/article/"):
+                article_id = href.replace("/v2/details/feed/", "").replace("/v2/article/", "").strip()
+                url = f"https://robo.datayes.com/v2/details/feed/{article_id}"
             elif href.startswith("http") and "robo.datayes.com" in href:
-                url = href
+                if "/v2/details/feed/" in href:
+                    article_id = href.split("/v2/details/feed/")[-1].split("/")[0]
+                    url = f"https://robo.datayes.com/v2/details/feed/{article_id}"
+                elif "/v2/article/" in href:
+                    article_id = href.split("/v2/article/")[-1].split("/")[0]
+                    url = f"https://robo.datayes.com/v2/details/feed/{article_id}"
+                else:
+                    url = href
             else:
                 continue
 

@@ -38,6 +38,7 @@ def _register_known_parsers() -> None:
         SinaParser, CLSParser, THSParser, EastMoneyParser,
         Jingji21Parser, WallStreetCNParser, Jin10Parser,
         GelonghuiLiveParser, QCCParser, CninfoParser, THSYCParser,
+        THSFinanceParser,
     )
     from .html_parsers import (
         GelonghuiArticleParser, FastbullParser, NBDParser,
@@ -65,6 +66,7 @@ def _register_known_parsers() -> None:
         "qcc": QCCParser,
         "cninfo": CninfoParser,
         "ths_yc": THSYCParser,
+        "ths_finance": THSFinanceParser,
         "fastbull": FastbullParser,
         "nbd": NBDParser,
         "hexun": HexunParser,

@@ -146,6 +146,30 @@ class NewsDatabase:
                 )
             """)
 
+            self._migrate_luobo_urls(c)
+
+    def _migrate_luobo_urls(self, c: sqlite3.Cursor) -> None:
+        """迁移：修正萝卜投研旧格式URL（v2/article -> v2/details/feed）"""
+        try:
+            migration_key = "luobo_url_migrated_v1"
+            c.execute("SELECT value FROM metadata WHERE key = ?", (migration_key,))
+            if c.fetchone():
+                return
+
+            c.execute(
+                "UPDATE news SET url = REPLACE(url, 'robo.datayes.com/v2/article/', 'robo.datayes.com/v2/details/feed/') WHERE url LIKE '%robo.datayes.com/v2/article/%'"
+            )
+            updated = c.rowcount
+            if updated > 0:
+                logger.info(f"数据迁移：修正了 {updated} 条萝卜投研旧格式URL")
+
+            c.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                (migration_key, "1"),
+            )
+        except Exception as e:
+            logger.debug(f"萝卜投研URL迁移跳过: {e}")
+
     def _create_indexes(self, c: sqlite3.Cursor) -> None:
         """创建精简后的核心索引"""
         c.execute("CREATE INDEX IF NOT EXISTS idx_pubts ON news(publish_ts DESC, id DESC)")
@@ -239,10 +263,14 @@ class NewsDatabase:
                 logger.debug(f"重算重要性失败，使用默认值: {e}")
                 importance_val = 5.0 if importance_val <= 0 else importance_val
 
+        url = (row["url"] if row["url"] is not None else "#") or "#"
+        if "robo.datayes.com/v2/article/" in url:
+            url = url.replace("robo.datayes.com/v2/article/", "robo.datayes.com/v2/details/feed/")
+
         return NewsItem(
             id=row["id"] if "id" in row.keys() else None,
             title=row["title"] if row["title"] is not None else "",
-            url=(row["url"] if row["url"] is not None else "#") or "#",
+            url=url,
             source=source,
             publish_time=publish_time,
             publish_ts=publish_ts,
