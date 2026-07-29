@@ -1103,7 +1103,7 @@ class ZhongzhengParser(BaseParser):
         """解析JS数据文件中的MI4_PAGE_ARTICLE数组"""
         news_list = []
         
-        m = re.search(r'var\s+MI4_PAGE_ARTICLE\s*=\s*(\[.*?\]);', js_text, re.DOTALL)
+        m = re.search(r'var\s+MI4_PAGE_ARTICLE\s*=\s*(\[.*\])', js_text, re.DOTALL)
         if not m:
             return news_list
 
