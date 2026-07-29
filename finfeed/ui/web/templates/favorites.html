@@ -224,7 +224,22 @@ tbody td{padding:18px 20px;vertical-align:middle}
 <script>
 const PAGE_SIZE=30;
 let state={offset:0,keyword:'',total:0,news:[],stats:{},sse:null,loading:false,hasMore:true};
-const srcColorMap={};
+const srcColorMap={
+  "新浪财经": "#55aaff",
+  "东方财富": "#ff9500",
+  "同花顺": "#e74c3c",
+  "同花顺原创": "#c0392b",
+  "同花顺财经": "#d35400",
+  "21经济网": "#0078ff",
+  "金十数据": "#ff9500",
+  "格隆汇": "#68af00",
+  "法布财经": "#00a0e9",
+  "第一财经": "#c41e3a",
+  "新华财经": "#cc0000",
+  "微博财经热搜": "#e6162d",
+  "中证快讯": "#005bac",
+  "上海证券报": "#1a6fb0",
+};
 function hashColor(str){let h=0;for(let i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h|=0;}return`hsl(${Math.abs(h)%360},60%,45%)`;}
 function getSrcColor(n){if(!srcColorMap[n])srcColorMap[n]=hashColor(n);return srcColorMap[n];}
 function getTheme(){try{return document.documentElement.getAttribute('data-theme')||'light';}catch(e){return'light';}}

@@ -105,6 +105,17 @@ def invalidate_api_cache():
         _api_cache.clear()
 
 
+def invalidate_sources_cache():
+    """重置来源列表缓存"""
+    global _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
+    with _sources_cache_lock:
+        _forum_source_raw_names = None
+        _forum_source_raw_set = None
+        _forum_source_display_names = None
+        _forum_source_display_set = None
+        _finance_source_display_names = None
+
+
 def _get_cached_sources():
     global _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
     with _sources_cache_lock:
