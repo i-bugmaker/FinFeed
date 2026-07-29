@@ -24,6 +24,10 @@ class NewsItem:
     stocks: list[str] = field(default_factory=list)
     is_read: bool = False
     is_favorite: bool = False
+    title_hash: str = ""
+    content_simhash: str = ""
+    duplicate_count: int = 0
+    duplicate_sources: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -41,6 +45,8 @@ class NewsItem:
             "stocks": self.stocks,
             "is_read": self.is_read,
             "is_favorite": self.is_favorite,
+            "duplicate_count": self.duplicate_count,
+            "duplicate_sources": self.duplicate_sources,
         }
 
 

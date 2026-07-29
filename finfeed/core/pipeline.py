@@ -2,23 +2,26 @@
 # -*- coding: utf-8 -*-
 """新闻处理管道
 
-处理流程: 解析 -> 字段清洗 -> 股票格式验证 -> 情感分析 -> 重要性评分 -> 入库
+处理流程: 解析 -> 字段清洗 -> 股票格式验证 -> 情感分析 -> 重要性评分 -> 多级去重 -> 入库/合并
 """
 
 import re
 import logging
 import time
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 from finfeed.storage.models import NewsItem
-from finfeed.storage.database import db_insert_news, db_update_stock_meta
-from finfeed.core.dedup import deduplicate
+from finfeed.storage.database import db_insert_news, db_update_stock_meta, db_merge_duplicate
+from finfeed.core.dedup import deduplicate, get_dedup_engine
 from finfeed.analysis.sentiment import analyze_sentiment_async
 from finfeed.analysis.importance import compute_importance
 from finfeed.analysis.text_analyzer import extract_keywords_simple
 from finfeed.core.parsers.forum_parsers.utils import extract_stocks_from_text
+from finfeed.utils.hash_utils import compute_normalized_title_hash, compute_simhash, simhash_to_hex
 
 logger = logging.getLogger("news_monitor")
+
+_dedup_initialized = False
 
 STOCK_CODE_PATTERN = re.compile(r'^(?:SH|SZ|BJ)?[036][0-9]{5}$|^[48][0-9]{5}$')
 STOCK_CODE_RAW_PATTERN = re.compile(r'\b(60\d{4}|688\d{3}|00\d{4}|30\d{4})\b')
@@ -130,6 +133,11 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
                 logger.debug(f"重要性评分失败 [{item.source}]: {e}")
                 item.importance = 5.0
 
+            # 计算去重用哈希
+            item.title_hash = compute_normalized_title_hash(item.title)
+            content_for_hash = f"{item.title} {item.intro[:200]}" if item.intro else item.title
+            item.content_simhash = simhash_to_hex(compute_simhash(content_for_hash))
+
             processed.append(item)
         except Exception as e:
             logger.debug(f"处理新闻条目异常 [{source_name}]: {e}")
@@ -138,15 +146,63 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
     return processed
 
 
+def _init_dedup_engine():
+    """初始化去重引擎（启动时从数据库加载历史数据预热）"""
+    global _dedup_initialized
+    if _dedup_initialized:
+        return
+    _dedup_initialized = True
+    try:
+        from finfeed.storage.database import db_get_recent_for_dedup
+        recent_news = db_get_recent_for_dedup(limit=5000)
+        engine = get_dedup_engine()
+        engine.load_from_db(recent_news)
+        logger.info(f"多级去重引擎初始化完成，已加载 {len(recent_news)} 条历史新闻")
+    except Exception as e:
+        logger.warning(f"去重引擎预热失败（不影响运行）: {e}")
+
+
 async def process_and_store(raw_items: List[NewsItem], source_name: str = "") -> int:
+    """处理新闻并存储（含多级去重）
+
+    Returns:
+        新增新闻数量（合并重复的不计入，但会更新主记录）
+    """
     processed = await process_news_items(raw_items, source_name)
     if not processed:
         return 0
 
+    # 同批次内简单去重
     processed = deduplicate(processed)
-    inserted, count = db_insert_news(processed)
+    if not processed:
+        return 0
 
-    if count > 0:
-        logger.debug(f"新入库 {count} 条 [{source_name}]")
+    # 初始化去重引擎（首次调用时预热）
+    _init_dedup_engine()
+
+    # 使用多级去重引擎
+    engine = get_dedup_engine()
+    new_items, merge_pairs, stats = engine.deduplicate_batch(processed)
+
+    # 合并重复项到数据库主记录
+    merged_count = 0
+    for dup_item, primary in merge_pairs:
+        if primary.id and primary.id > 0:
+            if db_merge_duplicate(dup_item, primary.id):
+                merged_count += 1
+
+    # 插入新条目
+    inserted, count = db_insert_news(new_items)
+
+    # 更新去重引擎中的news_id
+    if inserted:
+        engine.update_after_insert(inserted)
+
+    total_dup = stats.get("duplicate", 0)
+    if count > 0 or merged_count > 0:
+        logger.debug(
+            f"[{source_name}] 处理完成: 新增 {count} 条, 合并重复 {merged_count} 条 "
+            f"(L1={stats['l1']} L2={stats['l2']} L3={stats['l3']} L4={stats['l4']})"
+        )
 
     return count

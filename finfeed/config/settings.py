@@ -126,6 +126,46 @@ SOURCE_COLORS: Dict[str, str] = {
 SOURCE_SKIP_REQ_TRACE = set()
 
 # ============================================================
+# 多级去重配置
+# ============================================================
+# 来源优先级：数值越大优先级越高（重复时保留高优先级源）
+SOURCE_PRIORITY: Dict[str, int] = {
+    "财联社": 100, "金十数据": 98, "新华财经": 95, "新浪财经": 90,
+    "东方财富": 88, "同花顺": 86, "同花顺财经": 85, "同花顺原创": 85,
+    "华尔街见闻": 82, "21经济网": 80, "第一财经": 80, "中证快讯": 78,
+    "上海证券报": 78, "格隆汇快讯": 75, "凤凰财经": 70, "界面新闻": 70,
+    "澎湃新闻": 70, "每经网": 70, "和讯网": 68, "格隆汇文章": 65,
+    "法布财经": 60, "萝卜投研": 55, "韭研公社": 50, "企查查": 45,
+    "cnBeta": 40, "雅虎财经": 60,
+    "巨潮公告": 95,  # 公告类优先级高，不参与跨源去重
+}
+DEFAULT_SOURCE_PRIORITY: int = 50
+
+# 舆情论坛类源（UGC内容不做跨源语义去重，仅精确URL去重）
+FORUM_DEDUP_EXEMPT: set = {
+    "东财人气榜", "热门股吧", "东财股吧热帖", "同花顺论股堂",
+    "微博财经热搜", "新浪股吧",
+}
+
+# SimHash 去重阈值（汉明距离 <= 此值判定为语义重复）
+# 注：中文短文本使用字符级SimHash，相似新闻距离约10-18，完全不同新闻约28-40
+SIMHASH_THRESHOLD: int = 18
+# L4 去重：时间窗口（秒）
+DEDUP_TIME_WINDOW: int = 600  # 10分钟内
+# L4 去重：关键词/股票重合度阈值
+DEDUP_KEYWORD_OVERLAP: float = 0.6
+# 滑动窗口大小（内存中保留最近N条新闻的simhash用于快速比对）
+DEDUP_SLIDING_WINDOW_SIZE: int = 8000
+# 滑动窗口时间范围（秒）
+DEDUP_SLIDING_WINDOW_TTL: int = 86400  # 24小时
+
+def get_source_priority(source_name: str) -> int:
+    return SOURCE_PRIORITY.get(source_name, DEFAULT_SOURCE_PRIORITY)
+
+def is_forum_source(source_name: str) -> bool:
+    return source_name in FORUM_DEDUP_EXEMPT
+
+# ============================================================
 # 离线补抓配置
 # ============================================================
 MAX_CATCH_UP_CYCLES: int = 10

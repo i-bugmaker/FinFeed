@@ -98,10 +98,15 @@ class NewsDatabase:
                     keywords TEXT DEFAULT '[]',
                     stocks TEXT DEFAULT '[]',
                     is_read INTEGER DEFAULT 0,
-                    is_favorite INTEGER DEFAULT 0
+                    is_favorite INTEGER DEFAULT 0,
+                    title_hash TEXT DEFAULT '',
+                    content_simhash TEXT DEFAULT '',
+                    duplicate_count INTEGER DEFAULT 0,
+                    duplicate_sources TEXT DEFAULT '[]'
                 )
             """)
 
+            self._run_migrations(c)
             self._create_indexes(c)
             self._setup_fts5(c)
 
@@ -148,6 +153,61 @@ class NewsDatabase:
 
             self._migrate_luobo_urls(c)
 
+    def _run_migrations(self, c: sqlite3.Cursor) -> None:
+        """运行数据库迁移：为现有数据库添加新字段"""
+        # 检查并添加去重相关新字段
+        existing_cols = [row[1] for row in c.execute("PRAGMA table_info(news)").fetchall()]
+
+        new_columns = [
+            ("title_hash", "TEXT DEFAULT ''"),
+            ("content_simhash", "TEXT DEFAULT ''"),
+            ("duplicate_count", "INTEGER DEFAULT 0"),
+            ("duplicate_sources", "TEXT DEFAULT '[]'"),
+        ]
+
+        for col_name, col_def in new_columns:
+            if col_name not in existing_cols:
+                try:
+                    c.execute(f"ALTER TABLE news ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"数据库迁移：添加字段 {col_name}")
+                except sqlite3.OperationalError as e:
+                    logger.debug(f"添加字段 {col_name} 失败: {e}")
+
+        # 为旧数据计算title_hash（在后台或首次运行时处理）
+        migration_key = "dedup_hashes_calculated_v1"
+        c.execute("SELECT value FROM metadata WHERE key = ?", (migration_key,))
+        if not c.fetchone():
+            try:
+                # 延迟导入，避免循环依赖
+                from finfeed.utils.hash_utils import compute_normalized_title_hash, compute_simhash, simhash_to_hex
+                c.execute("SELECT id, title, intro FROM news WHERE title_hash = '' OR title_hash IS NULL")
+                rows = c.fetchall()
+                updated = 0
+                for row in rows:
+                    news_id = row[0]
+                    title = row[1] or ""
+                    intro = row[2] or ""
+                    if not title:
+                        continue
+                    th = compute_normalized_title_hash(title)
+                    content = f"{title} {intro[:200]}" if intro else title
+                    sh = simhash_to_hex(compute_simhash(content))
+                    c.execute(
+                        "UPDATE news SET title_hash = ?, content_simhash = ? WHERE id = ?",
+                        (th, sh, news_id)
+                    )
+                    updated += 1
+                    if updated % 500 == 0:
+                        logger.info(f"数据库迁移：计算历史哈希 {updated} 条...")
+                if updated > 0:
+                    logger.info(f"数据库迁移：为 {updated} 条历史新闻计算去重哈希完成")
+                c.execute(
+                    "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                    (migration_key, "1"),
+                )
+            except Exception as e:
+                logger.warning(f"计算历史哈希迁移失败: {e}")
+
     def _migrate_luobo_urls(self, c: sqlite3.Cursor) -> None:
         """迁移：修正萝卜投研旧格式URL（v2/article -> v2/details/feed）"""
         try:
@@ -176,7 +236,9 @@ class NewsDatabase:
         c.execute("CREATE INDEX IF NOT EXISTS idx_source_ts ON news(source, publish_ts DESC, id DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_category_ts ON news(category, publish_ts DESC, id DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_fav_ts ON news(is_favorite, publish_ts DESC, id DESC)")
-        
+        c.execute("CREATE INDEX IF NOT EXISTS idx_title_hash ON news(title_hash)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_simhash ON news(content_simhash)")
+
         c.execute("PRAGMA index_list('news')")
         existing_indexes = [row[1] for row in c.fetchall()]
         if 'idx_url_source' not in existing_indexes:
@@ -267,6 +329,23 @@ class NewsDatabase:
         if "robo.datayes.com/v2/article/" in url:
             url = url.replace("robo.datayes.com/v2/article/", "robo.datayes.com/v2/details/feed/")
 
+        duplicate_sources_val = "[]"
+        duplicate_count = 0
+        title_hash_val = ""
+        content_simhash_val = ""
+        if "title_hash" in row.keys():
+            title_hash_val = row["title_hash"] or ""
+        if "content_simhash" in row.keys():
+            content_simhash_val = row["content_simhash"] or ""
+        if "duplicate_sources" in row.keys():
+            duplicate_sources_val = row["duplicate_sources"] or "[]"
+        if "duplicate_count" in row.keys():
+            duplicate_count = row["duplicate_count"] or 0
+        try:
+            duplicate_sources = json.loads(duplicate_sources_val) if duplicate_sources_val else []
+        except (json.JSONDecodeError, TypeError):
+            duplicate_sources = []
+
         return NewsItem(
             id=row["id"] if "id" in row.keys() else None,
             title=row["title"] if row["title"] is not None else "",
@@ -283,10 +362,14 @@ class NewsDatabase:
             stocks=stocks,
             is_read=bool(row["is_read"]) if "is_read" in row.keys() and row["is_read"] is not None else False,
             is_favorite=bool(row["is_favorite"]) if "is_favorite" in row.keys() and row["is_favorite"] is not None else False,
+            title_hash=title_hash_val,
+            content_simhash=content_simhash_val,
+            duplicate_count=duplicate_count,
+            duplicate_sources=duplicate_sources,
         )
 
     def insert_news(self, news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:
-        """批量插入新闻（优化版：使用INSERT OR IGNORE + (url,source)唯一索引去重）
+        """批量插入新闻（优化版：使用INSERT OR IGNORE + 多级去重）
 
         Args:
             news_list: 新闻条目列表
@@ -324,32 +407,64 @@ class NewsDatabase:
                 json.dumps(n.stocks, ensure_ascii=False),
                 1 if n.is_read else 0,
                 1 if n.is_favorite else 0,
+                n.title_hash or "",
+                n.content_simhash or "",
+                0,  # duplicate_count
+                json.dumps(n.duplicate_sources or [], ensure_ascii=False),
                 url,
                 source,
+                n.title_hash or "",
             ))
 
         if not rows_to_insert:
             return [], 0
 
         with self.get_db() as c:
-            c.executemany(
-                """INSERT OR IGNORE INTO news
-                   (title, url, source, publish_time, publish_ts, intro,
-                    created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite)
-                   SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                   WHERE NOT EXISTS (
-                       SELECT 1 FROM news WHERE url = ? AND source = ? AND title = ?
-                   )
-                """,
-                [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
-                  r[14], r[15], r[0]) for r in rows_to_insert]
-            )
+            # 先检查新字段是否存在
+            has_new_fields = True
+            try:
+                c.execute("SELECT title_hash FROM news LIMIT 1")
+            except sqlite3.OperationalError:
+                has_new_fields = False
+
+            if has_new_fields:
+                c.executemany(
+                    """INSERT OR IGNORE INTO news
+                       (title, url, source, publish_time, publish_ts, intro,
+                        created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite,
+                        title_hash, content_simhash, duplicate_count, duplicate_sources)
+                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM news WHERE url = ? AND source = ?
+                       )
+                       AND (? = '' OR NOT EXISTS (
+                           SELECT 1 FROM news WHERE title_hash = ? AND title_hash != ''
+                       ))
+                    """,
+                    [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
+                      r[14], r[15], r[16], r[17], r[18], r[19], r[20], r[20]) for r in rows_to_insert]
+                )
+            else:
+                c.executemany(
+                    """INSERT OR IGNORE INTO news
+                       (title, url, source, publish_time, publish_ts, intro,
+                        created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite)
+                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM news WHERE url = ? AND source = ? AND title = ?
+                       )
+                    """,
+                    [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
+                      r[18], r[19], r[0]) for r in rows_to_insert]
+                )
 
             c.execute(
-                "SELECT id, title, url, source FROM news WHERE created_at = ? AND id IN (SELECT last_insert_rowid())",
+                "SELECT id, title, url, source, title_hash FROM news WHERE created_at = ?",
                 (now_str,)
             )
-            recent_rows = {row["title"]: row for row in c.fetchall()}
+            recent_rows = {}
+            for row in c.fetchall():
+                recent_rows[row["title"]] = row
 
             for n in news_list:
                 if n.title in recent_rows:
@@ -361,6 +476,98 @@ class NewsDatabase:
         if inserted_items:
             self.invalidate_stats_cache()
         return inserted_items, len(inserted_items)
+
+    def merge_duplicate(self, duplicate_item: NewsItem, primary_id: int) -> bool:
+        """合并重复新闻到主记录：不新增条目，而是更新主记录的元数据
+
+        Args:
+            duplicate_item: 重复的新闻条目
+            primary_id: 主记录的数据库ID
+
+        Returns:
+            是否更新成功
+        """
+        if not primary_id or primary_id <= 0:
+            return False
+
+        with self.get_db() as c:
+            # 查询主记录当前信息
+            c.execute("SELECT * FROM news WHERE id = ?", (primary_id,))
+            row = c.fetchone()
+            if not row:
+                return False
+
+            # 准备合并数据
+            updates = {}
+            existing_intro = row["intro"] or ""
+            existing_stocks = "[]"
+            existing_keywords = "[]"
+            existing_dup_sources = "[]"
+            existing_publish_ts = row["publish_ts"] or 0
+            existing_importance = row["importance"] or 0.0
+
+            if "stocks" in row.keys():
+                existing_stocks = row["stocks"] or "[]"
+            if "keywords" in row.keys():
+                existing_keywords = row["keywords"] or "[]"
+            if "duplicate_sources" in row.keys():
+                existing_dup_sources = row["duplicate_sources"] or "[]"
+
+            # 1. 摘要：如果新条目摘要更长则更新
+            if duplicate_item.intro and len(duplicate_item.intro) > len(existing_intro):
+                updates["intro"] = duplicate_item.intro
+
+            # 2. 发布时间：取更早的
+            if duplicate_item.publish_ts > 0 and (existing_publish_ts == 0 or duplicate_item.publish_ts < existing_publish_ts):
+                updates["publish_ts"] = duplicate_item.publish_ts
+                if duplicate_item.publish_time:
+                    updates["publish_time"] = duplicate_item.publish_time
+
+            # 3. 合并stocks（取并集）
+            try:
+                import json as _json
+                old_stocks = set(_json.loads(existing_stocks)) if existing_stocks else set()
+                new_stocks = set(duplicate_item.stocks) if duplicate_item.stocks else set()
+                merged_stocks = list(old_stocks | new_stocks)
+                updates["stocks"] = _json.dumps(merged_stocks, ensure_ascii=False)
+            except Exception:
+                pass
+
+            # 4. 合并keywords（取并集）
+            try:
+                import json as _json
+                old_kw = set(_json.loads(existing_keywords)) if existing_keywords else set()
+                new_kw = set(duplicate_item.keywords) if duplicate_item.keywords else set()
+                merged_kw = list(old_kw | new_kw)
+                updates["keywords"] = _json.dumps(merged_kw, ensure_ascii=False)
+            except Exception:
+                pass
+
+            # 5. 重要性：取更高的
+            if duplicate_item.importance > existing_importance:
+                updates["importance"] = duplicate_item.importance
+
+            # 6. 更新重复源列表和计数
+            if "duplicate_sources" in row.keys():
+                try:
+                    import json as _json
+                    sources = set(_json.loads(existing_dup_sources)) if existing_dup_sources else set()
+                    sources.add(row["source"])
+                    sources.add(duplicate_item.source)
+                    sources_list = list(sources)
+                    updates["duplicate_sources"] = _json.dumps(sources_list, ensure_ascii=False)
+                    updates["duplicate_count"] = len(sources_list) - 1  # 减去主源
+                except Exception:
+                    pass
+
+            if not updates:
+                return False
+
+            # 构建UPDATE语句
+            set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+            params = list(updates.values()) + [primary_id]
+            c.execute(f"UPDATE news SET {set_clause} WHERE id = ?", params)
+            return c.rowcount > 0
 
     def get_recent_news(self, limit: int = 200, source: Optional[str] = None,
                         category: Optional[str] = None) -> List[NewsItem]:
@@ -1000,3 +1207,13 @@ def get_db():
     """模块级数据库上下文管理器（兼容旧代码）"""
     with get_db_manager().get_db() as c:
         yield c
+
+
+def db_merge_duplicate(duplicate_item: NewsItem, primary_id: int) -> bool:
+    """合并重复新闻到主记录"""
+    return get_db_manager().merge_duplicate(duplicate_item, primary_id)
+
+
+def db_get_recent_for_dedup(limit: int = 5000) -> List[NewsItem]:
+    """获取最近的新闻用于去重引擎预热"""
+    return get_db_manager().get_recent_news(limit=limit)
