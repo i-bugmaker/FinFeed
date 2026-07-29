@@ -109,9 +109,6 @@ class EastMoneyHotBarParser(EastMoneyStockBarParser):
     """东方财富热门股吧"""
     item_selectors = [".listitem", ".articleh", ".hot_list li", ".normal_post"]
 
-    def _parse_item(self, item: Tag, soup: BeautifulSoup) -> Optional[object]:
-        return super()._parse_item(item, soup)
-
 
 class CLSTelegraphParser(BaseJsonForumParser):
     """财联社电报 - 使用官方API /api/cache?name=telegraph"""

@@ -8,7 +8,6 @@
 import json
 import logging
 import httpx
-from typing import Optional
 
 from finfeed.storage.models import NewsItem
 

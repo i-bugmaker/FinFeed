@@ -5,11 +5,10 @@
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup, Tag
 
 from finfeed.utils.time_utils import now_bj, TZ_BJ, parse_relative_time
-
-TZ_BJ = timezone(timedelta(hours=8))
 
 STOCK_CODE_FROM_URL = re.compile(r'[=/,_](\d{6})(?:\.html)?[/?]?$')
 STOCK_CODE_PATTERN = re.compile(r'\b(60\d{4}|688\d{3}|00\d{4}|30\d{4})\b')
@@ -244,8 +243,6 @@ def normalize_url(href: str, base_url: str) -> str:
     if href.startswith("//"):
         return "https:" + href
     if href.startswith("/"):
-        from urllib.parse import urlparse
         parsed = urlparse(base_url)
         return f"{parsed.scheme}://{parsed.netloc}{href}"
-    from urllib.parse import urljoin
     return urljoin(base_url, href)

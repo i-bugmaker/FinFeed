@@ -26,6 +26,7 @@ from finfeed.utils.time_utils import now_bj, bj_str_from_ts, TZ_BJ
 from .utils import (
     extract_stock_from_url, extract_stocks_from_text,
     merge_stocks, find_time_in_element, normalize_url, parse_forum_time,
+    STOCK_NAME_MAP,
 )
 
 logger = logging.getLogger("news_monitor")
@@ -181,28 +182,13 @@ class BaseForumParser(BaseParser):
         if self._url_stock:
             stocks.append(self._url_stock)
         name = self.source.name
-        stock_map = [
-            ("茅台", "600519", "贵州茅台", "sh"),
-            ("宁德", "300750", "宁德时代", "sz"),
-            ("比亚迪", "002594", "比亚迪", "sz"),
-            ("工商银行", "601398", "工商银行", "sh"),
-            ("招商银行", "600036", "招商银行", "sh"),
-            ("平安银行", "000001", "平安银行", "sz"),
-            ("东方财富", "300059", "东方财富", "sz"),
-            ("中际旭创", "300308", "中际旭创", "sz"),
-            ("海康", "002415", "海康威视", "sz"),
-            ("中信证券", "600030", "中信证券", "sh"),
-            ("五粮液", "000858", "五粮液", "sz"),
-            ("科大讯飞", "002230", "科大讯飞", "sz"),
-            ("恒瑞医药", "600276", "恒瑞医药", "sh"),
-            ("中国平安", "601318", "中国平安", "sh"),
-            ("中国石油", "601857", "中国石油", "sh"),
-            ("长城军工", "601606", "长城军工", "sh"),
-            ("通富微电", "002156", "通富微电", "sz"),
-            ("紫光", "000938", "紫光股份", "sz"),
-        ]
-        for kw, code, sname, market in stock_map:
-            if kw in name or code in name:
+        if not hasattr(self, '_source_stock_map'):
+            self._source_stock_map = []
+            for code, sname in STOCK_NAME_MAP.items():
+                market = "sh" if code.startswith(("60", "688", "9")) else "sz"
+                self._source_stock_map.append((sname, code, market))
+        for sname, code, market in self._source_stock_map:
+            if sname in name or code in name:
                 stocks.append({"code": code, "name": sname, "market": market})
                 break
         return stocks
@@ -267,6 +253,7 @@ class BaseForumParser(BaseParser):
         pass
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
+        """离线补抓 — 默认不支持，子类可覆写"""
         return []
 
 

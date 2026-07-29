@@ -138,7 +138,6 @@ async def run_continuous(interval: int, web_port: int):
 
 def _setup_logging():
     """配置日志系统"""
-    import logging
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "finfeed.log")

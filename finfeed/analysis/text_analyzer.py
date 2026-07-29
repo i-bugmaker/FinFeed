@@ -98,7 +98,7 @@ def extract_stock_codes(text: str) -> list[dict]:
 def _is_likely_stock_code(code: str, text: str) -> bool:
     """判断一个6位数字是否可能是股票代码"""
     # 排除纯日期格式（如 202401）
-    if code.startswith('20') and len(code) == 6:
+    if code.startswith('20'):
         # 检查前后是否有日期相关词
         return False
     # 排除版本号（如 1.2.3 中的片段）

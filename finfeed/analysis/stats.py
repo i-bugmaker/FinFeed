@@ -6,6 +6,7 @@
 """
 
 import time
+import json
 import logging
 from collections import Counter, defaultdict
 from typing import Optional
@@ -136,7 +137,6 @@ def get_top_keywords(hours: int = 24, limit: int = 20) -> list[tuple[str, int]]:
             "SELECT keywords FROM news WHERE publish_ts >= ? AND keywords != '[]'",
             (cutoff_ts,)
         )
-        import json
         counter = Counter()
         for row in c.fetchall():
             try:
