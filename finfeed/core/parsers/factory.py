@@ -44,7 +44,7 @@ def _register_known_parsers() -> None:
         GelonghuiArticleParser, FastbullParser, NBDParser,
         HexunParser, IfengParser, JiemianParser, ThePaperParser,
         YicaiParser, JiuyanParser, LuoBoParser, CNStockParser,
-        ZhongzhengParser,
+        ZhongzhengParser, XinhuaCaijingParser,
     )
     from .forum_parsers import (
         EastMoneyStockBarParser, EastMoneyHotBarParser,
@@ -79,6 +79,7 @@ def _register_known_parsers() -> None:
         "luobo": LuoBoParser,
         "cnstock": CNStockParser,
         "zhongzheng": ZhongzhengParser,
+        "xinhuacaijing": XinhuaCaijingParser,
         "rss": RSSParser,
         "eastmoney_forum": EastMoneyStockBarParser,
         "eastmoney_hot": EastMoneyHotBarParser,

@@ -316,6 +316,17 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "Accept": "text/html",
         },
     ),
+    NewsSource(
+        name="新华财经",
+        url="https://www.cnfin.com/news/index.html",
+        parser_type="xinhuacaijing",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Referer": "https://www.cnfin.com/",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        },
+    ),
 ]
 
 # ============================================================
