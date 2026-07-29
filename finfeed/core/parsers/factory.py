@@ -43,7 +43,8 @@ def _register_known_parsers() -> None:
     from .html_parsers import (
         GelonghuiArticleParser, FastbullParser, NBDParser,
         HexunParser, IfengParser, JiemianParser, ThePaperParser,
-        YicaiParser, JiuyanParser, LuoBoParser,
+        YicaiParser, JiuyanParser, LuoBoParser, CNStockParser,
+        ZhongzhengParser,
     )
     from .forum_parsers import (
         EastMoneyStockBarParser, EastMoneyHotBarParser,
@@ -76,6 +77,8 @@ def _register_known_parsers() -> None:
         "yicai": YicaiParser,
         "jiuyan": JiuyanParser,
         "luobo": LuoBoParser,
+        "cnstock": CNStockParser,
+        "zhongzheng": ZhongzhengParser,
         "rss": RSSParser,
         "eastmoney_forum": EastMoneyStockBarParser,
         "eastmoney_hot": EastMoneyHotBarParser,

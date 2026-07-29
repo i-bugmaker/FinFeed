@@ -296,6 +296,26 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "Accept": "text/html",
         },
     ),
+    NewsSource(
+        name="中证快讯",
+        url="https://www.cs.com.cn/sylm/jsbd/list.html",
+        parser_type="zhongzheng",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.cs.com.cn/",
+            "Accept": "text/html",
+        },
+    ),
+    NewsSource(
+        name="上海证券报",
+        url="https://www.cnstock.com/fastNews/10004",
+        parser_type="cnstock",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.cnstock.com/",
+            "Accept": "text/html",
+        },
+    ),
 ]
 
 # ============================================================
