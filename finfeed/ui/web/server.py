@@ -112,12 +112,14 @@ def _get_cached_sources():
             forum_sources = get_forum_sources()
             _forum_source_raw_names = [s.name for s in forum_sources]
             _forum_source_raw_set = set(_forum_source_raw_names)
-            _forum_source_display_names = [get_display_name(s.name) for s in forum_sources]
+            _forum_source_display_names = list(dict.fromkeys(
+                get_display_name(s.name) for s in forum_sources
+            ))
             _forum_source_display_set = set(_forum_source_display_names)
-            _finance_source_display_names = [
+            _finance_source_display_names = list(dict.fromkeys(
                 get_display_name(s.name) for s in get_enabled_sources()
                 if s.name not in _forum_source_raw_set
-            ]
+            ))
         return _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
 
 
