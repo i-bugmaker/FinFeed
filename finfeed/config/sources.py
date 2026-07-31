@@ -317,6 +317,17 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
         },
     ),
     NewsSource(
+        name="爱股票",
+        url="https://apis.aigupiao.com/Express/express_list/",
+        parser_type="aigupiao",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Referer": "https://news.aigupiao.com/",
+            "Accept": "application/json, text/plain, */*",
+        },
+        params={"source": "pc", "web_data": "yes", "number": 20, "before": 0},
+    ),
+    NewsSource(
         name="新华财经",
         url="https://www.cnfin.com/news/index.html",
         parser_type="xinhuacaijing",

@@ -38,7 +38,7 @@ def _register_known_parsers() -> None:
         SinaParser, CLSParser, THSParser, EastMoneyParser,
         Jingji21Parser, WallStreetCNParser, Jin10Parser,
         GelonghuiLiveParser, QCCParser, CninfoParser, THSYCParser,
-        THSFinanceParser,
+        THSFinanceParser, AiGuPiaoParser,
     )
     from .html_parsers import (
         GelonghuiArticleParser, FastbullParser, NBDParser,
@@ -80,6 +80,7 @@ def _register_known_parsers() -> None:
         "cnstock": CNStockParser,
         "zhongzheng": ZhongzhengParser,
         "xinhuacaijing": XinhuaCaijingParser,
+        "aigupiao": AiGuPiaoParser,
         "rss": RSSParser,
         "eastmoney_forum": EastMoneyStockBarParser,
         "eastmoney_hot": EastMoneyHotBarParser,
