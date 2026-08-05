@@ -280,7 +280,7 @@ tbody td{padding:18px 20px;vertical-align:middle}
       <a class="nav-link" data-view="sentiment" onclick="switchView('sentiment')">💬 舆情监控</a>
       <a class="nav-link" data-view="favorites" onclick="switchView('favorites')">⭐ 我的收藏</a>
       <a class="nav-link" data-view="dashboard" onclick="switchView('dashboard')">📊 数据大屏</a>
-      <a class="nav-link" data-view="ai" href="/ai/analysis" onclick="goAI(event)">🤖 AI 分析</a>
+      <a class="nav-link" data-view="ai" onclick="switchView('ai')">🤖 AI 分析</a>
     </nav>
     <div class="nav-right">
       <span class="status-dot" id="statusDot"></span>
@@ -574,6 +574,9 @@ tbody td{padding:18px 20px;vertical-align:middle}
   </div>
 </div>
 
+<!-- AI 分析：SPA 视图，由 preloadView 懒加载注入 -->
+<div class="view" id="view-ai"></div>
+
 <script>
 /* ============ 全局 SPA 状态 ============ */
 const SPA = {
@@ -826,9 +829,6 @@ function setTheme(t){
 function toggleTheme(){setTheme(getTheme()==='dark'?'light':'dark');}
 try{const s=localStorage.getItem('finfeed_theme');if(s)setTheme(s);}catch(e){}
 
-/* AI 分析是独立页面，直接整页跳转即可 */
-function goAI(e){window.location.href='/ai/analysis';e.preventDefault();}
-
 /* ============ 视图切换 (SPA Tab) ============ */
 function switchView(viewName){
   if(SPA.currentView===viewName)return;
@@ -904,7 +904,32 @@ function preloadView(viewName){
         loadDashData();
       }
       break;
+    case 'ai':
+      loadAIFragment();
+      break;
   }
+}
+
+/* ============ AI 分析片段懒加载 ============ */
+let _aiFragmentLoaded=false;
+async function loadAIFragment(){
+  const root=document.getElementById('view-ai');
+  if(!root)return;
+  if(_aiFragmentLoaded)return; /* 已注入，保留视图状态，不重复加载 */
+  try{
+    const r=await fetch('/api/llm/fragment');
+    if(!r.ok){console.error('AI fragment load failed',r.status);return;}
+    const html=await r.text();
+    root.innerHTML=html;
+    /* innerHTML 注入的 <script> 不会自动执行，需重建并替换以触发执行 */
+    root.querySelectorAll('script').forEach(s=>{
+      const ns=document.createElement('script');
+      if(s.src){ns.src=s.src;}else{ns.textContent=s.textContent;}
+      s.replaceWith(ns);
+    });
+    _aiFragmentLoaded=true;
+    if(window.AI&&typeof window.AI.init==='function'){window.AI.init();}
+  }catch(e){console.error('AI fragment load failed',e);}
 }
 
 /* ============ 全局 SSE ============ */
@@ -1565,6 +1590,11 @@ window.addEventListener('scroll',handleScroll,{passive:true});
 initNewsCharts();
 loadStockNames().then(()=>{loadNewsData(true);});
 connectSSE();
+
+/* 深链：直接访问 /ai/analysis 时自动切换到 AI 视图 */
+if(location.pathname.indexOf('/ai/analysis')===0){
+  switchView('ai');
+}
 
 /* 空闲时预热 Dashboard 数据 */
 function preloadOnIdle(){

@@ -56,10 +56,31 @@ def handle_get(path: str, qs: Dict[str, List[str]]) -> Response:
         if path == "/api/llm/status":
             return 200, _status_payload()
 
+        if path == "/api/llm/init":
+            # 一次返回首页所需的全部初始化数据，减少视图切换时的往返次数
+            return 200, {
+                "presets": cfg.PRESETS,
+                "scopes": [{"key": k, "label": v} for k, v in collector.SCOPES.items()],
+                "windows": list(collector.ALLOWED_WINDOWS),
+                "status": _status_payload(),
+                "providers": [p.to_dict() for p in cfg.list_providers()],
+                "reports": store.list_reports(limit=30, offset=0).get("items", []),
+            }
+
         if path == "/api/llm/presets":
             return 200, {"presets": cfg.PRESETS, "scopes": [
                 {"key": k, "label": v} for k, v in collector.SCOPES.items()
             ], "windows": list(collector.ALLOWED_WINDOWS)}
+
+        if path == "/api/llm/prompts":
+            from . import prompts as _prompts
+            return 200, {
+                "defaults": _prompts.DEFAULT_PROMPTS,
+                "custom": {
+                    k: cfg.get_setting("prompt_" + k, "")
+                    for k in _prompts.DEFAULT_PROMPTS
+                },
+            }
 
         if path == "/api/llm/providers":
             items = [p.to_dict() for p in cfg.list_providers()]
@@ -139,6 +160,17 @@ def handle_post(path: str, data: Dict[str, Any]) -> Response:
 
         if path == "/api/llm/provider/test":
             return _handle_test(data)
+
+        if path == "/api/llm/prompts":
+            from . import prompts as _prompts
+            saved = 0
+            for k in _prompts.DEFAULT_PROMPTS:
+                v = data.get("prompt_" + k, data.get(k))
+                if v is None:
+                    continue
+                cfg.set_setting("prompt_" + k, "" if not str(v).strip() else str(v))
+                saved += 1
+            return 200, {"success": True, "saved": saved}
 
         if path == "/api/llm/analyze":
             result = get_service().submit(data)

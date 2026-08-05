@@ -12,6 +12,8 @@
   3. 输出中文 Markdown，层级固定，便于前端渲染与归档
 """
 
+from typing import Dict
+
 MAP_SYSTEM = (
     "你是资深财经信息分析师，擅长从海量快讯中提炼有效事件。"
     "你的输出必须严格基于输入材料，不得引入材料之外的信息，不得编造数据、公司或政策。"
@@ -51,6 +53,8 @@ REDUCE_SYSTEM = (
     "你的结论必须可追溯到给定材料，不得编造数据；对不确定的判断要明确标注为推测。"
     "使用简体中文，语言精炼、结论先行、避免空话套话。"
     "严禁在开头复述用户指令或输出“好的”“首先”“我的任务是”等过程性内容，直接给出报告正文。"
+    "排版要求：每个章节标题前加一个贴切的 emoji 图标；对关键数据、板块、个股名称使用 **加粗**；"
+    "多用要点列表，避免大段连续散文，便于快速阅读。"
 )
 
 REDUCE_USER_TEMPLATE = """以下是 FinFeed 新闻库 {window_label}（{start_str} 至 {end_str}）内 {news_count} 条资讯，经分批压缩后的全部要点。
@@ -95,6 +99,8 @@ REDUCE_USER_TEMPLATE = """以下是 FinFeed 新闻库 {window_label}（{start_st
 - 不要重复罗列原始快讯，要做归纳与判断。
 - 不要出现"根据材料""如上所述"之类的过程性表述。
 - 严格使用上述 Markdown 标题（## 一、核心结论 …… ## 九、后市关注），不得省略任何章节，不得改动标题文字。
+- 每个二级标题（##）前必须加一个贴切的 emoji 图标（如 💡 核心结论、📌 重点事件、🏷️ 主题聚类、📋 政策与监管、🏭 行业与个股、🌍 海外与宏观、💭 情绪研判、⚠️ 风险提示、🔭 后市关注）。
+- 对关键数据、板块、个股名称使用 **加粗**；多用要点列表，避免大段连续散文。
 - 禁止输出"好的""首先""面对这个问题""我的任务是"等内心独白或过程性开场白，开篇即进入正文。
 - 全文控制在 1200-2000 字。
 """
@@ -132,6 +138,7 @@ SINGLE_PASS_USER_TEMPLATE = """以下是 FinFeed 新闻库 {window_label}（{sta
 
 写作要求：数字只能来自材料或程序统计；做归纳判断而非罗列；全文 1200-2000 字。
 严格使用上述 Markdown 标题（## 一、核心结论 …… ## 九、后市关注），不得省略章节，开篇直接进入正文，禁止"好的""首先"等过程性开场白。
+每个二级标题前加贴切 emoji 图标，对关键数据、板块、个股名称使用 **加粗**，多用要点列表。
 """
 
 
@@ -139,3 +146,14 @@ def window_label(hours: int) -> str:
     if hours % 24 == 0:
         return f"近 {hours} 小时（{hours // 24} 天）"
     return f"近 {hours} 小时"
+
+
+# 内置提示词注册表：analyzer 通过 config.get_prompts() 读取，
+# 用户可在前端覆盖对应键（prompt_map_system 等），留空则回退此处默认。
+DEFAULT_PROMPTS: Dict[str, str] = {
+    "map_system": MAP_SYSTEM,
+    "map_user": MAP_USER_TEMPLATE,
+    "reduce_system": REDUCE_SYSTEM,
+    "reduce_user": REDUCE_USER_TEMPLATE,
+    "single_user": SINGLE_PASS_USER_TEMPLATE,
+}

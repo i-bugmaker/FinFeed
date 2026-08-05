@@ -141,7 +141,7 @@ _template_cache_map = {
     "about": {"cache": None, "mtime": 0, "filename": "about.html"},
     "sentiment": {"cache": None, "mtime": 0, "filename": "sentiment.html"},
     "favorites": {"cache": None, "mtime": 0, "filename": "favorites.html"},
-    "ai_analysis": {"cache": None, "mtime": 0, "filename": "ai_analysis.html"},
+    "ai_fragment": {"cache": None, "mtime": 0, "filename": "ai_fragment.html"},
 }
 
 
@@ -194,7 +194,7 @@ def _get_favorites_html() -> str:
     return _load_template("favorites")
 
 def _get_ai_analysis_html() -> str:
-    return _load_template("ai_analysis")
+    return _load_template("ai_fragment")
 
 
 def _ts_from_date_str(date_str: str, end_of_day: bool = False) -> int | None:
@@ -258,6 +258,8 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._serve_daterange()
         elif path.startswith("/api/llm/report/export"):
             self._serve_llm_export(parsed)
+        elif path == "/api/llm/fragment":
+            self._serve_ai_analysis()
         elif path.startswith("/api/llm"):
             result = llm_api.handle_get(path, parse_qs(parsed.query))
             if result is not None:
@@ -265,7 +267,7 @@ class _WebHandler(BaseHTTPRequestHandler):
             else:
                 self.send_error(404)
         elif path.startswith("/ai/analysis"):
-            self._serve_ai_analysis()
+            self._serve_html()
         elif path.startswith("/api/export"):
             self._serve_export(parsed.query)
         elif path.startswith("/api/events"):

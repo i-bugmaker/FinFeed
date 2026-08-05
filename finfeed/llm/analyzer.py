@@ -22,6 +22,8 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 from . import collector, prompts
 from .cleanup import clean_report_body
+from .decorate import decorate_report_body
+from .config import get_prompts
 from .client import LLMClient, LLMError
 from .collector import NewsRecord
 
@@ -196,6 +198,15 @@ def stats_to_markdown(stats: Dict[str, Any]) -> str:
 # ============================================================
 # 主流程
 # ============================================================
+def _safe_format(template: str, default: str, **kw) -> str:
+    """用模板格式化；若用户自定义模板缺少占位符导致 KeyError，回退内置默认。"""
+    try:
+        return template.format(**kw)
+    except (KeyError, IndexError, ValueError) as e:
+        logger.warning(f"提示词模板占位符缺失，回退内置默认: {e}")
+        return default.format(**kw)
+
+
 def run_analysis(
     client: LLMClient,
     *,
@@ -211,6 +222,8 @@ def run_analysis(
     should_cancel: Optional[CancelFn] = None,
 ) -> Dict[str, Any]:
     """执行一次完整分析，返回报告 payload"""
+    # 生效提示词（内置默认 + 用户自定义覆盖）；占位符缺失时回退内置默认
+    P = get_prompts()
     t_start = time.time()
 
     def _p(stage: str, pct: float, msg: str):
@@ -255,7 +268,8 @@ def run_analysis(
     if total_chunks == 1:
         _check()
         _p("reduce", 30, "数据量适中，单次调用生成报告…")
-        user = prompts.SINGLE_PASS_USER_TEMPLATE.format(
+        user = _safe_format(
+            P["single_user"], prompts.SINGLE_PASS_USER_TEMPLATE,
             window_label=win_label,
             start_str=meta["start_str"],
             end_str=meta["end_str"],
@@ -264,7 +278,7 @@ def run_analysis(
             payload="\n".join(chunks[0]),
         ) + focus_note
         res = client.chat(
-            [{"role": "system", "content": prompts.REDUCE_SYSTEM},
+            [{"role": "system", "content": P["reduce_system"]},
              {"role": "user", "content": user}]
         )
         prompt_tokens += res.prompt_tokens
@@ -278,13 +292,14 @@ def run_analysis(
             _check()
             pct = 14 + (i - 1) / total_chunks * 62
             _p("map", pct, f"正在压缩第 {i}/{total_chunks} 批（{len(chunk)} 条）…")
-            user = prompts.MAP_USER_TEMPLATE.format(
+            user = _safe_format(
+                P["map_user"], prompts.MAP_USER_TEMPLATE,
                 window_label=win_label, index=i, total=total_chunks,
                 count=len(chunk), payload="\n".join(chunk),
             )
             try:
                 res = client.chat(
-                    [{"role": "system", "content": prompts.MAP_SYSTEM},
+                    [{"role": "system", "content": P["map_system"]},
                      {"role": "user", "content": user}],
                     max_tokens=min(client.max_tokens, 2048),
                 )
@@ -305,7 +320,8 @@ def run_analysis(
         digest_text = "\n\n".join(digests)
         if len(digest_text) > chunk_chars * 3:
             digest_text = digest_text[: chunk_chars * 3] + "\n（要点过长，已截断）"
-        user = prompts.REDUCE_USER_TEMPLATE.format(
+        user = _safe_format(
+            P["reduce_user"], prompts.REDUCE_USER_TEMPLATE,
             window_label=win_label,
             start_str=meta["start_str"],
             end_str=meta["end_str"],
@@ -314,7 +330,7 @@ def run_analysis(
             digests=digest_text,
         ) + focus_note
         res = client.chat(
-            [{"role": "system", "content": prompts.REDUCE_SYSTEM},
+            [{"role": "system", "content": P["reduce_system"]},
              {"role": "user", "content": user}]
         )
         prompt_tokens += res.prompt_tokens
@@ -345,7 +361,7 @@ def run_analysis(
         "结论由大语言模型基于库内公开资讯归纳，不构成投资建议。*",
     ])
 
-    body = clean_report_body(body)
+    body = decorate_report_body(clean_report_body(body))
     content = header + stats_to_markdown(stats) + "\n---\n\n" + body.strip() + "\n" + footer
 
     return {

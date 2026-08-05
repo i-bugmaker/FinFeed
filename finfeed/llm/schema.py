@@ -69,6 +69,13 @@ CREATE TABLE IF NOT EXISTS llm_reports (
 )
 """
 
+_DDL_SETTINGS = """
+CREATE TABLE IF NOT EXISTS llm_settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT DEFAULT ''
+)
+"""
+
 
 def ensure_tables(force: bool = False) -> None:
     """幂等创建 LLM 模块所需数据表"""
@@ -83,6 +90,7 @@ def ensure_tables(force: bool = False) -> None:
             with db.get_db() as c:
                 c.execute(_DDL_PROVIDERS)
                 c.execute(_DDL_REPORTS)
+                c.execute(_DDL_SETTINGS)
                 c.execute(
                     "CREATE INDEX IF NOT EXISTS idx_llm_reports_ts "
                     "ON llm_reports(created_ts DESC, id DESC)"

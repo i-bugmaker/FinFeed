@@ -353,3 +353,54 @@ def provider_from_payload(data: Dict[str, Any]) -> LLMProvider:
         extra_headers=headers,
         preset=(data.get("preset") or "custom").strip(),
     )
+
+
+# ============================================================
+# 提示词自定义（持久化在 llm_settings 表，key 形如 prompt_map_system）
+# ============================================================
+def get_setting(key: str, default: str = "") -> str:
+    """读取一条自定义设置；不存在返回 default。"""
+    ensure_tables()
+    try:
+        db = get_db_manager()
+        with db.get_db() as c:
+            c.execute("SELECT value FROM llm_settings WHERE key = ?", (key,))
+            row = c.fetchone()
+            if row is None:
+                return default
+            v = row["value"] or ""
+            return v if v.strip() else default
+    except Exception as e:
+        logger.debug(f"读取设置 {key} 失败: {e}")
+        return default
+
+
+def set_setting(key: str, value: str) -> None:
+    """写入/更新一条自定义设置（空值视为删除，回退默认）。"""
+    ensure_tables()
+    try:
+        db = get_db_manager()
+        with db.get_db() as c:
+            if value is None or str(value).strip() == "":
+                c.execute("DELETE FROM llm_settings WHERE key = ?", (key,))
+            else:
+                c.execute(
+                    "INSERT INTO llm_settings(key, value) VALUES(?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (key, str(value)),
+                )
+    except Exception as e:
+        logger.warning(f"写入设置 {key} 失败: {e}")
+
+
+def get_prompts() -> Dict[str, str]:
+    """返回生效的提示词（内置默认 + 用户自定义覆盖）。
+
+    键：map_system / map_user / reduce_system / reduce_user / single_user
+    用户覆盖存储在 llm_settings 表，key 为 prompt_<键名>。
+    """
+    from . import prompts as _prompts  # 延迟导入，避免循环依赖
+    out: Dict[str, str] = {}
+    for k, default in _prompts.DEFAULT_PROMPTS.items():
+        out[k] = get_setting("prompt_" + k, default) or default
+    return out
