@@ -327,7 +327,10 @@ class HexunParser(BaseParser):
 
             pt = bj_str_from_ts(ts)
 
-            if ts and ts <= self.last_ts:
+            # 注意：和讯网发布时间多由 URL 日期 (/YYYY-MM-DD/) 推导，精度仅到"日 00:00"。
+            # 若用 <= 比较，一旦 last_ts 到达某日 00:00，当天所有文章(同为 00:00)都会被跳过，
+            # 导致时间线停滞在该日。改用 < 仅跳过严格更早的，当日文章由 URL 去重防止重复入库。
+            if ts and ts < self.last_ts:
                 continue
 
             news_list.append(self._make_news(
@@ -1281,7 +1284,9 @@ class JiuyanParser(BaseParser):
 
                 async def handle_response(response):
                     resp_url = response.url
-                    if 'app.jiuyangongshe.com' in resp_url and ('/timeline/news' in resp_url or '/article/announcement' in resp_url):
+                    # 站点 API 主机已由 app.jiuyangongshe.com 迁移至 web-api.jiuyangongshe.com，
+                    # 同时兼容两种以避免拦截失效（拦截不到则解析为空，导致数据停滞）。
+                    if ('web-api.jiuyangongshe.com' in resp_url or 'app.jiuyangongshe.com' in resp_url) and ('/timeline/news' in resp_url or '/article/announcement' in resp_url):
                         try:
                             json_data = await response.json()
                             if 'data' in json_data and isinstance(json_data['data'], list) and len(json_data['data']) > 0:

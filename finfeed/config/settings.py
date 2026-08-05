@@ -147,6 +147,15 @@ FORUM_DEDUP_EXEMPT: set = {
     "微博财经热搜", "新浪股吧",
 }
 
+# 跨源语义去重豁免（新闻类源）
+# 这些低优先级、且内容多为转载快讯的信源，若参与跨源语义去重，会被高优先级源
+# （财联社/金十数据/东方财富）合并掉，导致其独立时间线长期停滞（如法布财经停在 7-25）。
+# 豁免后它们仍做 L1 URL 精确去重，但跳过 L2/L3/L4 跨源语义去重，从而保留自身完整时间线。
+# 如需调整，增删此集合中的信源名称即可。
+CROSS_SOURCE_DEDUP_EXEMPT: set = {
+    "法布财经", "企查查", "萝卜投研", "韭研公社",
+}
+
 # SimHash 去重阈值（汉明距离 <= 此值判定为语义重复）
 # 注：中文短文本使用字符级SimHash，相似新闻距离约10-18，完全不同新闻约28-40
 SIMHASH_THRESHOLD: int = 18
@@ -164,6 +173,11 @@ def get_source_priority(source_name: str) -> int:
 
 def is_forum_source(source_name: str) -> bool:
     return source_name in FORUM_DEDUP_EXEMPT
+
+
+def is_cross_source_exempt(source_name: str) -> bool:
+    """信源是否豁免跨源语义去重（保留自身独立时间线）"""
+    return source_name in CROSS_SOURCE_DEDUP_EXEMPT
 
 # ============================================================
 # 离线补抓配置

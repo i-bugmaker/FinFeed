@@ -25,7 +25,7 @@ from finfeed.storage.models import NewsItem
 from finfeed.config.settings import (
     SIMHASH_THRESHOLD, DEDUP_TIME_WINDOW, DEDUP_KEYWORD_OVERLAP,
     DEDUP_SLIDING_WINDOW_SIZE, DEDUP_SLIDING_WINDOW_TTL,
-    get_source_priority, is_forum_source,
+    get_source_priority, is_forum_source, is_cross_source_exempt,
 )
 from finfeed.utils.hash_utils import (
     compute_normalized_title_hash, compute_simhash, simhash_to_hex,
@@ -150,15 +150,16 @@ class DedupEngine:
         Returns:
             (匹配到的缓存条目或None, 匹配层级1-4或0, 说明信息)
         """
-        # 论坛类源只做L1 URL精确去重，不做跨源语义去重
+        # 论坛类源 / 跨源去重豁免源 只做L1 URL精确去重，不做跨源语义去重
         is_forum = is_forum_source(item.source)
+        is_exempt = is_cross_source_exempt(item.source)
 
         # L1: URL精确去重（非#的URL才检查）
         if item.url and item.url != "#":
             if item.url in self._url_index:
                 return self._url_index[item.url], 1, "L1-URL精确匹配"
 
-        if is_forum:
+        if is_forum or is_exempt:
             return None, 0, ""
 
         # L2: 标题标准化哈希
