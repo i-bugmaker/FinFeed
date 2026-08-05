@@ -51,6 +51,7 @@ from finfeed.storage.database import (
 )
 from finfeed.storage.models import NewsItem
 from finfeed.core.health import get_health_monitor
+from finfeed.llm import api as llm_api
 
 logger = logging.getLogger("news_monitor")
 
@@ -140,6 +141,7 @@ _template_cache_map = {
     "about": {"cache": None, "mtime": 0, "filename": "about.html"},
     "sentiment": {"cache": None, "mtime": 0, "filename": "sentiment.html"},
     "favorites": {"cache": None, "mtime": 0, "filename": "favorites.html"},
+    "ai_analysis": {"cache": None, "mtime": 0, "filename": "ai_analysis.html"},
 }
 
 
@@ -190,6 +192,9 @@ def _get_sentiment_html() -> str:
 
 def _get_favorites_html() -> str:
     return _load_template("favorites")
+
+def _get_ai_analysis_html() -> str:
+    return _load_template("ai_analysis")
 
 
 def _ts_from_date_str(date_str: str, end_of_day: bool = False) -> int | None:
@@ -251,6 +256,16 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._serve_stock_names()
         elif path.startswith("/api/daterange"):
             self._serve_daterange()
+        elif path.startswith("/api/llm/report/export"):
+            self._serve_llm_export(parsed)
+        elif path.startswith("/api/llm"):
+            result = llm_api.handle_get(path, parse_qs(parsed.query))
+            if result is not None:
+                self._send_json(result[1], result[0])
+            else:
+                self.send_error(404)
+        elif path.startswith("/ai/analysis"):
+            self._serve_ai_analysis()
         elif path.startswith("/api/export"):
             self._serve_export(parsed.query)
         elif path.startswith("/api/events"):
@@ -281,6 +296,12 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._handle_toggle_favorite(data)
         elif path.startswith("/api/read"):
             self._handle_mark_read(data)
+        elif path.startswith("/api/llm"):
+            result = llm_api.handle_post(path, data)
+            if result is not None:
+                self._send_json(result[1], result[0])
+            else:
+                self.send_error(404)
         else:
             self.send_error(404)
 
@@ -759,6 +780,34 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def _serve_ai_analysis(self):
+        ai_html = _get_ai_analysis_html()
+        data = ai_html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_llm_export(self, parsed):
+        qs = parse_qs(parsed.query)
+        rid = int(qs.get("id", ["0"])[0] or 0)
+        fmt = qs.get("fmt", ["md"])[0] or "md"
+        out = llm_api.export_report(rid, fmt)
+        if not out:
+            self.send_error(404)
+            return
+        filename, body, content_type = out
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{filename}"'
+        )
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_json(self, data: dict, status: int = 200, max_age: int = 0):
         resp = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

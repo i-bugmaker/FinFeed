@@ -280,6 +280,7 @@ tbody td{padding:18px 20px;vertical-align:middle}
       <a class="nav-link" data-view="sentiment" onclick="switchView('sentiment')">💬 舆情监控</a>
       <a class="nav-link" data-view="favorites" onclick="switchView('favorites')">⭐ 我的收藏</a>
       <a class="nav-link" data-view="dashboard" onclick="switchView('dashboard')">📊 数据大屏</a>
+      <a class="nav-link" data-view="ai" href="/ai/analysis" onclick="goAI(event)">🤖 AI 分析</a>
     </nav>
     <div class="nav-right">
       <span class="status-dot" id="statusDot"></span>
@@ -824,6 +825,9 @@ function setTheme(t){
 }
 function toggleTheme(){setTheme(getTheme()==='dark'?'light':'dark');}
 try{const s=localStorage.getItem('finfeed_theme');if(s)setTheme(s);}catch(e){}
+
+/* AI 分析是独立页面，直接整页跳转即可 */
+function goAI(e){window.location.href='/ai/analysis';e.preventDefault();}
 
 /* ============ 视图切换 (SPA Tab) ============ */
 function switchView(viewName){
