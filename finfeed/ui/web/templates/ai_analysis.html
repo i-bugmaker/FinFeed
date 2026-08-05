@@ -158,15 +158,15 @@ textarea{resize:vertical;min-height:74px;line-height:1.5;font-family:"Cascadia C
 .report-empty{padding:40px 0;text-align:center;color:var(--text3);font-size:var(--fs-sm)}
 .report-err{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:var(--radius);padding:14px 18px;font-size:var(--fs-sm);margin-bottom:16px}
 
-/* ---------- Markdown 渲染 ---------- */
-.md-body{font-size:var(--fs-base);line-height:1.85;color:var(--text)}
-.md-body h1{font-size:var(--fs-xl);margin:8px 0 16px;padding-bottom:10px;border-bottom:2px solid var(--border)}
-.md-body h2{font-size:var(--fs-lg);margin:24px 0 12px;color:var(--accent)}
-.md-body h3{font-size:var(--fs-md);margin:18px 0 10px}
-.md-body h4{font-size:var(--fs-base);margin:14px 0 8px;color:var(--text2)}
-.md-body p{margin:10px 0}
-.md-body ul,.md-body ol{margin:10px 0;padding-left:28px}
-.md-body li{margin:6px 0}
+/* ---------- Markdown 渲染（高可读性阅读版式） ---------- */
+.md-body{max-width:880px;margin:0 auto;font-size:var(--fs-base);line-height:1.9;color:var(--text)}
+.md-body h1{font-size:var(--fs-xl);margin:6px 0 18px;padding-bottom:12px;border-bottom:2px solid var(--border)}
+.md-body h2{font-size:var(--fs-lg);margin:30px 0 14px;padding:10px 0 10px 16px;border-left:4px solid var(--accent);color:var(--accent);background:linear-gradient(90deg,var(--accent-bg),transparent);border-radius:0 var(--radius) var(--radius) 0}
+.md-body h3{font-size:var(--fs-md);margin:22px 0 10px;padding-left:12px;border-left:3px solid var(--border2);color:var(--text)}
+.md-body h4{font-size:var(--fs-base);margin:16px 0 8px;color:var(--text2);font-weight:700}
+.md-body p{margin:15px 0;text-align:justify;text-justify:inter-ideograph}
+.md-body ul,.md-body ol{margin:14px 0;padding-left:30px}
+.md-body li{margin:9px 0;line-height:1.8}
 .md-body a{color:var(--accent);text-decoration:none}
 .md-body a:hover{text-decoration:underline}
 .md-body code{background:var(--bg-card-alt);border:1px solid var(--border);border-radius:5px;padding:2px 6px;font-family:"Cascadia Code",Consolas,Menlo,monospace;font-size:var(--fs-xs);color:var(--purple)}

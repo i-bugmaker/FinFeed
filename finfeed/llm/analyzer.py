@@ -21,6 +21,7 @@ from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 from . import collector, prompts
+from .cleanup import clean_report_body
 from .client import LLMClient, LLMError
 from .collector import NewsRecord
 
@@ -344,6 +345,7 @@ def run_analysis(
         "结论由大语言模型基于库内公开资讯归纳，不构成投资建议。*",
     ])
 
+    body = clean_report_body(body)
     content = header + stats_to_markdown(stats) + "\n---\n\n" + body.strip() + "\n" + footer
 
     return {
