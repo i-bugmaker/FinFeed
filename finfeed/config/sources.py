@@ -338,6 +338,20 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
             "Accept-Language": "zh-CN,zh;q=0.9",
         },
     ),
+    NewsSource(
+        name="金融界",
+        url="https://gateway.jrj.com/jrj-news/news/queryNewsFlash",
+        parser_type="jrj",
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "productId": "6000021",
+            "Referer": "https://24h.jrj.com.cn/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+        },
+        params={"makeDate": ""},
+    ),
 ]
 
 # ============================================================
