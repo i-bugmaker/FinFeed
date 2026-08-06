@@ -1,177 +1,151 @@
-<!-- AI 分析视图片段：由 index.html 懒加载注入 #view-ai 容器，脚本经 window.AI 暴露 -->
+<!-- AI 分析视图片段：由 index.html 懒加载注入 #view-ai 容器；脚本经 window.AI 暴露。
+     设计语言与主站其他视图保持一致：复用全局 token（--accent / --bg-card / --border …）、
+     卡片(.card)、筛选胶囊(.filter-chip)、按钮(.btn)、导出菜单(.export-menu)、空状态(.empty)。
+     图标统一使用内联 SVG（stroke=currentColor），不再使用 emoji 堆砌。 -->
 <style>
-/* ==================== AI 分析 · 自包含设计系统 ==================== */
+/* ===== 设计 token：与主站 index.html 完全一致，并随全局主题切换 ===== */
 #aiRoot{
-  --ai-gap:16px;
-  --ai-radius:12px;
-  --ai-radius-sm:8px;
-  --ai-pad:24px;
-  --ai-font:15px;
-  --ai-font-sm:13px;
-  --ai-font-xs:12px;
-  --ai-font-lg:18px;
-  --ai-font-xl:22px;
-  --ai-lh:1.75;
-  max-width:960px;margin:0 auto;font-size:var(--ai-font);line-height:var(--ai-lh);
+  --bg:#f5f6f8;--bg-card:#ffffff;--bg-card-alt:#f0f1f3;--bg-hover:#eceef1;
+  --text:#1a1d23;--text2:#4a5060;--text3:#7a8298;
+  --border:#dde0e6;--border2:#cfd3da;
+  --accent:#2563eb;--accent-h:#1d4ed8;--accent-bg:rgba(37,99,235,.08);
+  --green:#16a34a;--green-bg:rgba(22,163,74,.08);
+  --red:#dc2626;--red-bg:rgba(220,38,38,.08);
+  --orange:#ea580c;--orange-bg:rgba(234,88,12,.08);
+  --purple:#9333ea;
+  --star:#f59e0b;
+  --shadow:0 1px 3px rgba(0,0,0,.06);--shadow-lg:0 6px 20px rgba(0,0,0,.10);
+  --fs-xs:14px;--fs-sm:16px;--fs-base:20px;--fs-md:22px;--fs-lg:26px;--fs-xl:30px;
+  --lh-base:1.7;--radius:8px;--radius-lg:12px;
+  max-width:1040px;margin:0 auto;font-size:var(--fs-base);line-height:var(--lh-base);color:var(--text);
+}
+html[data-theme="dark"] #aiRoot{
+  --bg:#0d1117;--bg-card:#161b22;--bg-card-alt:#1c2128;--bg-hover:#1c2333;
+  --text:#e6edf3;--text2:#9ba5b2;--text3:#6e7681;
+  --border:#30363d;--border2:#484f58;
+  --accent:#58a6ff;--accent-h:#79c0ff;--accent-bg:rgba(88,166,255,.10);
+  --green:#3fb950;--green-bg:rgba(63,185,80,.10);
+  --red:#f85149;--red-bg:rgba(248,81,73,.10);
+  --orange:#d29922;--orange-bg:rgba(210,153,34,.10);
+  --purple:#bc8cff;
+  --star:#f0b429;
+  --shadow:0 1px 3px rgba(0,0,0,.30);--shadow-lg:0 6px 20px rgba(0,0,0,.45);
 }
 #aiRoot *{box-sizing:border-box}
-#aiRoot .ai-card{
-  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--ai-radius);
-  padding:var(--ai-pad);margin-bottom:var(--ai-gap);box-shadow:var(--shadow);
-  transition:border-color .2s,box-shadow .2s;
-}
-#aiRoot .ai-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.06)}
-#aiRoot .ai-card-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
-#aiRoot .ai-card-head .ico{font-size:20px;flex-shrink:0}
-#aiRoot .ai-card-head .title{font-size:var(--ai-font-lg);font-weight:700;color:var(--text);letter-spacing:-.2px}
-#aiRoot .ai-card-head .sub{font-size:var(--ai-font-sm);color:var(--text3);font-weight:400;margin-left:4px}
-#aiRoot .ai-card-head .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+#aiRoot .ic{width:18px;height:18px;flex-shrink:0;display:inline-flex}
+#aiRoot .ic svg{width:100%;height:100%;display:block}
 
-/* ---- 模型条 ---- */
-#aiRoot .ai-bar{
-  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
-  background:linear-gradient(135deg,var(--accent-bg),transparent);
-  border:1px solid var(--border);border-radius:var(--ai-radius);
-  padding:16px 20px;margin-bottom:var(--ai-gap);
-}
-#aiRoot .ai-bar-left{display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:260px}
-#aiRoot .ai-bar-ico{font-size:24px;flex-shrink:0}
-#aiRoot .ai-select{
-  min-width:200px;flex:1;max-width:320px;
-  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--ai-radius-sm);
-  padding:10px 14px;font-size:var(--ai-font-sm);font-family:inherit;color:var(--text);
-  cursor:pointer;outline:none;transition:border-color .2s;
-}
-#aiRoot .ai-select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
-#aiRoot .ai-badge{
-  font-size:var(--ai-font-xs);padding:5px 14px;border-radius:20px;font-weight:600;white-space:nowrap;
-  display:inline-flex;align-items:center;gap:5px;
-}
-#aiRoot .ai-badge.ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
-#aiRoot .ai-badge.ok::before{content:'●';font-size:8px}
-#aiRoot .ai-badge.err{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
-#aiRoot .ai-badge.err::before{content:'●';font-size:8px}
-#aiRoot .ai-badge.none{background:var(--bg-card-alt);color:var(--text3);border:1px solid var(--border)}
-#aiRoot .ai-bar-right{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
-
-/* ---- 按钮 ---- */
-#aiRoot .btn{
-  background:var(--bg-card);color:var(--text2);border:1px solid var(--border);
-  padding:9px 16px;border-radius:var(--ai-radius-sm);cursor:pointer;
-  font-size:var(--ai-font-sm);font-family:inherit;white-space:nowrap;font-weight:500;
-  display:inline-flex;align-items:center;gap:6px;transition:all .15s;
-}
+/* ===== 按钮（与主站一致） ===== */
+#aiRoot .btn{background:var(--bg-card-alt);color:var(--text2);border:1px solid var(--border);padding:11px 18px;border-radius:var(--radius);cursor:pointer;font-size:var(--fs-sm);font-family:inherit;white-space:nowrap;font-weight:500;display:inline-flex;align-items:center;gap:7px;transition:all .15s}
 #aiRoot .btn:hover{border-color:var(--accent);color:var(--accent);background:var(--bg-hover)}
-#aiRoot .btn:active{transform:scale(.97)}
-#aiRoot .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
-#aiRoot .btn-primary:hover{background:var(--accent-h);color:#fff}
-#aiRoot .btn-sm{padding:7px 12px;font-size:var(--ai-font-xs)}
+#aiRoot .btn:active{transform:scale(.98)}
+#aiRoot .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#aiRoot .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+#aiRoot .btn-primary:hover{background:var(--accent-h);color:#fff;border-color:var(--accent-h)}
+#aiRoot .btn-export{background:var(--green-bg);color:var(--green);border-color:var(--green)}
+#aiRoot .btn-export:hover{background:var(--green);color:#fff}
 #aiRoot .btn-danger{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 #aiRoot .btn-danger:hover{background:var(--red);color:#fff}
-#aiRoot .btn-export{color:var(--green);border-color:var(--green);background:var(--green-bg)}
-#aiRoot .btn-export:hover{background:var(--green);color:#fff}
+#aiRoot .btn-sm{padding:8px 14px;font-size:var(--fs-xs)}
+#aiRoot .btn-icon{width:40px;height:40px;padding:0;justify-content:center}
 
-/* ---- 分析控制区 ---- */
-#aiRoot .ai-row{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px}
+/* ===== 筛选胶囊（与主站 .filter-chip 完全一致） ===== */
+#aiRoot .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#aiRoot .filter-chip{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 18px;border-radius:24px;cursor:pointer;font-size:var(--fs-sm);font-family:inherit;font-weight:500;transition:all .15s}
+#aiRoot .filter-chip:hover{border-color:var(--accent);color:var(--accent)}
+#aiRoot .filter-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 8px var(--accent-bg)}
+
+/* ===== 卡片（与主站 .side-card 一致：圆角12 / 浅描边 / 轻阴影 / 标题下边框） ===== */
+#aiRoot .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;margin-bottom:20px;box-shadow:var(--shadow)}
+#aiRoot .card-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+#aiRoot .card-head .ic{color:var(--accent)}
+#aiRoot .card-head-title{font-size:var(--fs-md);font-weight:700;color:var(--text);letter-spacing:-.2px}
+#aiRoot .card-head-sub{font-size:var(--fs-xs);color:var(--text3);font-weight:400;margin-left:2px}
+#aiRoot .card-head-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+/* ===== 表单元素 ===== */
 #aiRoot .ai-field{display:flex;flex-direction:column;gap:7px}
-#aiRoot .ai-field>label{font-size:var(--ai-font-sm);font-weight:600;color:var(--text2);display:flex;align-items:center;gap:5px}
-#aiRoot .ai-field .ai-hint{font-size:var(--ai-font-xs);color:var(--text3);font-weight:400}
-#aiRoot .ai-chips{display:flex;gap:8px;flex-wrap:wrap}
-#aiRoot .ai-chip{
-  background:var(--bg-card);color:var(--text2);border:1px solid var(--border);
-  padding:8px 18px;border-radius:24px;cursor:pointer;font-size:var(--ai-font-sm);
-  font-family:inherit;font-weight:500;transition:all .15s;
-}
-#aiRoot .ai-chip:hover{border-color:var(--accent);color:var(--accent)}
-#aiRoot .ai-chip.active{
-  background:var(--accent);color:#fff;border-color:var(--accent);
-  box-shadow:0 2px 8px var(--accent-bg);font-weight:600;
-}
-#aiRoot input[type="number"],#aiRoot input[type="text"],#aiRoot textarea{
-  background:var(--bg-card-alt);color:var(--text);border:1px solid var(--border);
-  padding:10px 14px;border-radius:var(--ai-radius-sm);font-size:var(--ai-font-sm);
-  font-family:inherit;outline:none;transition:border-color .2s,box-shadow .2s;width:100%;
-}
-#aiRoot input[type="number"]:focus,#aiRoot input[type="text"]:focus,#aiRoot textarea:focus{
-  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);background:var(--bg-card);
-}
+#aiRoot .ai-field-grow{flex:1;min-width:240px}
+#aiRoot .ai-label{font-size:var(--fs-xs);font-weight:600;color:var(--text2);display:flex;align-items:center;gap:5px}
+#aiRoot .ai-hint{font-size:var(--fs-xs);color:var(--text3);font-weight:400}
+#aiRoot .ai-select{background:var(--bg-card-alt);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;font-size:var(--fs-sm);font-family:inherit;color:var(--text);cursor:pointer;outline:none;transition:border-color .15s;width:100%}
+#aiRoot .ai-select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+#aiRoot input[type="number"],#aiRoot input[type="text"],#aiRoot textarea{background:var(--bg-card-alt);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;font-size:var(--fs-sm);font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s;width:100%}
+#aiRoot input:focus,#aiRoot textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);background:var(--bg-card)}
 #aiRoot textarea{resize:vertical;line-height:1.6}
-#aiRoot .ai-preview{
-  flex:1;min-width:200px;background:var(--bg-card-alt);border:1px solid var(--border);
-  border-radius:var(--ai-radius-sm);padding:12px 16px;font-size:var(--ai-font-sm);
-  color:var(--text2);display:flex;gap:20px;flex-wrap:wrap;align-items:center;
-}
-#aiRoot .ai-preview b{color:var(--accent);font-variant-numeric:tabular-nums;font-size:var(--ai-font-lg);font-weight:700}
-#aiRoot .ai-preview.warn{border-color:var(--orange);background:var(--orange-bg)}
-#aiRoot .ai-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
 
-/* ---- 进度条 ---- */
+/* ===== 模型条（原为渐变浮条，改为卡片内一行，风格统一） ===== */
+#aiRoot .ai-modelbar{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+#aiRoot .ai-divider{height:1px;background:var(--border);margin:18px 0}
+
+/* ===== 分析控制布局 ===== */
+#aiRoot .ai-row{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px}
+#aiRoot .ai-row.align-end{align-items:flex-end}
+#aiRoot .ai-preview{flex:1;min-width:200px;background:var(--bg-card-alt);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:var(--fs-sm);color:var(--text2);display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+#aiRoot .ai-preview b{color:var(--accent);font-variant-numeric:tabular-nums;font-size:var(--fs-md);font-weight:700}
+#aiRoot .ai-preview.warn{border-color:var(--orange);background:var(--orange-bg);color:var(--orange)}
+#aiRoot .ai-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px}
+#aiRoot .ai-notice{display:none;margin-top:12px;padding:11px 15px;border-radius:var(--radius);font-size:var(--fs-sm);border:1px solid var(--orange);background:var(--orange-bg);color:var(--orange)}
+#aiRoot .ai-notice.err{border-color:var(--red);background:var(--red-bg);color:var(--red)}
+
+/* ===== 状态徽章 ===== */
+#aiRoot .ai-badge{font-size:var(--fs-xs);padding:6px 14px;border-radius:20px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+#aiRoot .ai-badge.ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
+#aiRoot .ai-badge.err{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+#aiRoot .ai-badge.none{background:var(--bg-card-alt);color:var(--text3);border:1px solid var(--border)}
+#aiRoot .ai-badge.ok::before{content:'●';font-size:8px}
+#aiRoot .ai-badge.err::before{content:'●';font-size:8px}
+
+/* ===== 进度条 ===== */
 #aiRoot .ai-progress{margin-top:16px;display:none}
-#aiRoot .ai-progress.show{display:block;animation:aiFadeIn .3s ease}
-@keyframes aiFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-#aiRoot .ai-prog-meta{display:flex;justify-content:space-between;font-size:var(--ai-font-sm);margin-bottom:7px}
+#aiRoot .ai-progress.show{display:block;animation:aiFade .3s ease}
+@keyframes aiFade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+#aiRoot .ai-prog-meta{display:flex;justify-content:space-between;font-size:var(--fs-sm);margin-bottom:8px;gap:12px}
 #aiRoot .ai-prog-stage{font-weight:600;color:var(--accent)}
 #aiRoot .ai-prog-track{height:8px;background:var(--bg-card-alt);border:1px solid var(--border);border-radius:24px;overflow:hidden}
 #aiRoot .ai-prog-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-h));border-radius:24px;transition:width .5s ease}
 
-/* ---- 错误 / 空状态 ---- */
-#aiRoot .ai-err{
-  background:var(--red-bg);border:1px solid var(--red);color:var(--red);
-  padding:14px 18px;border-radius:var(--ai-radius-sm);font-size:var(--ai-font-sm);margin-bottom:14px;
-}
-#aiRoot .ai-empty-ill{
-  text-align:center;padding:48px 20px;
-}
+/* ===== 错误 / 空状态 ===== */
+#aiRoot .ai-err{background:var(--red-bg);border:1px solid var(--red);color:var(--red);padding:13px 17px;border-radius:var(--radius);font-size:var(--fs-sm);margin-bottom:14px}
+#aiRoot .empty{text-align:center;padding:56px 20px;color:var(--text3)}
+#aiRoot .empty .ico{font-size:64px;margin-bottom:14px;opacity:.4;line-height:1}
+#aiRoot .empty .title{font-size:var(--fs-md);font-weight:600;color:var(--text2);margin-bottom:8px}
+#aiRoot .empty .desc{font-size:var(--fs-sm);color:var(--text3);max-width:420px;margin:0 auto;line-height:1.7}
+#aiRoot .ai-empty-ill{text-align:center;padding:48px 20px;color:var(--text3)}
 #aiRoot .ai-empty-ill .emoji{font-size:56px;margin-bottom:16px;opacity:.5;display:block}
-#aiRoot .ai-empty-ill .label{font-size:var(--ai-font);color:var(--text2);font-weight:600;margin-bottom:6px}
-#aiRoot .ai-empty-ill .hint{font-size:var(--ai-font-sm);color:var(--text3);max-width:380px;margin:0 auto;line-height:1.7}
+#aiRoot .ai-empty-ill .label{font-size:var(--fs-base);color:var(--text2);font-weight:600;margin-bottom:6px}
+#aiRoot .ai-empty-ill .hint{font-size:var(--fs-sm);color:var(--text3);max-width:380px;margin:0 auto;line-height:1.7}
 
-/* ---- 报告元信息 ---- */
+/* ===== 报告元信息标签 ===== */
 #aiRoot .ai-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-#aiRoot .ai-meta .t{
-  background:var(--bg-card-alt);border:1px solid var(--border);border-radius:20px;
-  padding:5px 14px;color:var(--text2);font-size:var(--ai-font-xs);font-weight:500;
-}
+#aiRoot .ai-meta .t{background:var(--bg-card-alt);border:1px solid var(--border);border-radius:20px;padding:6px 14px;color:var(--text2);font-size:var(--fs-xs);font-weight:500}
 #aiRoot .ai-meta .t b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:700;margin-left:3px}
 
-/* ---- 历史 ---- */
+/* ===== 历史列表 ===== */
 #aiRoot .ai-hist{display:flex;flex-direction:column;gap:10px}
-#aiRoot .ai-hitem{
-  display:flex;align-items:center;gap:14px;padding:14px 18px;
-  border:1px solid var(--border);border-radius:var(--ai-radius-sm);
-  background:var(--bg-card);cursor:pointer;transition:all .15s;
-}
+#aiRoot .ai-hitem{display:flex;align-items:center;gap:14px;padding:14px 18px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);cursor:pointer;transition:all .15s}
 #aiRoot .ai-hitem:hover{border-color:var(--accent);background:var(--bg-hover);transform:translateX(2px)}
 #aiRoot .ai-hmain{flex:1;min-width:0}
-#aiRoot .ai-htitle{font-weight:600;font-size:var(--ai-font-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
-#aiRoot .ai-hmeta{font-size:var(--ai-font-xs);color:var(--text3);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}
+#aiRoot .ai-htitle{font-weight:600;font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+#aiRoot .ai-hmeta{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--fs-xs);color:var(--text3);margin-top:5px}
 #aiRoot .ai-hactions{display:flex;gap:6px;flex-shrink:0}
 
-/* ==================== 弹窗 ==================== */
-#aiRoot .ai-modal{
-  position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);
-  display:none;align-items:flex-start;justify-content:center;z-index:5000;
-  padding:40px 16px;overflow:auto;
-}
-#aiRoot .ai-modal.show{display:flex;animation:aiFadeIn .2s ease}
-#aiRoot .ai-modal-box{
-  background:var(--bg-card);border:1px solid var(--border);border-radius:16px;
-  width:100%;max-width:680px;box-shadow:0 12px 40px rgba(0,0,0,.15);
-  overflow:hidden;margin:auto;
-}
-#aiRoot .ai-modal-head{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:18px 24px;border-bottom:1px solid var(--border);
-  font-weight:700;font-size:var(--ai-font-lg);
-}
-#aiRoot .ai-x{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3);line-height:1;padding:4px 8px;border-radius:6px;transition:all .15s}
+/* ===== 导出下拉菜单 ===== */
+#aiRoot .export-menu{position:relative;display:inline-block}
+#aiRoot .export-dropdown{display:none;position:absolute;top:100%;right:0;margin-top:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:100;min-width:180px;overflow:hidden}
+#aiRoot .export-dropdown.show{display:block;animation:aiFade .15s ease}
+#aiRoot .export-dropdown button{display:block;width:100%;text-align:left;padding:11px 18px;background:none;border:none;color:var(--text2);font-size:var(--fs-sm);font-family:inherit;cursor:pointer;white-space:nowrap}
+#aiRoot .export-dropdown button:hover{background:var(--accent-bg);color:var(--accent)}
+
+/* ===== 弹窗（模型配置 / 提示词） ===== */
+#aiRoot .ai-modal{position:fixed;inset:0;background:rgba(15,20,30,.5);backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:center;z-index:5000;padding:40px 16px;overflow:auto}
+#aiRoot .ai-modal.show{display:flex;animation:aiFade .2s ease}
+#aiRoot .ai-modal-box{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;width:100%;max-width:720px;box-shadow:var(--shadow-lg);overflow:hidden;margin:auto}
+#aiRoot .ai-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border);font-weight:700;font-size:var(--fs-md);color:var(--text)}
+#aiRoot .ai-x{background:none;border:none;cursor:pointer;color:var(--text3);width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:all .15s}
 #aiRoot .ai-x:hover{color:var(--red);background:var(--red-bg)}
-#aiRoot .ai-tabs{display:flex;gap:2px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--bg-card-alt)}
-#aiRoot .ai-tab{
-  background:none;border:none;padding:12px 20px;cursor:pointer;
-  font-size:var(--ai-font-sm);font-family:inherit;color:var(--text3);
-  border-bottom:2px solid transparent;font-weight:500;transition:all .15s;
-}
+#aiRoot .ai-tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--bg-card-alt)}
+#aiRoot .ai-tab{background:none;border:none;padding:13px 20px;cursor:pointer;font-size:var(--fs-sm);font-family:inherit;color:var(--text3);border-bottom:2px solid transparent;font-weight:500;transition:all .15s}
 #aiRoot .ai-tab:hover{color:var(--text2)}
 #aiRoot .ai-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 #aiRoot .ai-modal-body{padding:24px;max-height:68vh;overflow:auto}
@@ -180,14 +154,14 @@
 #aiRoot .ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 #aiRoot .ai-f{display:flex;flex-direction:column;gap:6px}
 #aiRoot .ai-f.full{grid-column:1/-1}
-#aiRoot .ai-f>label{font-size:var(--ai-font-sm);font-weight:600;color:var(--text2)}
-#aiRoot .ai-f .ai-hint{font-size:var(--ai-font-xs);color:var(--text3);font-weight:400}
-#aiRoot .ai-testpanel{margin-top:16px;border:1px solid var(--border);border-radius:var(--ai-radius-sm);overflow:hidden;display:none}
-#aiRoot .ai-testpanel.show{display:block;animation:aiFadeIn .2s ease}
-#aiRoot .ai-step-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-card-alt);font-weight:600;font-size:var(--ai-font-sm);border-bottom:1px solid var(--border)}
+#aiRoot .ai-f>label{font-size:var(--fs-sm);font-weight:600;color:var(--text2)}
+#aiRoot .ai-f .ai-hint{font-size:var(--fs-xs);color:var(--text3);font-weight:400}
+#aiRoot .ai-testpanel{margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:none}
+#aiRoot .ai-testpanel.show{display:block;animation:aiFade .2s ease}
+#aiRoot .ai-step-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-card-alt);font-weight:600;font-size:var(--fs-sm);border-bottom:1px solid var(--border)}
 #aiRoot .ai-step-head.ok{color:var(--green)}
 #aiRoot .ai-step-head.err{color:var(--red)}
-#aiRoot .ai-step{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:var(--ai-font-sm)}
+#aiRoot .ai-step{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:var(--fs-sm)}
 #aiRoot .ai-step:last-child{border-bottom:none}
 #aiRoot .ai-step .si{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;font-weight:700}
 #aiRoot .ai-step.ok .si{background:var(--green-bg);color:var(--green)}
@@ -195,125 +169,129 @@
 #aiRoot .ai-step .stx{flex:1}
 #aiRoot .ai-step .sn{font-weight:600;color:var(--text)}
 #aiRoot .ai-step .sm{color:var(--text2);margin-top:2px}
-#aiRoot .ai-prompt-label{font-size:var(--ai-font-sm);font-weight:600;color:var(--text2);margin:18px 0 7px;display:flex;align-items:center;gap:6px}
+#aiRoot .ai-prompt-label{font-size:var(--fs-sm);font-weight:600;color:var(--text2);margin:18px 0 7px;display:flex;align-items:center;gap:6px}
 #aiRoot .ai-prompt-label:first-of-type{margin-top:0}
-#aiRoot .ai-prompt-hint{font-size:var(--ai-font-sm);color:var(--text3);margin-bottom:16px;line-height:1.7;background:var(--bg-card-alt);padding:12px 16px;border-radius:var(--ai-radius-sm);border:1px solid var(--border)}
+#aiRoot .ai-prompt-hint{font-size:var(--fs-sm);color:var(--text3);margin-bottom:16px;line-height:1.7;background:var(--bg-card-alt);padding:12px 16px;border-radius:var(--radius);border:1px solid var(--border)}
 #aiRoot .ai-prompt-hint b{color:var(--text2)}
-@media(max-width:640px){
-  #aiRoot .ai-grid{grid-template-columns:1fr}
-  #aiRoot .ai-row{flex-direction:column}
-}
 
-/* ==================== 报告阅读版式 ==================== */
-#aiRoot .md-body{
-  max-width:760px;margin:0 auto;font-size:var(--ai-font);line-height:1.85;color:var(--text);
-}
-#aiRoot .md-body h1{
-  font-size:var(--ai-font-xl);margin:4px 0 20px;padding-bottom:14px;
-  border-bottom:2px solid var(--border);font-weight:700;letter-spacing:-.3px;
-}
-#aiRoot .md-body h2{
-  font-size:var(--ai-font-lg);margin:32px 0 16px;padding:12px 0 12px 16px;
-  border-left:4px solid var(--accent);color:var(--accent);font-weight:700;
-  background:linear-gradient(90deg,var(--accent-bg),transparent);
-  border-radius:0 var(--ai-radius-sm) var(--ai-radius-sm) 0;
-}
-#aiRoot .md-body h3{
-  font-size:var(--ai-font-lg);margin:24px 0 12px;padding-left:14px;
-  border-left:3px solid var(--border2);color:var(--text);font-weight:600;
-}
-#aiRoot .md-body h4{font-size:var(--ai-font);margin:16px 0 8px;color:var(--text2);font-weight:700}
-#aiRoot .md-body p{margin:14px 0;text-align:justify;text-justify:inter-ideograph}
-#aiRoot .md-body ul,#aiRoot .md-body ol{margin:12px 0;padding-left:28px}
-#aiRoot .md-body li{margin:7px 0;line-height:1.8}
-#aiRoot .md-body a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s}
+/* ===== Markdown 报告阅读版式 ===== */
+#aiRoot .md-body{max-width:820px;margin:0 auto;font-size:var(--fs-base);line-height:1.8;color:var(--text)}
+#aiRoot .md-body h1{font-size:var(--fs-xl);margin:4px 0 20px;padding-bottom:14px;border-bottom:2px solid var(--border);font-weight:700}
+#aiRoot .md-body h2{font-size:var(--fs-md);margin:30px 0 14px;padding:11px 0 11px 16px;border-left:4px solid var(--accent);color:var(--accent);font-weight:700;background:linear-gradient(90deg,var(--accent-bg),transparent);border-radius:0 var(--radius) var(--radius) 0}
+#aiRoot .md-body h3{font-size:var(--fs-md);margin:22px 0 10px;padding-left:14px;border-left:3px solid var(--border2);color:var(--text);font-weight:600}
+#aiRoot .md-body h4{font-size:var(--fs-base);margin:16px 0 8px;color:var(--text2);font-weight:700}
+#aiRoot .md-body p{margin:13px 0}
+#aiRoot .md-body ul,#aiRoot .md-body ol{margin:12px 0;padding-left:26px}
+#aiRoot .md-body li{margin:6px 0}
+#aiRoot .md-body a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
 #aiRoot .md-body a:hover{border-bottom-color:var(--accent)}
-#aiRoot .md-body code{
-  background:var(--bg-card-alt);border:1px solid var(--border);border-radius:5px;
-  padding:2px 7px;font-family:Consolas,Menlo,monospace;font-size:var(--ai-font-xs);color:var(--purple);
-}
-#aiRoot .md-body pre{background:var(--bg-card-alt);border:1px solid var(--border);border-radius:var(--ai-radius-sm);padding:16px;overflow:auto;margin:14px 0}
-#aiRoot .md-body pre code{background:none;border:none;padding:0;color:var(--text);font-size:var(--ai-font-xs)}
-#aiRoot .md-body blockquote{
-  background:var(--accent-bg);border-left:4px solid var(--accent);
-  border-radius:0 var(--ai-radius-sm) var(--ai-radius-sm) 0;
-  padding:12px 18px;margin:14px 0;color:var(--text2);font-size:var(--ai-font-sm);
-}
+#aiRoot .md-body code{background:var(--bg-card-alt);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-family:Consolas,Menlo,monospace;font-size:var(--fs-xs);color:var(--purple)}
+#aiRoot .md-body pre{background:var(--bg-card-alt);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow:auto;margin:14px 0}
+#aiRoot .md-body pre code{background:none;border:none;padding:0;color:var(--text);font-size:var(--fs-xs)}
+#aiRoot .md-body blockquote{background:var(--accent-bg);border-left:4px solid var(--accent);border-radius:0 var(--radius) var(--radius) 0;padding:12px 18px;margin:14px 0;color:var(--text2);font-size:var(--fs-sm)}
 #aiRoot .md-body hr{border:none;border-top:1px solid var(--border);margin:20px 0}
-#aiRoot .md-body table{
-  width:100%;border-collapse:separate;border-spacing:0;background:var(--bg-card);
-  border:1px solid var(--border);border-radius:var(--ai-radius-sm);overflow:hidden;
-  margin:16px 0;font-size:var(--ai-font-sm);
-}
+#aiRoot .md-body table{width:100%;border-collapse:separate;border-spacing:0;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 0;font-size:var(--fs-sm)}
 #aiRoot .md-body thead th{background:var(--bg-card-alt);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);font-weight:600;color:var(--text)}
 #aiRoot .md-body tbody td{padding:10px 14px;border-bottom:1px solid var(--border)}
 #aiRoot .md-body tbody tr:last-child td{border-bottom:none}
 #aiRoot .md-body tbody tr:hover td{background:var(--bg-hover)}
 #aiRoot .md-body strong{color:var(--text);font-weight:700}
+
+@media(max-width:640px){
+  #aiRoot .ai-grid{grid-template-columns:1fr}
+  #aiRoot .ai-row{flex-direction:column;align-items:stretch}
+  #aiRoot .ai-row.align-end{align-items:stretch}
+  #aiRoot .ai-modelbar{align-items:stretch}
+}
+@media (prefers-reduced-motion: reduce){
+  #aiRoot *{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
 </style>
 
 <div id="aiRoot">
-  <!-- 模型条 -->
-  <div class="ai-bar">
-    <div class="ai-bar-left">
-      <span class="ai-bar-ico">🤖</span>
-      <select id="aiProvider" class="ai-select" onchange="AI.onSelectProvider()"></select>
+  <!-- 卡片 1：模型 -->
+  <section class="card">
+    <div class="card-head">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg></span>
+      <span class="card-head-title">模型</span>
+      <span class="card-head-sub">选择并管理用于生成报告的大语言模型</span>
+    </div>
+    <div class="ai-modelbar">
+      <div class="ai-field ai-field-grow">
+        <label class="ai-label" for="aiProvider">当前模型</label>
+        <select id="aiProvider" class="ai-select" onchange="AI.onSelectProvider()"></select>
+      </div>
       <span id="aiTestBadge" class="ai-badge none">未测试</span>
+      <button class="btn btn-sm" onclick="AI.testConnection()">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6"/><path d="M15 2v6"/><path d="M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v6"/></svg></span>
+        测试连接
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="AI.openConfig()">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        管理模型
+      </button>
     </div>
-    <div class="ai-bar-right">
-      <button class="btn btn-sm" onclick="AI.testConnection()">🔌 测试</button>
-      <button class="btn btn-primary btn-sm" onclick="AI.openConfig()">⚙️ 管理</button>
-    </div>
-  </div>
+  </section>
 
-  <!-- 智能分析 -->
-  <div class="ai-card">
-    <div class="ai-card-head">
-      <span class="ico">📡</span>
-      <span class="title">智能分析</span>
-      <span class="sub">选取时间窗口内新闻，由大模型归纳结构化复盘报告</span>
+  <!-- 卡片 2：智能分析 -->
+  <section class="card">
+    <div class="card-head">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+      <span class="card-head-title">智能分析</span>
+      <span class="card-head-sub">选取时间窗口内新闻，由大模型生成结构化复盘</span>
     </div>
 
     <div class="ai-row">
       <div class="ai-field">
-        <label>⏱ 时间窗口</label>
-        <div class="ai-chips" id="aiWin">
-          <button class="ai-chip active" data-win="24" onclick="AI.setWin(24,this)">近 24h</button>
-          <button class="ai-chip" data-win="48" onclick="AI.setWin(48,this)">近 48h</button>
-          <button class="ai-chip" data-win="72" onclick="AI.setWin(72,this)">近 72h</button>
+        <label class="ai-label">时间窗口</label>
+        <div class="filters" id="aiWin">
+          <button class="filter-chip active" data-win="24" onclick="AI.setWin(24,this)">近 24h</button>
+          <button class="filter-chip" data-win="48" onclick="AI.setWin(48,this)">近 48h</button>
+          <button class="filter-chip" data-win="72" onclick="AI.setWin(72,this)">近 72h</button>
         </div>
       </div>
       <div class="ai-field">
-        <label>📂 数据范围</label>
-        <div class="ai-chips" id="aiScope">
-          <button class="ai-chip active" data-scope="all" onclick="AI.setScope('all',this)">全部</button>
-          <button class="ai-chip" data-scope="finance" onclick="AI.setScope('finance',this)">财经</button>
-          <button class="ai-chip" data-scope="forum" onclick="AI.setScope('forum',this)">舆情</button>
+        <label class="ai-label">数据范围</label>
+        <div class="filters" id="aiScope">
+          <button class="filter-chip active" data-scope="all" onclick="AI.setScope('all',this)">全部</button>
+          <button class="filter-chip" data-scope="finance" onclick="AI.setScope('finance',this)">财经</button>
+          <button class="filter-chip" data-scope="forum" onclick="AI.setScope('forum',this)">舆情</button>
         </div>
       </div>
     </div>
 
-    <div class="ai-row" style="align-items:flex-end">
-      <div class="ai-field" style="flex:0 0 130px">
-        <label>最低重要性</label>
-        <input type="number" id="aiMin" min="0" max="10" step="0.5" value="0" onchange="AI.refreshPreview()">
+    <div class="ai-row align-end">
+      <div class="ai-field" style="flex:0 0 140px">
+        <label class="ai-label" for="aiMin">最低重要性</label>
+        <input type="number" id="aiMin" min="0" max="10" step="0.5" value="0" oninput="AI.refreshPreview()">
       </div>
-      <div class="ai-field" style="flex:0 0 130px">
-        <label>最多条数</label>
-        <input type="number" id="aiMax" min="20" max="5000" step="20" value="500" onchange="AI.refreshPreview()">
+      <div class="ai-field" style="flex:0 0 140px">
+        <label class="ai-label" for="aiMax">最多条数</label>
+        <input type="number" id="aiMax" min="20" max="5000" step="20" value="500" oninput="AI.refreshPreview()">
       </div>
-      <div class="ai-preview" id="aiPreview" style="flex:1">点击「预估」查看命中情况…</div>
-      <button class="btn btn-sm" onclick="AI.refreshPreview()" style="margin-bottom:0">🔄 预估</button>
+      <div class="ai-preview" id="aiPreview">正在估算命中情况…</div>
+      <button class="btn btn-sm" onclick="AI.refreshPreview()">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></span>
+        预估
+      </button>
     </div>
 
-    <div class="ai-field" style="margin-bottom:14px">
-      <label>📌 特别关注（选填）</label>
+    <div class="ai-field" style="margin-top:2px">
+      <label class="ai-label" for="aiFocus">特别关注（选填）</label>
       <textarea id="aiFocus" rows="2" placeholder="例如：重点看半导体与新能源车板块的边际变化；提示北向资金动向"></textarea>
     </div>
 
+    <div id="aiNotice" class="ai-notice"></div>
+
     <div class="ai-actions">
-      <button class="btn btn-primary" id="aiBtnAnalyze" onclick="AI.start()">🚀 开始分析</button>
-      <button class="btn btn-danger" id="aiBtnCancel" onclick="AI.cancel()" style="display:none">⏹ 取消</button>
+      <button class="btn btn-primary" id="aiBtnAnalyze" onclick="AI.start()">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></span>
+        开始分析
+      </button>
+      <button class="btn btn-danger" id="aiBtnCancel" onclick="AI.cancel()" style="display:none">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></span>
+        取消
+      </button>
     </div>
 
     <div class="ai-progress" id="aiProgress">
@@ -323,52 +301,66 @@
       </div>
       <div class="ai-prog-track"><div class="ai-prog-fill" id="aiFill"></div></div>
     </div>
-  </div>
+  </section>
 
-  <!-- 报告 -->
-  <div class="ai-card">
-    <div class="ai-card-head">
-      <span class="ico">📝</span>
-      <span class="title">分析报告</span>
-      <div class="right" id="aiActions" style="display:none">
-        <button class="btn btn-export btn-sm" onclick="AI.exportR('md')">⬇ MD</button>
-        <button class="btn btn-export btn-sm" onclick="AI.exportR('txt')">⬇ TXT</button>
-        <button class="btn btn-export btn-sm" onclick="AI.exportR('json')">⬇ JSON</button>
+  <!-- 卡片 3：分析报告 -->
+  <section class="card">
+    <div class="card-head">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span>
+      <span class="card-head-title">分析报告</span>
+      <div class="card-head-right" id="aiActions" style="display:none">
+        <button class="btn btn-sm" onclick="AI.copyReport()">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+          复制
+        </button>
+        <div class="export-menu">
+          <button class="btn btn-export btn-sm" onclick="AI.toggleExportMenu(event)">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+            导出 ▾
+          </button>
+          <div class="export-dropdown" id="aiExportMenu">
+            <button onclick="AI.exportR('md')">Markdown（.md）</button>
+            <button onclick="AI.exportR('txt')">纯文本（.txt）</button>
+            <button onclick="AI.exportR('json')">JSON（.json）</button>
+          </div>
+        </div>
       </div>
     </div>
     <div id="aiMeta" class="ai-meta" style="display:none"></div>
     <div id="aiErr" class="ai-err" style="display:none"></div>
     <div id="aiReport" class="md-body"></div>
-    <div id="aiEmpty" class="ai-empty-ill">
-      <span class="emoji">🤖</span>
-      <div class="label">尚无报告</div>
-      <div class="hint">配置并测试模型连接后，选择时间窗口点击「开始分析」即可生成结构化复盘报告。</div>
+    <div id="aiEmpty" class="empty">
+      <div class="ico">🤖</div>
+      <div class="title">尚无报告</div>
+      <div class="desc">配置并测试模型连接后，选择时间窗口点击「开始分析」即可生成结构化复盘报告。</div>
     </div>
-  </div>
+  </section>
 
-  <!-- 历史 -->
-  <div class="ai-card">
-    <div class="ai-card-head">
-      <span class="ico">🗂</span>
-      <span class="title">历史报告</span>
-      <div class="right">
+  <!-- 卡片 4：历史报告 -->
+  <section class="card">
+    <div class="card-head">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>
+      <span class="card-head-title">历史报告</span>
+      <div class="card-head-right">
         <button class="btn btn-sm btn-danger" onclick="AI.clearReports()">清空</button>
       </div>
     </div>
     <div id="aiHistory" class="ai-hist">
-      <div class="ai-empty-ill" style="padding:24px">
-        <span class="emoji" style="font-size:36px">📋</span>
-        <div class="hint">暂无历史报告</div>
+      <div class="empty" style="padding:24px">
+        <div class="ico" style="font-size:36px">📋</div>
+        <div class="title" style="font-size:var(--fs-sm)">暂无历史报告</div>
       </div>
     </div>
-  </div>
+  </section>
 
   <!-- 配置 / 提示词弹窗 -->
   <div class="ai-modal" id="aiModal">
     <div class="ai-modal-box">
       <div class="ai-modal-head">
-        <span>⚙️ 模型配置与提示词</span>
-        <button class="ai-x" onclick="AI.closeConfig()">✕</button>
+        <span>模型配置与提示词</span>
+        <button class="ai-x" onclick="AI.closeConfig()" aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <div class="ai-tabs">
         <button class="ai-tab active" data-t="cfg" onclick="AI.tab('cfg',this)">模型配置</button>
@@ -395,7 +387,7 @@
           </div>
           <div class="ai-actions" style="margin-top:16px">
             <button class="btn btn-primary btn-sm" onclick="AI.saveProvider()">💾 保存</button>
-            <button class="btn btn-sm" onclick="AI.testConnection()">🔌 测试</button>
+            <button class="btn btn-sm" onclick="AI.testConnection()">测试连接</button>
             <button class="btn btn-sm" onclick="AI.setDefault()">⭐ 默认</button>
             <button class="btn btn-sm btn-danger" id="aiMBtnDel" onclick="AI.deleteProvider()">🗑 删除</button>
           </div>
@@ -403,16 +395,16 @@
         </div>
         <!-- 提示词 -->
         <div id="aiTabPrompt" style="display:none">
-          <p class="ai-prompt-hint">可自定义发送给大模型的提示词模板。<b>{占位符}</b> 由系统自动填充（如 <code>{window_label}</code>、<code>{stats_block}</code>）；留空则使用内置默认。</p>
-          <div class="ai-prompt-label">🔹 压缩阶段 · 系统指令</div>
+          <p class="ai-prompt-hint">可自定义发送给大模型的提示词模板。<b>占位符</b> 由系统自动填充（如 <code>{window_label}</code>、<code>{stats_block}</code>）；留空则使用内置默认。</p>
+          <div class="ai-prompt-label">压缩阶段 · 系统指令</div>
           <textarea id="aiPmapSys" rows="3"></textarea>
-          <div class="ai-prompt-label">🔹 压缩阶段 · 用户模板</div>
+          <div class="ai-prompt-label">压缩阶段 · 用户模板</div>
           <textarea id="aiPmapUser" rows="5"></textarea>
-          <div class="ai-prompt-label">🔹 归纳阶段 · 系统指令</div>
+          <div class="ai-prompt-label">归纳阶段 · 系统指令</div>
           <textarea id="aiPredSys" rows="3"></textarea>
-          <div class="ai-prompt-label">🔹 归纳阶段 · 用户模板</div>
+          <div class="ai-prompt-label">归纳阶段 · 用户模板</div>
           <textarea id="aiPredUser" rows="6"></textarea>
-          <div class="ai-prompt-label">🔹 单批阶段 · 用户模板</div>
+          <div class="ai-prompt-label">单批阶段 · 用户模板</div>
           <textarea id="aiPsngUser" rows="5"></textarea>
           <div class="ai-actions" style="margin-top:16px">
             <button class="btn btn-primary btn-sm" onclick="AI.savePrompts()">💾 保存提示词</button>
@@ -429,9 +421,10 @@
   const S={
     providers:[],presets:[],scopes:[],windows:[24,48,72],
     editingId:null,busy:false,activeTask:null,pollTimer:null,
-    preview:null,currentReportId:null,promptsLoaded:false,
+    preview:null,currentReportId:null,currentReportContent:'',promptsLoaded:false,
     opt:{hours:24,scope:'all',min_importance:0,max_items:500,focus:''}
   };
+  let _pvTimer=null,_docListeners=false;
   function $(id){return document.getElementById(id);}
   function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   async function api(method,path,body){
@@ -458,7 +451,21 @@
       if(data.status&&data.status.busy&&data.status.active_task){
         S.busy=true;S.activeTask=data.status.active_task;startPolling();
       }
+      bindGlobalListeners();
     }catch(e){console.error('AI init failed',e);}
+  }
+
+  function bindGlobalListeners(){
+    if(_docListeners)return;_docListeners=true;
+    document.addEventListener('click',e=>{
+      if(!e.target.closest('.export-menu')){document.querySelectorAll('#aiRoot .export-dropdown').forEach(x=>x.classList.remove('show'));}
+    });
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'){
+        const m=$('aiModal');if(m&&m.classList.contains('show'))closeConfig();
+        document.querySelectorAll('#aiRoot .export-dropdown').forEach(x=>x.classList.remove('show'));
+      }
+    });
   }
 
   function renderStatus(st){
@@ -495,6 +502,7 @@
     S.editingId=p?p.id:null;
     updateBadge(p);
     prefillForm(p);
+    hideNotice();
   }
   function onSelectMProvider(){
     const sel=$('aiMProvider');if(!sel)return;
@@ -611,35 +619,42 @@
   /* ---------- 窗口 / 范围 / 预估 ---------- */
   function setWin(h,btn){
     S.opt.hours=h;
-    document.querySelectorAll('#aiWin .ai-chip').forEach(b=>b.classList.toggle('active',b.dataset.win==String(h)));
+    document.querySelectorAll('#aiWin .filter-chip').forEach(b=>b.classList.toggle('active',b.dataset.win==String(h)));
     refreshPreview();
   }
   function setScope(s,btn){
     S.opt.scope=s;
-    document.querySelectorAll('#aiScope .ai-chip').forEach(b=>b.classList.toggle('active',b.dataset.scope===s));
+    document.querySelectorAll('#aiScope .filter-chip').forEach(b=>b.classList.toggle('active',b.dataset.scope===s));
     refreshPreview();
   }
-  async function refreshPreview(){
-    S.opt.min_importance=parseFloat($('aiMin').value)||0;
-    S.opt.max_items=parseInt($('aiMax').value)||500;
-    const q=`hours=${S.opt.hours}&scope=${S.opt.scope}&min_importance=${S.opt.min_importance}&max_items=${S.opt.max_items}`;
-    const {data}=await api('GET','/api/llm/preview?'+q);
-    const box=$('aiPreview');
-    if(!data){box.className='ai-preview warn';box.innerHTML='无法获取预估数据';return;}
-    const est=data.estimate||{};
-    box.className='ai-preview'+(data.truncated?' warn':'');
-    box.innerHTML=`
-      <div>命中 <b>${data.matched}</b> 条</div>
-      <div>送入 <b>${est.selected||0}</b> 条</div>
-      <div><b>${est.chunks||1}</b> 批次</div>
-      <div>约 <b>${est.eta_seconds||0}s</b></div>
-      ${data.truncated?'<div style="color:var(--orange)">⚠️ 已按重要性截断</div>':''}`;
+  function refreshPreview(){
+    clearTimeout(_pvTimer);
+    _pvTimer=setTimeout(async()=>{
+      S.opt.min_importance=parseFloat($('aiMin').value)||0;
+      S.opt.max_items=parseInt($('aiMax').value)||500;
+      const q=`hours=${S.opt.hours}&scope=${S.opt.scope}&min_importance=${S.opt.min_importance}&max_items=${S.opt.max_items}`;
+      const {data}=await api('GET','/api/llm/preview?'+q);
+      const box=$('aiPreview');
+      if(!data){box.className='ai-preview warn';box.innerHTML='无法获取预估数据';return;}
+      const est=data.estimate||{};
+      box.className='ai-preview'+(data.truncated?' warn':'');
+      box.innerHTML=`
+        <div>命中 <b>${data.matched}</b> 条</div>
+        <div>送入 <b>${est.selected||0}</b> 条</div>
+        <div><b>${est.chunks||1}</b> 批次</div>
+        <div>约 <b>${est.eta_seconds||0}s</b></div>
+        ${data.truncated?'<div style="color:var(--orange)">⚠️ 已按重要性截断</div>':''}`;
+    },200);
   }
 
   /* ---------- 分析 ---------- */
+  function showNotice(msg,type){const n=$('aiNotice');if(!n)return;n.className='ai-notice'+(type?' '+type:'');n.innerHTML='⚠️ '+msg;n.style.display='block';}
+  function hideNotice(){const n=$('aiNotice');if(n)n.style.display='none';}
   async function start(){
-    if(S.busy){alert('已有任务进行中，请等待完成或取消');return;}
-    if(!S.providers.length){alert('请先在「管理」中配置并保存一个大模型');return;}
+    if(S.busy){showNotice('已有任务进行中，请等待完成或取消。','err');return;}
+    if(!S.providers.length){showNotice('尚未配置任何模型，请先点击「管理模型」添加并保存。','err');openConfig();return;}
+    const p=S.providers.find(x=>String(x.id)===String(S.editingId));
+    if(p&&p.test_status!==1){showNotice('该模型尚未通过连接测试，仍可直接尝试；若失败请先「测试连接」。');}
     const payload={
       provider_id:S.editingId||undefined,
       hours:S.opt.hours,scope:S.opt.scope,
@@ -648,9 +663,10 @@
     };
     const {status,data}=await api('POST','/api/llm/analyze',payload);
     if(status===200&&data&&data.ok){
+      hideNotice();
       S.activeTask=data.task;S.busy=true;startPolling();
     }else{
-      alert('无法启动：'+((data&&data.error)||status));
+      showNotice('无法启动：'+((data&&data.error)||status),'err');
     }
   }
   function startPolling(){
@@ -674,7 +690,9 @@
   }
   function updateProgress(t){
     $('aiProgress').className='ai-progress show';
-    $('aiStage').textContent=t.stage_label||'处理中';
+    let stage=t.stage_label||'处理中';
+    if(t.current_chunk&&t.total_chunks)stage+=' ('+t.current_chunk+'/'+t.total_chunks+')';
+    $('aiStage').textContent=stage;
     $('aiPct').textContent=Math.round(t.progress||0)+'%';
     $('aiFill').style.width=(t.progress||0)+'%';
     $('aiBtnAnalyze').style.display=(t.status==='running')?'none':'';
@@ -691,7 +709,8 @@
   /* ---------- 报告渲染 ---------- */
   function renderReport(r){
     $('aiErr').style.display='none';
-    S.currentReportId=r.id;
+    hideNotice();
+    S.currentReportId=r.id;S.currentReportContent=r.content||'';
     const m=$('aiMeta');m.style.display='flex';
     m.innerHTML=`
       <span class="t">模型<b>${esc(r.model||'--')}</b></span>
@@ -705,11 +724,27 @@
     $('aiEmpty').style.display='none';
     $('aiReport').innerHTML=renderMarkdown(r.content||'');
   }
+  async function copyReport(){
+    if(!S.currentReportContent){flash('暂无可复制内容');return;}
+    try{await navigator.clipboard.writeText(S.currentReportContent);flash('已复制报告内容');}
+    catch(e){
+      const ta=document.createElement('textarea');ta.value=S.currentReportContent;document.body.appendChild(ta);ta.select();
+      try{document.execCommand('copy');flash('已复制报告内容');}catch(_){flash('复制失败，请手动选择');}
+      ta.remove();
+    }
+  }
   function exportR(fmt){
     if(!S.currentReportId)return;
     const a=document.createElement('a');
     a.href=`/api/llm/report/export?id=${S.currentReportId}&fmt=${fmt}`;
     a.download='';document.body.appendChild(a);a.click();a.remove();
+    document.querySelectorAll('#aiRoot .export-dropdown').forEach(x=>x.classList.remove('show'));
+  }
+  function toggleExportMenu(e){
+    e.stopPropagation();
+    const m=$('aiExportMenu');const open=m.classList.contains('show');
+    document.querySelectorAll('#aiRoot .export-dropdown').forEach(x=>x.classList.remove('show'));
+    if(!open)m.classList.add('show');
   }
 
   /* ---------- 历史 ---------- */
@@ -719,7 +754,7 @@
   }
   function renderHistory(items){
     const list=$('aiHistory');if(!list)return;
-    if(!items.length){list.innerHTML='<div class="ai-empty-ill" style="padding:24px"><span class="emoji" style="font-size:36px">📋</span><div class="hint">暂无历史报告</div></div>';return;}
+    if(!items.length){list.innerHTML='<div class="empty" style="padding:24px"><div class="ico" style="font-size:36px">📋</div><div class="title" style="font-size:var(--fs-sm)">暂无历史报告</div></div>';return;}
     list.innerHTML=items.map(r=>`
       <div class="ai-hitem" onclick="AI.viewReport(${r.id})">
         <div class="ai-hmain">
@@ -853,6 +888,6 @@
     closeList();return html;
   }
 
-  window.AI={init,onSelectProvider,onSelectMProvider,applyPreset,newProvider,saveProvider,setDefault,deleteProvider,testConnection,setWin,setScope,refreshPreview,start,cancel,renderReport,exportR,viewReport,deleteReport,clearReports,openConfig,closeConfig,tab,savePrompts,resetPrompts,loadPrompts};
+  window.AI={init,onSelectProvider,onSelectMProvider,applyPreset,newProvider,saveProvider,setDefault,deleteProvider,testConnection,setWin,setScope,refreshPreview,start,cancel,renderReport,exportR,copyReport,toggleExportMenu,viewReport,deleteReport,clearReports,openConfig,closeConfig,tab,savePrompts,resetPrompts,loadPrompts};
 })();
 </script>
