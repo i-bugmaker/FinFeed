@@ -453,13 +453,16 @@ class _WebHandler(BaseHTTPRequestHandler):
                 "is_favorite": params["is_favorite"],
                 "stock_name": params["stock"],
                 "min_importance": params["min_importance"],
+                # 财经新闻端必须隔离舆情：即便选中“东方财富”这类与股吧共享
+                # 显示来源名的信源，也只返回 category!=forum 的条目。
+                "category_exclude": "forum",
             }
-            
+
             if params["source"]:
                 db_kwargs["source"] = params["source"]
             else:
                 db_kwargs["category"] = "finance"
-            
+
             news_items, db_total = db_query_news(**db_kwargs)
             result = _build_news_response(
                 news_items, db_total, params["offset"], params["page_size"], finance_display_names

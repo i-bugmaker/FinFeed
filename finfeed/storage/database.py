@@ -887,6 +887,7 @@ class NewsDatabase:
         source_include_list: Optional[List[str]] = None,
         source_exclude_list: Optional[List[str]] = None,
         category: Optional[str] = None,
+        category_exclude: Optional[str] = None,
     ) -> Tuple[List[NewsItem], int]:
         """通用新闻查询方法，支持分页、筛选
 
@@ -910,6 +911,11 @@ class NewsDatabase:
         if category:
             conditions.append("category = ?")
             params.append(category)
+        if category_exclude:
+            # 隔离场景：财经新闻端应排除舆情(forum)，即使两者共享同一显示来源名
+            # （如东方财富新闻 source=东方财富 finance，东财股吧热帖 source=东方财富 forum）。
+            conditions.append("category != ?")
+            params.append(category_exclude)
         if start_ts is not None:
             conditions.append("publish_ts >= ?")
             params.append(start_ts)
@@ -1253,6 +1259,7 @@ def db_query_news(
     source_include_list: Optional[List[str]] = None,
     source_exclude_list: Optional[List[str]] = None,
     category: Optional[str] = None,
+    category_exclude: Optional[str] = None,
 ) -> Tuple[List[NewsItem], int]:
     """通用新闻查询"""
     return get_db_manager().query_news(
@@ -1260,7 +1267,7 @@ def db_query_news(
         start_ts=start_ts, end_ts=end_ts, sentiment=sentiment,
         is_favorite=is_favorite, stock_name=stock_name, min_importance=min_importance,
         source_include_list=source_include_list, source_exclude_list=source_exclude_list,
-        category=category,
+        category=category, category_exclude=category_exclude,
     )
 
 
