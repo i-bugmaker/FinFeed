@@ -10,6 +10,8 @@ from .eastmoney import (
     SinaStockBarParser, ThsAdvisorParser, ThsStockBarParser,
 )
 from .ugc_platforms import ThsLoungeParser, WeiboFinanceParser
+from .attention import BaiduFinanceHotParser, ZhihuHotParser
+from .community import TaogubaParser, JisiluParser
 from .utils import extract_stock_from_url, extract_stocks_from_text
 
 __all__ = [
@@ -18,5 +20,7 @@ __all__ = [
     "EastMoneyMobileGubaParser", "EastMoneyHotRankParser", "EastMoneyDynamicGubaParser",
     "XueqiuHotParser", "SinaStockBarParser", "ThsAdvisorParser", "ThsStockBarParser",
     "ThsLoungeParser", "WeiboFinanceParser",
+    "BaiduFinanceHotParser", "ZhihuHotParser",
+    "TaogubaParser", "JisiluParser",
     "extract_stock_from_url", "extract_stocks_from_text",
 ]

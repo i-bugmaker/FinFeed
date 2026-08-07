@@ -46,6 +46,44 @@ def render_sentiment_section(trade_date: Optional[str] = None,
     out.append(f"> 数据日期：{td} ｜ 来源：{source}（通达信 AI 听盘 多空权重）")
     out.append("")
 
+    # ---- 散户情绪指数（自建·聚合全路 UGC 舆情源，无 tdx 数据时也可独立渲染） ----
+    try:
+        f = ss.get_forum_sentiment(td)
+        if not f:
+            from finfeed.analysis.forum_sentiment import build_forum_sentiment
+            f = build_forum_sentiment(td)
+    except Exception:
+        f = None
+    if f:
+        idx_f = float(f.get("retail_index", 0.0) or 0.0)
+        cf = _sent_color(idx_f)
+        lf = _sent_label(idx_f)
+        heat_f = float(f.get("heat", 0.0) or 0.0)
+        vol = int(f.get("volume", 0))
+        cov = int(f.get("stock_coverage", 0))
+        srcs = f.get("active_sources") or []
+        up_f = int(f.get("up_count", 0))
+        down_f = int(f.get("down_count", 0))
+        neu_f = int(f.get("neutral_count", 0))
+        out.append("### 📢 散户情绪指数（自建 · 聚合全路 UGC 舆情源）")
+        out.append(f"> 由 {vol} 条舆情计算（覆盖 {cov} 只个股）｜活跃来源：{' / '.join(srcs) if srcs else '-'}")
+        out.append("")
+        out.append(f"- 情绪指数：<span style=\"color:{cf}\">**{idx_f:+.3f}**</span>（{lf}） ｜ "
+                   f"讨论热度 **{heat_f:.0f}/100**")
+        out.append(f"- 多空分布：🔴 偏多 **{up_f}** ｜ 🟢 偏空 **{down_f}** ｜ ⚪ 中性 **{neu_f}**")
+        out.append("")
+        tops = f.get("top_stocks") or []
+        if tops:
+            out.append("| 排名 | 代码 | 名称 | 舆情热度 | 情绪分 | 情绪 |")
+            out.append("|-----:|------|------|--------:|-------:|------|")
+            for i, t in enumerate(tops, 1):
+                sc = float(t.get("sentiment_score", 0.0) or 0.0)
+                out.append(
+                    f"| {i} | {t.get('code','')} | {t.get('name','')} | {t.get('heat',0):.1f} | "
+                    f"<span style=\"color:{_sent_color(sc)}\">{sc:+.3f}</span> | {_sent_label(sc)} |"
+                )
+            out.append("")
+
     # ---- 全市场舆情温度 ----
     m = ss.get_market_sentiment(td)
     if not m:

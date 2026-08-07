@@ -297,3 +297,81 @@ def get_market_sentiment_range(start_date: str, end_date: str) -> List[Dict[str,
             (start_date, end_date),
         )
         return [dict(r) for r in c.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# 散户情绪指数（自建·聚合全路 UGC 舆情源）
+# ---------------------------------------------------------------------------
+def _ensure_forum_table() -> None:
+    """确保 forum_sentiment_daily 表存在（自愈式，兼容未走 market 初始化启动路径）"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS forum_sentiment_daily (
+                trade_date TEXT PRIMARY KEY,
+                retail_index REAL DEFAULT 0.0,
+                heat REAL DEFAULT 0.0,
+                up_count INTEGER DEFAULT 0,
+                down_count INTEGER DEFAULT 0,
+                neutral_count INTEGER DEFAULT 0,
+                volume INTEGER DEFAULT 0,
+                stock_coverage INTEGER DEFAULT 0,
+                active_sources TEXT DEFAULT '[]',
+                top_stocks TEXT DEFAULT '[]',
+                created_at TEXT
+            )"""
+        )
+
+
+def upsert_forum_sentiment(trade_date: str, retail_index: float = 0.0, heat: float = 0.0,
+                           up_count: int = 0, down_count: int = 0, neutral_count: int = 0,
+                           volume: int = 0, stock_coverage: int = 0,
+                           active_sources: Optional[List[str]] = None,
+                           top_stocks: Optional[List[Dict[str, Any]]] = None) -> None:
+    """写入当日散户情绪指数（幂等 upsert，trade_date 主键）。"""
+    _ensure_forum_table()
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            """INSERT INTO forum_sentiment_daily
+               (trade_date, retail_index, heat, up_count, down_count, neutral_count,
+                volume, stock_coverage, active_sources, top_stocks, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date) DO UPDATE SET
+                   retail_index=excluded.retail_index,
+                   heat=excluded.heat,
+                   up_count=excluded.up_count,
+                   down_count=excluded.down_count,
+                   neutral_count=excluded.neutral_count,
+                   volume=excluded.volume,
+                   stock_coverage=excluded.stock_coverage,
+                   active_sources=excluded.active_sources,
+                   top_stocks=excluded.top_stocks,
+                   created_at=excluded.created_at
+            """,
+            (trade_date, retail_index, heat, up_count, down_count, neutral_count,
+             volume, stock_coverage,
+             json.dumps(active_sources or [], ensure_ascii=False),
+             json.dumps(top_stocks or [], ensure_ascii=False), _now()),
+        )
+
+
+def get_forum_sentiment(trade_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """读取当日散户情绪指数；不传日期取最近一条。"""
+    _ensure_forum_table()
+    db = get_db_manager()
+    with db.get_db() as c:
+        if trade_date:
+            c.execute("SELECT * FROM forum_sentiment_daily WHERE trade_date = ?", (trade_date,))
+        else:
+            c.execute("SELECT * FROM forum_sentiment_daily ORDER BY trade_date DESC LIMIT 1")
+        row = c.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        for key in ("active_sources", "top_stocks"):
+            try:
+                d[key] = json.loads(d.get(key) or "[]")
+            except Exception:
+                d[key] = []
+        return d

@@ -114,6 +114,22 @@ def ensure_market_tables() -> None:
         """)
 
         c.execute("""
+            CREATE TABLE IF NOT EXISTS forum_sentiment_daily (
+                trade_date TEXT PRIMARY KEY,
+                retail_index REAL DEFAULT 0.0,
+                heat REAL DEFAULT 0.0,
+                up_count INTEGER DEFAULT 0,
+                down_count INTEGER DEFAULT 0,
+                neutral_count INTEGER DEFAULT 0,
+                volume INTEGER DEFAULT 0,
+                stock_coverage INTEGER DEFAULT 0,
+                active_sources TEXT DEFAULT '[]',
+                top_stocks TEXT DEFAULT '[]',
+                created_at TEXT
+            )
+        """)
+
+        c.execute("""
             CREATE TABLE IF NOT EXISTS news_stock_link (
                 news_id INTEGER,
                 code TEXT,

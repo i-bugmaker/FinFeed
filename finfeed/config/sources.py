@@ -5,6 +5,8 @@
 所有新闻源的定义集中在此处，支持通过 Parser 类进行策略模式扩展。
 """
 
+import os
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -361,6 +363,10 @@ FINANCE_NEWS_SOURCES: list[NewsSource] = [
 _MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
 _PC_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
+# 需要登录态的源：从环境变量注入 cookie，缺失时请求会返回空，不影响主流程
+_XUEQIU_COOKIE = os.environ.get("XUEQIU_COOKIE", "")
+_ZHIHU_COOKIE = os.environ.get("ZHIHU_COOKIE", "")
+
 def _mobile_headers(referer: str = "https://m.guba.eastmoney.com/") -> dict:
     return {
         "User-Agent": _MOBILE_UA,
@@ -449,6 +455,78 @@ FORUM_SOURCES: list[NewsSource] = [
         headers={
             "User-Agent": _PC_UA,
             "Referer": "https://guba.sina.com.cn/",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        },
+    ),
+    # ---- 专业投资社区：雪球热门讨论（需 XUEQIU_COOKIE）----
+    NewsSource(
+        name="雪球",
+        url="https://xueqiu.com/statuses/hot/list.json?since_id=-1&max_id=-1&size=20",
+        parser_type="xueqiu_hot",
+        headers={
+            "User-Agent": _PC_UA,
+            "Referer": "https://xueqiu.com/",
+            "Accept": "application/json, text/plain, */*",
+            "Cookie": _XUEQIU_COOKIE,
+        },
+    ),
+    # ---- 同花顺股吧（与同花顺论股堂形成同花顺社区双路覆盖）----
+    NewsSource(
+        name="同花顺股吧",
+        url="https://guba.10jqka.com.cn/",
+        parser_type="ths_stock_bar",
+        headers={
+            "User-Agent": _PC_UA,
+            "Referer": "https://guba.10jqka.com.cn/",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        },
+    ),
+    # ---- 散户注意力热榜：百度财经热搜 ----
+    NewsSource(
+        name="百度财经热搜",
+        url="https://top.baidu.com/board?tab=finance",
+        parser_type="baidu_finance_hot",
+        headers={
+            "User-Agent": _PC_UA,
+            "Referer": "https://top.baidu.com/",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        },
+    ),
+    # ---- 散户注意力热榜：知乎财经热榜（需 ZHIHU_COOKIE）----
+    NewsSource(
+        name="知乎财经热榜",
+        url="https://www.zhihu.com/api/v4/feed/topstory/hot-lists/total?limit=50&desktop=true",
+        parser_type="zhihu_hot",
+        headers={
+            "User-Agent": _PC_UA,
+            "Referer": "https://www.zhihu.com/",
+            "Accept": "application/json, text/plain, */*",
+            "Cookie": _ZHIHU_COOKIE,
+        },
+    ),
+    # ---- A股专业投资社区：淘股吧（短线游资/涨停板情绪）----
+    NewsSource(
+        name="淘股吧",
+        url="https://www.taoguba.com.cn/",
+        parser_type="taoguba",
+        headers={
+            "User-Agent": _PC_UA,
+            "Referer": "https://www.taoguba.com.cn/",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        },
+    ),
+    # ---- A股专业投资社区：集思录（转债/套利/打新情绪）----
+    NewsSource(
+        name="集思录",
+        url="https://www.jisilu.cn/home/explore",
+        parser_type="jisilu",
+        headers={
+            "User-Agent": _PC_UA,
+            "Referer": "https://www.jisilu.cn/",
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "zh-CN,zh;q=0.9",
         },

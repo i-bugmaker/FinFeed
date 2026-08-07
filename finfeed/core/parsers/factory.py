@@ -52,6 +52,8 @@ def _register_known_parsers() -> None:
         EastMoneyDynamicGubaParser, SinaStockBarParser,
         ThsAdvisorParser, ThsStockBarParser,
         ThsLoungeParser, WeiboFinanceParser,
+        XueqiuHotParser, BaiduFinanceHotParser, ZhihuHotParser,
+        TaogubaParser, JisiluParser,
     )
     
     _PARSER_MAP.update({
@@ -93,6 +95,11 @@ def _register_known_parsers() -> None:
         "ths_stock_bar": ThsStockBarParser,
         "ths_lounge": ThsLoungeParser,
         "weibo_finance": WeiboFinanceParser,
+        "xueqiu_hot": XueqiuHotParser,
+        "baidu_finance_hot": BaiduFinanceHotParser,
+        "zhihu_hot": ZhihuHotParser,
+        "taoguba": TaogubaParser,
+        "jisilu": JisiluParser,
     })
     
     for parser_type, parser_cls in get_registered_parsers().items():
