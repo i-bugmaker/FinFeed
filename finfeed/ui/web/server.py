@@ -52,6 +52,8 @@ from finfeed.storage.database import (
 from finfeed.storage.models import NewsItem
 from finfeed.core.health import get_health_monitor
 from finfeed.llm import api as llm_api
+from finfeed.calendar import api as calendar_api
+from finfeed.calendar import fetcher as calendar_fetcher
 
 logger = logging.getLogger("news_monitor")
 
@@ -142,6 +144,7 @@ _template_cache_map = {
     "sentiment": {"cache": None, "mtime": 0, "filename": "sentiment.html"},
     "favorites": {"cache": None, "mtime": 0, "filename": "favorites.html"},
     "ai_fragment": {"cache": None, "mtime": 0, "filename": "ai_fragment.html"},
+    "calendar_fragment": {"cache": None, "mtime": 0, "filename": "calendar_fragment.html"},
 }
 
 
@@ -195,6 +198,9 @@ def _get_favorites_html() -> str:
 
 def _get_ai_analysis_html() -> str:
     return _load_template("ai_fragment")
+
+def _get_calendar_fragment_html() -> str:
+    return _load_template("calendar_fragment")
 
 
 def _ts_from_date_str(date_str: str, end_of_day: bool = False) -> int | None:
@@ -266,6 +272,16 @@ class _WebHandler(BaseHTTPRequestHandler):
                 self._send_json(result[1], result[0])
             else:
                 self.send_error(404)
+        elif path == "/api/calendar/fragment":
+            self._serve_calendar_fragment()
+        elif path.startswith("/api/calendar/export"):
+            self._serve_calendar_export(parsed)
+        elif path.startswith("/api/calendar"):
+            result = calendar_api.handle_get(path, parse_qs(parsed.query))
+            if result is not None:
+                self._send_json(result[1], result[0])
+            else:
+                self.send_error(404)
         elif path.startswith("/ai/analysis"):
             self._serve_html()
         elif path.startswith("/api/export"):
@@ -300,6 +316,12 @@ class _WebHandler(BaseHTTPRequestHandler):
             self._handle_mark_read(data)
         elif path.startswith("/api/llm"):
             result = llm_api.handle_post(path, data)
+            if result is not None:
+                self._send_json(result[1], result[0])
+            else:
+                self.send_error(404)
+        elif path.startswith("/api/calendar"):
+            result = calendar_api.handle_post(path, data)
             if result is not None:
                 self._send_json(result[1], result[0])
             else:
@@ -792,6 +814,34 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _serve_calendar_fragment(self):
+        html = _get_calendar_fragment_html()
+        data = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_calendar_export(self, parsed):
+        qs = parse_qs(parsed.query)
+        try:
+            payload, content_type, filename = calendar_api.export_events(qs)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"日历导出失败: {e}")
+            logger.error(traceback.format_exc())
+            self._send_json({"error": str(e)}, status=500)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header(
+            "Content-Disposition", f'attachment; filename="{filename}"'
+        )
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _serve_llm_export(self, parsed):
         qs = parse_qs(parsed.query)
         rid = int(qs.get("id", ["0"])[0] or 0)
@@ -865,6 +915,11 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServ
     )
     t.start()
     logger.info(f"Web 服务已启动: http://localhost:{port}")
+    # 预热日历抓取连接池的 DNS（best-effort，避免首个请求冷启动卡顿）
+    try:
+        calendar_fetcher.warmup()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"日历连接池预热失败（可忽略）: {e}")
     return server
 
 
