@@ -32,7 +32,9 @@ from finfeed.storage.database import init_db, db_set_last_exit_ts
 from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
 from finfeed.core.monitor import get_monitor
 from finfeed.ui.terminal import print_once_result, TerminalUI
-from finfeed.ui.web.server import start_web_server, stop_web_server, update_web_state
+from finfeed.ui.web.server import (
+    start_web_server, stop_web_server, update_web_state, broadcast_new_news,
+)
 
 
 async def run_once():
@@ -49,22 +51,30 @@ async def run_continuous(interval: int, web_port: int):
 
     from finfeed.storage.database import db_get_recent_news, db_get_statistics, db_get_all_source_last_ts
 
+    def _build_source_stats() -> dict:
+        return {src: 1 for src in db_get_all_source_last_ts()}
+
     async def push_callback(total_new):
-        news = db_get_recent_news(limit=total_new)
-        news = [n.to_dict() for n in news]
+        """抓取轮结束后的即时推送。
+
+        增量条目由 broadcast_new_news() 依据数据库自增 id 水位线自行确定，
+        这里不再自行猜测「哪几条是新的」——此前用
+        db_get_recent_news(limit=total_new) 按 publish_ts 取前 N 条，
+        新抓到的条目若发布时间偏旧就会被挤出该窗口，导致 Web 端漏更新。
+        """
+        try:
+            broadcast_new_news()
+        except Exception as e:
+            logger.error(f"SSE 增量推送失败: {e}", exc_info=True)
+
         stats = db_get_statistics()
-        source_last_ts = db_get_all_source_last_ts()
-        source_stats = {}
-        for src in source_last_ts:
-            source_stats[src] = source_stats.get(src, 0) + 1
         update_web_state(
-            news=news,
-            stats=source_stats,
+            news=[],
+            stats=_build_source_stats(),
             cycle=monitor.fetch_count,
             total=stats.get("total", 0),
             new_count=total_new,
             status=f"第{monitor.fetch_count}轮" if monitor.fetch_count > 0 else "运行中",
-            force_broadcast=True,
         )
 
     monitor.set_push_callback(push_callback)
@@ -85,10 +95,7 @@ async def run_continuous(interval: int, web_port: int):
             try:
                 news = db_get_recent_news(limit=200, category="finance")
                 stats = db_get_statistics()
-                source_last_ts = db_get_all_source_last_ts()
-                source_stats = {}
-                for src in source_last_ts:
-                    source_stats[src] = source_stats.get(src, 0) + 1
+                source_stats = _build_source_stats()
 
                 status = "运行中" if monitor.is_running else "准备中"
                 if monitor.fetch_count > 0:
@@ -103,15 +110,18 @@ async def run_continuous(interval: int, web_port: int):
                     status=status,
                 )
 
-                news_dicts = [n.to_dict() for n in news]
                 update_web_state(
-                    news=news_dicts,
+                    news=[],
                     stats=source_stats,
                     cycle=monitor.fetch_count,
                     total=stats.get("total", 0),
                     new_count=monitor.total_new_count,
                     status=status,
                 )
+
+                # 兜底对账：push_callback 若因异常/时序问题漏推，这里 5 秒内补齐。
+                # broadcast_new_news 幂等（水位线单调），与即时推送并存不会重复。
+                broadcast_new_news()
             except Exception as e:
                 logger.debug(f"TUI 更新异常: {e}")
             await asyncio.sleep(5)

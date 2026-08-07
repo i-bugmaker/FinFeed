@@ -797,7 +797,8 @@ function connectSSE(){
     state.sse.addEventListener('news',(e)=>{
       try{
         const d=JSON.parse(e.data);
-        if(d.type==='new_news'&&d.category==='forum'&&d.items&&d.items.length){
+        /* 以 count 为准：items 可能被服务端截断为空，但仍代表有新增 */
+        if(d.type==='new_news'&&d.category==='forum'&&d.count>0){
           showToast(`收到 ${d.count} 条新帖子`,'新消息');
           if(state.offset<=PAGE_SIZE&&!state.keyword&&state.source==='all'&&state.sentiment==='all'&&state.dateRange==='all'&&!state.stockFilter){
             loadNews(true);

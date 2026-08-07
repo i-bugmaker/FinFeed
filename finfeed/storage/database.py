@@ -593,6 +593,48 @@ class NewsDatabase:
                 )
             return [self._row_to_news(row) for row in c.fetchall()]
 
+    def get_news_after_id(self, after_id: int, limit: int = 500,
+                          category: Optional[str] = None) -> List[NewsItem]:
+        """获取 id 大于 after_id 的新闻，按 id 升序返回。
+
+        ⚠️ 这是判断「新增」的**唯一正确口径**。
+        news.id 为 AUTOINCREMENT，与写入顺序严格一致；而 publish_ts 由数据源提供，
+        新抓取的条目完全可能带有较旧的发布时间（补抓、论坛旧帖、源时间戳滞后等），
+        因此 `ORDER BY publish_ts DESC LIMIT N` 取到的**不是**本轮新增的 N 条。
+
+        Args:
+            after_id: 水位线，只返回 id 严格大于它的记录
+            limit: 单次上限，超出部分留待下次调用（水位线只推进到已返回的最大 id）
+            category: 可选分类过滤（finance / forum）
+        """
+        if limit <= 0:
+            return []
+        with self.get_db() as c:
+            if category:
+                c.execute(
+                    "SELECT * FROM news WHERE id > ? AND category = ? "
+                    "ORDER BY id ASC LIMIT ?",
+                    (after_id, category, limit),
+                )
+            else:
+                c.execute(
+                    "SELECT * FROM news WHERE id > ? ORDER BY id ASC LIMIT ?",
+                    (after_id, limit),
+                )
+            return [self._row_to_news(row) for row in c.fetchall()]
+
+    def get_max_news_id(self, category: Optional[str] = None) -> int:
+        """获取当前库内最大新闻 id（用于初始化增量推送水位线）"""
+        with self.get_db() as c:
+            if category:
+                c.execute(
+                    "SELECT MAX(id) AS m FROM news WHERE category = ?", (category,)
+                )
+            else:
+                c.execute("SELECT MAX(id) AS m FROM news")
+            row = c.fetchone()
+            return int(row["m"]) if row and row["m"] else 0
+
     def get_news_by_id(self, news_id: int) -> Optional[NewsItem]:
         """根据 ID 获取单条新闻详情"""
         if not news_id:
@@ -1108,6 +1150,17 @@ def db_get_recent_news(limit: int = 200, source: Optional[str] = None,
                        category: Optional[str] = None) -> List[NewsItem]:
     """从数据库获取最近的新闻"""
     return get_db_manager().get_recent_news(limit, source, category)
+
+
+def db_get_news_after_id(after_id: int, limit: int = 500,
+                         category: Optional[str] = None) -> List[NewsItem]:
+    """获取 id 大于 after_id 的新闻（按 id 升序），用于增量推送"""
+    return get_db_manager().get_news_after_id(after_id, limit, category)
+
+
+def db_get_max_news_id(category: Optional[str] = None) -> int:
+    """获取当前库内最大新闻 id"""
+    return get_db_manager().get_max_news_id(category)
 
 
 def db_get_news_by_id(news_id: int) -> Optional[NewsItem]:

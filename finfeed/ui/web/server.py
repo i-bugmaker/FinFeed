@@ -47,7 +47,7 @@ from finfeed.storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
     db_get_news_by_id, db_get_recent_news, db_mark_read, db_toggle_favorite,
     db_query_news, db_get_statistics, db_get_favorites, get_db,
-    db_get_all_stock_names,
+    db_get_all_stock_names, db_get_news_after_id, db_get_max_news_id,
 )
 from finfeed.storage.models import NewsItem
 from finfeed.core.health import get_health_monitor
@@ -87,13 +87,27 @@ _web_state = {
     "sources": [],
     "last_update": "",
     "server_ts": time.time(),
-    "latest_id": 0,
 }
 _web_state_lock = threading.Lock()
 
 _sse_clients: set = set()
 _sse_clients_lock = threading.Lock()
 _notification_queue: queue.Queue = queue.Queue()
+
+# ----------------- SSE 增量推送水位线 -----------------
+# 按分类独立维护，避免 finance / forum 两条流互相污染水位（曾导致 finance
+# 新闻的 id 低于被 forum 抬高的全局水位而永久漏播）。
+BROADCAST_CATEGORIES = ("finance", "forum")
+# 单次 SSE 事件携带的条目上限；超出时置 truncated=True，由前端整表刷新
+SSE_MAX_ITEMS_PER_EVENT = 50
+# 单轮从数据库拉取的增量上限；剩余部分下一轮继续（水位线只推进到已发送的最大 id）
+BROADCAST_BATCH_LIMIT = 500
+# 每个 SSE 客户端队列的上限，防止慢客户端把内存拖爆（无界队列会使死连接检测失效）
+SSE_CLIENT_QUEUE_MAXSIZE = 256
+
+_broadcast_watermarks: Dict[str, int] = {c: 0 for c in BROADCAST_CATEGORIES}
+_broadcast_lock = threading.RLock()
+_watermark_initialized = False
 
 _template_lock = threading.Lock()
 
@@ -779,7 +793,7 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        client_queue: queue.Queue = queue.Queue()
+        client_queue: queue.Queue = queue.Queue(maxsize=SSE_CLIENT_QUEUE_MAXSIZE)
         with _sse_clients_lock:
             _sse_clients.add(client_queue)
             logger.info(f"SSE客户端已连接, 当前客户端数: {len(_sse_clients)}")
@@ -1172,16 +1186,39 @@ class _WebHandler(BaseHTTPRequestHandler):
 def _sse_broadcast(message: dict):
     with _sse_clients_lock:
         client_count = len(_sse_clients)
-        dead_clients = set()
         for q in _sse_clients:
             try:
                 q.put_nowait(message)
             except queue.Full:
-                dead_clients.add(q)
-        for q in dead_clients:
-            _sse_clients.discard(q)
+                # 慢客户端：丢弃积压并投递一条「截断」通知，
+                # 让前端整表刷新而不是静默丢消息（此前无界队列 + 直接踢掉
+                # 客户端，会让该连接变成收不到任何更新的僵尸连接）。
+                _drain_queue(q)
+                try:
+                    q.put_nowait({
+                        "type": "new_news",
+                        "category": message.get("category", "finance"),
+                        "items": [],
+                        "count": message.get("count", 0),
+                        "truncated": True,
+                        "ts": time.time(),
+                    })
+                except queue.Full:
+                    logger.warning("SSE 客户端队列持续拥塞，已跳过本次投递")
         if client_count > 0:
-            logger.info(f"SSE广播: {len(_sse_clients)} 客户端, 消息类型: {message.get('type')}, 数量: {message.get('count', 0)}")
+            logger.info(
+                f"SSE广播: {client_count} 客户端, 消息类型: {message.get('type')}, "
+                f"数量: {message.get('count', 0)}"
+            )
+
+
+def _drain_queue(q: queue.Queue) -> None:
+    """清空队列中的积压消息（用于慢客户端降级）"""
+    while True:
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            break
 
 
 def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServer:
@@ -1198,6 +1235,8 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServ
     )
     t.start()
     logger.info(f"Web 服务已启动: http://localhost:{port}")
+    # 必须在开始抓取前对齐水位线，否则首轮增量推送会把历史库全量广播
+    init_broadcast_watermark()
     # 预热日历抓取连接池的 DNS（best-effort，避免首个请求冷启动卡顿）
     try:
         calendar_fetcher.warmup()
@@ -1206,46 +1245,114 @@ def start_web_server(port: int = DEFAULT_WEB_PORT) -> DualStackThreadingHTTPServ
     return server
 
 
-def update_web_state(news, stats, cycle, total, new_count, status, force_broadcast=False):
-    """更新 Web 仪表盘共享状态（线程安全）
-    
-    force_broadcast: 强制广播 SSE 消息，不依赖时间戳比较
+def init_broadcast_watermark() -> None:
+    """把增量推送水位线对齐到库内当前最大 id。
+
+    必须在 Web 服务启动时调用一次，否则首轮 broadcast_new_news() 会把
+    整个历史库当作「新增」全量广播出去。
     """
-    news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in news[:500]]
+    global _watermark_initialized
+    with _broadcast_lock:
+        for cat in BROADCAST_CATEGORIES:
+            try:
+                _broadcast_watermarks[cat] = db_get_max_news_id(cat)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"初始化 {cat} 推送水位线失败，按 0 处理: {e}")
+                _broadcast_watermarks[cat] = 0
+        _watermark_initialized = True
+        logger.info(f"SSE 推送水位线已初始化: {dict(_broadcast_watermarks)}")
+
+
+def broadcast_new_news(batch_limit: int = BROADCAST_BATCH_LIMIT) -> Dict[str, int]:
+    """按自增 id 水位线拉取未推送的新闻并广播 SSE —— 增量推送的唯一权威入口。
+
+    设计要点：
+    1. **数据来源自持**。调用方只需说「可能有新数据了」，不需要（也不应该）
+       自己决定哪些是新的。此前由调用方用
+       `db_get_recent_news(limit=total_new)` 猜测新增条目，而该查询按
+       `publish_ts DESC` 排序，取到的常常是旧条目而非本轮新插入的条目，
+       导致前端按 id 去重后「看起来没更新」。
+    2. **幂等**。水位线严格单调递增，重复调用不会重发，也不会漏发。
+       因此「抓取后立即推送」与「定时兜底轮询」可以安全共存。
+    3. **分类隔离**。finance / forum 各自一条水位线，互不干扰。
+    4. **不丢批**。单轮最多取 batch_limit 条，水位线只推进到实际发送的
+       最大 id，剩余条目在下一轮继续推送。
+
+    Returns:
+        {category: 本次广播条数}，仅包含有新增的分类。
+    """
+    if not _watermark_initialized:
+        # 兜底：调用方忘记初始化时，避免把历史库当成新增全量广播
+        init_broadcast_watermark()
+        return {}
+
+    pushed: Dict[str, int] = {}
+    cache_invalidated = False
+
+    with _broadcast_lock:
+        for category in BROADCAST_CATEGORIES:
+            after_id = _broadcast_watermarks.get(category, 0)
+            try:
+                items = db_get_news_after_id(after_id, limit=batch_limit,
+                                             category=category)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"拉取 {category} 增量新闻失败 (after_id={after_id}): {e}")
+                continue
+
+            if not items:
+                continue
+
+            # items 按 id 升序；水位线推进到本批最大 id
+            new_watermark = items[-1].id or after_id
+            _broadcast_watermarks[category] = max(after_id, new_watermark)
+
+            # 拉取用 id 升序（水位线语义），推送需与列表页排序键一致
+            # （db_query_news 用 ORDER BY publish_ts DESC, id DESC），
+            # 否则前端 prepend 进去的这一段与列表其余部分顺序错乱。
+            dicts = [n.to_dict() for n in items]
+            dicts.sort(key=lambda d: (d.get("publish_ts") or 0, d.get("id") or 0),
+                       reverse=True)
+            total_new = len(dicts)
+            truncated = total_new >= batch_limit
+            payload_items = dicts[:SSE_MAX_ITEMS_PER_EVENT]
+
+            if not cache_invalidated:
+                invalidate_api_cache()
+                cache_invalidated = True
+
+            _sse_broadcast({
+                "type": "new_news",
+                "category": category,
+                "items": payload_items,
+                "count": total_new,
+                # items 被截断时前端应整表刷新而非局部插入，否则会漏条目
+                "truncated": truncated or total_new > len(payload_items),
+                "ts": time.time(),
+            })
+            pushed[category] = total_new
+            logger.info(
+                f"SSE 增量广播 [{category}]: {total_new} 条 "
+                f"(payload={len(payload_items)}, 水位 {after_id} -> "
+                f"{_broadcast_watermarks[category]}, 客户端 {len(_sse_clients)})"
+            )
+
+    return pushed
+
+
+def update_web_state(news, stats, cycle, total, new_count, status, force_broadcast=False):
+    """更新 Web 仪表盘共享状态（线程安全）。
+
+    ⚠️ 本函数**只负责状态**（供 /api/stats 展示），不再承担「计算增量」的职责。
+    增量推送统一由 broadcast_new_news() 基于数据库自增 id 完成。
+
+    force_broadcast: 保留参数以兼容既有调用方；为 True 时触发一次
+                     broadcast_new_news()（幂等，不会重复推送）。
+    """
+    news_dicts = [n.to_dict() if isinstance(n, NewsItem) else n for n in (news or [])[:500]]
     sources_list = list(dict.fromkeys(get_display_name(k) for k in stats.keys()))
     last_update = now_bj().strftime("%Y-%m-%d %H:%M:%S")
 
-    latest_id = 0
-    if news_dicts:
-        for n in news_dicts:
-            nid = n.get("id", 0)
-            if nid > latest_id:
-                latest_id = nid
-
-    new_items = []
-    new_finance_items = []
-    new_forum_items = []
     with _web_state_lock:
-        old_latest_id = _web_state.get("latest_id", 0)
-        
-        if force_broadcast and news_dicts:
-            for n in news_dicts:
-                new_items.append(n)
-                cat = n.get("category", "")
-                if cat == "forum":
-                    new_forum_items.append(n)
-                else:
-                    new_finance_items.append(n)
-        elif latest_id > old_latest_id and news_dicts:
-            for n in news_dicts:
-                if n.get("id", 0) > old_latest_id:
-                    new_items.append(n)
-                    cat = n.get("category", "")
-                    if cat == "forum":
-                        new_forum_items.append(n)
-                    else:
-                        new_finance_items.append(n)
-        
         _web_state["news"] = news_dicts
         _web_state["stats"] = stats
         _web_state["cycle"] = cycle
@@ -1255,33 +1362,9 @@ def update_web_state(news, stats, cycle, total, new_count, status, force_broadca
         _web_state["sources"] = sources_list
         _web_state["last_update"] = last_update
         _web_state["server_ts"] = time.time()
-        if new_items:
-            _web_state["latest_id"] = max(latest_id, old_latest_id)
 
-    logger.info(f"update_web_state: force_broadcast={force_broadcast}, news_count={len(news_dicts)}, new_items={len(new_items)}, finance={len(new_finance_items)}, forum={len(new_forum_items)}, old_latest_id={old_latest_id}, latest_id={latest_id}")
-
-    if new_items:
-        invalidate_api_cache()
-        if new_finance_items:
-            logger.info(f"SSE广播finance: {len(new_finance_items)}条, 客户端数: {len(_sse_clients)}")
-            _sse_broadcast({
-                "type": "new_news",
-                "category": "finance",
-                "items": new_finance_items[:20],
-                "count": len(new_finance_items),
-                "ts": time.time(),
-            })
-        if new_forum_items:
-            logger.info(f"SSE广播forum: {len(new_forum_items)}条, 客户端数: {len(_sse_clients)}")
-            _sse_broadcast({
-                "type": "new_news",
-                "category": "forum",
-                "items": new_forum_items[:20],
-                "count": len(new_forum_items),
-                "ts": time.time(),
-            })
-    else:
-        logger.info(f"update_web_state: 无新新闻可广播, force_broadcast={force_broadcast}, news_dicts_len={len(news_dicts)}")
+    if force_broadcast:
+        broadcast_new_news()
 
 
 _global_server: Optional[DualStackThreadingHTTPServer] = None

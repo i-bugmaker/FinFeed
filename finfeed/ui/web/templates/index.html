@@ -1003,8 +1003,13 @@ function connectSSE(){
             showToast(`收到 ${d.count} 条新闻`,'新消息');
             if(SPA.currentView==='news'){
               const noFilters=stateNews.source==='all'&&stateNews.keyword===''&&stateNews.sentiment==='all'&&stateNews.minImportance===0&&stateNews.dateRange==='all';
-              if(noFilters&&d.items&&d.items.length>0){
-                prependNewsItems(d.items);
+              if(noFilters){
+                /* 服务端截断了 items 时，局部插入会漏条目，改为整表刷新 */
+                if(d.truncated||!d.items||!d.items.length){
+                  loadNewsData(true);
+                }else{
+                  prependNewsItems(d.items);
+                }
               }
             }
             if(SPA.cachedData.news){SPA.cachedData.news.time=0;}

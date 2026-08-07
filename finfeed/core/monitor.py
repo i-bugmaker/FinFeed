@@ -38,32 +38,13 @@ class NewsMonitor:
         self._total_new = 0
 
     def set_push_callback(self, callback: Callable) -> None:
-        """设置推送回调函数"""
+        """设置推送回调函数
+
+        回调签名: async def callback(total_new: int) -> None
+        回调只收到「本轮新增条数」，具体新增了哪些条目由 Web 层按数据库
+        自增 id 水位线自行确定（见 ui.web.server.broadcast_new_news）。
+        """
         self._push_callback = callback
-
-    def _push_news_batch(self, news_items, category: str) -> None:
-        """将新闻条目推送到 Web 端（异步调用回调，不阻塞主流程）"""
-        if not news_items or not self._push_callback:
-            return
-        forum_sources = set(get_forum_source_names())
-        items = []
-        for item in news_items:
-            try:
-                item_category = category
-                if not item_category:
-                    item_category = "forum" if item.source in forum_sources else "finance"
-                d = item.to_dict()
-                d["category"] = item_category
-                items.append(d)
-            except Exception as e:
-                logger.error(f"转换新闻失败: {e}")
-
-        if items:
-            try:
-                asyncio.create_task(self._push_callback(items))
-                logger.info(f"推送 {len(items)} 条新闻到 Web 端")
-            except Exception as e:
-                logger.error(f"推送失败: {e}")
 
     def _calculate_catchup_cycles(self, offline_seconds: int) -> int:
         """根据离线时长动态计算需要的补抓轮次
