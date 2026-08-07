@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from finfeed.utils.time_utils import now_bj
 
 from . import collector, config as cfg, store
-from .client import LLMClient, build_client, build_chat_url, build_models_url
+from .client import LLMClient, LLMError, build_client, build_chat_url, build_models_url
 from .schema import ensure_tables
 from .service import get_service
 
@@ -115,9 +115,14 @@ def handle_get(path: str, qs: Dict[str, List[str]]) -> Response:
             return 200, {"tasks": get_service().list_tasks(limit=_qi(qs, "limit", 10))}
 
         if path == "/api/llm/reports":
+            kw = _q(qs, "q", "").strip()
+            if kw:
+                return 200, store.search_reports(
+                    kw, limit=max(1, min(_qi(qs, "limit", 30), 200)))
             return 200, store.list_reports(
                 limit=max(1, min(_qi(qs, "limit", 30), 200)),
                 offset=max(0, _qi(qs, "offset", 0)),
+                pinned_only=_q(qs, "pinned", "0") == "1",
             )
 
         if path == "/api/llm/report":
@@ -184,6 +189,15 @@ def handle_post(path: str, data: Dict[str, Any]) -> Response:
         if path == "/api/llm/report/delete":
             ok = store.delete_report(int(data.get("id", 0)))
             return (200, {"success": True}) if ok else (404, {"error": "报告不存在"})
+
+        if path == "/api/llm/report/pin":
+            rid = int(data.get("id", 0))
+            pinned = bool(data.get("pinned", True))
+            ok = store.set_pinned(rid, pinned)
+            return (200, {"success": True, "pinned": pinned}) if ok else (404, {"error": "报告不存在"})
+
+        if path == "/api/llm/chat":
+            return _handle_chat(data)
 
         if path == "/api/llm/reports/clear":
             n = store.clear_reports()
@@ -260,6 +274,100 @@ def _handle_test(data: Dict[str, Any]) -> Response:
             logger.debug(f"写入检测结果失败: {e}")
 
     return 200, result
+
+
+# ============================================================
+# 报告追问（针对单份报告的上下文问答）
+# ============================================================
+def _handle_chat(data: Dict[str, Any]) -> Response:
+    """对已生成报告进行追问：以报告正文 + 程序统计为上下文，回答用户问题。
+
+    入参：
+      report_id : 报告 ID（必填）
+      question  : 用户问题（必填）
+      history   : 可选，此前对话 [{role, content}...]，用于多轮追问
+    """
+    rid = int(data.get("report_id") or 0)
+    question = str(data.get("question") or "").strip()
+    if rid <= 0:
+        return 400, {"ok": False, "error": "缺少报告 ID"}
+    if not question:
+        return 400, {"ok": False, "error": "请输入问题"}
+
+    rep = store.get_report(rid)
+    if not rep:
+        return 404, {"ok": False, "error": "报告不存在"}
+
+    provider = cfg.get_default_provider()
+    if provider is None:
+        return 409, {"ok": False, "error": "尚未配置任何大语言模型"}
+    if not provider.enabled:
+        return 409, {"ok": False, "error": f"配置「{provider.name}」已被禁用"}
+
+    # 组装上下文：报告元信息 + 正文 + 统计
+    stats = rep.get("stats") or {}
+    stats_block = ""
+    if stats:
+        stats_block = "\n".join([
+            f"- 样本条数：{stats.get('total', 0)} 条",
+            f"- 情绪分布：正面 {stats.get('sentiment', {}).get('positive', 0)} / "
+            f"中性 {stats.get('sentiment', {}).get('neutral', 0)} / "
+            f"负面 {stats.get('sentiment', {}).get('negative', 0)}",
+            f"- 多空比（正/多空）：{stats.get('bull_ratio', '-')}%",
+        ])
+        if stats.get("top_stocks"):
+            stats_block += "\n- 提及最多个股：" + "、".join(
+                f"{s['name']}({s['code']}) {s['count']}次"
+                for s in stats["top_stocks"][:12]
+            )
+
+    body = rep.get("content") or ""
+    context = f"""你正在协助用户深入解读一份由 FinFeed 生成的财经复盘报告。请只依据以下材料回答，不要编造数据或材料之外的信息。
+
+【报告信息】
+标题：{rep.get('title') or ''}
+模型：{rep.get('model') or ''}
+时间窗口：{rep.get('window_hours') or 24} 小时，覆盖 {rep.get('news_count') or 0} 条资讯
+
+【程序统计】
+{stats_block or '（无）'}
+
+【报告正文】
+{body}
+
+用户可能会针对报告中的某个结论、个股、板块、数据或风险点提问。回答要求：
+1. 简洁、直接、结构清晰（要点列表优先）；
+2. 引用报告内容时注明出处章节；
+3. 报告未提及的信息，明确说明"报告中未涉及"，不要自行发挥；
+4. 涉及投资判断时给出风险提示。"""
+
+    try:
+        client = build_client(provider)
+        messages: List[Dict[str, str]] = [{"role": "system", "content": context}]
+        history = data.get("history")
+        if isinstance(history, list):
+            for m in history[-8:]:
+                if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content"):
+                    messages.append({
+                        "role": m["role"],
+                        "content": str(m["content"])[:4000],
+                    })
+        messages.append({"role": "user", "content": question[:4000]})
+
+        res = client.chat(messages, temperature=0.3)
+        return 200, {
+            "ok": True,
+            "reply": res.content.strip(),
+            "model": res.model or provider.model,
+            "prompt_tokens": res.prompt_tokens,
+            "completion_tokens": res.completion_tokens,
+        }
+    except LLMError as e:
+        logger.warning(f"LLM 追问失败: {e.message}")
+        return 502, {"ok": False, "error": e.message, "kind": e.kind}
+    except Exception as e:
+        logger.error(f"LLM 追问异常: {e}", exc_info=True)
+        return 500, {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
 
 
 # ============================================================

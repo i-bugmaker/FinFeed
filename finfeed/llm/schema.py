@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS llm_reports (
     prompt_tokens     INTEGER DEFAULT 0,
     completion_tokens INTEGER DEFAULT 0,
     elapsed           REAL DEFAULT 0,
+    pinned            INTEGER DEFAULT 0,
     created_at        TEXT DEFAULT '',
     created_ts        INTEGER DEFAULT 0
 )
@@ -119,6 +120,7 @@ def _migrate(c) -> None:
             ("scanned_count", "INTEGER DEFAULT 0"),
             ("stats_json", "TEXT DEFAULT '{}'"),
             ("chunk_count", "INTEGER DEFAULT 0"),
+            ("pinned", "INTEGER DEFAULT 0"),
         ]),
     ):
         try:

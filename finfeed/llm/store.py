@@ -17,7 +17,7 @@ logger = logging.getLogger("news_monitor")
 _LIST_COLUMNS = (
     "id, task_id, title, provider_name, model, window_hours, scope, news_count, "
     "scanned_count, start_ts, end_ts, status, error, chunk_count, prompt_tokens, "
-    "completion_tokens, elapsed, created_at, created_ts"
+    "completion_tokens, elapsed, pinned, created_at, created_ts"
 )
 
 
@@ -61,19 +61,47 @@ def save_report(payload: Dict[str, Any]) -> int:
     return report_id
 
 
-def list_reports(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+def list_reports(limit: int = 50, offset: int = 0, pinned_only: bool = False) -> Dict[str, Any]:
     ensure_tables()
     db = get_db_manager()
     with db.get_db() as c:
-        c.execute("SELECT COUNT(*) AS cnt FROM llm_reports")
+        where = "WHERE pinned = 1" if pinned_only else ""
+        c.execute(f"SELECT COUNT(*) AS cnt FROM llm_reports {where}")
         total = c.fetchone()["cnt"]
         c.execute(
-            f"SELECT {_LIST_COLUMNS} FROM llm_reports "
-            "ORDER BY created_ts DESC, id DESC LIMIT ? OFFSET ?",
+            f"SELECT {_LIST_COLUMNS} FROM llm_reports {where} "
+            "ORDER BY pinned DESC, created_ts DESC, id DESC LIMIT ? OFFSET ?",
             (limit, offset),
         )
         rows = [dict(r) for r in c.fetchall()]
     return {"total": total, "items": rows, "limit": limit, "offset": offset}
+
+
+def search_reports(keyword: str, limit: int = 50) -> Dict[str, Any]:
+    """按标题 / 模型 / 报告正文模糊搜索"""
+    ensure_tables()
+    kw = f"%{keyword.strip()}%"
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute("SELECT COUNT(*) AS cnt FROM llm_reports WHERE title LIKE ? OR model LIKE ? OR content LIKE ?",
+                  (kw, kw, kw))
+        total = c.fetchone()["cnt"]
+        c.execute(
+            f"SELECT {_LIST_COLUMNS} FROM llm_reports "
+            "WHERE title LIKE ? OR model LIKE ? OR content LIKE ? "
+            "ORDER BY pinned DESC, created_ts DESC, id DESC LIMIT ?",
+            (kw, kw, kw, limit),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    return {"total": total, "items": rows, "limit": limit}
+
+
+def set_pinned(report_id: int, pinned: bool) -> bool:
+    ensure_tables()
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute("UPDATE llm_reports SET pinned = ? WHERE id = ?", (1 if pinned else 0, report_id))
+        return c.rowcount > 0
 
 
 def get_report(report_id: int) -> Optional[Dict[str, Any]]:
