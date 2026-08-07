@@ -76,8 +76,8 @@ python main.py --interval 60
 # 只抓取一次
 python main.py --once
 
-# 启动 Web 服务（默认端口8080）
-python main.py --port 8080
+# 启动 Web 服务（默认端口8866）
+python main.py --port 8866
 ```
 
 ### 数据导出
