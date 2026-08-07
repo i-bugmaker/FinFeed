@@ -148,6 +148,49 @@ def _setup_logging():
     )
 
 
+def _run_market_action(args):
+    """事实层 CLI 调度。"""
+    from finfeed.market import service as mkt
+    from finfeed.analysis import crossref
+    from finfeed.market import report as mk_report
+    from finfeed.market import alerts as mk_alerts
+
+    mkt.init_market()
+    action = args.market
+    date = args.date
+    if action == "init":
+        print("事实层数据表已就绪")
+    elif action == "universe":
+        res = mkt.run_universe_sync()
+        print(f"股票池/板块刷新: {res}")
+    elif action == "snapshot":
+        res = mkt.run_daily_snapshot_sync(date)
+        print(f"盘后快照: {res}")
+    elif action == "bars":
+        # collect_bars_sync 返回 {codes, done, rows, aborted}，不是行数
+        res = mkt.collect_bars_sync(date, args.limit or None)
+        msg = (f"日线采集: 计划 {res['codes']} 只 / 完成 {res['done']} 只 / "
+               f"写入 {res['rows']} 行")
+        if res.get("aborted"):
+            msg += "（因 push2his 限流提前中断）"
+        print(msg)
+    elif action == "backfill":
+        n = crossref.run_backfill()
+        print(f"news_stock_link 回填 {n} 条")
+    elif action == "calibrate":
+        rep = crossref.run_calibrate()
+        print("情感闭环校准结果:")
+        print(f"  样本数: {rep.get('sample')}")
+        for label, v in rep.get("by_label", {}).items():
+            print(f"  [{label}] n={v['n']} 平均T+1收益={v['avg_ret']} 胜率={v['win_rate']}")
+    elif action == "report":
+        print(mk_report.run_report(date))
+    elif action == "alerts":
+        print(mk_alerts.regime_summary(date))
+    else:
+        print(f"未知事实层指令: {action}")
+
+
 def main():
     _setup_logging()
 
@@ -171,10 +214,22 @@ def main():
     parser.add_argument("--output", "-o", help="导出文件路径（默认自动生成）")
     parser.add_argument("--start", help="导出起始日期 (YYYY-MM-DD)")
     parser.add_argument("--end", help="导出截止日期 (YYYY-MM-DD)")
+    parser.add_argument(
+        "--market", metavar="ACTION",
+        choices=["init", "universe", "snapshot", "bars", "backfill", "calibrate", "report", "alerts"],
+        help="事实层指令: init(建表) universe(股票池+板块) snapshot(盘后快照) "
+             "bars(日线回补) backfill(历史新闻关联) calibrate(情感校准) report(涨停归因) alerts(市场状态)",
+    )
+    parser.add_argument("--date", help="事实层指令所用交易日 (YYYY-MM-DD)")
+    parser.add_argument("--limit", type=int, default=0, help="bars 回补数量上限")
 
     args = parser.parse_args()
 
     init_db()
+
+    if args.market:
+        _run_market_action(args)
+        return
 
     if args.export:
         fmt = "markdown" if args.export == "md" else args.export

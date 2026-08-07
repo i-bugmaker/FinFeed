@@ -281,6 +281,7 @@ tbody td{padding:18px 20px;vertical-align:middle}
       <a class="nav-link" data-view="favorites" onclick="switchView('favorites')">⭐ 我的收藏</a>
       <a class="nav-link" data-view="dashboard" onclick="switchView('dashboard')">📊 数据大屏</a>
       <a class="nav-link" data-view="calendar" onclick="switchView('calendar')">📅 财经日历</a>
+      <a class="nav-link" data-view="market" onclick="switchView('market')">📈 行情事实层</a>
       <a class="nav-link" data-view="ai" onclick="switchView('ai')">🤖 AI 分析</a>
     </nav>
     <div class="nav-right">
@@ -578,6 +579,8 @@ tbody td{padding:18px 20px;vertical-align:middle}
 <!-- AI 分析：SPA 视图，由 preloadView 懒加载注入 -->
 <div class="view" id="view-ai"></div>
 <div class="view" id="view-calendar"></div>
+<!-- 行情事实层：SPA 视图，由 preloadView 懒加载注入 -->
+<div class="view" id="view-market"></div>
 
 <script>
 /* ============ 全局 SPA 状态 ============ */
@@ -912,6 +915,9 @@ function preloadView(viewName){
     case 'calendar':
       loadCalendarFragment();
       break;
+    case 'market':
+      loadMarketFragment();
+      break;
   }
 }
 
@@ -957,6 +963,28 @@ async function loadCalendarFragment(){
     _calendarFragmentLoaded=true;
     if(window.CalendarAPI&&typeof window.CalendarAPI.init==='function'){window.CalendarAPI.init();}
   }catch(e){console.error('calendar fragment load failed',e);}
+}
+
+/* ============ 行情事实层片段懒加载 ============ */
+let _marketFragmentLoaded=false;
+async function loadMarketFragment(){
+  const root=document.getElementById('view-market');
+  if(!root)return;
+  if(_marketFragmentLoaded)return; /* 已注入，保留视图状态，不重复加载 */
+  try{
+    const r=await fetch('/api/market/fragment');
+    if(!r.ok){console.error('market fragment load failed',r.status);return;}
+    const html=await r.text();
+    root.innerHTML=html;
+    /* innerHTML 注入的 <script> 不会自动执行，需重建并替换以触发执行 */
+    root.querySelectorAll('script').forEach(s=>{
+      const ns=document.createElement('script');
+      if(s.src){ns.src=s.src;}else{ns.textContent=s.textContent;}
+      s.replaceWith(ns);
+    });
+    _marketFragmentLoaded=true;
+    if(window.MarketAPI&&typeof window.MarketAPI.init==='function'){window.MarketAPI.init();}
+  }catch(e){console.error('market fragment load failed',e);}
 }
 
 /* ============ 全局 SSE ============ */

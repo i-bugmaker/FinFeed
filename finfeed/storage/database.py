@@ -80,7 +80,11 @@ class NewsDatabase:
             raise
 
     def init_db(self) -> None:
-        """初始化数据库表结构"""
+        """初始化数据库表结构
+
+        注意：所有 CREATE TABLE 必须先于迁移/索引/FTS 触发，否则 _run_migrations
+        查询 metadata 表时会因该表尚未创建而失败（全新数据库场景下暴露）。
+        """
         with self.get_db() as c:
             c.execute("""
                 CREATE TABLE IF NOT EXISTS news (
@@ -105,10 +109,6 @@ class NewsDatabase:
                     duplicate_sources TEXT DEFAULT '[]'
                 )
             """)
-
-            self._run_migrations(c)
-            self._create_indexes(c)
-            self._setup_fts5(c)
 
             c.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
@@ -151,6 +151,9 @@ class NewsDatabase:
                 )
             """)
 
+            self._create_indexes(c)
+            self._setup_fts5(c)
+            self._run_migrations(c)
             self._migrate_luobo_urls(c)
 
     def _run_migrations(self, c: sqlite3.Cursor) -> None:
@@ -1073,6 +1076,27 @@ def db_get_all_stock_names() -> Dict[str, str]:
 def db_update_stock_meta(stock_map: Dict[str, str]) -> int:
     """批量更新股票元数据（不存在的才插入，已存在的不覆盖）"""
     return get_db_manager().load_stock_meta_batch(stock_map)
+
+
+def db_upsert_stock_meta_full(stock_map: Dict[str, Dict]) -> int:
+    """全量 upsert 股票元数据（兼容 analysis/universe 旧调用）。
+
+    Args:
+        stock_map: {code: {"name":..., "industry":..., "market":...}}
+    Returns:
+        写入/更新行数
+    """
+    from finfeed.market import store as market_store
+    rows = [
+        {
+            "code": code,
+            "name": v.get("name", ""),
+            "industry": v.get("industry", ""),
+            "market": v.get("market", ""),
+        }
+        for code, v in (stock_map or {}).items()
+    ]
+    return market_store.upsert_stock_meta_full(rows)
 
 
 def db_insert_news(news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:

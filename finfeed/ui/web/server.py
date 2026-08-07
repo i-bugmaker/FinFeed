@@ -57,6 +57,26 @@ from finfeed.calendar import fetcher as calendar_fetcher
 
 logger = logging.getLogger("news_monitor")
 
+# ----------------- 事实层采集辅助（延迟导入，避免启动时重量依赖） -----------------
+def _get_mk_service():
+    """延迟导入 market.service，Web 启动时不触发东方财富连接。"""
+    from finfeed.market import service as _svc
+    return _svc
+
+
+def _mk_calibrate():
+    """情绪校准（延迟导入 crossref）。"""
+    from finfeed.analysis import crossref
+    return crossref.calibrate_sentiment()
+
+
+def _run_in_thread(fn, timeout: int = 0):
+    """在当前线程同步执行 fn() 并返回结果。
+    调用方应将此函数传入 Thread(target=...) 以实现后台执行。
+    """
+    return fn()
+
+
 _web_state = {
     "news": [],
     "stats": {},
@@ -145,6 +165,7 @@ _template_cache_map = {
     "favorites": {"cache": None, "mtime": 0, "filename": "favorites.html"},
     "ai_fragment": {"cache": None, "mtime": 0, "filename": "ai_fragment.html"},
     "calendar_fragment": {"cache": None, "mtime": 0, "filename": "calendar_fragment.html"},
+    "market_fragment": {"cache": None, "mtime": 0, "filename": "market_fragment.html"},
 }
 
 
@@ -201,6 +222,10 @@ def _get_ai_analysis_html() -> str:
 
 def _get_calendar_fragment_html() -> str:
     return _load_template("calendar_fragment")
+
+
+def _get_market_fragment_html() -> str:
+    return _load_template("market_fragment")
 
 
 def _ts_from_date_str(date_str: str, end_of_day: bool = False) -> int | None:
@@ -274,6 +299,8 @@ class _WebHandler(BaseHTTPRequestHandler):
                 self.send_error(404)
         elif path == "/api/calendar/fragment":
             self._serve_calendar_fragment()
+        elif path == "/api/market/fragment":
+            self._serve_market_fragment()
         elif path.startswith("/api/calendar/export"):
             self._serve_calendar_export(parsed)
         elif path.startswith("/api/calendar"):
@@ -282,6 +309,8 @@ class _WebHandler(BaseHTTPRequestHandler):
                 self._send_json(result[1], result[0])
             else:
                 self.send_error(404)
+        elif path.startswith("/api/market"):
+            self._serve_market_api(parsed)
         elif path.startswith("/ai/analysis"):
             self._serve_html()
         elif path.startswith("/api/export"):
@@ -823,6 +852,15 @@ class _WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _serve_market_fragment(self):
+        html = _get_market_fragment_html()
+        data = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _serve_calendar_export(self, parsed):
         qs = parse_qs(parsed.query)
         try:
@@ -860,6 +898,251 @@ class _WebHandler(BaseHTTPRequestHandler):
         )
         self.end_headers()
         self.wfile.write(body)
+
+    def _serve_market_api(self, parsed):
+        """事实层只读 API：/api/market/<action>?date=&code=&start=&end="""
+        from finfeed.market import store as mk_store
+        from finfeed.storage import sentiment_store as ss
+        from finfeed.market import alerts as mk_alerts
+        from finfeed.utils.time_utils import now_bj
+
+        q = parse_qs(parsed.query)
+        date = (q.get("date", [None])[0]) or now_bj().strftime("%Y-%m-%d")
+        sub = parsed.path.replace("/api/market", "").strip("/") or "sentiment"
+
+        # action 触发采集（非只读）
+        if sub == "action":
+            self._serve_market_action(q)
+            return
+
+        def _int(key: str, default: int, cap: int = 500) -> int:
+            """安全取整型参数，带上限保护，防止前端一次性拉爆返回体。"""
+            try:
+                return max(1, min(int(q.get(key, [default])[0]), cap))
+            except (TypeError, ValueError):
+                return default
+
+        try:
+            if sub == "sentiment":
+                data = ss.get_market_sentiment(date) or {}
+            elif sub == "dates":
+                data = self._market_dates(date)
+            elif sub == "limitup":
+                data = mk_store.get_limit_pool(date, "up")
+            elif sub == "limitdown":
+                data = mk_store.get_limit_pool(date, "down")
+            elif sub == "limitbroken":
+                # 炸板池：数据早已采集入库，此前无任何前端出口
+                data = mk_store.get_limit_pool(date, "broken")
+            elif sub == "billboard":
+                data = mk_store.get_billboard(date)
+            elif sub == "alerts":
+                data = mk_alerts.regime_summary(date)
+
+            # ---------------- 资金流 ----------------
+            elif sub == "moneyflow":
+                d = mk_store.latest_date("money_flow") or date
+                data = {
+                    "trade_date": d,
+                    "summary": mk_store.get_money_flow_summary(d),
+                    "inflow": mk_store.get_money_flow(
+                        d, "in", q.get("order", ["main_net"])[0],
+                        _int("limit", 40)),
+                    "outflow": mk_store.get_money_flow(
+                        d, "out", q.get("order", ["main_net"])[0],
+                        _int("limit", 40)),
+                }
+
+            # ---------------- 两融 ----------------
+            elif sub == "margin":
+                d = mk_store.latest_date("margin_detail") or date
+                order = q.get("order", ["fin_net"])[0]
+                data = {
+                    "trade_date": d,
+                    "summary": mk_store.get_margin_summary(d),
+                    "top": mk_store.get_margin_rank(d, order, True, _int("limit", 40)),
+                    "bottom": mk_store.get_margin_rank(d, order, False, _int("limit", 40)),
+                }
+
+            # ---------------- 业绩预告 ----------------
+            elif sub == "forecast":
+                ftype = (q.get("type", [""])[0] or "").strip() or None
+                data = {
+                    "stats": mk_store.get_forecast_type_stats(),
+                    "rows": mk_store.get_earnings_forecast(
+                        ftype=ftype,
+                        order_by=q.get("order", ["increase_high"])[0],
+                        limit=_int("limit", 80)),
+                }
+
+            # ---------------- 新股日历 ----------------
+            elif sub == "ipo":
+                data = mk_store.get_ipo_calendar(
+                    q.get("start", [None])[0], q.get("end", [None])[0],
+                    _int("limit", 80))
+
+            # ---------------- 板块热度 ----------------
+            elif sub == "sectors":
+                d = mk_store.latest_date("money_flow") or date
+                stype = q.get("stype", ["concept"])[0]
+                data = {
+                    "trade_date": d,
+                    "sector_type": stype,
+                    "rows": mk_store.get_sector_heat(
+                        d, stype,
+                        min_members=_int("min_members", 5, 100),
+                        order_by=q.get("order", ["avg_pct"])[0],
+                        limit=_int("limit", 40)),
+                }
+            elif sub == "sectorstocks":
+                d = mk_store.latest_date("money_flow") or date
+                data = mk_store.get_sector_stocks(
+                    q.get("sector", [""])[0], d, _int("limit", 60))
+
+            # ---------------- 个股档案 / 检索 ----------------
+            elif sub == "profile":
+                code = q.get("code", [""])[0]
+                data = mk_store.get_stock_profile(code, _int("bars", 120))
+            elif sub == "search":
+                data = mk_store.search_stock(
+                    q.get("kw", [""])[0], _int("limit", 20, 50))
+
+            # ---------------- 事实层总览 ----------------
+            elif sub == "overview":
+                data = mk_store.get_fact_overview()
+
+            elif sub == "kline":
+                code = q.get("code", [""])[0]
+                start = q.get("start", [None])[0]
+                end = q.get("end", [None])[0]
+                data = mk_store.get_daily_bar(code, start, end) if code else []
+            else:
+                data = {"error": f"unknown market action: {sub}"}
+            self._send_json({"success": True, "data": data})
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"success": False, "error": str(e)[:200]}, status=500)
+
+    def _market_dates(self, fallback_date: str) -> dict:
+        """返回各事实表最近有数据的交易日，供前端默认回退到有数据的日期。
+
+        default_date = 涨停池/龙虎榜/舆情温度三表中最近日期的最大值；
+        若全部为空则回退 fallback_date（今天）。
+
+        ⚠️ 各表日期口径**天然不同**（两融 T+1、业绩预告按公告日、新股按申购日），
+           因此除 default_date 外还逐表返回 latest，让各面板各自对齐自己的
+           最新一期，避免「日期选 08-07 → 两融面板空白」这类伪缺数。
+        """
+        from finfeed.storage.database import get_db
+        out: Dict[str, Any] = {"billboard": None, "limit_pool": None, "sentiment": None}
+        with get_db() as c:
+            for tbl, key, cond in (
+                ("billboard", "billboard", ""),
+                ("limit_pool", "limit_pool", ""),
+                ("market_sentiment_daily", "sentiment",
+                 "WHERE (breadth > 0 OR up_limit > 0 OR down_limit > 0)"),
+                ("money_flow", "money_flow", ""),
+                ("margin_detail", "margin_detail", ""),
+                ("daily_bar", "daily_bar", ""),
+            ):
+                try:
+                    c.execute(f"SELECT MAX(trade_date) AS d FROM {tbl} {cond}")
+                    row = c.fetchone()
+                    out[key] = row["d"] if row and row["d"] else None
+                except Exception:  # noqa: BLE001
+                    out[key] = None
+            # 非 trade_date 口径的表单独取
+            for tbl, key, col in (
+                ("earnings_forecast", "forecast", "notice_date"),
+                ("ipo_calendar", "ipo", "apply_date"),
+            ):
+                try:
+                    c.execute(f"SELECT MAX({col}) AS d FROM {tbl}")
+                    row = c.fetchone()
+                    out[key] = row["d"] if row and row["d"] else None
+                except Exception:  # noqa: BLE001
+                    out[key] = None
+        # 表格数据（龙虎榜/涨跌停池）优先于舆情温度，保证页面默认就有表格可看
+        table_dates = [d for d in (out["billboard"], out["limit_pool"]) if d]
+        if table_dates:
+            out["default_date"] = max(table_dates)
+        else:
+            sent = out.get("sentiment")
+            out["default_date"] = sent or fallback_date
+        out["has_billboard"] = out["billboard"] is not None
+        out["has_limit_pool"] = out["limit_pool"] is not None
+        return out
+
+    # ----------------- 事实层：页面内采集触发 -----------------
+    # 后台任务状态追踪（进程级单例）
+    _market_tasks: Dict[str, Dict] = {}
+
+    def _serve_market_action(self, q: dict):
+        """POST/GET /api/market/action?action=snapshot|bars|universe|calibrate&date=
+
+        立即返回任务状态，实际工作在后台线程执行。
+        前端可轮询 /api/market/action?action=status 获取进度。
+        """
+        action = (q.get("action", [""])[0] or "").strip().lower()
+        date = q.get("date", [None])[0]
+
+        # 查询状态
+        if action == "status":
+            tasks = {k: {"status": v["status"], "message": v.get("message", ""),
+                         "started": v.get("started", ""), "result": v.get("result")}
+                    for k, v in self._market_tasks.items()}
+            self._send_json({"success": True, "data": tasks})
+            return
+
+        # 有效 action 映射
+        svc = _get_mk_service()
+        ACTION_MAP = {
+            "snapshot": ("采集行情快照", lambda: _run_in_thread(
+                lambda d=date: svc.run_daily_snapshot_sync(d))),
+            "bars": ("采集K线数据", lambda: _run_in_thread(
+                lambda d=date: svc.collect_bars_sync(d))),
+            "universe": ("初始化股票池", lambda: _run_in_thread(
+                lambda: svc.run_universe_sync())),
+            "calibrate": ("校准情绪模型", lambda: _run_in_thread(
+                lambda: _mk_calibrate())),
+        }
+
+        if action not in ACTION_MAP:
+            self._send_json({"success": False, "error":
+                f"未知操作: {action}，可选: {', '.join(ACTION_MAP)}"}, status=400)
+            return
+
+        # 防止重复提交（同一 action 正在运行时拒绝）
+        existing = self._market_tasks.get(action)
+        if existing and existing["status"] == "running":
+            self._send_json({"success": False, "error":
+                f"「{ACTION_MAP[action][0]}」正在执行中，请等待完成"}, status=409)
+            return
+
+        label = ACTION_MAP[action][0]
+        task_id = f"{action}_{int(time.time())}"
+        self._market_tasks[action] = {
+            "status": "running", "message": f"⏳ {label} 执行中…",
+            "started": datetime.now().strftime("%H:%M:%S"), "result": None
+        }
+
+        def _worker():
+            try:
+                result = ACTION_MAP[action][1]()
+                self._market_tasks[action]["status"] = "done"
+                self._market_tasks[action]["message"] = f"✅ {label} 完成"
+                self._market_tasks[action]["result"] = result
+                logger.info("Market action '%s' completed: %s", action, result)
+            except Exception as exc:  # noqa: BLE001
+                self._market_tasks[action]["status"] = "error"
+                self._market_tasks[action]["message"] = f"❌ {label} 失败: {exc}"
+                self._market_tasks[action]["result"] = str(exc)
+                logger.error("Market action '%s' failed: %s", action, exc, exc_info=True)
+
+        t = threading.Thread(target=_worker, daemon=True, name=f"mk-{action}")
+        t.start()
+        self._send_json({"success": True, "data":
+            {"task_id": task_id, "action": action, "label": label,
+             "status": "running", "message": f"已启动「{label}」，后台执行中"}})
 
     def _send_json(self, data: dict, status: int = 200, max_age: int = 0):
         resp = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
