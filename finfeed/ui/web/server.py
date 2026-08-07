@@ -52,8 +52,8 @@ from finfeed.storage.database import (
 from finfeed.storage.models import NewsItem
 from finfeed.core.health import get_health_monitor
 from finfeed.llm import api as llm_api
-from finfeed.calendar import api as calendar_api
-from finfeed.calendar import fetcher as calendar_fetcher
+from finfeed.ecal import api as calendar_api
+from finfeed.ecal import fetcher as calendar_fetcher
 
 logger = logging.getLogger("news_monitor")
 
@@ -277,74 +277,81 @@ def _build_news_response(news_items: list, total: int, offset: int, limit: int, 
 class _WebHandler(BaseHTTPRequestHandler):
     """Web 仪表盘 HTTP 请求处理器"""
 
+    # ------------------------------------------------------------------
+    # 路由注册表：(路径模式, 是否精确匹配, handler方法名, 参数类型)
+    #   参数类型: "none"        -> handler()
+    #             "parsed"      -> handler(parsed)
+    #             "query"       -> handler(parsed.query)
+    #             "data"        -> handler(data)
+    #             "parsed_data" -> handler(parsed, data)
+    # 注册表顺序即匹配优先级：长前缀（如 /api/llm/report/export）必须排在
+    # 短前缀（如 /api/llm）之前，与旧 startswith 分支链语义完全一致。
+    # 精确匹配路由用 exact=True；"/" 与 "/index" 同指首页，故为两条路由。
+    # ------------------------------------------------------------------
+    _GET_ROUTES: List[Tuple[str, bool, str, str]] = [
+        ("/", True, "_serve_html", "none"),
+        ("/index", False, "_serve_html", "none"),
+        ("/api/news", False, "_serve_news", "none"),
+        ("/api/sentiment", False, "_serve_sentiment_api", "none"),
+        ("/api/favorites", False, "_serve_favorites_api", "none"),
+        ("/api/search", False, "_serve_search", "none"),
+        ("/api/detail", False, "_serve_detail", "none"),
+        ("/api/health", False, "_serve_health", "none"),
+        ("/api/stats", False, "_serve_stats", "none"),
+        ("/api/stock_names", False, "_serve_stock_names", "none"),
+        ("/api/daterange", False, "_serve_daterange", "none"),
+        ("/api/llm/report/export", False, "_serve_llm_export", "parsed"),
+        ("/api/llm/fragment", True, "_serve_ai_analysis", "none"),
+        ("/api/llm", False, "_dispatch_llm_get", "parsed"),
+        ("/api/calendar/fragment", True, "_serve_calendar_fragment", "none"),
+        ("/api/market/fragment", True, "_serve_market_fragment", "none"),
+        ("/api/calendar/export", False, "_serve_calendar_export", "parsed"),
+        ("/api/calendar", False, "_dispatch_calendar_get", "parsed"),
+        ("/api/market", False, "_serve_market_api", "parsed"),
+        ("/ai/analysis", False, "_serve_html", "none"),
+        ("/api/export", False, "_serve_export", "query"),
+        ("/api/events", False, "_serve_sse", "none"),
+        ("/dashboard", False, "_serve_dashboard", "none"),
+        ("/about", False, "_serve_about", "none"),
+        ("/sentiment", False, "_serve_sentiment", "none"),
+        ("/favorites", False, "_serve_favorites", "none"),
+    ]
+
+    _POST_ROUTES: List[Tuple[str, bool, str, str]] = [
+        ("/api/favorite", False, "_handle_toggle_favorite", "data"),
+        ("/api/read", False, "_handle_mark_read", "data"),
+        ("/api/llm", False, "_dispatch_llm_post", "parsed_data"),
+        ("/api/calendar", False, "_dispatch_calendar_post", "parsed_data"),
+    ]
+
+    def _route_handler(self, routes, path, parsed, data=None) -> bool:
+        """遍历路由注册表，命中第一个匹配项并调用对应 handler。
+
+        返回 True 表示已分发；False 表示无路由命中（调用方负责 404）。
+        """
+        for pattern, exact, handler_name, arg_kind in routes:
+            if (path == pattern) if exact else path.startswith(pattern):
+                handler = getattr(self, handler_name)
+                if arg_kind == "parsed":
+                    handler(parsed)
+                elif arg_kind == "query":
+                    handler(parsed.query)
+                elif arg_kind == "data":
+                    handler(data)
+                elif arg_kind == "parsed_data":
+                    handler(parsed, data)
+                else:  # "none"
+                    handler()
+                return True
+        return False
+
     def do_GET(self):
         parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path == "/" or path.startswith("/index"):
-            self._serve_html()
-        elif path.startswith("/api/news"):
-            self._serve_news()
-        elif path.startswith("/api/sentiment"):
-            self._serve_sentiment_api()
-        elif path.startswith("/api/favorites"):
-            self._serve_favorites_api()
-        elif path.startswith("/api/search"):
-            self._serve_search()
-        elif path.startswith("/api/detail"):
-            self._serve_detail()
-        elif path.startswith("/api/health"):
-            self._serve_health()
-        elif path.startswith("/api/stats"):
-            self._serve_stats()
-        elif path.startswith("/api/stock_names"):
-            self._serve_stock_names()
-        elif path.startswith("/api/daterange"):
-            self._serve_daterange()
-        elif path.startswith("/api/llm/report/export"):
-            self._serve_llm_export(parsed)
-        elif path == "/api/llm/fragment":
-            self._serve_ai_analysis()
-        elif path.startswith("/api/llm"):
-            result = llm_api.handle_get(path, parse_qs(parsed.query))
-            if result is not None:
-                self._send_json(result[1], result[0])
-            else:
-                self.send_error(404)
-        elif path == "/api/calendar/fragment":
-            self._serve_calendar_fragment()
-        elif path == "/api/market/fragment":
-            self._serve_market_fragment()
-        elif path.startswith("/api/calendar/export"):
-            self._serve_calendar_export(parsed)
-        elif path.startswith("/api/calendar"):
-            result = calendar_api.handle_get(path, parse_qs(parsed.query))
-            if result is not None:
-                self._send_json(result[1], result[0])
-            else:
-                self.send_error(404)
-        elif path.startswith("/api/market"):
-            self._serve_market_api(parsed)
-        elif path.startswith("/ai/analysis"):
-            self._serve_html()
-        elif path.startswith("/api/export"):
-            self._serve_export(parsed.query)
-        elif path.startswith("/api/events"):
-            self._serve_sse()
-        elif path.startswith("/dashboard"):
-            self._serve_dashboard()
-        elif path.startswith("/about"):
-            self._serve_about()
-        elif path.startswith("/sentiment"):
-            self._serve_sentiment()
-        elif path.startswith("/favorites"):
-            self._serve_favorites()
-        else:
+        if not self._route_handler(self._GET_ROUTES, parsed.path, parsed):
             self.send_error(404)
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        path = parsed.path
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length) if content_length > 0 else b''
 
@@ -353,22 +360,40 @@ class _WebHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             data = {}
 
-        if path.startswith("/api/favorite"):
-            self._handle_toggle_favorite(data)
-        elif path.startswith("/api/read"):
-            self._handle_mark_read(data)
-        elif path.startswith("/api/llm"):
-            result = llm_api.handle_post(path, data)
-            if result is not None:
-                self._send_json(result[1], result[0])
-            else:
-                self.send_error(404)
-        elif path.startswith("/api/calendar"):
-            result = calendar_api.handle_post(path, data)
-            if result is not None:
-                self._send_json(result[1], result[0])
-            else:
-                self.send_error(404)
+        if not self._route_handler(self._POST_ROUTES, parsed.path, parsed, data):
+            self.send_error(404)
+
+    # ---------------- 透传适配器（原 do_GET/do_POST 内联分支逻辑，路由表专用） ----------------
+
+    def _dispatch_llm_get(self, parsed):
+        """/api/llm 下未知子路径透传给 llm_api.handle_get"""
+        result = llm_api.handle_get(parsed.path, parse_qs(parsed.query))
+        if result is not None:
+            self._send_json(result[1], result[0])
+        else:
+            self.send_error(404)
+
+    def _dispatch_calendar_get(self, parsed):
+        """/api/calendar 下未知子路径透传给 calendar_api.handle_get"""
+        result = calendar_api.handle_get(parsed.path, parse_qs(parsed.query))
+        if result is not None:
+            self._send_json(result[1], result[0])
+        else:
+            self.send_error(404)
+
+    def _dispatch_llm_post(self, parsed, data):
+        """/api/llm POST 透传给 llm_api.handle_post"""
+        result = llm_api.handle_post(parsed.path, data)
+        if result is not None:
+            self._send_json(result[1], result[0])
+        else:
+            self.send_error(404)
+
+    def _dispatch_calendar_post(self, parsed, data):
+        """/api/calendar POST 透传给 calendar_api.handle_post"""
+        result = calendar_api.handle_post(parsed.path, data)
+        if result is not None:
+            self._send_json(result[1], result[0])
         else:
             self.send_error(404)
 
