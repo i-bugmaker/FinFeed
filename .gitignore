@@ -59,18 +59,27 @@ desktop.ini
 
 # 运行时输出
 server_output.txt
+debug.log
+news_monitor.log
+finfeed/news_monitor.log
+finfeed/finfeed.log
+logs/
+.pytest_cache/
+
+# 工作目录/临时
+.omo/
 
 # 启动脚本（已移入 scripts/）
 start_monitor.bat
 start_web.py
 
-# 调试/探测脚本
-probe_*.py
-debug_*.py
-check_*.py
-test_*.py
-clean_db.py
-fetch_sina.py
+# 调试/探测脚本（仅根目录级别；tests/ 下的 test_*.py 是正式测试，不受影响）
+/probe_*.py
+/debug_*.py
+/check_*.py
+/test_*.py
+/clean_db.py
+/fetch_sina.py
 /*.html
 /*.js
 

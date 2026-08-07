@@ -15,7 +15,7 @@
   - 以前缀路由 /api/calendar/* 挂载到 Web 服务
 
 对外入口：
-    from finfeed.calendar import api as calendar_api
+    from finfeed.ecal import api as calendar_api
     api.handle_get(path, query_dict)  -> (status, dict) | None
     api.handle_post(path, json_body)  -> (status, dict) | None
 """

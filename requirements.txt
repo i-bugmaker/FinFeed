@@ -1,11 +1,13 @@
-# 核心依赖
+# FinFeed 依赖清单
+#
+# ⚠️ 唯一真相源是 pyproject.toml 的 [project.dependencies]。
+# 本文件仅为兼容 `pip install -r requirements.txt` 的便捷入口，
+# 内容需与 pyproject.toml 保持同步。
+# 推荐安装方式: pip install -e .
+
 httpx>=0.28.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 rich>=13.0.0
-
-# 浏览器渲染（用于绕过和讯网反爬虫）
 playwright>=1.40.0
-
-# 可选依赖 - Excel 导出
-# openpyxl>=3.1.0
+openpyxl>=3.1.0

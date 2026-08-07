@@ -104,10 +104,10 @@ if __name__ == "__main__":
     td = args.date or now_bj().strftime("%Y-%m-%d")
     if args.select:
         items = select_top_news_for_llm(td, k=args.top)
-        print(json.dumps(items, ensure_ascii=False, indent=2))
+        logger.info(json.dumps(items, ensure_ascii=False, indent=2))
     elif args.apply:
         with open(args.apply, "r", encoding="utf-8") as f:
             m = {int(k): float(v) for k, v in json.load(f).items()}
-        print("写入个股数:", apply_llm_news_scores(m, td))
+        logger.info(f"写入个股数: {apply_llm_news_scores(m, td)}")
     else:
         p.print_help()

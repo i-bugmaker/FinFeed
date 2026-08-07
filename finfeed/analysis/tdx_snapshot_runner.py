@@ -280,16 +280,16 @@ def _main():
         # 附带 setcode，方便 agent 直接调 MCP
         for it in pool:
             it["setcode_code"] = to_tdx_setcode(it["code"])
-        print(json.dumps(pool, ensure_ascii=False, indent=2))
+        logger.info(json.dumps(pool, ensure_ascii=False, indent=2))
     elif args.apply:
         with open(args.apply, "r", encoding="utf-8") as f:
             weight_map = json.load(f)
         n = apply_tdx_stock_weights(weight_map, trade_date=td, source=args.source)
         summary = run_aggregation(td, source=args.source)
-        print(json.dumps({"written": n, **summary}, ensure_ascii=False))
+        logger.info(json.dumps({"written": n, **summary}, ensure_ascii=False))
     elif args.render:
         from finfeed.analysis.report_sentiment import render_sentiment_section
-        print(render_sentiment_section(td, source=args.source))
+        logger.info(render_sentiment_section(td, source=args.source))
     else:
         p.print_help()
 

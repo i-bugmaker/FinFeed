@@ -177,9 +177,9 @@ if __name__ == "__main__":
     if args.show:
         f = ss.get_forum_sentiment(td)
         if not f:
-            print("当日无数据；可先运行聚合或传入 --date")
+            logger.info("当日无数据；可先运行聚合或传入 --date")
         else:
-            print(json.dumps(f, ensure_ascii=False, indent=2))
+            logger.info(json.dumps(f, ensure_ascii=False, indent=2))
     else:
         res = build_forum_sentiment(td)
-        print(json.dumps(res, ensure_ascii=False, indent=2) if res else "当日无论坛舆情数据")
+        logger.info(json.dumps(res, ensure_ascii=False, indent=2) if res else "当日无论坛舆情数据")

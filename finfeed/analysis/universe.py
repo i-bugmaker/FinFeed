@@ -60,8 +60,8 @@ def run_populate_stock_meta() -> int:
     """同步入口（CLI / 调度调用）：刷新全量股票池 + 概念/行业板块映射。"""
     res = run_populate_all()
     total = sum(res.values())
-    print(f"stock_meta 已刷新 {res.get('stock_meta', 0)} 只；"
-          f"概念板块 {res.get('concept', 0)} 条；行业板块 {res.get('industry', 0)} 条")
+    logger.info(f"stock_meta 已刷新 {res.get('stock_meta', 0)} 只；"
+                f"概念板块 {res.get('concept', 0)} 条；行业板块 {res.get('industry', 0)} 条")
     return total
 
 

@@ -136,9 +136,9 @@ if __name__ == "__main__":
     args = p.parse_args()
     td = args.date or now_bj().strftime("%Y-%m-%d")
     if args.rollup:
-        print("写入个股数:", rollup_news_to_stock_sentiment(td))
+        logger.info(f"写入个股数: {rollup_news_to_stock_sentiment(td)}")
     elif args.themes:
         for k, imp, cnt in top_news_themes(td, args.top):
-            print(f"{k}\timp={imp:.1f}\tcount={cnt}")
+            logger.info(f"{k}\timp={imp:.1f}\tcount={cnt}")
     else:
         p.print_help()

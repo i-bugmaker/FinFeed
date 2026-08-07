@@ -20,6 +20,7 @@ import signal
 import argparse
 import asyncio
 import logging
+import logging.handlers
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,6 +28,7 @@ logger = logging.getLogger("news_monitor")
 
 from finfeed.config.settings import (
     DEFAULT_WEB_PORT, DEFAULT_INTERVAL,
+    LOG_MAX_BYTES, LOG_BACKUP_COUNT,
 )
 from finfeed.storage.database import init_db, db_set_last_exit_ts
 from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
@@ -147,14 +149,19 @@ async def run_continuous(interval: int, web_port: int):
 
 
 def _setup_logging():
-    """配置日志系统"""
+    """配置日志系统（RotatingFileHandler 轮转，避免单文件无限增长）"""
     log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "finfeed.log")
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[logging.FileHandler(log_file, encoding='utf-8')],
+        handlers=[logging.handlers.RotatingFileHandler(
+            log_file,
+            encoding='utf-8',
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT,
+        )],
     )
 
 

@@ -11,8 +11,11 @@
 纯展示增强，不改变任何统计数字。
 """
 
+import logging
 import re
 from typing import List, Optional
+
+logger = logging.getLogger("news_monitor")
 
 # 关键词 -> emoji，越具体越靠前（先匹配长词）
 _EMOJI_ORDER: List[tuple] = [
@@ -159,4 +162,4 @@ if __name__ == "__main__":
 | 信源 | 条数 |
 | --- | --- |
 | 东方财富 | 10 |"""
-    print(decorate_report_body(sample))
+    logger.info(decorate_report_body(sample))

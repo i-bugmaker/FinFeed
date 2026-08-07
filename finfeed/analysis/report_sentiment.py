@@ -9,10 +9,13 @@
 供自动化在 15:30 复盘时嵌入报告。
 """
 
+import logging
 from typing import Optional
 
 from finfeed.storage import sentiment_store as ss
 from finfeed.utils.time_utils import now_bj
+
+logger = logging.getLogger("news_monitor")
 
 # A股配色（红涨绿跌）
 RED = "#E24B4A"
@@ -167,4 +170,4 @@ def render_sentiment_section(trade_date: Optional[str] = None,
 
 
 if __name__ == "__main__":
-    print(render_sentiment_section())
+    logger.info(render_sentiment_section())

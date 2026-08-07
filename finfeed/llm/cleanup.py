@@ -14,8 +14,11 @@
   3. 折叠多余空行。
 """
 
+import logging
 import re
 from typing import List
+
+logger = logging.getLogger("news_monitor")
 
 # 过程性/独白开头，命中则整行删除
 _PREAMBLE_PATTERNS = [
@@ -96,4 +99,4 @@ if __name__ == '__main__':
     row = cur.fetchone()
     con.close()
     if row and row[0]:
-        print(clean_report_body(row[0])[:1500])
+        logger.info(clean_report_body(row[0])[:1500])
