@@ -6,9 +6,10 @@
 """
 
 import re
+import math
 import logging
 import time
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 from finfeed.storage.models import NewsItem
 from finfeed.storage.database import db_insert_news, db_update_stock_meta, db_merge_duplicate
@@ -42,6 +43,34 @@ def _clean_intro(intro: str) -> str:
     if len(intro) > 500:
         intro = intro[:500] + "..."
     return intro
+
+
+def _boost_importance_with_meta(imp: float, meta: Optional[dict]) -> float:
+    """解析器侧 meta 信号增强重要性评分（0-10）。
+
+    用于同花顺股吧 JSON（互动量）与同花顺热股榜（排名）等扩展字段：
+      - rank 存在时：以排名直接映射重要性（覆盖文本特征分，热股榜无正文语义）
+      - 互动量(likes/replies/forwards/shares)：log 压缩后叠加，体现散户情绪强度
+      - is_v（认证大V）：轻微降权，抑制投顾/带节奏噪声
+    结果截断到 [0, 10]。meta 为空时透传原分。
+    """
+    if not meta:
+        return imp
+    try:
+        # 1) 热股榜排名信号：rank1≈10.0，rank100≈1.0（线性区分头部）
+        rank = meta.get("rank")
+        if isinstance(rank, int) and rank > 0:
+            imp = max(1.0, 10.0 - (rank - 1) * 0.1)
+        # 2) 股吧互动量信号：叠加情绪强度
+        eng = sum(int(meta.get(k, 0) or 0) for k in ("likes", "replies", "forwards", "shares"))
+        if eng > 0:
+            imp += min(4.0, math.log1p(eng) * 0.8)
+        # 3) 认证大V：轻微降权
+        if meta.get("is_v"):
+            imp *= 0.9
+        return round(max(0.0, min(10.0, imp)), 1)
+    except Exception:
+        return imp
 
 
 def _validate_stocks(raw_stocks: List[str]) -> List[str]:
@@ -132,6 +161,12 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
             except Exception as e:
                 logger.debug(f"重要性评分失败 [{item.source}]: {e}")
                 item.importance = 5.0
+
+            # 解析器侧 meta 信号增强（同花顺股吧互动量 / 热股榜排名）
+            try:
+                item.importance = _boost_importance_with_meta(item.importance, item.meta)
+            except Exception:
+                pass
 
             # 计算去重用哈希
             item.title_hash = compute_normalized_title_hash(item.title)

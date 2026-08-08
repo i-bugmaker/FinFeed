@@ -28,6 +28,7 @@ class NewsItem:
     content_simhash: str = ""
     duplicate_count: int = 0
     duplicate_sources: list[str] = field(default_factory=list)
+    meta: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -47,6 +48,7 @@ class NewsItem:
             "is_favorite": self.is_favorite,
             "duplicate_count": self.duplicate_count,
             "duplicate_sources": self.duplicate_sources,
+            "meta": self.meta,
         }
 
 

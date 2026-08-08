@@ -483,6 +483,28 @@ FORUM_SOURCES: list[NewsSource] = [
             "Accept-Language": "zh-CN,zh;q=0.9",
         },
     ),
+    # ---- 同花顺股吧 JSON 接口（结构化帖子：互动量/认证/地域，定向抓取焦点股）----
+    NewsSource(
+        name="同花顺股吧热帖",
+        url="https://t.10jqka.com.cn/lgt/post/open/api/forum/post/v2/recent?page=1&page_size=15&pid=0&time=0&sort=reply&code=300059&market_id=17",
+        parser_type="ths_guba_json",
+        headers={
+            "User-Agent": _MOBILE_UA,
+            "Referer": "https://t.10jqka.com.cn/",
+            "Accept": "application/json, text/plain, */*",
+        },
+    ),
+    # ---- 同花顺热股榜（eq+dq 双路聚合，东财人气榜之外的第二条散户热度腿）----
+    NewsSource(
+        name="同花顺热股榜",
+        url="https://eq.10jqka.com.cn/open/api/hot_list/history/v1/rank?type=stock",
+        parser_type="ths_hot_rank",
+        headers={
+            "User-Agent": _MOBILE_UA,
+            "Referer": "https://eq.10jqka.com.cn/",
+            "Accept": "application/json, text/plain, */*",
+        },
+    ),
     # ---- 散户注意力热榜：百度财经热搜 ----
     NewsSource(
         name="百度财经热搜",

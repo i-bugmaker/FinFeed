@@ -55,6 +55,7 @@ def _register_known_parsers() -> None:
         XueqiuHotParser, BaiduFinanceHotParser, ZhihuHotParser,
         TaogubaParser, JisiluParser,
     )
+    from .forum_parsers.ths import ThsGubaJsonParser, ThsHotRankParser
     
     _PARSER_MAP.update({
         "sina": SinaParser,
@@ -94,6 +95,8 @@ def _register_known_parsers() -> None:
         "ths_advisor": ThsAdvisorParser,
         "ths_stock_bar": ThsStockBarParser,
         "ths_lounge": ThsLoungeParser,
+        "ths_guba_json": ThsGubaJsonParser,
+        "ths_hot_rank": ThsHotRankParser,
         "weibo_finance": WeiboFinanceParser,
         "xueqiu_hot": XueqiuHotParser,
         "baidu_finance_hot": BaiduFinanceHotParser,

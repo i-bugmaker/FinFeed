@@ -201,6 +201,7 @@ class BaseForumParser(BaseParser):
         publish_time: str = "",
         intro: str = "",
         extra_stocks: Optional[List[dict]] = None,
+        meta: Optional[dict] = None,
     ) -> Optional[NewsItem]:
         if not title or len(title) < 4:
             return None
@@ -229,6 +230,7 @@ class BaseForumParser(BaseParser):
             intro=intro[:200] if intro else "",
             stocks=merge_stocks([all_stocks])[0],
             category="forum",
+            meta=meta or {},
         )
         return news
 

@@ -106,7 +106,8 @@ class NewsDatabase:
                     title_hash TEXT DEFAULT '',
                     content_simhash TEXT DEFAULT '',
                     duplicate_count INTEGER DEFAULT 0,
-                    duplicate_sources TEXT DEFAULT '[]'
+                    duplicate_sources TEXT DEFAULT '[]',
+                    meta TEXT DEFAULT '{}'
                 )
             """)
 
@@ -166,6 +167,7 @@ class NewsDatabase:
             ("content_simhash", "TEXT DEFAULT ''"),
             ("duplicate_count", "INTEGER DEFAULT 0"),
             ("duplicate_sources", "TEXT DEFAULT '[]'"),
+            ("meta", "TEXT DEFAULT '{}'"),
         ]
 
         for col_name, col_def in new_columns:
@@ -349,6 +351,12 @@ class NewsDatabase:
         except (json.JSONDecodeError, TypeError):
             duplicate_sources = []
 
+        meta_val = row["meta"] if "meta" in row.keys() and row["meta"] is not None else "{}"
+        try:
+            meta = json.loads(meta_val) if meta_val else {}
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
+
         return NewsItem(
             id=row["id"] if "id" in row.keys() else None,
             title=row["title"] if row["title"] is not None else "",
@@ -369,6 +377,7 @@ class NewsDatabase:
             content_simhash=content_simhash_val,
             duplicate_count=duplicate_count,
             duplicate_sources=duplicate_sources,
+            meta=meta,
         )
 
     def insert_news(self, news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:
@@ -414,6 +423,7 @@ class NewsDatabase:
                 n.content_simhash or "",
                 0,  # duplicate_count
                 json.dumps(n.duplicate_sources or [], ensure_ascii=False),
+                json.dumps(n.meta or {}, ensure_ascii=False),
                 url,
                 source,
                 n.title_hash or "",
@@ -435,8 +445,8 @@ class NewsDatabase:
                     """INSERT OR IGNORE INTO news
                        (title, url, source, publish_time, publish_ts, intro,
                         created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite,
-                        title_hash, content_simhash, duplicate_count, duplicate_sources)
-                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        title_hash, content_simhash, duplicate_count, duplicate_sources, meta)
+                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                        WHERE NOT EXISTS (
                            SELECT 1 FROM news WHERE url = ? AND source = ?
                        )
@@ -445,20 +455,20 @@ class NewsDatabase:
                        ))
                     """,
                     [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
-                      r[14], r[15], r[16], r[17], r[18], r[19], r[20], r[20]) for r in rows_to_insert]
+                      r[14], r[15], r[16], r[17], r[18], r[19], r[20], r[21], r[21]) for r in rows_to_insert]
                 )
             else:
                 c.executemany(
                     """INSERT OR IGNORE INTO news
                        (title, url, source, publish_time, publish_ts, intro,
-                        created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite)
-                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite, meta)
+                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                        WHERE NOT EXISTS (
                            SELECT 1 FROM news WHERE url = ? AND source = ? AND title = ?
                        )
                     """,
                     [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
-                      r[18], r[19], r[0]) for r in rows_to_insert]
+                      r[18], r[19], r[20], r[0]) for r in rows_to_insert]
                 )
 
             c.execute(
