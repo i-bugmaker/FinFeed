@@ -1,0 +1,202 @@
+/**
+ * FinFeed Masonry Layout
+ * 基于 CSS column-count 的瀑布流，保证卡片不跨列断裂。
+ * 提供响应式列数、骨架屏占位、平滑追加动画。
+ */
+
+/* ------------------------------------------------------------------
+   Masonry container
+   ------------------------------------------------------------------ */
+.masonry {
+  width: 100%;
+  column-count: 1;
+  column-gap: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+/* Breakpoints: keep columns reasonably wide (>=300px) */
+@media (min-width: 480px) and (max-width: 767px) {
+  .masonry { column-count: 2; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .masonry { column-count: 2; }
+}
+
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .masonry { column-count: 3; }
+}
+
+@media (min-width: 1440px) {
+  .masonry { column-count: 4; }
+}
+
+/* Special 2-col layout for pages with sidebar */
+.masonry--with-sidebar {
+  column-count: 1;
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .masonry--with-sidebar { column-count: 1; }
+}
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .masonry--with-sidebar { column-count: 2; }
+}
+@media (min-width: 1440px) {
+  .masonry--with-sidebar { column-count: 3; }
+}
+
+/* ------------------------------------------------------------------
+   Masonry item
+   ------------------------------------------------------------------ */
+.masonry-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  margin-bottom: var(--space-4);
+  display: block;
+  width: 100%;
+}
+
+/* Avoid margin collapse inside columns */
+.masonry-item > *:last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------------
+   Fade-in animation for new items
+   ------------------------------------------------------------------ */
+.masonry-item.is-new {
+  animation: masonry-fade-in 350ms ease forwards;
+}
+
+@keyframes masonry-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Skeleton placeholders inside masonry (prevents layout shift)
+   ------------------------------------------------------------------ */
+.masonry-skeleton .masonry-item {
+  pointer-events: none;
+}
+
+.masonry-skeleton .skeleton-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  break-inside: avoid;
+}
+
+.skeleton-card .skeleton-line {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  margin-bottom: var(--space-2);
+}
+.skeleton-card .skeleton-line.short { width: 45%; }
+.skeleton-card .skeleton-line.medium { width: 75%; }
+.skeleton-card .skeleton-line.title { height: 16px; width: 90%; margin-bottom: var(--space-3); }
+.skeleton-card .skeleton-line:last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------------
+   Sentinel (infinite scroll trigger)
+   ------------------------------------------------------------------ */
+.masonry-sentinel {
+  height: 1px;
+  width: 100%;
+  margin-top: var(--space-4);
+  visibility: hidden;
+}
+
+.masonry-sentinel.is-visible {
+  visibility: visible;
+  height: auto;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------
+   New content banner (SSE push)
+   ------------------------------------------------------------------ */
+.new-content-banner {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-3));
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: var(--brand-text-on);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: all var(--transition-base);
+}
+
+.new-content-banner.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.new-content-banner:hover { background: var(--brand-hover); }
+
+@media (max-width: 767px) {
+  .new-content-banner { top: var(--header-height-mobile); }
+}
+
+/* ------------------------------------------------------------------
+   Responsive utilities
+   ------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  .masonry { column-gap: var(--space-3); }
+  .masonry-item { margin-bottom: var(--space-3); }
+}
+
+/* ------------------------------------------------------------------
+   Feed list — 单栏时间序列表（新闻 / 舆情 / 收藏）
+   复用 .masonry-item 包裹层，仅改变容器为纵向堆叠。
+   ------------------------------------------------------------------ */
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  padding-bottom: var(--space-4);
+}
+
+.feed-list--with-sidebar {
+  max-width: none;
+  margin: 0;
+}
+
+.feed-list .masonry-item {
+  width: 100%;
+  margin: 0;
+  break-inside: auto;
+  -webkit-column-break-inside: auto;
+  page-break-inside: auto;
+}
+
+.feed-list .news-card { width: 100%; }
+
+@media (max-width: 767px) {
+  .feed-list { gap: var(--space-2); }
+}

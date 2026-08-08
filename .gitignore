@@ -83,3 +83,7 @@ start_web.py
 /*.html
 /*.js
 
+# 工具/自动化运行产物（非项目源码，不入库）
+.playwright-mcp/
+.uiaudit/
+
