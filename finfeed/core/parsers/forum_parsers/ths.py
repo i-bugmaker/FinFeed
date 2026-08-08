@@ -94,6 +94,12 @@ class ThsGubaJsonParser(BaseForumParser):
     MARKET_ID = 17          # 17 = A 股
     MAX_ITEMS = 200
 
+    def _get_stocks_from_source(self) -> list:
+        # 每只帖已在 _parse_post 中通过 extra_stocks 携带其真实焦点股代码；
+        # 源级归因（URL/源名匹配）会把单一代码污染到全部帖子，故显式返回空。
+        # 即便源名含“同花顺”或 URL 带 code= 参数，也不会误挂 300033 等无关标的。
+        return []
+
     async def parse(self, response: httpx.Response) -> List:
         news_list = []
         self._seen_urls.clear()
@@ -191,6 +197,11 @@ class ThsHotRankParser(BaseForumParser):
     """
 
     MAX_ITEMS = 120
+
+    def _get_stocks_from_source(self) -> list:
+        # 每条热股榜已通过 extra_stocks 携带其对应个股代码，源级归因无意义，
+        # 且可避免源名含“同花顺”时误挂 300033。
+        return []
 
     async def parse(self, response: httpx.Response) -> List:
         news_list = []

@@ -187,8 +187,12 @@ class BaseForumParser(BaseParser):
             for code, sname in STOCK_NAME_MAP.items():
                 market = "sh" if code.startswith(("60", "688", "9")) else "sz"
                 self._source_stock_map.append((sname, code, market))
+        # 精确匹配：仅当源名“恰好等于”某只股票简称时才归因。
+        # 子串匹配(sname in name)会令“同花顺股吧热帖/论股堂/股吧/热股榜”全部命中
+        # 300033(同花顺本身)，使每只帖被误挂同花顺。多股票聚合源（人气榜/热股榜/
+        # 全市场股吧）由各自 extra_stocks 携带真实个股代码，源级归因在此应为空。
         for sname, code, market in self._source_stock_map:
-            if sname in name or code in name:
+            if sname == name:
                 stocks.append({"code": code, "name": sname, "market": market})
                 break
         return stocks

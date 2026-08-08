@@ -60,7 +60,9 @@ def test_guba_parse_post():
     item = parser._parse_post(post, "300059", "东方财富")
     assert item is not None, "解析返回空"
     assert item.category == "forum"
-    assert "300059" in item.stocks  # 目标股在提及列表中（源名含"同花顺"会附带300033，属既有行为）
+    assert "300059" in item.stocks, "目标股(东方财富)应出现在提及列表"
+    # 回归断言：源名含“同花顺”不得误挂 300033(同花顺本身)
+    assert "300033" not in item.stocks, "源名含'同花顺'不应误挂 300033"
     meta = item.meta
     print("  meta =", json.dumps(meta, ensure_ascii=False))
     assert meta["likes"] == 560 and meta["replies"] == 120
@@ -72,6 +74,37 @@ def test_guba_parse_post():
     promo = {"pid": "2", "content": "免费领取牛股，加微信内部群", "stat": {}}
     assert parser._parse_post(promo, "300059", "x") is None
     print("  互动量/认证/地域 落库正确；噪声过滤正确")
+    print("  OK")
+
+
+def test_source_attribution_fix():
+    banner("[2b] 源级股票归因修复（同花顺子串误挂 300033 回归）")
+    from finfeed.core.parsers.forum_parsers.base import BaseForumParser
+    # A. 两个新 THS 解析器：源级归因必须为空，仅由 extra_stocks 携带真实代码
+    guba = ThsGubaJsonParser(NewsSource(
+        name="同花顺股吧热帖",
+        url=("https://t.10jqka.com.cn/lgt/post/open/api/forum/post/v2/recent"
+             "?page=1&page_size=15&pid=0&time=0&sort=reply&code=300059&market_id=17"),
+        parser_type="ths_guba_json"))
+    hot = ThsHotRankParser(NewsSource(name="同花顺热股榜", url="https://eq.10jqka.com.cn/", parser_type="ths_hot_rank"))
+    assert guba._get_stocks_from_source() == [], "同花顺股吧热帖 源级归因应为空"
+    assert hot._get_stocks_from_source() == [], "同花顺热股榜 源级归因应为空"
+
+    # B. 既有同花顺论坛源（名称含“同花顺”）经 factory 构造后也不得误挂 300033
+    for sname in ("同花顺论股堂", "同花顺股吧"):
+        src = next((s for s in get_forum_sources() if s.name == sname), None)
+        assert src is not None, f"未找到论坛源 {sname}"
+        p = create_parser(src)
+        assert p._get_stocks_from_source() == [], f"{sname} 源级归因应为空（不得误挂300033）"
+
+    # C. 精确匹配仍对“源名恰好等于股票简称”的场景生效（回归防护）
+    class _Dummy(BaseForumParser):
+        async def parse(self, response):
+            return []
+    dummy = _Dummy(NewsSource(name="东方财富", url="https://x.com/", parser_type="ths"))
+    src_stocks = dummy._get_stocks_from_source()
+    assert src_stocks and src_stocks[0]["code"] == "300059", "源名恰好等于股票简称时应正确归因"
+    print("  同花顺各源不再误挂 300033；精确匹配对真·单股源仍生效")
     print("  OK")
 
 
@@ -174,7 +207,7 @@ def test_live():
 
 if __name__ == "__main__":
     fails = []
-    for fn in (test_import_smoke, test_guba_parse_post, test_hot_rank_parse, test_boost, test_signal_map, test_live):
+    for fn in (test_import_smoke, test_guba_parse_post, test_source_attribution_fix, test_hot_rank_parse, test_boost, test_signal_map, test_live):
         try:
             fn()
         except Exception as e:
