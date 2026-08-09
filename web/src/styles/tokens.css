@@ -195,9 +195,9 @@
   --ff-sidebar-w: 244px;
   --ff-sidebar-w-collapsed: 68px;
   --ff-topbar-h: 60px;
-  --ff-container-max: 1680px;
-  --ff-page-pad-x: var(--ff-space-6);
-  --ff-page-pad-y: var(--ff-space-6);
+  --ff-container-max: 100%;
+  --ff-page-pad-x: var(--ff-space-5);
+  --ff-page-pad-y: var(--ff-space-5);
   --ff-grid-gutter: var(--ff-space-4);
 
   /* 控件高度刻度（≥ 36px 桌面，触控目标补足至 44px） */

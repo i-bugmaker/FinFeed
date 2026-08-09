@@ -385,7 +385,8 @@
 .ff-tabs::-webkit-scrollbar {
   display: none;
 }
-.ff-tabs__item {
+.ff-tabs__item,
+.ff-tabs__tab {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -398,7 +399,8 @@
   white-space: nowrap;
   transition: color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.ff-tabs__item::after {
+.ff-tabs__item::after,
+.ff-tabs__tab::after {
   content: '';
   position: absolute;
   left: var(--ff-space-2);
@@ -409,17 +411,21 @@
   background: transparent;
   transition: background-color var(--ff-dur-base) var(--ff-ease-standard);
 }
-.ff-tabs__item:hover {
+.ff-tabs__item:hover,
+.ff-tabs__tab:hover {
   color: var(--ff-text-primary);
 }
-.ff-tabs__item.is-active {
+.ff-tabs__item.is-active,
+.ff-tabs__tab.ff-tabs__tab--active {
   color: var(--ff-brand-text);
   font-weight: var(--ff-fw-semibold);
 }
-.ff-tabs__item.is-active::after {
+.ff-tabs__item.is-active::after,
+.ff-tabs__tab.ff-tabs__tab--active::after {
   background: var(--ff-brand);
 }
-.ff-tabs__item:focus-visible {
+.ff-tabs__item:focus-visible,
+.ff-tabs__tab:focus-visible {
   box-shadow: var(--ff-focus-ring);
   border-radius: var(--ff-radius-sm);
 }
@@ -436,7 +442,8 @@
   font-size: var(--ff-fs-overline);
   font-weight: var(--ff-fw-semibold);
 }
-.ff-tabs__item.is-active .ff-tabs__count {
+.ff-tabs__item.is-active .ff-tabs__count,
+.ff-tabs__tab.ff-tabs__tab--active .ff-tabs__count {
   background: var(--ff-brand-subtle);
   color: var(--ff-brand-text);
 }
@@ -551,23 +558,28 @@
   border-color: var(--ff-border-strong);
 }
 .ff-input.is-focused,
+.ff-field--focused .ff-input,
 .ff-input:focus-within {
   border-color: var(--ff-brand);
   box-shadow: var(--ff-focus-ring);
 }
-.ff-input.is-error {
+.ff-input.is-error,
+.ff-field--error .ff-input {
   border-color: var(--ff-danger);
 }
-.ff-input.is-error:focus-within {
+.ff-input.is-error:focus-within,
+.ff-field--error .ff-input:focus-within {
   box-shadow: var(--ff-focus-ring-danger);
 }
-.ff-input.is-disabled {
+.ff-input.is-disabled,
+.ff-field--disabled .ff-input {
   background: var(--ff-bg-muted);
   border-color: var(--ff-border-subtle);
   color: var(--ff-text-disabled);
   pointer-events: none;
 }
-.ff-input.is-readonly {
+.ff-input.is-readonly,
+.ff-field--readonly .ff-input {
   background: var(--ff-bg-subtle);
 }
 .ff-input__control {
@@ -586,7 +598,8 @@
   flex-shrink: 0;
   transition: color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.ff-input:focus-within .ff-input__affix--lead {
+.ff-input:focus-within .ff-input__affix--lead,
+.ff-input:focus-within .ff-input__affix--prefix {
   color: var(--ff-brand);
 }
 .ff-input__clear {
@@ -837,15 +850,20 @@
   border-color: var(--ff-border-strong);
 }
 .ff-select__trigger:focus-visible,
-.ff-select__trigger.is-open {
+.ff-select__trigger.is-open,
+.ff-select__trigger.ff-select__trigger--open,
+.ff-field--focused .ff-select__trigger {
   border-color: var(--ff-brand);
   box-shadow: var(--ff-focus-ring);
 }
-.ff-select__trigger:disabled {
+.ff-select__trigger:disabled,
+.ff-field--disabled .ff-select__trigger {
   background: var(--ff-bg-muted);
   color: var(--ff-text-disabled);
 }
-.ff-select__trigger.is-error {
+.ff-select__trigger.is-error,
+.ff-select__trigger.ff-select__trigger--error,
+.ff-field--error .ff-select__trigger {
   border-color: var(--ff-danger);
 }
 .ff-select__value {
@@ -863,7 +881,9 @@
   flex-shrink: 0;
   transition: transform var(--ff-dur-base) var(--ff-ease-standard);
 }
-.ff-select__trigger.is-open .ff-select__caret {
+.ff-select__trigger.is-open .ff-select__caret,
+.ff-select__trigger.ff-select__trigger--open .ff-select__caret,
+.ff-field--focused .ff-select__trigger .ff-select__caret {
   transform: rotate(180deg);
   color: var(--ff-brand);
 }
@@ -930,7 +950,8 @@
 .ff-menu__item:focus-visible {
   box-shadow: var(--ff-focus-ring);
 }
-.ff-menu__item.is-selected {
+.ff-menu__item.is-selected,
+.ff-menu__item.ff-menu__item--active {
   background: var(--ff-brand-subtle);
   color: var(--ff-brand-text);
   font-weight: var(--ff-fw-semibold);
@@ -1171,20 +1192,49 @@
   padding: 0 var(--ff-space-1-5);
 }
 
+/* 激活态（与组件 BEM 修饰符对齐） */
+.ff-chip--active {
+  background: var(--ff-brand);
+  border-color: var(--ff-brand);
+  color: var(--ff-brand-fg);
+  font-weight: var(--ff-fw-semibold);
+}
+.ff-chip--up.ff-chip--active {
+  background: var(--ff-up);
+  border-color: var(--ff-up);
+  color: var(--ff-up-fg);
+}
+.ff-chip--down.ff-chip--active {
+  background: var(--ff-down);
+  border-color: var(--ff-down);
+  color: var(--ff-down-fg);
+}
+.ff-chip--warn.ff-chip--active {
+  background: var(--ff-warn);
+  border-color: var(--ff-warn);
+  color: var(--ff-warn-fg);
+}
+.ff-chip--brand.ff-chip--active {
+  background: var(--ff-brand);
+  border-color: var(--ff-brand);
+  color: var(--ff-brand-fg);
+}
+
 /* 计数徽标 */
 .ff-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 7px;
   border-radius: var(--ff-radius-pill);
   background: var(--ff-up);
   color: var(--ff-up-fg);
-  font-size: var(--ff-fs-overline);
+  font-size: var(--ff-fs-caption);
   font-weight: var(--ff-fw-bold);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ff-badge--brand {
   background: var(--ff-brand);
@@ -1193,6 +1243,18 @@
 .ff-badge--neutral {
   background: var(--ff-neutral-subtle);
   color: var(--ff-text-secondary);
+}
+.ff-badge--danger {
+  background: var(--ff-danger);
+  color: var(--ff-danger-fg);
+}
+.ff-badge--warn {
+  background: var(--ff-warn);
+  color: var(--ff-warn-fg);
+}
+.ff-badge--info {
+  background: var(--ff-info);
+  color: #fff;
 }
 
 /* 状态点 */

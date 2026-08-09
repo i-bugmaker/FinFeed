@@ -120,24 +120,32 @@ onMounted(async () => {
       </div>
     </AppCard>
 
-    <div v-if="typeSummary.length" class="ff-calendar-view__overview">
-      <AppCard
+    <div v-if="typeSummary.length" class="ff-calendar-view__types">
+      <button
+        type="button"
+        class="ff-chip"
+        :class="type === 'all' && 'ff-chip--active'"
+        @click="type = 'all'; reload()"
+      >
+        全部 {{ events.length }}
+      </button>
+      <button
         v-for="s in typeSummary"
         :key="s.key"
-        interactive
-        class="ff-calendar-view__ov"
-        :class="`ff-calendar-view__ov--${s.key}`"
+        type="button"
+        class="ff-chip"
+        :class="[
+          `ff-chip--${CAL_TYPE_VARIANT[s.key] || 'default'}`,
+          type === s.key && 'ff-chip--active',
+        ]"
         @click="type = s.key; reload()"
       >
-        <div class="ff-metric">
-          <span class="ff-metric__value">{{ s.count }}</span>
-          <span class="ff-metric__label">{{ s.label }}</span>
-        </div>
-      </AppCard>
+        {{ s.label }} {{ s.count }}
+      </button>
     </div>
 
     <div class="ff-grid">
-      <div class="ff-col-12 ff-col-lg-8">
+      <div class="ff-col-12 ff-col-lg-9">
         <AppCard title="事件列表" :subtitle="`共 ${events.length} 条`" :no-padding="true">
           <div v-if="events.length" class="ff-calendar-view__events">
             <div v-for="(e, i) in events" :key="i" class="ff-calendar-view__event">
@@ -151,7 +159,7 @@ onMounted(async () => {
           <EmptyState v-else text="当日无财经事件" icon="calendar" />
         </AppCard>
       </div>
-      <div class="ff-col-12 ff-col-lg-4">
+      <div class="ff-col-12 ff-col-lg-3">
         <AppCard title="类型分布" :no-padding="true">
           <div class="ff-calendar-view__chart">
             <ChartPanel :option="statsOption" height="320px" v-if="stats" />
@@ -190,21 +198,13 @@ onMounted(async () => {
   color: var(--ff-text-secondary);
 }
 
-.ff-calendar-view__overview {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--ff-space-3);
+.ff-calendar-view__types {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  flex-wrap: wrap;
   margin-bottom: var(--ff-space-4);
 }
-
-.ff-calendar-view__ov {
-  border-left: 4px solid var(--ff-border);
-}
-
-.ff-calendar-view__ov--finance { border-left-color: var(--ff-border-brand); }
-.ff-calendar-view__ov--stock { border-left-color: var(--ff-border-up); }
-.ff-calendar-view__ov--ipo { border-left-color: var(--ff-border-warn); }
-.ff-calendar-view__ov--global { border-left-color: var(--ff-border-info); }
 
 .ff-calendar-view__events {
   display: flex;
@@ -255,12 +255,12 @@ onMounted(async () => {
 }
 
 .ff-calendar-view__chart {
-  padding: var(--ff-space-4);
+  padding: var(--ff-space-3);
 }
 
-@media (min-width: 1024px) {
-  .ff-calendar-view__overview {
-    grid-template-columns: repeat(4, 1fr);
+@media (max-width: 1023px) {
+  .ff-calendar-view__types {
+    gap: var(--ff-space-1-5);
   }
 }
 </style>

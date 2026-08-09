@@ -364,16 +364,6 @@ onMounted(() => {
         </h1>
         <p class="ff-page__subtitle">大模型驱动的每日复盘、报告追问与自定义提示词</p>
       </div>
-      <AppButton
-        variant="primary"
-        size="lg"
-        icon="zap"
-        :loading="analyzing"
-        :disabled="analyzing"
-        @click="generate"
-      >
-        生成每日复盘
-      </AppButton>
     </div>
 
     <!-- 头部状态卡 -->
@@ -536,6 +526,18 @@ onMounted(() => {
 
       <div class="ff-col-12 ff-col-lg-6">
         <AppCard title="历史报告" class="ff-ai-view__panel">
+          <template #actions>
+            <AppButton
+              variant="primary"
+              size="sm"
+              icon="zap"
+              :loading="analyzing"
+              :disabled="analyzing"
+              @click="generate"
+            >
+              生成每日复盘
+            </AppButton>
+          </template>
           <div class="ff-ai-view__reports">
             <div v-for="rp in reports" :key="rp.id" class="ff-ai-view__report" @click="openReport(rp.id)">
               <span class="ff-ai-view__report-title">{{ rp.title || ('报告 #' + rp.id) }}</span>

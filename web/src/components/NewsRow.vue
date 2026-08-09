@@ -126,7 +126,7 @@ function markRead() {
   min-width: 0;
   color: var(--ff-text-primary);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

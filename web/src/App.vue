@@ -75,23 +75,13 @@ onMounted(() => {
 .ff-app__content {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: var(--ff-space-4);
+  padding: var(--ff-page-pad-y) var(--ff-page-pad-x);
   scroll-behavior: smooth;
 }
 
 @media (min-width: 1024px) {
   .ff-app__sidebar--desktop {
     display: flex;
-  }
-
-  .ff-app__content {
-    padding: var(--ff-space-6);
-  }
-}
-
-@media (min-width: 1280px) {
-  .ff-app__content {
-    padding: var(--ff-space-8);
   }
 }
 </style>

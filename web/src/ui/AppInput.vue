@@ -49,6 +49,10 @@ const inputCls = computed(() => [
   props.seamless && 'ff-input--seamless',
   props.prefixIcon && 'ff-input--prefix',
   (props.suffixIcon || showClear.value || showPwToggle.value) && 'ff-input--suffix',
+  focused.value && 'is-focused',
+  props.error && 'is-error',
+  props.disabled && 'is-disabled',
+  props.readonly && 'is-readonly',
 ])
 
 function onInput(e) {

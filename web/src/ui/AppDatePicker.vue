@@ -37,6 +37,7 @@ const fieldCls = computed(() => [
 const wrapperCls = computed(() => [
   'ff-date-input',
   `ff-date-input--${props.size}`,
+  !hasValue.value && 'ff-date-input--empty',
 ])
 
 const hasValue = computed(() => !!props.modelValue)
@@ -67,6 +68,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
         <span class="ff-date-input__icon">
           <AppIcon name="calendar" size="sm" />
         </span>
+        <span v-if="!hasValue && !focused" class="ff-date-input__placeholder">{{ placeholder }}</span>
         <input
           ref="inputRef"
           type="date"
@@ -167,6 +169,21 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   font: inherit;
   outline: none;
   cursor: pointer;
+}
+
+.ff-date-input__placeholder {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ff-text-placeholder);
+  font-size: var(--ff-fs-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.ff-date-input--empty:not(:focus-within) .ff-date-input__native {
+  color: transparent;
 }
 
 .ff-date-input__native::-webkit-calendar-picker-indicator {
