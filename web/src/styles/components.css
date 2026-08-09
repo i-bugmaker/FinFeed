@@ -831,7 +831,12 @@
   width: 100%;
 }
 
-.ff-select__trigger {
+/* AppSelect 通过 Teleport 将菜单挂到 body 并按触发器宽度定位，
+   此时 .ff-menu 的 min-width:100% 会相对于视口导致菜单铺满屏幕，
+   所以对这种组合禁用 min-width，让 JS 精确控制宽度。 */
+.ff-dropdown.ff-menu {
+  min-width: auto;
+}
   display: flex;
   align-items: center;
   gap: var(--ff-space-2);
