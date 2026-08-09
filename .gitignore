@@ -1,27 +1,197 @@
-# Python 缓存
+# ============================================================
+# .gitignore — FinFeed 项目
+# 技术栈：Python (FastAPI / uvicorn) + Vue3 / Vite (Node) + Playwright
+# 规则按类别分组，便于维护与排查
+# ============================================================
+
+
+# -------------------------
+# 操作系统生成文件
+# -------------------------
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.Trash-100
+.fseventsd
+.VolumeIcon.icns
+.AppleDB
+.AppleDesktop
+.AppleDouble
+.LSOverride
+.apdisk
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+# 跨平台临时目录
+Network Trash Folder
+Temporary Items
+
+
+# -------------------------
+# 编辑器 / IDE
+# -------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+.project
+.classpath
+*.iml
+.settings/
+.history/
+.vscode-test/
+
+
+# -------------------------
+# Python
+# -------------------------
+# 字节码 / 缓存
 __pycache__/
+*.py[cod]
+*$py.class
 *.pyc
 *.pyo
 *.pyd
-*.pyc
 .Python
 
-# 虚拟环境
+# 类型检查 / Lint 缓存
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.dmypy.json
+.pytype/
+
+# 安装 / 打包产物
+*.egg-info/
+.eggs/
+build/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg
+.installed.cfg
+pip-wheel-metadata/
+MANIFEST
+
+# IPython / Jupyter
+.ipynb_checkpoints/
+profile_default/
+ipython_cache/
+
+
+# -------------------------
+# Node / 前端 (Vue3 + Vite)
+# -------------------------
+# 依赖
+node_modules/
+.web_modules/
+
+# 构建产物
+dist/
+build/
+out/
+.release/
+
+# 缓存
+.cache/
+*.cache
+.eslintcache
+.parcel-cache/
+.sass-cache/
+.turbo/
+.vite/
+
+# 包管理器日志 / 缓存
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.yarn/
+.yarn-integrity
+*.tsbuildinfo
+
+
+# -------------------------
+# 虚拟环境 / 依赖
+# -------------------------
 venv/
 env/
+ENV/
 .venv/
-.env
+env.bak/
+venv.bak/
 
+
+# -------------------------
+# 环境变量与密钥
+# -------------------------
+.env
+.env.*
+!.env.example
+!.env.sample
+*.key
+*.pem
+*.p12
+*.pfx
+*.keystore
+*.secret
+secrets/
+
+
+# -------------------------
+# 日志
+# -------------------------
+*.log
+*.log.*
+logs/
+npm-debug.log*
+
+
+# -------------------------
+# 测试与覆盖报告
+# -------------------------
+.coverage
+.coverage.*
+coverage/
+coverage.xml
+coverage.json
+htmlcov/
+test-results/
+.nunit/
+.junit/
+junit-results.xml
+
+
+# -------------------------
 # 数据库
+# -------------------------
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
 
-# 日志
-*.log
 
-# 导出文件
+# -------------------------
+# 业务导出文件
+# -------------------------
 news_export_*.json
 news_export_*.csv
 news_export_*.xlsx
@@ -29,22 +199,10 @@ news_export_*.xls
 news_export_*.markdown
 news_export_*.md
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
 
-# 系统文件
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# 临时文件
-*.tmp
-*.temp
-
+# -------------------------
+# 项目特定 (FinFeed)
+# -------------------------
 # 旧代码目录（已移入 finfeed/）
 /alerts/
 /analysis/
@@ -63,17 +221,20 @@ debug.log
 news_monitor.log
 finfeed/news_monitor.log
 finfeed/finfeed.log
-logs/
-.pytest_cache/
 
-# 工作目录/临时
+# 工作目录 / 临时
 .omo/
 
-# 启动脚本（根目录旧版已废弃，scripts/ 下为活跃版本，需入库）
+# 工具 / 自动化运行产物
+.playwright-mcp/
+.uiaudit/
+.playwright/
+
+# 启动脚本（根目录旧版已废弃；scripts/ 下活跃版本需入库）
 /start_monitor.bat
 start_web.py
 
-# 调试/探测脚本（仅根目录级别；tests/ 下的 test_*.py 是正式测试，不受影响）
+# 调试 / 探测脚本（仅根目录级别）
 /probe_*.py
 /debug_*.py
 /check_*.py
@@ -82,10 +243,6 @@ start_web.py
 /fetch_sina.py
 /*.html
 /*.js
-
-# 工具/自动化运行产物（非项目源码，不入库）
-.playwright-mcp/
-.uiaudit/
 
 # 前端构建产物（由 npm 生成，非源码）
 web/node_modules/
@@ -97,4 +254,3 @@ _pre_cleanup_backup_*/
 
 # 误生成的空设备名残留文件
 nul
-
