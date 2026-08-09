@@ -107,7 +107,8 @@ function positionMenu() {
   if (!triggerRef.value || !menuRef.value) return
   const rect = triggerRef.value.getBoundingClientRect()
   const menu = menuRef.value
-  menu.style.width = `${rect.width}px`
+  // 不再把菜单宽度强制等于触发器宽度；让菜单按内容自适应，
+  // 避免触发器很宽而选项很短时出现大片右侧留白。
   menu.style.top = `${rect.bottom + 6}px`
   menu.style.left = `${rect.left}px`
 }

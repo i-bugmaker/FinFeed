@@ -836,6 +836,7 @@
    所以对这种组合禁用 min-width，让 JS 精确控制宽度。 */
 .ff-dropdown.ff-menu {
   min-width: auto;
+  width: auto;
 }
 .ff-select__trigger {
   display: flex;
