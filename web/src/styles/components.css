@@ -899,9 +899,9 @@
   position: absolute;
   z-index: var(--ff-z-dropdown);
   min-width: 100%;
-  max-height: 288px;
+  max-height: 260px;
   overflow-y: auto;
-  padding: var(--ff-space-1-5);
+  padding: var(--ff-space-1);
   background: var(--ff-bg-surface-raised);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
@@ -932,12 +932,13 @@
   align-items: center;
   gap: var(--ff-space-2);
   width: 100%;
-  min-height: 34px;
-  padding: var(--ff-space-1-5) var(--ff-space-2-5);
+  min-height: 28px;
+  padding: var(--ff-space-1) var(--ff-space-2-5);
   border-radius: var(--ff-radius-sm);
   font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-secondary);
   text-align: left;
+  line-height: var(--ff-lh-snug);
   transition:
     background-color var(--ff-dur-instant) var(--ff-ease-standard),
     color var(--ff-dur-instant) var(--ff-ease-standard);
@@ -1298,6 +1299,69 @@
 }
 .ff-dot--brand {
   background: var(--ff-brand);
+}
+
+/* AppStatus 状态点（独立于 .ff-dot，命名空间不同） */
+.ff-status__dot {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--ff-radius-circle);
+  background: var(--ff-text-tertiary);
+  color: var(--ff-text-tertiary);
+  flex-shrink: 0;
+}
+.ff-status--neutral .ff-status__dot {
+  background: var(--ff-text-tertiary);
+  color: var(--ff-text-tertiary);
+}
+.ff-status--success .ff-status__dot {
+  background: var(--ff-down);
+  color: var(--ff-down);
+}
+.ff-status--warn .ff-status__dot {
+  background: var(--ff-warn);
+  color: var(--ff-warn);
+}
+.ff-status--danger .ff-status__dot {
+  background: var(--ff-danger);
+  color: var(--ff-danger);
+}
+.ff-status--brand .ff-status__dot {
+  background: var(--ff-brand);
+  color: var(--ff-brand);
+}
+.ff-status--up .ff-status__dot {
+  background: var(--ff-up);
+  color: var(--ff-up);
+}
+.ff-status--down .ff-status__dot {
+  background: var(--ff-down);
+  color: var(--ff-down);
+}
+.ff-status__dot--pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: ff-pulse-ring 1.8s var(--ff-ease-decelerate) infinite;
+}
+.ff-status--success {
+  color: var(--ff-down-text);
+}
+
+/* 主题切换平滑过渡：由 store.toggleTheme 临时添加，动画结束后移除 */
+.ff-theme-anim,
+.ff-theme-anim *,
+.ff-theme-anim *::before,
+.ff-theme-anim *::after {
+  transition:
+    background-color 320ms var(--ff-ease-standard),
+    border-color 320ms var(--ff-ease-standard),
+    color 320ms var(--ff-ease-standard),
+    fill 320ms var(--ff-ease-standard),
+    stroke 320ms var(--ff-ease-standard),
+    box-shadow 320ms var(--ff-ease-standard) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1895,7 +1959,7 @@
 .ff-page__heading {
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-1);
+  gap: var(--ff-space-2-5);
   min-width: 0;
 }
 .ff-page__title {
@@ -1910,6 +1974,13 @@
 .ff-page__desc {
   font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-tertiary);
+  line-height: var(--ff-lh-snug);
+}
+.ff-page__subtitle {
+  font-size: var(--ff-fs-body);
+  color: var(--ff-text-tertiary);
+  line-height: var(--ff-lh-snug);
+  max-width: 72ch;
 }
 .ff-page__actions {
   margin-left: auto;

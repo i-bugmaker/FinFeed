@@ -35,11 +35,14 @@ onUnmounted(() => clearInterval(timer))
         :aria-label="'展开菜单'"
         @click="emit('menu')"
       />
-      <AppStatus
-        :text="store.live ? '实时连接' : '连接中…'"
-        :tone="store.live ? 'success' : 'neutral'"
-        :pulse="store.live"
-      />
+      <div class="ff-topbar__live" :class="{ 'is-live': store.live }">
+        <AppStatus
+          :text="store.live ? '实时连接' : '连接中…'"
+          :tone="store.live ? 'success' : 'neutral'"
+          :pulse="store.live"
+        />
+        <span v-if="store.live" class="ff-topbar__live-dot" aria-hidden="true" />
+      </div>
       <span class="ff-topbar__clock ff-num">{{ clock }}</span>
     </div>
 
@@ -81,10 +84,54 @@ onUnmounted(() => clearInterval(timer))
 }
 
 .ff-topbar__clock {
-  font-size: var(--ff-fs-sm);
+  font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-primary);
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.ff-topbar__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-subtle);
+  color: var(--ff-text-secondary);
+  border: 1px solid transparent;
+  transition:
+    background-color var(--ff-dur-base) var(--ff-ease-standard),
+    border-color var(--ff-dur-base) var(--ff-ease-standard),
+    color var(--ff-dur-base) var(--ff-ease-standard),
+    box-shadow var(--ff-dur-base) var(--ff-ease-standard);
+}
+.ff-topbar__live.is-live {
+  background: var(--ff-down-subtle);
+  border-color: var(--ff-down-border);
+  color: var(--ff-down-text);
+  box-shadow: 0 0 0 1px var(--ff-down-border);
+}
+.ff-topbar__live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ff-down);
+  box-shadow: 0 0 0 0 var(--ff-down);
+  animation: ff-topbar-live-pulse 1.6s var(--ff-ease-standard) infinite;
+}
+@keyframes ff-topbar-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--ff-down);
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+    opacity: 0.4;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0;
+  }
 }
 
 @media (min-width: 768px) {

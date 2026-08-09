@@ -90,7 +90,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
           :placeholder="placeholder"
           :disabled="disabled"
           :readonly="readonly"
-          class="ff-input__native"
+          class="ff-input__control"
           @input="onInput"
           @focus="focused = true; $emit('focus', $event)"
           @blur="focused = false; $emit('blur', $event)"

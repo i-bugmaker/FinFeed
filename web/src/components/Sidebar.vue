@@ -49,13 +49,6 @@ const activeIndex = computed(() => nav.findIndex(item => route.path === item.to 
         <span class="ff-sidebar__label">{{ item.label }}</span>
       </router-link>
     </nav>
-
-    <div class="ff-sidebar__footer">
-      <div class="ff-sidebar__hint">
-        <AppIcon name="broadcast" size="xs" tone="success" />
-        <span>实时数据接入中</span>
-      </div>
-    </div>
   </aside>
 </template>
 
@@ -117,22 +110,5 @@ const activeIndex = computed(() => nav.findIndex(item => route.path === item.to 
 
 .ff-sidebar__icon {
   flex-shrink: 0;
-}
-
-.ff-sidebar__footer {
-  padding: 0 var(--ff-space-4);
-  margin-top: auto;
-}
-
-.ff-sidebar__hint {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  padding: var(--ff-space-2) var(--ff-space-3);
-  border-radius: var(--ff-radius-pill);
-  background: var(--ff-bg-subtle);
-  color: var(--ff-text-secondary);
-  font-size: var(--ff-fs-xs);
-  font-weight: 500;
 }
 </style>

@@ -22,9 +22,18 @@ export const useAppStore = defineStore('app', {
       this.theme = this.theme === 'light' ? 'dark' : 'light'
       localStorage.setItem(THEME_KEY, this.theme)
       this.applyTheme()
+      this.animateThemeChange()
     },
     applyTheme() {
       document.documentElement.setAttribute('data-theme', this.theme)
+    },
+    animateThemeChange() {
+      const root = document.documentElement
+      root.classList.add('ff-theme-anim')
+      if (this._themeTimer) window.clearTimeout(this._themeTimer)
+      this._themeTimer = window.setTimeout(() => {
+        root.classList.remove('ff-theme-anim')
+      }, 360)
     },
     setLive(v) {
       this.live = v

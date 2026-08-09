@@ -99,14 +99,15 @@
 
   /* 字号刻度 */
   --ff-fs-display: 30px;
+  --ff-fs-2xl: 26px;
   --ff-fs-h1: 24px;
   --ff-fs-h2: 20px;
   --ff-fs-h3: 17px;
-  --ff-fs-h4: 15px;
-  --ff-fs-body-lg: 15px;
-  --ff-fs-body: 14px;
-  --ff-fs-body-sm: 13px;
-  --ff-fs-caption: 12px;
+  --ff-fs-h4: 16px;
+  --ff-fs-body-lg: 16px;
+  --ff-fs-body: 15px;
+  --ff-fs-body-sm: 14px;
+  --ff-fs-caption: 13px;
   --ff-fs-overline: 11px;
 
   /* 行高刻度 */

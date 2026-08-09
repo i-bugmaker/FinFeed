@@ -84,7 +84,7 @@ onMounted(async () => {
         <h1 class="ff-page__title">
           <AppIcon name="dashboard" size="lg" /> 仪表盘
         </h1>
-        <p class="ff-page__subtitle">系统运行状态、情绪分布与来源统计</p>
+        <p class="ff-page__subtitle">系统运行状态、情绪分布与来源统计总览</p>
       </div>
     </div>
 
@@ -92,58 +92,103 @@ onMounted(async () => {
     <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
 
     <template v-else>
-      <div class="ff-dashboard-view__stats">
-        <StatCard label="新闻总量" :value="stats.total_news?.toLocaleString()" />
-        <StatCard label="近 24h" :value="stats.total_24h?.toLocaleString()" tone="up" />
-        <StatCard label="未读" :value="stats.unread_count?.toLocaleString()" />
-        <StatCard label="收藏" :value="stats.favorite_count?.toLocaleString()" />
-      </div>
-
-      <div class="ff-grid">
-        <div class="ff-col-12 ff-col-lg-6">
-          <AppCard title="运行状态">
-            <ul class="ff-dashboard-view__kv">
-              <li>
-                <span>服务状态</span>
-                <AppStatus :text="stats.status || '运行中'" :tone="(stats.status || '运行中') === '运行中' ? 'success' : 'danger'" />
-              </li>
-              <li><span>采集轮次</span><strong class="ff-num">{{ stats.cycle ?? 0 }}</strong></li>
-              <li><span>本轮新增</span><strong class="ff-num ff-t-up">{{ stats.new_count ?? 0 }}</strong></li>
-              <li><span>数据源数</span><strong class="ff-num">{{ stats.source_count ?? 0 }}</strong></li>
-            </ul>
-          </AppCard>
+      <!-- 概览指标 -->
+      <section class="ff-dash-section">
+        <header class="ff-dash-section__head">
+          <span class="ff-dash-section__eyebrow">
+            <AppIcon name="activity" size="sm" /> 概览指标
+          </span>
+          <span class="ff-dash-section__hint">核心数据一目了然</span>
+        </header>
+        <div class="ff-dashboard-view__stats">
+          <StatCard label="新闻总量" :value="stats.total_news?.toLocaleString()" />
+          <StatCard label="近 24h" :value="stats.total_24h?.toLocaleString()" tone="up" />
+          <StatCard label="未读" :value="stats.unread_count?.toLocaleString()" />
+          <StatCard label="收藏" :value="stats.favorite_count?.toLocaleString()" />
         </div>
+      </section>
 
-        <div class="ff-col-12 ff-col-lg-6">
-          <AppCard :title="`数据源健康（${stats.source_health?.length || 0}）`" :no-padding="true">
-            <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
-              <div v-for="s in stats.source_health" :key="s.name" class="ff-dashboard-view__source">
-                <AppStatus :tone="healthTone(s)" />
-                <span class="ff-dashboard-view__name">{{ s.name }}</span>
-                <span class="ff-dashboard-view__text" :class="`ff-t-${healthTone(s) === 'success' ? 'down' : healthTone(s)}`">
-                  {{ healthText(s) }}
-                </span>
-                <span class="ff-dashboard-view__num ff-num">{{ s.success_rate }}%</span>
-                <span class="ff-dashboard-view__num ff-num">{{ s.today_count }} 条</span>
+      <!-- 运行状态 + 数据源健康 -->
+      <section class="ff-dash-section">
+        <header class="ff-dash-section__head">
+          <span class="ff-dash-section__eyebrow">
+            <AppIcon name="server" size="sm" /> 运行状态与数据源
+          </span>
+          <span class="ff-dash-section__hint">服务进程与采集通道健康度</span>
+        </header>
+        <div class="ff-grid">
+          <div class="ff-col-12 ff-col-lg-6">
+            <AppCard title="运行状态">
+              <ul class="ff-dashboard-view__kv">
+                <li>
+                  <span class="ff-dashboard-view__label">服务状态</span>
+                  <AppStatus :text="stats.status || '运行中'" :tone="(stats.status || '运行中') === '运行中' ? 'success' : 'danger'" />
+                </li>
+                <li>
+                  <span class="ff-dashboard-view__label">采集轮次</span>
+                  <strong class="ff-num">{{ stats.cycle ?? 0 }}</strong>
+                </li>
+                <li>
+                  <span class="ff-dashboard-view__label">本轮新增</span>
+                  <strong class="ff-num ff-t-up">{{ stats.new_count ?? 0 }}</strong>
+                </li>
+                <li>
+                  <span class="ff-dashboard-view__label">数据源数</span>
+                  <strong class="ff-num">{{ stats.source_count ?? 0 }}</strong>
+                </li>
+              </ul>
+            </AppCard>
+          </div>
+
+          <div class="ff-col-12 ff-col-lg-6">
+            <AppCard :title="`数据源健康`" :no-padding="true">
+              <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
+                <div class="ff-dashboard-view__sources-head">
+                  <span></span>
+                  <span>名称</span>
+                  <span class="ff-dashboard-view__cell-status">状态</span>
+                  <span class="ff-dashboard-view__num">成功率</span>
+                  <span class="ff-dashboard-view__num">今日</span>
+                </div>
+                <div
+                  v-for="s in stats.source_health"
+                  :key="s.name"
+                  class="ff-dashboard-view__source"
+                >
+                  <AppStatus :tone="healthTone(s)" />
+                  <span class="ff-dashboard-view__name">{{ s.name }}</span>
+                  <span class="ff-dashboard-view__status">{{ healthText(s) }}</span>
+                  <span class="ff-dashboard-view__num ff-num">{{ s.success_rate }}%</span>
+                  <span class="ff-dashboard-view__num ff-num">{{ s.today_count }} 条</span>
+                </div>
               </div>
-            </div>
-            <EmptyState v-else text="暂无数据源信息" icon="database" />
-          </AppCard>
+              <EmptyState v-else text="暂无数据源信息" icon="database" />
+            </AppCard>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="ff-grid">
-        <div class="ff-col-12 ff-col-lg-6">
-          <AppCard title="情绪分布">
-            <ChartPanel :option="sentimentOption" height="280px" />
-          </AppCard>
+      <!-- 数据洞察 -->
+      <section class="ff-dash-section">
+        <header class="ff-dash-section__head">
+          <span class="ff-dash-section__eyebrow">
+            <AppIcon name="pie-chart" size="sm" /> 数据洞察
+          </span>
+          <span class="ff-dash-section__hint">情绪结构与来源集中度</span>
+        </header>
+        <div class="ff-grid">
+          <div class="ff-col-12 ff-col-lg-6">
+            <AppCard title="情绪分布">
+              <ChartPanel :option="sentimentOption" height="280px" />
+            </AppCard>
+          </div>
+          <div class="ff-col-12 ff-col-lg-6">
+            <AppCard title="来源 TOP10">
+              <ChartPanel :option="sourceOption" height="280px" />
+            </AppCard>
+          </div>
         </div>
-        <div class="ff-col-12 ff-col-lg-6">
-          <AppCard title="来源 TOP10">
-            <ChartPanel :option="sourceOption" height="280px" />
-          </AppCard>
-        </div>
-      </div>
+      </section>
     </template>
   </div>
 </template>
@@ -154,62 +199,132 @@ onMounted(async () => {
   margin: 0 auto;
 }
 
+.ff-dash-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+
+.ff-dash-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ff-space-3);
+  padding: 0 var(--ff-space-1);
+}
+
+.ff-dash-section__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  font-size: var(--ff-fs-body-sm);
+  font-weight: 600;
+  color: var(--ff-text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.ff-dash-section__hint {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+
 .ff-dashboard-view__stats {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--ff-space-4);
-  margin-bottom: var(--ff-space-5);
 }
 
 .ff-dashboard-view__kv {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-3);
   margin: 0;
   padding: 0;
 }
-
 .ff-dashboard-view__kv li {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: var(--ff-fs-sm);
+  padding: var(--ff-space-3) 0;
+  border-bottom: 1px dashed var(--ff-border-subtle);
+  font-size: var(--ff-fs-body-sm);
+}
+.ff-dashboard-view__kv li:last-child {
+  border-bottom: none;
+}
+.ff-dashboard-view__label {
+  color: var(--ff-text-secondary);
+}
+.ff-dashboard-view__kv strong {
+  font-weight: 600;
+  font-size: var(--ff-fs-body);
+  color: var(--ff-text-primary);
 }
 
 .ff-dashboard-view__sources {
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-2);
-  max-height: 320px;
+  max-height: 360px;
   overflow-y: auto;
-  padding: var(--ff-space-4);
+  padding: var(--ff-space-2) var(--ff-space-4) var(--ff-space-4);
+}
+
+.ff-dashboard-view__sources-head {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 64px 72px 72px;
+  align-items: center;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-2) 0;
+  font-size: var(--ff-fs-caption);
+  font-weight: 600;
+  color: var(--ff-text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ff-border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--ff-bg-surface);
+  z-index: 1;
+}
+.ff-dashboard-view__cell-status {
+  text-align: left;
 }
 
 .ff-dashboard-view__source {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 64px 72px 72px;
   align-items: center;
   gap: var(--ff-space-3);
-  font-size: var(--ff-fs-sm);
+  padding: var(--ff-space-2) var(--ff-space-2);
+  font-size: var(--ff-fs-body-sm);
+  border-radius: var(--ff-radius-sm);
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-dashboard-view__source:hover {
+  background: var(--ff-bg-hover);
 }
 
 .ff-dashboard-view__name {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ff-text-primary);
+  font-weight: 500;
 }
 
-.ff-dashboard-view__text {
-  font-size: var(--ff-fs-xs);
-  font-weight: 600;
+.ff-dashboard-view__status {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .ff-dashboard-view__num {
-  width: 56px;
   text-align: right;
   color: var(--ff-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 @media (min-width: 1024px) {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { api } from '../api/client'
 import AppInput from '../ui/AppInput.vue'
 import AppDatePicker from '../ui/AppDatePicker.vue'
@@ -42,7 +42,39 @@ function setSource(s) {
   emitChange()
 }
 
+const exportOpen = ref(false)
+const exportRoot = ref(null)
+
+const exportFormats = [
+  { k: 'json', label: 'JSON', desc: '结构化数据，便于二次处理' },
+  { k: 'csv', label: 'CSV', desc: '表格软件通用格式' },
+  { k: 'md', label: 'Markdown', desc: '适合阅读与文档归档' },
+]
+
+function toggleExport() {
+  exportOpen.value = !exportOpen.value
+}
+function closeExport() {
+  exportOpen.value = false
+}
+function onDocClick(e) {
+  if (!exportRoot.value) return
+  if (!exportRoot.value.contains(e.target)) closeExport()
+}
+function onEsc(e) {
+  if (e.key === 'Escape') closeExport()
+}
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onEsc)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onEsc)
+})
+
 async function exportAs(fmt) {
+  closeExport()
   try {
     const res = await api.exportNews(fmt, {
       start: local.value.start || undefined,
@@ -81,9 +113,36 @@ async function exportAs(fmt) {
         placeholder="结束日期"
         @change="emitChange"
       />
-      <AppButton variant="secondary" size="sm" icon="download" icon-right="chevron-down" @click="exportAs('json')">JSON</AppButton>
-      <AppButton variant="secondary" size="sm" icon="download" icon-right="chevron-down" @click="exportAs('csv')">CSV</AppButton>
-      <AppButton variant="secondary" size="sm" icon="download" icon-right="chevron-down" @click="exportAs('md')">MD</AppButton>
+      <div ref="exportRoot" class="ff-export">
+        <AppButton
+          variant="secondary"
+          size="sm"
+          icon="download"
+          icon-right="chevron-down"
+          :class="{ 'is-open': exportOpen }"
+          aria-haspopup="menu"
+          :aria-expanded="exportOpen"
+          @click="toggleExport"
+        >
+          导出
+        </AppButton>
+        <div v-if="exportOpen" class="ff-menu ff-menu--bottom ff-export__menu" role="menu">
+          <button
+            v-for="f in exportFormats"
+            :key="f.k"
+            type="button"
+            class="ff-menu__item"
+            role="menuitem"
+            @click="exportAs(f.k)"
+          >
+            <AppIcon name="download" size="sm" class="ff-export__icon" />
+            <span class="ff-menu__item-text">
+              <span class="ff-export__label">{{ f.label }}</span>
+              <span class="ff-export__desc">{{ f.desc }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="ff-filterbar__row">
@@ -178,10 +237,49 @@ async function exportAs(fmt) {
   display: inline-flex;
   align-items: center;
   gap: var(--ff-space-1);
-  font-size: var(--ff-fs-sm);
+  font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-secondary);
   font-weight: 600;
   margin-right: var(--ff-space-1);
+}
+
+.ff-export {
+  position: relative;
+  display: inline-flex;
+}
+.ff-export .is-open {
+  background: var(--ff-bg-active);
+  border-color: var(--ff-border-strong);
+}
+.ff-export__menu {
+  top: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  min-width: 240px;
+  padding: var(--ff-space-1);
+}
+.ff-export__icon {
+  color: var(--ff-text-tertiary);
+  flex-shrink: 0;
+}
+.ff-export__label {
+  display: block;
+  font-size: var(--ff-fs-body-sm);
+  font-weight: 600;
+  color: var(--ff-text-primary);
+  line-height: var(--ff-lh-snug);
+}
+.ff-export__desc {
+  display: block;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  margin-top: 2px;
+  line-height: var(--ff-lh-snug);
+}
+.ff-export__menu .ff-menu__item {
+  align-items: flex-start;
+  padding: var(--ff-space-2) var(--ff-space-2-5);
+  min-height: 44px;
 }
 
 @media (max-width: 767px) {
