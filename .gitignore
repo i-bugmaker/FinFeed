@@ -69,8 +69,8 @@ logs/
 # 工作目录/临时
 .omo/
 
-# 启动脚本（已移入 scripts/）
-start_monitor.bat
+# 启动脚本（根目录旧版已废弃，scripts/ 下为活跃版本，需入库）
+/start_monitor.bat
 start_web.py
 
 # 调试/探测脚本（仅根目录级别；tests/ 下的 test_*.py 是正式测试，不受影响）
@@ -86,4 +86,15 @@ start_web.py
 # 工具/自动化运行产物（非项目源码，不入库）
 .playwright-mcp/
 .uiaudit/
+
+# 前端构建产物（由 npm 生成，非源码）
+web/node_modules/
+web/dist/
+web/npm_install.log
+
+# 清理安全备份（非源码）
+_pre_cleanup_backup_*/
+
+# 误生成的空设备名残留文件
+nul
 

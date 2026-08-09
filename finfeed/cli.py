@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import logging
 import logging.handlers
+import subprocess
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -148,21 +149,108 @@ async def run_continuous(interval: int, web_port: int):
     db_set_last_exit_ts(int(time.time()))
 
 
+# ---------------------------------------------------------------------------
+# Web 服务栈启动（方案 D：双轨并行）
+# ---------------------------------------------------------------------------
+FALLBACK_WEB_PORT = 8867  # 旧 server.py 回退端口（与 FastAPI 主端口 8866 区分）
+
+
+def _launch_fastapi(port: int) -> "subprocess.Popen":
+    """以独立子进程方式启动 FastAPI(ASGI) 服务，与主监控进程解耦。
+
+    采用子进程而非线程：崩溃隔离更干净，且精确复现调试验证的启动命令
+    ``python -m uvicorn finfeed.ui.web_fastapi.app:app --host :: --port PORT``。
+    """
+    cmd = [
+        sys.executable, "-m", "uvicorn",
+        "finfeed.ui.web_fastapi.app:app",
+        "--host", "0.0.0.0",
+        "--port", str(port),
+        "--log-level", "info",
+    ]
+    logger.info("启动 FastAPI 服务(子进程): %s", " ".join(cmd))
+    # 子进程输出重定向到日志文件，避免刷屏黑窗口
+    log_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "finfeed.log"
+    )
+    child_log = open(log_path, "a", encoding="utf-8", buffering=1)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=child_log,
+        stderr=child_log,
+        stdin=subprocess.DEVNULL,
+        bufsize=1,
+        text=True,
+    )
+    return proc
+
+
+def _terminate_fastapi(proc: "subprocess.Popen"):
+    """优雅终止 FastAPI 子进程，超时则强制 kill。"""
+    try:
+        proc.terminate()
+    except Exception as e:
+        logger.debug("终止 FastAPI 子进程异常(可忽略): %s", e)
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def start_web_stack(mode: str, port: int) -> "subprocess.Popen | None":
+    """按模式启动 Web 服务栈（已简化为单轨）。
+
+    - ``mode='fastapi'``（默认）：仅 uvicorn(FastAPI) 监听 ``port``（默认 8866）。
+      旧的 8867 server.py 回退前端已移除；server.py 模块仅作为 SSE 广播通道被复用。
+    - ``mode='legacy'``：仅旧 ``server.py`` 监听 ``port``（保留向后兼容）。
+
+    返回 FastAPI 子进程句柄（可能为 ``None``），供退出时回收。
+    """
+    fastapi_proc = None
+    if mode == "fastapi":
+        # 依赖检查：uvicorn/fastapi 缺失时自动降级为旧版单轨，避免服务端无法启动
+        try:
+            import uvicorn  # noqa: F401
+        except ImportError:
+            logger.error("未检测到 uvicorn/fastapi，已降级为旧版 server.py 单轨模式。"
+                         "安装新依赖请执行: pip install -e .")
+            mode = "legacy"
+        else:
+            fastapi_proc = _launch_fastapi(port)
+            # 单轨模式：仅 FastAPI(8866) 提供服务；旧的 8867 server.py 回退已移除
+            # （server.py 中的 SSE 广播通道仍被 8866 复用，不得删除该模块）
+    if mode != "fastapi":
+        start_web_server(port=port)
+    return fastapi_proc
+
+
 def _setup_logging():
     """配置日志系统（RotatingFileHandler 轮转，避免单文件无限增长）"""
     log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "finfeed.log")
+    # 仅写文件，不向控制台输出，避免黑窗口被日志刷屏
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file,
+        encoding='utf-8',
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+    )
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[logging.handlers.RotatingFileHandler(
-            log_file,
-            encoding='utf-8',
-            maxBytes=LOG_MAX_BYTES,
-            backupCount=LOG_BACKUP_COUNT,
-        )],
+        handlers=[file_handler],
     )
+    # 防御性：移除 root 上任何残留的 StreamHandler（控制台输出源）
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.handlers.RotatingFileHandler):
+            root.removeHandler(h)
+    # asyncio 未检索的任务异常统一只写文件
+    logging.getLogger("asyncio").propagate = True
 
 
 def _run_market_action(args):
@@ -216,9 +304,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python main.py                      # 启动实时监控
+  python main.py                      # 启动实时监控（默认 FastAPI 双轨）
   python main.py --interval 60        # 每60秒抓取一次
   python main.py --once               # 只抓取一次
+  python main.py --web-only           # 仅起 Web（无浏览器环境预览新界面）
+  python main.py --web legacy         # 仅旧版 server.py 单轨
   python main.py --export json        # 导出为JSON
   python main.py --export csv         # 导出为CSV
   python main.py --export json --start 2024-01-01 --end 2024-01-31
@@ -239,6 +329,14 @@ def main():
     )
     parser.add_argument("--date", help="事实层指令所用交易日 (YYYY-MM-DD)")
     parser.add_argument("--limit", type=int, default=0, help="bars 回补数量上限")
+    parser.add_argument(
+        "--web", choices=["fastapi", "legacy"], default="fastapi",
+        help="Web 后端模式: fastapi(默认, 双轨并行 8866+8867回退) / legacy(旧 server.py 单轨)",
+    )
+    parser.add_argument(
+        "--web-only", action="store_true",
+        help="仅启动 Web 服务（不运行监控器）。无浏览器环境下可稳定预览新界面；Ctrl+C 停止。无实时推送，但可浏览已有数据。",
+    )
 
     args = parser.parse_args()
 
@@ -264,6 +362,24 @@ def main():
         print(f"\n导出完成: {count} 条新闻已保存到 {output_path}")
         return
 
+    if args.web_only:
+        fastapi_proc = start_web_stack(args.web, args.port)
+        print(f"\nWeb 服务已启动（后台运行，日志仅写入 logs/finfeed.log）：")
+        print(f"  界面:    http://127.0.0.1:{args.port}/")
+        print(f"  API文档: http://127.0.0.1:{args.port}/docs")
+        print("  按 Ctrl+C 停止。")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nWeb 服务已停止。")
+        finally:
+            if fastapi_proc is not None:
+                _terminate_fastapi(fastapi_proc)
+            stop_web_server()
+            db_set_last_exit_ts(int(time.time()))
+        return
+
     monitor = get_monitor()
 
     def _signal_handler(signum, frame):
@@ -277,8 +393,9 @@ def main():
         except (ValueError, OSError):
             pass
 
+    fastapi_proc = None
     try:
-        start_web_server(port=args.port)
+        fastapi_proc = start_web_stack(args.web, args.port)
 
         if args.once:
             total_new = asyncio.run(run_once())
@@ -288,6 +405,8 @@ def main():
     except KeyboardInterrupt:
         print(f"\n监控已停止。数据已持久化。")
     finally:
+        if fastapi_proc is not None:
+            _terminate_fastapi(fastapi_proc)
         if not args.once:
             stop_web_server()
         db_set_last_exit_ts(int(time.time()))

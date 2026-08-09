@@ -1,0 +1,771 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""FinFeed FastAPI 应用（方案 D 新后端）。
+
+设计要点
+--------
+1. **复用而非重写**：业务函数与 SSE 广播通道直接复用 ``finfeed.ui.web.server``
+   （下文 ``legacy``）的模块级实现，仅替换 HTTP 传输层为 FastAPI。
+2. **SSE 桥接**：FastAPI 的 ``StreamingResponse`` 通过 threading.Queue 注册进
+   ``legacy._sse_clients``，复用同一条广播通道；monitor 触发的 ``broadcast_new_news``
+   会自动送达本端 SSE 客户端，双水位线/幂等/降级语义不变。
+3. **导出 / 健康检查 / 熔断状态**：与旧实现逐字段对齐。
+"""
+
+import os
+import csv
+import io
+import json
+import time
+import queue as _queue
+import threading as _threading
+import asyncio
+import logging
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from fastapi import FastAPI, Request, Query, Body, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
+from urllib.parse import parse_qs
+from pathlib import Path
+
+# ----------------------------------------------------------------------
+# 复用旧实现的模块级对象（SSE 客户端集合 / 广播 / 缓存 / 解析辅助）
+# ----------------------------------------------------------------------
+from finfeed.ui.web import server as legacy
+from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT, API_CACHE_TTL
+from finfeed.config.sources import get_enabled_sources, get_forum_sources
+from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
+from finfeed.storage.database import (
+    db_get_all_for_export, db_get_date_range, db_search_news,
+    db_get_news_by_id, db_mark_read, db_toggle_favorite, db_query_news,
+    db_get_statistics, db_get_favorites, get_db, db_get_all_stock_names,
+    db_get_news_after_id, db_get_max_news_id,
+)
+from finfeed.core.health import get_health_monitor
+from finfeed.llm import api as llm_api
+from finfeed.ecal import api as calendar_api
+from finfeed.ecal import fetcher as calendar_fetcher
+
+logger = logging.getLogger("news_monitor")
+
+SSE_CLIENT_QUEUE_MAXSIZE = legacy.SSE_CLIENT_QUEUE_MAXSIZE
+
+app = FastAPI(
+    title="FinFeed API",
+    version="2.1.0",
+    description="FinFeed 实时财经新闻监控 — FastAPI 后端（双轨并行，兼容旧 SSE 通道）",
+)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    """禁用前端资源（HTML/JS/CSS）的浏览器缓存，避免更新后加载旧文件。"""
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith((".html", ".js", ".css", ".mjs")) or path in ("/", "/index.html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+# ----------------------------------------------------------------------
+# 通用工具
+# ----------------------------------------------------------------------
+def parse_query_params(q: Dict[str, List[str]]) -> dict:
+    """与旧 server._parse_query_params 逐字段对齐。"""
+    def gv(key, default):
+        v = q.get(key)
+        return v[0] if v else default
+
+    if "offset" in q or "limit" in q:
+        offset = int(gv("offset", "0"))
+        page_size = int(gv("limit", "50"))
+        page_size = min(max(page_size, 10), 200)
+        page = (offset // page_size) + 1
+    else:
+        page = int(gv("page", "1"))
+        page_size = int(gv("page_size", "50"))
+        page_size = min(max(page_size, 10), 200)
+        offset = (page - 1) * page_size
+
+    source = gv("source", "all")
+    keyword = gv("keyword", "") or gv("q", "")
+    sentiment = gv("sentiment", "all")
+    stock = gv("stock", "")
+    start_date = gv("start", "")
+    end_date = gv("end", "")
+    fav_only = gv("favorites", "0") == "1"
+    unread_only = gv("unread", "0") == "1"
+    min_importance = gv("min_importance", "0")
+
+    start_ts = legacy._ts_from_date_str(start_date, end_of_day=False) if start_date else None
+    end_ts = legacy._ts_from_date_str(end_date, end_of_day=True) if end_date else None
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "offset": offset,
+        "source": source if source != "all" else None,
+        "keyword": keyword if keyword else None,
+        "sentiment": sentiment if sentiment != "all" else None,
+        "stock": stock if stock else None,
+        "start_ts": start_ts,
+        "end_ts": end_ts,
+        "is_favorite": True if fav_only else None,
+        "min_importance": float(min_importance) if min_importance else None,
+    }
+
+
+def json_resp(data, status: int = 200, max_age: int = 0):
+    headers = {"Cache-Control": f"private, max-age={max_age}" if max_age > 0 else "no-cache"}
+    return JSONResponse(content=data, status_code=status, headers=headers)
+
+
+def qdict(request: Request) -> Dict[str, List[str]]:
+    """把 FastAPI 的 query_params 规整为 {key: [values]} 形式，便于复用旧解析逻辑。"""
+    out: Dict[str, List[str]] = {}
+    for k, v in request.query_params.multi_items():
+        out.setdefault(k, []).append(v)
+    return out
+
+
+# ----------------------------------------------------------------------
+# 健康检查 / 统计
+# ----------------------------------------------------------------------
+@app.get("/api/health")
+def api_health():
+    health_monitor = get_health_monitor()
+    all_health = health_monitor.get_all_health()
+    health_data = {}
+    for name, h in all_health.items():
+        health_data[name] = {
+            "total_requests": h.total_requests,
+            "success_count": h.success_count,
+            "failure_count": h.failure_count,
+            "consecutive_failures": h.consecutive_failures,
+            "success_rate": round(h.success_rate * 100, 2),
+            "avg_latency": round(h.avg_latency * 1000, 1),
+            "is_circuit_open": h.is_circuit_open,
+            "last_error": h.last_error,
+        }
+    stats = db_get_statistics()
+    return {
+        "status": "ok",
+        "server_ts": time.time(),
+        "total_news": stats["total_news"],
+        "total_24h": stats["total_24h"],
+        "favorite_count": stats["favorite_count"],
+        "unread_count": stats["unread_count"],
+        "sources": health_data,
+    }
+
+
+@app.get("/api/stats")
+def api_stats():
+    stats = db_get_statistics()
+    with legacy._web_state_lock:
+        stats["cycle"] = legacy._web_state.get("cycle", 0)
+        stats["status"] = legacy._web_state.get("status", "运行中")
+        stats["new_count"] = legacy._web_state.get("new_count", 0)
+
+    source_list = []
+    try:
+        health_monitor = get_health_monitor()
+        all_health = health_monitor.get_all_health()
+        enabled_sources = get_enabled_sources()
+        now_ts = int(time.time())
+        day_ago = now_ts - 86400
+        with get_db() as c:
+            for s in enabled_sources:
+                raw_name = s.name
+                display_name = get_display_name(raw_name)
+                h = all_health.get(raw_name)
+                c.execute(
+                    "SELECT COUNT(*) as today_count FROM news WHERE source = ? AND publish_ts >= ?",
+                    (display_name, day_ago),
+                )
+                row = c.fetchone()
+                today_count = row["today_count"] if row else 0
+                c.execute(
+                    "SELECT publish_ts FROM news WHERE source = ? ORDER BY publish_ts DESC LIMIT 1",
+                    (display_name,),
+                )
+                r2 = c.fetchone()
+                last_news_ts = r2["publish_ts"] if r2 else 0
+                status = "normal"
+                if h:
+                    if h.is_circuit_open:
+                        status = "fused"
+                    elif h.consecutive_failures >= 2:
+                        status = "warning"
+                    elif h.total_requests > 0 and h.success_rate < 0.7:
+                        status = "warning"
+                    elif last_news_ts > 0 and (now_ts - last_news_ts) > 3600 * 6:
+                        status = "idle"
+                else:
+                    if last_news_ts > 0 and (now_ts - last_news_ts) > 3600 * 12:
+                        status = "idle"
+                last_success_str = ""
+                if h and h.last_success_ts > 0:
+                    last_success_str = bj_str_from_ts(h.last_success_ts)
+                elif last_news_ts > 0:
+                    last_success_str = bj_str_from_ts(last_news_ts)
+                last_error_str = h.last_error if h and h.last_error else ""
+                success_rate = round(h.success_rate * 100, 1) if h and h.total_requests > 0 else (100.0 if last_news_ts > 0 else 0)
+                avg_latency = round(h.avg_latency * 1000, 0) if h else 0
+                source_list.append({
+                    "name": display_name,
+                    "status": status,
+                    "success_rate": success_rate,
+                    "avg_latency": avg_latency,
+                    "today_count": today_count,
+                    "last_update": last_success_str,
+                    "last_error": last_error_str,
+                    "consecutive_failures": h.consecutive_failures if h else 0,
+                    "is_circuit_open": h.is_circuit_open if h else False,
+                })
+            # web-only 回退：monitor 未运行（_web_state 为 0）时，从 DB 派生真实指标
+            if stats["cycle"] == 0:
+                c.execute(
+                    "SELECT COUNT(DISTINCT date(publish_ts, 'unixepoch', '+8 hours')) FROM news"
+                )
+                row = c.fetchone()
+                stats["cycle"] = int(row[0]) if row and row[0] else 0
+            if stats["new_count"] == 0:
+                nb = now_bj()
+                today_start = int(time.time()) - (
+                    nb.hour * 3600 + nb.minute * 60 + nb.second
+                )
+                c.execute("SELECT COUNT(*) FROM news WHERE publish_ts >= ?", (today_start,))
+                row = c.fetchone()
+                stats["new_count"] = int(row[0]) if row and row[0] else 0
+    except Exception as e:
+        logger.error(f"获取数据源状态失败: {e}")
+    stats["source_health"] = source_list
+    return stats
+
+
+# ----------------------------------------------------------------------
+# 新闻 / 舆情 / 收藏 / 搜索 / 详情
+# ----------------------------------------------------------------------
+@app.get("/api/news")
+def api_news(request: Request):
+    try:
+        params = parse_query_params(qdict(request))
+        forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = legacy._get_cached_sources()
+        if params["source"] and params["source"] not in finance_display_names and params["source"] != "all":
+            params["source"] = None
+        cache_key = f"news:{json.dumps(params, sort_keys=True, default=str)}"
+        cached = legacy._cache_get(cache_key)
+        if cached is not None:
+            return json_resp(cached, max_age=1)
+        db_kwargs = {
+            "limit": params["page_size"],
+            "offset": params["offset"],
+            "keyword": params["keyword"],
+            "start_ts": params["start_ts"],
+            "end_ts": params["end_ts"],
+            "sentiment": params["sentiment"],
+            "is_favorite": params["is_favorite"],
+            "stock_name": params["stock"],
+            "min_importance": params["min_importance"],
+            "category_exclude": "forum",
+        }
+        if params["source"]:
+            db_kwargs["source"] = params["source"]
+        else:
+            db_kwargs["category"] = "finance"
+        news_items, db_total = db_query_news(**db_kwargs)
+        result = legacy._build_news_response(news_items, db_total, params["offset"], params["page_size"], finance_display_names)
+        legacy._cache_set(cache_key, result)
+        return json_resp(result, max_age=1)
+    except Exception as e:
+        logger.error(f"新闻API错误: {e}")
+        return json_resp({"error": str(e)}, status=500)
+
+
+@app.get("/api/sentiment")
+def api_sentiment(request: Request):
+    try:
+        params = parse_query_params(qdict(request))
+        forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = legacy._get_cached_sources()
+        cache_key = f"sentiment:{json.dumps(params, sort_keys=True, default=str)}"
+        cached = legacy._cache_get(cache_key)
+        if cached is not None:
+            return json_resp(cached, max_age=1)
+        db_kwargs = {
+            "limit": params["page_size"],
+            "offset": params["offset"],
+            "keyword": params["keyword"],
+            "start_ts": params["start_ts"],
+            "end_ts": params["end_ts"],
+            "sentiment": params["sentiment"],
+            "is_favorite": params["is_favorite"],
+            "stock_name": params["stock"],
+            "min_importance": params["min_importance"],
+            "category": "forum",
+            "source": params["source"],
+        }
+        news_items, db_total = db_query_news(**db_kwargs)
+        result = legacy._build_news_response(news_items, db_total, params["offset"], params["page_size"], forum_display_names)
+        legacy._cache_set(cache_key, result)
+        return json_resp(result, max_age=1)
+    except Exception as e:
+        logger.error(f"舆情API错误: {e}")
+        return json_resp({"error": str(e)}, status=500)
+
+
+@app.get("/api/favorites")
+def api_favorites(request: Request):
+    try:
+        params = parse_query_params(qdict(request))
+        news_items, total = db_query_news(limit=params["page_size"], offset=params["offset"], keyword=params["keyword"], is_favorite=True)
+        result = legacy._build_news_response(news_items, total, params["offset"], params["page_size"], [])
+        return json_resp(result)
+    except Exception as e:
+        return json_resp({"error": str(e)}, status=500)
+
+
+@app.get("/api/search")
+def api_search(q: str = Query("", alias="q"), limit: int = Query(100)):
+    if q:
+        news = db_search_news(q, limit=limit)
+    else:
+        news = []
+    return {"keyword": q, "count": len(news), "news": [n.to_dict() for n in news]}
+
+
+@app.get("/api/detail")
+def api_detail(id: int = Query(0)):
+    news = db_get_news_by_id(id)
+    if news:
+        db_mark_read(id, True)
+        return {"success": True, "news": news.to_dict()}
+    return {"success": False, "error": "News not found"}
+
+
+@app.get("/api/stock_names")
+def api_stock_names():
+    cache_key = "stock_names_map"
+    cached = legacy._cache_get(cache_key)
+    if cached is not None:
+        return json_resp(cached, max_age=300)
+    try:
+        stock_map = db_get_all_stock_names()
+        if not stock_map:
+            from finfeed.analysis.stock_names import STOCK_NAMES
+            stock_map = dict(STOCK_NAMES)
+        result = {"stock_names": stock_map}
+        legacy._cache_set(cache_key, result)
+        return json_resp(result, max_age=300)
+    except Exception as e:
+        logger.error(f"获取股票名称映射失败: {e}")
+        return json_resp({"stock_names": {}}, status=500)
+
+
+@app.get("/api/daterange")
+def api_daterange():
+    min_date, max_date, dates = db_get_date_range()
+    return {"min": min_date, "max": max_date, "dates": dates}
+
+
+# ----------------------------------------------------------------------
+# 收藏 / 已读（POST）
+# ----------------------------------------------------------------------
+@app.post("/api/favorite")
+def api_toggle_favorite(data: dict = Body(default={})):
+    try:
+        news_id = int(data.get("id", 0))
+        if news_id <= 0:
+            return json_resp({"success": False, "error": "Invalid id"}, status=400)
+        new_state = db_toggle_favorite(news_id)
+        legacy.invalidate_api_cache()
+        return {"success": True, "is_favorite": new_state}
+    except Exception as e:
+        return json_resp({"success": False, "error": str(e)}, status=500)
+
+
+@app.post("/api/read")
+def api_mark_read(data: dict = Body(default={})):
+    try:
+        news_id = int(data.get("id", 0))
+        is_read = bool(data.get("read", True))
+        if news_id <= 0:
+            return json_resp({"success": False, "error": "Invalid id"}, status=400)
+        db_mark_read(news_id, is_read)
+        legacy.invalidate_api_cache()
+        return {"success": True}
+    except Exception as e:
+        return json_resp({"success": False, "error": str(e)}, status=500)
+
+
+# ----------------------------------------------------------------------
+# 导出（CSV / JSON / Markdown）
+# ----------------------------------------------------------------------
+@app.get("/api/export")
+def api_export(format: str = Query("json"), start: Optional[str] = None, end: Optional[str] = None, favorites: int = Query(0)):
+    fav_only = favorites == 1
+    if fav_only:
+        news, _ = db_query_news(limit=10000, is_favorite=True)
+    else:
+        news = db_get_all_for_export(start, end)
+    ts_str = now_bj().strftime("%Y%m%d_%H%M%S")
+
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["标题", "链接", "来源", "分类", "发布时间", "时间戳", "简介", "情绪", "重要性", "关键词", "关联股票", "已收藏"])
+        for n in news:
+            w.writerow([
+                n.title, n.url, n.source, n.category, n.publish_time, n.publish_ts,
+                n.intro, n.sentiment, n.importance,
+                ",".join(n.keywords) if n.keywords else "",
+                ",".join(n.stocks) if n.stocks else "",
+                "是" if n.is_favorite else "否",
+            ])
+        data = buf.getvalue().encode("utf-8-sig")
+        return Response(content=data, media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="finfeed_news_{ts_str}.csv"'})
+    elif format in ("markdown", "md"):
+        lines = [f"# FinFeed 财经新闻导出", "", f"导出时间: {now_bj().strftime('%Y-%m-%d %H:%M:%S')}", f"共 {len(news)} 条新闻", ""]
+        for n in news:
+            time_str = n.publish_time or ""
+            lines.append(f"### [{n.title}]({n.url})")
+            lines.append(f"**来源**: {n.source} | **时间**: {time_str}")
+            if n.intro:
+                lines.append(f"> {n.intro}")
+            lines.append("")
+        content = "\n".join(lines).encode("utf-8")
+        return Response(content=content, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="finfeed_news_{ts_str}.md"'})
+    else:
+        news_dicts = [n.to_dict() for n in news]
+        data = json.dumps(news_dicts, ensure_ascii=False, indent=2).encode("utf-8")
+        return Response(content=data, media_type="application/json; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="finfeed_news_{ts_str}.json"'})
+
+
+# ----------------------------------------------------------------------
+# LLM / 日历 适配器（与旧 server 透传语义一致）
+# ----------------------------------------------------------------------
+@app.get("/api/llm/report/export")
+def api_llm_export(id: int = Query(0), fmt: str = Query("md")):
+    out = llm_api.export_report(id, fmt)
+    if not out:
+        raise HTTPException(status_code=404, detail="not found")
+    filename, body, content_type = out
+    return Response(content=body, media_type=content_type,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.api_route("/api/llm/{rest:path}", methods=["GET", "POST"])
+async def api_llm(request: Request, rest: str):
+    path = request.url.path
+    if request.method == "GET":
+        result = llm_api.handle_get(path, parse_qs(request.url.query))
+    else:
+        body = await request.body()
+        data = json.loads(body.decode("utf-8")) if body else {}
+        result = llm_api.handle_post(path, data)
+    if result is not None:
+        return json_resp(result[1], status=result[0])
+    raise HTTPException(status_code=404, detail="not found")
+
+
+@app.get("/api/calendar/export")
+def api_calendar_export(request: Request):
+    qs = parse_qs(request.url.query)
+    try:
+        payload, content_type, filename = calendar_api.export_events(qs)
+    except Exception as e:
+        logger.error(f"日历导出失败: {e}")
+        return json_resp({"error": str(e)}, status=500)
+    return Response(content=payload, media_type=content_type,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.api_route("/api/calendar/{rest:path}", methods=["GET", "POST"])
+async def api_calendar(request: Request, rest: str):
+    path = request.url.path
+    if request.method == "GET":
+        result = calendar_api.handle_get(path, parse_qs(request.url.query))
+    else:
+        body = await request.body()
+        data = json.loads(body.decode("utf-8")) if body else {}
+        result = calendar_api.handle_post(path, data)
+    if result is not None:
+        return json_resp(result[1], status=result[0])
+    raise HTTPException(status_code=404, detail="not found")
+
+
+# ----------------------------------------------------------------------
+# 市场行情（移植自 legacy._serve_market_api / _market_dates / _serve_market_action）
+# ----------------------------------------------------------------------
+_market_tasks: Dict[str, Dict] = {}
+
+
+def _market_dates(fallback_date: str) -> dict:
+    from finfeed.storage.database import get_db
+    out: Dict[str, Any] = {"billboard": None, "limit_pool": None, "sentiment": None}
+    with get_db() as c:
+        for tbl, key, cond in (
+            ("billboard", "billboard", ""),
+            ("limit_pool", "limit_pool", ""),
+            ("market_sentiment_daily", "sentiment", "WHERE (breadth > 0 OR up_limit > 0 OR down_limit > 0)"),
+            ("money_flow", "money_flow", ""),
+            ("margin_detail", "margin_detail", ""),
+            ("daily_bar", "daily_bar", ""),
+        ):
+            try:
+                c.execute(f"SELECT MAX(trade_date) AS d FROM {tbl} {cond}")
+                row = c.fetchone()
+                out[key] = row["d"] if row and row["d"] else None
+            except Exception:
+                out[key] = None
+        for tbl, key, col in (
+            ("earnings_forecast", "forecast", "notice_date"),
+            ("ipo_calendar", "ipo", "apply_date"),
+        ):
+            try:
+                c.execute(f"SELECT MAX({col}) AS d FROM {tbl}")
+                row = c.fetchone()
+                out[key] = row["d"] if row and row["d"] else None
+            except Exception:
+                out[key] = None
+    table_dates = [d for d in (out["billboard"], out["limit_pool"]) if d]
+    if table_dates:
+        out["default_date"] = max(table_dates)
+    else:
+        sent = out.get("sentiment")
+        out["default_date"] = sent or fallback_date
+    out["has_billboard"] = out["billboard"] is not None
+    out["has_limit_pool"] = out["limit_pool"] is not None
+    return out
+
+
+def _market_action(q: Dict[str, List[str]]):
+    def gv(key, default):
+        v = q.get(key)
+        return v[0] if v else default
+    action = (gv("action", "") or "").strip().lower()
+    date = gv("date", None)
+
+    if action == "status":
+        tasks = {k: {"status": v["status"], "message": v.get("message", ""), "started": v.get("started", ""), "result": v.get("result")}
+                 for k, v in _market_tasks.items()}
+        return {"success": True, "data": tasks}
+
+    svc = legacy._get_mk_service()
+    ACTION_MAP = {
+        "snapshot": ("采集行情快照", lambda: legacy._run_in_thread(lambda d=date: svc.run_daily_snapshot_sync(d))),
+        "bars": ("采集K线数据", lambda: legacy._run_in_thread(lambda d=date: svc.collect_bars_sync(d))),
+        "universe": ("初始化股票池", lambda: legacy._run_in_thread(lambda: svc.run_universe_sync())),
+        "calibrate": ("校准情绪模型", lambda: legacy._run_in_thread(lambda: legacy._mk_calibrate())),
+    }
+    if action not in ACTION_MAP:
+        return {"success": False, "error": f"未知操作: {action}，可选: {', '.join(ACTION_MAP)}"}
+    existing = _market_tasks.get(action)
+    if existing and existing["status"] == "running":
+        return {"success": False, "error": f"「{ACTION_MAP[action][0]}」正在执行中，请等待完成"}
+    label = ACTION_MAP[action][0]
+    task_id = f"{action}_{int(time.time())}"
+    _market_tasks[action] = {"status": "running", "message": f"⏳ {label} 执行中…", "started": datetime.now().strftime("%H:%M:%S"), "result": None}
+
+    def _worker():
+        try:
+            result = ACTION_MAP[action][1]()
+            _market_tasks[action]["status"] = "done"
+            _market_tasks[action]["message"] = f"✅ {label} 完成"
+            _market_tasks[action]["result"] = result
+        except Exception as exc:
+            _market_tasks[action]["status"] = "error"
+            _market_tasks[action]["message"] = f"❌ {label} 失败: {exc}"
+            _market_tasks[action]["result"] = str(exc)
+            logger.error("Market action '%s' failed: %s", action, exc, exc_info=True)
+    t = _threading.Thread(target=_worker, daemon=True, name=f"mk-{action}")
+    t.start()
+    return {"success": True, "data": {"task_id": task_id, "action": action, "label": label, "status": "running", "message": f"已启动「{label}，后台执行中"}}
+
+
+@app.api_route("/api/market/{rest:path}", methods=["GET", "POST"])
+async def api_market(rest: str, request: Request):
+    q = qdict(request)
+    date = (q.get("date", [None])[0]) or now_bj().strftime("%Y-%m-%d")
+    sub = rest.strip("/") or "sentiment"
+
+    if sub == "action":
+        return _market_action(q)
+
+    def _int(key: str, default: int, cap: int = 500) -> int:
+        try:
+            return max(1, min(int(q.get(key, [default])[0]), cap))
+        except (TypeError, ValueError):
+            return default
+
+    try:
+        from finfeed.market import store as mk_store
+        from finfeed.storage import sentiment_store as ss
+        from finfeed.market import alerts as mk_alerts
+
+        if sub == "sentiment":
+            data = ss.get_market_sentiment(date) or {}
+        elif sub == "dates":
+            data = _market_dates(date)
+        elif sub == "limitup":
+            data = mk_store.get_limit_pool(date, "up")
+        elif sub == "limitdown":
+            data = mk_store.get_limit_pool(date, "down")
+        elif sub == "limitbroken":
+            data = mk_store.get_limit_pool(date, "broken")
+        elif sub == "billboard":
+            data = mk_store.get_billboard(date)
+        elif sub == "alerts":
+            data = mk_alerts.regime_summary(date)
+        elif sub == "moneyflow":
+            d = mk_store.latest_date("money_flow") or date
+            data = {
+                "trade_date": d,
+                "summary": mk_store.get_money_flow_summary(d),
+                "inflow": mk_store.get_money_flow(d, "in", q.get("order", ["main_net"])[0], _int("limit", 40)),
+                "outflow": mk_store.get_money_flow(d, "out", q.get("order", ["main_net"])[0], _int("limit", 40)),
+            }
+        elif sub == "margin":
+            d = mk_store.latest_date("margin_detail") or date
+            order = q.get("order", ["fin_net"])[0]
+            data = {
+                "trade_date": d,
+                "summary": mk_store.get_margin_summary(d),
+                "top": mk_store.get_margin_rank(d, order, True, _int("limit", 40)),
+                "bottom": mk_store.get_margin_rank(d, order, False, _int("limit", 40)),
+            }
+        elif sub == "forecast":
+            ftype = (q.get("type", [""])[0] or "").strip() or None
+            data = {
+                "stats": mk_store.get_forecast_type_stats(),
+                "rows": mk_store.get_earnings_forecast(ftype=ftype, order_by=q.get("order", ["increase_high"])[0], limit=_int("limit", 80)),
+            }
+        elif sub == "ipo":
+            data = mk_store.get_ipo_calendar(q.get("start", [None])[0], q.get("end", [None])[0], _int("limit", 80))
+        elif sub == "sectors":
+            d = mk_store.latest_date("money_flow") or date
+            stype = q.get("stype", ["concept"])[0]
+            data = {
+                "trade_date": d,
+                "sector_type": stype,
+                "rows": mk_store.get_sector_heat(d, stype, min_members=_int("min_members", 5, 100), order_by=q.get("order", ["avg_pct"])[0], limit=_int("limit", 40)),
+            }
+        elif sub == "sectorstocks":
+            d = mk_store.latest_date("money_flow") or date
+            data = mk_store.get_sector_stocks(q.get("sector", [""])[0], d, _int("limit", 60))
+        elif sub == "profile":
+            code = q.get("code", [""])[0]
+            data = mk_store.get_stock_profile(code, _int("bars", 120))
+        elif sub == "search":
+            data = mk_store.search_stock(q.get("kw", [""])[0], _int("limit", 20, 50))
+        elif sub == "overview":
+            data = mk_store.get_fact_overview()
+        elif sub == "kline":
+            code = q.get("code", [""])[0]
+            data = mk_store.get_daily_bar(code, q.get("start", [None])[0], q.get("end", [None])[0]) if code else []
+        else:
+            data = {"error": f"unknown market action: {sub}"}
+        return {"success": True, "data": data}
+    except Exception as e:
+        return json_resp({"success": False, "error": str(e)[:200]}, status=500)
+
+
+# ----------------------------------------------------------------------
+# SSE 增量推送（桥接 legacy._sse_clients 广播通道）
+# ----------------------------------------------------------------------
+@app.get("/api/events")
+async def sse_events(request: Request):
+    q = _queue.Queue(maxsize=SSE_CLIENT_QUEUE_MAXSIZE)
+    with legacy._sse_clients_lock:
+        legacy._sse_clients.add(q)
+    loop = asyncio.get_event_loop()
+    aq: "asyncio.Queue" = asyncio.Queue()
+    stop = {"v": False}
+
+    def pump():
+        while not stop["v"]:
+            try:
+                item = q.get(timeout=15)
+            except _queue.Empty:
+                asyncio.run_coroutine_threadsafe(aq.put(("ping", None)), loop)
+                continue
+            if item.get("type") == "shutdown":
+                break
+            asyncio.run_coroutine_threadsafe(aq.put(("data", item)), loop)
+
+    t = _threading.Thread(target=pump, daemon=True)
+    t.start()
+
+    async def gen():
+        yield "event: connected\ndata: {\"type\":\"connected\"}\n\n"
+        try:
+            while True:
+                kind, item = await aq.get()
+                if kind == "ping":
+                    yield ": ping\n\n"
+                else:
+                    payload = json.dumps(item, ensure_ascii=False)
+                    yield f"event: news\ndata: {payload}\n\n"
+        finally:
+            stop["v"] = True
+            with legacy._sse_clients_lock:
+                legacy._sse_clients.discard(q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.on_event("startup")
+def _startup():
+    legacy.init_broadcast_watermark()
+    try:
+        calendar_fetcher.warmup()
+    except Exception as e:
+        logger.warning(f"日历连接池预热失败（可忽略）: {e}")
+
+
+@app.get("/api/ping")
+def ping():
+    return {"service": "FinFeed API", "version": "2.1.0", "docs": "/docs"}
+
+
+# ----------------------------------------------------------------------
+# 托管前端构建产物（Phase 3：FastAPI 静态托管 SPA）
+# 注意：必须注册在所有 /api 路由之后，且不再保留返回 JSON 的 "/" 端点，
+# 以免覆盖 SPA 首页。前端使用 hash 路由，深链直接命中 "/"。
+# ----------------------------------------------------------------------
+_DIST_DIR = Path(__file__).resolve().parent.parent.parent.parent / "web" / "dist"
+if _DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(_DIST_DIR), html=True), name="spa")
+
+
+def run(port: int = DEFAULT_WEB_PORT):
+    """启动 FastAPI 服务（双轨：旧 server.py 在 8867 作 fallback）。
+
+    绑定 0.0.0.0（IPv4）以保证 127.0.0.1/localhost 可达；
+    Windows 下 :: 默认 IPV6_V6ONLY=1，会导致 IPv4 客户端连接超时。
+    """
+    uvicorn.run(app, host="0.0.0.0", port=port, loop="asyncio")
+
+
+if __name__ == "__main__":
+    run()

@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Version](https://img.shields.io/badge/version-2.0.0-orange.svg)
+![Version](https://img.shields.io/badge/version-2.1.0-orange.svg)
 
 模块化架构的新闻抓取、分析、推送系统，支持多源实时监控。
 
@@ -67,7 +67,7 @@ playwright install chromium
 ### 启动监控
 
 ```bash
-# 启动实时监控
+# 启动实时监控（默认 Web 后端 = FastAPI 双轨并行）
 python main.py
 
 # 自定义抓取间隔（每60秒）
@@ -76,9 +76,56 @@ python main.py --interval 60
 # 只抓取一次
 python main.py --once
 
-# 启动 Web 服务（默认端口8866）
-python main.py --port 8866
+# 显式指定 Web 后端模式
+python main.py --web fastapi   # 默认：FastAPI(8866) + 旧 server.py 回退(8867)
+python main.py --web legacy    # 仅旧版 server.py 单轨（监听 --port，默认 8866）
 ```
+
+#### Web 界面（方案 D：双轨并行）
+
+自 v2.1 起，Web 前端为 Vue 3 + Vite 构建的 SPA，由 FastAPI 同源托管；
+旧版 `server.py`（服务端模板渲染）保留为回退通道，二者并行运行。
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| `8866` | FastAPI + Vue SPA（新） | 默认主入口，现代 SaaS 亮色风格 |
+| `8867` | 旧 `server.py`（回退） | 与旧接口完全一致，仅 UI 为旧版模板 |
+
+- **API 交互文档（Swagger UI）**：`http://127.0.0.1:8866/docs`（OpenAPI 在 `/openapi.json`）
+- **交互式文档（ReDoc）**：`http://127.0.0.1:8866/redoc`
+- **健康检查**：`http://127.0.0.1:8866/api/ping`
+- 约定沿用旧版：**红涨绿跌**（涨=红 `#e5484d`，跌=绿 `#16a34a`）。
+
+> **无浏览器 / 仅预览界面**：若运行环境没有可用浏览器（Playwright 无法启动，监控器会崩溃），
+> 可用 `--web-only` 仅启动 Web 服务，避开监控器，稳定预览新界面与已有数据：
+> ```bash
+> python main.py --web-only          # 仅 Web（8866 新 / 8867 回退），Ctrl+C 停止
+> ```
+
+前端为构建产物，需 Node ≥ 18。开发/重新构建：
+
+```bash
+cd web
+npm install        # 安装依赖（vue / vue-router / pinia / axios / echarts / vite）
+npm run dev        # 开发服务器（代理 /api → 8866，支持热更新）
+npm run build      # 产出 web/dist，由 FastAPI 静态托管
+```
+
+> 注：`web/dist` 已被 FastAPI 静态挂载为 SPA 入口；若 `web/dist` 不存在，
+> FastAPI 仅提供 API（不含前端页面），此时可访问 8867 回退界面。
+
+#### 回退到旧版 Web（回滚）
+
+若新后端异常，可一键切回旧版：
+
+```bash
+python main.py --web legacy           # 仅旧版 server.py 单轨
+# 或直接以前端开发服务器 + 旧后端联调：
+cd web && npm run dev                  # 浏览器访问 http://127.0.0.1:5173
+```
+
+旧版 `finfeed/ui/web` 的全量副本已备份于 `backup_web_20260809/`，
+如需完整还原旧版前端，将该目录内容覆盖回 `finfeed/ui/web/` 即可。
 
 ### 数据导出
 
@@ -108,10 +155,13 @@ FinFeed/
 │   ├── market/                 # 市场行情数据
 │   ├── storage/                # 数据持久化
 │   ├── ui/                     # 用户界面
-│   │   └── web/templates/      # HTML 模板
+│   │   ├── web/                # 旧版 Web（server.py + 模板，8867 回退）
+│   │   └── web_fastapi/        # 新 Web 后端（FastAPI，8866 主入口）
 │   └── utils/                  # 工具函数
+├── web/                        # 新前端（Vue 3 + Vite，构建产物 dist/）
 ├── tests/                      # 测试目录（pytest）
 ├── scripts/                    # 运维/调试脚本
+├── backup_web_20260809/        # 旧版前端全量备份（回滚用）
 ├── pyproject.toml              # 构建配置（依赖唯一真相源）
 ├── main.py                     # 主入口
 ```

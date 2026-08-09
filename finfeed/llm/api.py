@@ -216,9 +216,17 @@ def _status_payload() -> Dict[str, Any]:
     providers = cfg.list_providers()
     default = cfg.get_default_provider()
     svc = get_service()
+    dp = default.to_dict() if default else None
+    # 模型可用性：存在默认配置 + 已启用 + (已配置密钥 或 已连通测试)
+    available = False
+    if default and dp:
+        available = bool(default.enabled) and (
+            bool(dp.get("has_api_key")) or default.test_status == 1
+        )
     return {
         "provider_count": len(providers),
-        "default_provider": default.to_dict() if default else None,
+        "default_provider": dp,
+        "available": available,
         "busy": svc.is_busy(),
         "active_task": svc.get_active(),
         "server_time": now_bj().strftime("%Y-%m-%d %H:%M:%S"),
@@ -280,17 +288,27 @@ def _handle_test(data: Dict[str, Any]) -> Response:
 # 报告追问（针对单份报告的上下文问答）
 # ============================================================
 def _handle_chat(data: Dict[str, Any]) -> Response:
-    """对已生成报告进行追问：以报告正文 + 程序统计为上下文，回答用户问题。
+    """LLM 对话：支持两种模式。
 
-    入参：
-      report_id : 报告 ID（必填）
-      question  : 用户问题（必填）
-      history   : 可选，此前对话 [{role, content}...]，用于多轮追问
+    模式 A — 报告追问（有 report_id）：
+      以报告正文 + 程序统计为上下文，回答用户问题。
+      入参：report_id(必填), question(必填), history(可选)
+
+    模式 B — 自由问答（无 report_id）：
+      基于近期新闻/舆情数据做通用财经问答。
+      入参：message 或 question(必填), history(可选)
     """
     rid = int(data.get("report_id") or 0)
-    question = str(data.get("question") or "").strip()
+    question = str(data.get("question") or data.get("message") or "").strip()
+
+    if not question:
+        return 400, {"ok": False, "error": "请输入问题"}
+
+    # ── 模式 B：自由问答（无 report_id）──
     if rid <= 0:
-        return 400, {"ok": False, "error": "缺少报告 ID"}
+        return _handle_free_chat(question, data.get("history"))
+
+    # ── 模式 A：报告追问 ──
     if not question:
         return 400, {"ok": False, "error": "请输入问题"}
 
@@ -368,6 +386,81 @@ def _handle_chat(data: Dict[str, Any]) -> Response:
     except Exception as e:
         logger.error(f"LLM 追问异常: {e}", exc_info=True)
         return 500, {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
+def _handle_free_chat(question: str, history=None) -> Response:
+    """自由问答模式：不依赖报告，基于近期新闻做通用财经问答。"""
+    provider = cfg.get_default_provider()
+    if provider is None:
+        return 409, {"ok": False, "error": "尚未配置任何大语言模型"}
+    if not provider.enabled:
+        return 409, {"ok": False, "error": f"配置「{provider.name}」已被禁用"}
+
+    # 尝试加载近期新闻作为上下文
+    news_context = _load_recent_news_context()
+
+    system_prompt = f"""你是 FinFeed 的财经 AI 助手，擅长回答市场、新闻、投资相关问题。
+当前时间：{now_bj().strftime('%Y-%m-%d %H:%M')}（北京时间）。
+
+{news_context}
+
+回答要求：
+1. 简洁、直接、结构清晰；
+2. 涉及具体数据时给出来源和时间；
+3. 不确定的信息明确说明；
+4. 涉及投资判断时给出风险提示。"""
+
+    try:
+        client = build_client(provider)
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+        if isinstance(history, list):
+            for m in history[-8:]:
+                if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content"):
+                    messages.append({"role": m["role"], "content": str(m["content"])[:4000]})
+        messages.append({"role": "user", "content": question[:4000]})
+
+        res = client.chat(messages, temperature=0.4)
+        return 200, {
+            "ok": True,
+            "reply": res.content.strip(),
+            "model": res.model or provider.model,
+            "prompt_tokens": res.prompt_tokens,
+            "completion_tokens": res.completion_tokens,
+        }
+    except LLMError as e:
+        logger.warning(f"LLM 自由问答失败: {e.message}")
+        return 502, {"ok": False, "error": e.message, "kind": e.kind}
+    except Exception as e:
+        logger.error(f"LLM 自由问答异常: {e}", exc_info=True)
+        return 500, {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
+def _load_recent_news_context(max_items: int = 15) -> str:
+    """从数据库加载最近新闻条目作为对话上下文摘要。"""
+    try:
+        from finfeed.storage.database import get_db
+        with get_db() as c:
+            c.execute("""
+                SELECT title, source, importance, sentiment,
+                       datetime(publish_ts, 'unixepoch', '+8 hours') as ts
+                FROM news WHERE publish_ts > strftime('%s','now','-48 hours','localtime') - 28800
+                ORDER BY publish_ts DESC LIMIT ?
+            """, (max_items,))
+            rows = c.fetchall()
+    except Exception as e:
+        logger.debug(f"加载新闻上下文失败: {e}")
+        return ""
+
+    if not rows:
+        return ""
+
+    lines = ["【近期资讯摘要（最近 48 小时）】"]
+    for r in rows:
+        imp = {3: "⚠️极重要", 2: "🔴重要", 1: "🟡一般", 0: "⚪较低"}.get(r[2], "")
+        sent = {"positive": "😊正面", "negative": "😟负面", "neutral": "😐中性"}.get(r[3], "")
+        src = r[1] or ""
+        lines.append(f"- [{r[4]}] {src} {imp}{sent} {r[0]}")
+    return "\n".join(lines) + "\n"
 
 
 # ============================================================

@@ -1,0 +1,109 @@
+<script setup>
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { api } from '../api/client'
+import NewsCard from '../components/NewsCard.vue'
+import FilterBar from '../components/FilterBar.vue'
+import EmptyState from '../components/EmptyState.vue'
+
+const filters = ref({ source: 'all', sentiment: 'all', keyword: '', start: '', end: '', favorites: false })
+const list = ref([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = 30
+const loading = ref(false)
+const finished = ref(false)
+const sources = ref([])
+const sentinel = ref(null)
+let observer = null
+
+async function loadFirst() {
+  page.value = 1
+  finished.value = false
+  list.value = []
+  await fetchPage()
+}
+async function fetchPage() {
+  if (loading.value || finished.value) return
+  loading.value = true
+  try {
+    const params = {
+      page: page.value,
+      page_size: pageSize,
+      keyword: filters.value.keyword || undefined,
+      sentiment: filters.value.sentiment !== 'all' ? filters.value.sentiment : undefined,
+      source: filters.value.source && filters.value.source !== 'all' ? filters.value.source : undefined,
+      start: filters.value.start || undefined,
+      end: filters.value.end || undefined,
+    }
+    const res = await api.sentiment(params)
+    const items = res.news || []
+    if (page.value === 1) {
+      list.value = items
+      // 用舆情自己的来源列表（与新闻流隔离：雪球/股吧/论坛等）
+      if (res.sources) sources.value = res.sources.map((s) => ({ name: s }))
+    } else {
+      list.value = [...list.value, ...items]
+    }
+    total.value = res.total || 0
+    if (list.value.length >= total.value || items.length === 0) finished.value = true
+    page.value += 1
+  } catch (e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
+function onFilterChange() {
+  loadFirst()
+}
+onMounted(async () => {
+  await loadFirst()
+  await nextTick()
+  observer = new IntersectionObserver(
+    (e) => e[0].isIntersecting && fetchPage(),
+    { rootMargin: '300px' },
+  )
+  if (sentinel.value) observer.observe(sentinel.value)
+})
+onUnmounted(() => observer && observer.disconnect())
+</script>
+
+<template>
+  <div class="view">
+    <p class="hint text-2">股吧 / 论坛舆情（论坛类来源），用于感知市场情绪与热点讨论。</p>
+    <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
+    <div class="list">
+      <NewsCard v-for="item in list" :key="item.id" :item="item" mode="sentiment" />
+      <EmptyState v-if="!loading && list.length === 0" text="暂无舆情数据" />
+    </div>
+    <div ref="sentinel" class="sentinel">
+      <span v-if="loading" class="spinner"></span>
+      <span v-else-if="finished" class="text-3">— 已加载全部 {{ total }} 条 —</span>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.view {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+.hint {
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-4);
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.sentinel {
+  text-align: center;
+  padding: var(--sp-5);
+  color: var(--text-3);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+</style>

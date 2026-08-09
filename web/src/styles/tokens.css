@@ -1,0 +1,116 @@
+/* ============================================================
+   FinFeed 设计令牌 — 现代 SaaS 亮色风
+   语义色遵循 A 股惯例：涨=红，跌=绿（红涨绿跌）
+   ============================================================ */
+:root,
+[data-theme='light'] {
+  /* 背景层级 */
+  --bg-page: #f5f6f8;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f0f1f3;
+  --bg-hover: #eceef1;
+  --overlay: rgba(17, 24, 39, 0.45);
+
+  /* 边框 */
+  --border: #e7eaef;
+  --border-strong: #d6dae2;
+
+  /* 文本 */
+  --text-1: #1a1d23;
+  --text-2: #5f5e5a;
+  --text-3: #9ca3af;
+
+  /* 品牌主色（蓝） */
+  --primary: #185fa5;
+  --primary-hover: #134c84;
+  --primary-active: #0f3e6e;
+  --primary-subtle: rgba(24, 95, 165, 0.08);
+  --primary-text: #ffffff;
+
+  /* 语义色：红涨绿跌 */
+  --up: #e5484d;        /* 涨 / 利好 */
+  --up-subtle: rgba(229, 72, 77, 0.1);
+  --down: #16a34a;      /* 跌 / 利空 */
+  --down-subtle: rgba(22, 163, 74, 0.1);
+  --warn: #d97706;
+  --warn-subtle: rgba(217, 119, 6, 0.1);
+  --info: #2563eb;
+  --info-subtle: rgba(37, 99, 235, 0.08);
+  --star: #f59e0b;
+  --star-subtle: rgba(245, 158, 11, 0.12);
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 12px 30px rgba(16, 24, 40, 0.1);
+
+  /* 圆角 */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  /* 间距 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* 字号 */
+  --fs-xs: 13px;
+  --fs-sm: 14px;
+  --fs-base: 15px;
+  --fs-md: 17px;
+  --fs-lg: 20px;
+  --fs-xl: 24px;
+  --fs-2xl: 30px;
+
+  /* 侧栏宽度 */
+  --sidebar-w: 220px;
+  --header-h: 60px;
+  /* 内容区最大宽度（加宽以提升信息密度） */
+  --content-max: 100%;
+
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB',
+    'Noto Sans CJK SC', 'Source Han Sans CN', system-ui, -apple-system, sans-serif;
+  --font-num: 'SF Mono', 'JetBrains Mono', 'Roboto Mono', ui-monospace, 'Cascadia Code', monospace;
+}
+
+[data-theme='dark'] {
+  --bg-page: #0d1117;
+  --bg-surface: #161b22;
+  --bg-surface-2: #1c2128;
+  --bg-hover: #1c2333;
+  --overlay: rgba(0, 0, 0, 0.5);
+
+  --border: #30363d;
+  --border-strong: #484f58;
+
+  --text-1: #e6edf3;
+  --text-2: #9ba5b2;
+  --text-3: #6e7681;
+
+  --primary: #58a6ff;
+  --primary-hover: #79c0ff;
+  --primary-active: #1f6feb;
+  --primary-subtle: rgba(88, 166, 255, 0.12);
+  --primary-text: #0d1117;
+
+  --up: #f85149;
+  --up-subtle: rgba(248, 81, 73, 0.12);
+  --down: #3fb950;
+  --down-subtle: rgba(63, 185, 80, 0.12);
+  --warn: #d29922;
+  --warn-subtle: rgba(210, 153, 34, 0.12);
+  --info: #58a6ff;
+  --info-subtle: rgba(88, 166, 255, 0.12);
+  --star: #f0b429;
+  --star-subtle: rgba(240, 180, 41, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --content-max: 100%;
+}
