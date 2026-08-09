@@ -837,6 +837,7 @@
 .ff-dropdown.ff-menu {
   min-width: auto;
 }
+.ff-select__trigger {
   display: flex;
   align-items: center;
   gap: var(--ff-space-2);
