@@ -1,6 +1,11 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { api } from '../api/client'
+import AppInput from '../ui/AppInput.vue'
+import AppDatePicker from '../ui/AppDatePicker.vue'
+import AppButton from '../ui/AppButton.vue'
+import AppCheckbox from '../ui/AppCheckbox.vue'
+import AppIcon from '../ui/AppIcon.vue'
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
@@ -52,48 +57,78 @@ async function exportAs(fmt) {
 </script>
 
 <template>
-  <div class="filterbar card">
-    <div class="row">
-      <div class="search">
-        <span class="ico">🔍</span>
-        <input
-          v-model="local.keyword"
-          @keyup.enter="emitChange"
-          placeholder="关键词 / 股票代码…"
-        />
-      </div>
-      <input class="date" type="date" v-model="local.start" @change="emitChange" />
-      <span class="tilde">~</span>
-      <input class="date" type="date" v-model="local.end" @change="emitChange" />
-      <button class="btn" @click="exportAs('json')">导出 JSON</button>
-      <button class="btn" @click="exportAs('csv')">导出 CSV</button>
-      <button class="btn" @click="exportAs('md')">导出 MD</button>
+  <div class="ff-filterbar">
+    <div class="ff-filterbar__row">
+      <AppInput
+        v-model="local.keyword"
+        class="ff-filterbar__search"
+        prefix-icon="search"
+        placeholder="关键词 / 股票代码…"
+        clearable
+        @enter="emitChange"
+        @blur="emitChange"
+      />
+      <AppDatePicker
+        v-model="local.start"
+        class="ff-filterbar__date"
+        placeholder="开始日期"
+        @change="emitChange"
+      />
+      <span class="ff-filterbar__sep">~</span>
+      <AppDatePicker
+        v-model="local.end"
+        class="ff-filterbar__date"
+        placeholder="结束日期"
+        @change="emitChange"
+      />
+      <AppButton variant="secondary" size="sm" icon="download" icon-right="chevron-down" @click="exportAs('json')">JSON</AppButton>
+      <AppButton variant="secondary" size="sm" icon="download" icon-right="chevron-down" @click="exportAs('csv')">CSV</AppButton>
+      <AppButton variant="secondary" size="sm" icon="download" icon-right="chevron-down" @click="exportAs('md')">MD</AppButton>
     </div>
-    <div class="row">
-      <span class="lbl">情绪</span>
+
+    <div class="ff-filterbar__row">
+      <span class="ff-filterbar__label">
+        <AppIcon name="activity" size="xs" /> 情绪
+      </span>
       <button
         v-for="s in sentiments"
         :key="s.k"
-        class="chip-btn"
-        :class="[s.k === 'positive' ? 'pos' : s.k === 'negative' ? 'neg' : '', { active: (local.sentiment || 'all') === s.k }]"
+        type="button"
+        class="ff-chip"
+        :class="[
+          `ff-chip--${s.k === 'positive' ? 'up' : s.k === 'negative' ? 'down' : 'default'}`,
+          (local.sentiment || 'all') === s.k && 'ff-chip--active',
+        ]"
         @click="setSentiment(s.k)"
       >
         {{ s.label }}
       </button>
-      <label v-if="showFav" class="check">
-        <input type="checkbox" v-model="local.favorites" @change="emitChange" /> 仅收藏
-      </label>
+      <AppCheckbox
+        v-if="showFav"
+        v-model="local.favorites"
+        label="仅收藏"
+        @change="emitChange"
+      />
     </div>
-    <div class="row wrap">
-      <span class="lbl">来源</span>
-      <button class="chip-btn" :class="{ active: !local.source || local.source === 'all' }" @click="setSource('all')">
+
+    <div class="ff-filterbar__row ff-filterbar__row--wrap">
+      <span class="ff-filterbar__label">
+        <AppIcon name="layers" size="xs" /> 来源
+      </span>
+      <button
+        type="button"
+        class="ff-chip"
+        :class="(!local.source || local.source === 'all') && 'ff-chip--active'"
+        @click="setSource('all')"
+      >
         全部
       </button>
       <button
         v-for="s in sources"
         :key="s.name"
-        class="chip-btn"
-        :class="{ active: local.source === s.name }"
+        type="button"
+        class="ff-chip"
+        :class="local.source === s.name && 'ff-chip--active'"
         @click="setSource(s.name)"
       >
         {{ s.name }}
@@ -103,90 +138,55 @@ async function exportAs(fmt) {
 </template>
 
 <style scoped>
-.filterbar {
-  padding: var(--sp-4) var(--sp-5);
+.ff-filterbar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: var(--sp-5);
+  gap: var(--ff-space-3);
+  margin-bottom: var(--ff-space-5);
+  padding: var(--ff-space-4);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-bg-surface);
 }
-.row {
+
+.ff-filterbar__row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--ff-space-3);
   flex-wrap: wrap;
 }
-.row.wrap {
-  gap: 8px;
+
+.ff-filterbar__row--wrap {
+  gap: var(--ff-space-2);
 }
-.search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 8px 12px;
-  flex: 1;
-  min-width: 240px;
+
+.ff-filterbar__search {
+  flex: 1 1 240px;
+  min-width: 200px;
 }
-.search input {
-  border: none;
-  background: none;
-  outline: none;
-  font-size: var(--fs-sm);
-  width: 100%;
-  color: var(--text-1);
+
+.ff-filterbar__date {
+  width: 150px;
 }
-.date {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  border-radius: var(--r-sm);
-  padding: 8px 10px;
-  font-size: var(--fs-sm);
-  color: var(--text-1);
-}
-.tilde {
-  color: var(--text-3);
-}
-.lbl {
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  font-weight: 600;
-  margin-right: 2px;
-}
-.chip-btn {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  color: var(--text-2);
-  border-radius: var(--r-pill);
-  padding: 6px 14px;
-  font-size: var(--fs-sm);
+
+.ff-filterbar__sep {
+  color: var(--ff-text-tertiary);
   font-weight: 500;
-  transition: 0.15s;
 }
-.chip-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-.chip-btn.active {
-  background: var(--primary);
-  color: var(--primary-text);
-  border-color: var(--primary);
-}
-.chip-btn.pos.active {
-  background: var(--up);
-  border-color: var(--up);
-}
-.chip-btn.neg.active {
-  background: var(--down);
-  border-color: var(--down);
-}
-.check {
+
+.ff-filterbar__label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
+  gap: var(--ff-space-1);
+  font-size: var(--ff-fs-sm);
+  color: var(--ff-text-secondary);
+  font-weight: 600;
+  margin-right: var(--ff-space-1);
+}
+
+@media (max-width: 767px) {
+  .ff-filterbar__date {
+    width: 100%;
+  }
 }
 </style>

@@ -1,102 +1,138 @@
 <script setup>
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import AppIcon from '../ui/AppIcon.vue'
+import AppLogo from '../ui/AppLogo.vue'
+
+const props = defineProps({
+  mobile: { type: Boolean, default: false },
+})
+
+const emit = defineEmits(['close'])
 
 const route = useRoute()
+
 const nav = [
-  { to: '/news', label: '新闻流', icon: '📰' },
-  { to: '/sentiment', label: '舆情', icon: '💬' },
-  { to: '/calendar', label: '财经日历', icon: '📅' },
-  { to: '/market', label: '行情', icon: '📈' },
-  { to: '/favorites', label: '收藏', icon: '⭐' },
-  { to: '/dashboard', label: '仪表盘', icon: '📊' },
-  { to: '/ai', label: 'AI 分析', icon: '🤖' },
+  { to: '/news', label: '新闻流', icon: 'newspaper' },
+  { to: '/sentiment', label: '舆情', icon: 'chatter' },
+  { to: '/calendar', label: '财经日历', icon: 'calendar' },
+  { to: '/market', label: '行情', icon: 'trending-up' },
+  { to: '/favorites', label: '收藏', icon: 'star' },
+  { to: '/dashboard', label: '仪表盘', icon: 'dashboard' },
+  { to: '/ai', label: 'AI 分析', icon: 'sparkles' },
 ]
+
+const activeIndex = computed(() => nav.findIndex(item => route.path === item.to || route.path.startsWith(item.to + '/')))
 </script>
 
 <template>
-  <aside class="sidebar">
-    <div class="brand">
-      <span class="logo">FF</span>
-      <span class="brand-name">FinFeed</span>
+  <aside class="ff-sidebar" :class="mobile && 'ff-sidebar--mobile'">
+    <div class="ff-sidebar__brand">
+      <AppLogo mode="combined" :size="34" />
     </div>
-    <nav class="nav">
+
+    <nav class="ff-sidebar__nav" aria-label="主导航">
       <router-link
-        v-for="item in nav"
+        v-for="(item, idx) in nav"
         :key="item.to"
         :to="item.to"
-        class="nav-item"
-        :class="{ active: route.path === item.to }"
+        class="ff-sidebar__item"
+        :class="activeIndex === idx && 'ff-sidebar__item--active'"
+        @click="mobile && emit('close')"
       >
-        <span class="ico">{{ item.icon }}</span>
-        <span>{{ item.label }}</span>
+        <AppIcon
+          :name="item.icon"
+          :tone="activeIndex === idx ? 'brand' : 'muted'"
+          size="md"
+          class="ff-sidebar__icon"
+        />
+        <span class="ff-sidebar__label">{{ item.label }}</span>
       </router-link>
     </nav>
+
+    <div class="ff-sidebar__footer">
+      <div class="ff-sidebar__hint">
+        <AppIcon name="broadcast" size="xs" tone="success" />
+        <span>实时数据接入中</span>
+      </div>
+    </div>
   </aside>
 </template>
 
 <style scoped>
-.sidebar {
-  width: var(--sidebar-w);
+.ff-sidebar {
+  width: var(--ff-sidebar-w);
   flex-shrink: 0;
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border);
+  background: var(--ff-bg-surface);
+  border-right: 1px solid var(--ff-border);
   display: flex;
   flex-direction: column;
-  padding: var(--sp-4) 0;
+  padding: var(--ff-space-5) 0 var(--ff-space-4);
+  min-height: 100%;
 }
-.brand {
+
+.ff-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 var(--sp-5) var(--sp-5);
+  padding: 0 var(--ff-space-5) var(--ff-space-5);
 }
-.logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--primary);
-  color: var(--primary-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: var(--fs-sm);
-}
-.brand-name {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-.nav {
+
+.ff-sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 var(--sp-3);
-  flex: 1;
+  gap: var(--ff-space-1);
+  padding: 0 var(--ff-space-3);
+  flex: 1 1 auto;
 }
-.nav-item {
+
+.ff-sidebar__item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: var(--r-sm);
-  color: var(--text-2);
-  font-size: var(--fs-base);
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-3) var(--ff-space-4);
+  border-radius: var(--ff-radius-md);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-base);
   font-weight: 500;
-  transition: 0.15s;
+  line-height: 1;
+  text-decoration: none;
+  transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
+  outline: none;
 }
-.nav-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-1);
+
+.ff-sidebar__item:hover {
+  background: var(--ff-bg-hover);
+  color: var(--ff-text-primary);
 }
-.nav-item.active {
-  background: var(--primary-subtle);
-  color: var(--primary);
+
+.ff-sidebar__item:focus-visible {
+  box-shadow: var(--ff-focus-ring);
+}
+
+.ff-sidebar__item--active {
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-text-brand);
   font-weight: 600;
 }
-.ico {
-  font-size: var(--fs-md);
-  width: 22px;
-  text-align: center;
+
+.ff-sidebar__icon {
+  flex-shrink: 0;
+}
+
+.ff-sidebar__footer {
+  padding: 0 var(--ff-space-4);
+  margin-top: auto;
+}
+
+.ff-sidebar__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: var(--ff-space-2) var(--ff-space-3);
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-subtle);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-xs);
+  font-weight: 500;
 }
 </style>

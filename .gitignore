@@ -116,6 +116,9 @@ out/
 .turbo/
 .vite/
 
+# Vite 临时配置文件（加载 vite.config 时瞬时生成）
+*.timestamp-*.mjs
+
 # 包管理器日志 / 缓存
 npm-debug.log*
 yarn-debug.log*

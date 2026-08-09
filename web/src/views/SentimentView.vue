@@ -4,6 +4,8 @@ import { api } from '../api/client'
 import NewsCard from '../components/NewsCard.vue'
 import FilterBar from '../components/FilterBar.vue'
 import EmptyState from '../components/EmptyState.vue'
+import AppIcon from '../ui/AppIcon.vue'
+import AppSkeleton from '../ui/AppSkeleton.vue'
 
 const filters = ref({ source: 'all', sentiment: 'all', keyword: '', start: '', end: '', favorites: false })
 const list = ref([])
@@ -39,7 +41,6 @@ async function fetchPage() {
     const items = res.news || []
     if (page.value === 1) {
       list.value = items
-      // 用舆情自己的来源列表（与新闻流隔离：雪球/股吧/论坛等）
       if (res.sources) sources.value = res.sources.map((s) => ({ name: s }))
     } else {
       list.value = [...list.value, ...items]
@@ -69,41 +70,51 @@ onUnmounted(() => observer && observer.disconnect())
 </script>
 
 <template>
-  <div class="view">
-    <p class="hint text-2">股吧 / 论坛舆情（论坛类来源），用于感知市场情绪与热点讨论。</p>
-    <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
-    <div class="list">
-      <NewsCard v-for="item in list" :key="item.id" :item="item" mode="sentiment" />
-      <EmptyState v-if="!loading && list.length === 0" text="暂无舆情数据" />
+  <div class="ff-page ff-sentiment-view">
+    <div class="ff-page__header">
+      <div>
+        <h1 class="ff-page__title">
+          <AppIcon name="chatter" size="lg" /> 舆情
+        </h1>
+        <p class="ff-page__subtitle">股吧 / 论坛舆情聚合，感知市场情绪与热点讨论</p>
+      </div>
     </div>
-    <div ref="sentinel" class="sentinel">
-      <span v-if="loading" class="spinner"></span>
-      <span v-else-if="finished" class="text-3">— 已加载全部 {{ total }} 条 —</span>
+
+    <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
+
+    <div class="ff-sentiment-view__list">
+      <NewsCard v-for="item in list" :key="item.id" :item="item" mode="sentiment" />
+      <EmptyState v-if="!loading && list.length === 0" text="暂无舆情数据" icon="chatter" />
+    </div>
+
+    <div ref="sentinel" class="ff-sentiment-view__sentinel">
+      <AppSkeleton v-if="loading" variant="text" :lines="2" />
+      <span v-else-if="finished" class="ff-text-muted">
+        <AppIcon name="check-circle" size="xs" /> 已加载全部 {{ total }} 条
+      </span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.view {
-  max-width: var(--content-max);
+.ff-sentiment-view {
+  max-width: var(--ff-container-max);
   margin: 0 auto;
 }
-.hint {
-  font-size: var(--fs-sm);
-  margin-bottom: var(--sp-4);
-}
-.list {
+
+.ff-sentiment-view__list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--ff-space-3);
 }
-.sentinel {
-  text-align: center;
-  padding: var(--sp-5);
-  color: var(--text-3);
+
+.ff-sentiment-view__sentinel {
   display: flex;
-  gap: 10px;
   align-items: center;
   justify-content: center;
+  padding: var(--ff-space-5) 0 var(--ff-space-10);
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-sm);
+  gap: var(--ff-space-2);
 }
 </style>

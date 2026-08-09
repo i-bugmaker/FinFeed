@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { useAppStore } from '../store/app'
 import { useRouter } from 'vue-router'
+import AppButton from '../ui/AppButton.vue'
+import AppIcon from '../ui/AppIcon.vue'
 
 const store = useAppStore()
 const router = useRouter()
@@ -13,36 +15,39 @@ function go() {
 </script>
 
 <template>
-  <transition name="slide">
-    <button v-if="count > 0" class="badge" @click="go">
-      ↑ {{ count }} 条新新闻
-    </button>
-  </transition>
+  <Transition name="ff-newsbadge">
+    <AppButton
+      v-if="count > 0"
+      class="ff-newsbadge"
+      variant="primary"
+      size="md"
+      pill
+      @click="go"
+    >
+      <AppIcon name="arrow-up" size="sm" />
+      {{ count }} 条新新闻
+    </AppButton>
+  </Transition>
 </template>
 
 <style scoped>
-.badge {
+.ff-newsbadge {
   position: fixed;
-  bottom: 28px;
+  bottom: var(--ff-space-6);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 50;
-  background: var(--primary);
-  color: var(--primary-text);
-  border: none;
-  border-radius: var(--r-pill);
-  padding: 11px 22px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  box-shadow: var(--shadow-lg);
-  animation: fadeIn 0.25s ease;
+  z-index: var(--ff-z-popover);
+  box-shadow: var(--ff-shadow-lg);
 }
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.25s ease;
+
+.ff-newsbadge-enter-active,
+.ff-newsbadge-leave-active {
+  transition: opacity var(--ff-dur-fast) var(--ff-ease-out),
+              transform var(--ff-dur-fast) var(--ff-ease-out);
 }
-.slide-enter-from,
-.slide-leave-to {
+
+.ff-newsbadge-enter-from,
+.ff-newsbadge-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(12px);
 }

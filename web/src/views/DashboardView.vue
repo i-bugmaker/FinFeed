@@ -4,6 +4,10 @@ import { api } from '../api/client'
 import StatCard from '../components/StatCard.vue'
 import ChartPanel from '../components/ChartPanel.vue'
 import EmptyState from '../components/EmptyState.vue'
+import AppCard from '../ui/AppCard.vue'
+import AppStatus from '../ui/AppStatus.vue'
+import AppIcon from '../ui/AppIcon.vue'
+import AppSkeleton from '../ui/AppSkeleton.vue'
 
 const stats = ref(null)
 const loading = ref(true)
@@ -19,9 +23,9 @@ const sentimentOption = computed(() => {
         radius: ['45%', '70%'],
         center: ['50%', '45%'],
         data: [
-          { name: '利好', value: s.positive || 0, itemStyle: { color: '#e5484d' } },
-          { name: '利空', value: s.negative || 0, itemStyle: { color: '#16a34a' } },
-          { name: '中性', value: s.neutral || 0, itemStyle: { color: '#9ca3af' } },
+          { name: '利好', value: s.positive || 0, itemStyle: { color: 'var(--ff-chart-up)' } },
+          { name: '利空', value: s.negative || 0, itemStyle: { color: 'var(--ff-chart-down)' } },
+          { name: '中性', value: s.neutral || 0, itemStyle: { color: 'var(--ff-chart-neutral)' } },
         ],
         label: { formatter: '{b}\n{d}%' },
       },
@@ -41,19 +45,18 @@ const sourceOption = computed(() => {
       {
         type: 'bar',
         data: entries.map((e) => e[1]).reverse(),
-        itemStyle: { color: '#185fa5', borderRadius: [0, 4, 4, 0] },
+        itemStyle: { color: 'var(--ff-chart-primary)', borderRadius: [0, 4, 4, 0] },
       },
     ],
   }
 })
 
-function healthClass(s) {
-  if (!s) return 'ok'
-  if (s.is_circuit_open) return 'fused'
+function healthTone(s) {
+  if (!s) return 'success'
+  if (s.is_circuit_open || s.status === 'fused') return 'danger'
   if (s.consecutive_failures >= 2 || s.status === 'warning') return 'warn'
-  if (s.status === 'fused') return 'fused'
-  if (s.status === 'idle') return 'idle'
-  return 'ok'
+  if (s.status === 'idle') return 'neutral'
+  return 'success'
 }
 function healthText(s) {
   if (!s) return '正常'
@@ -75,176 +78,143 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="dash">
-    <div class="stats" v-if="stats">
-      <StatCard label="新闻总量" :value="stats.total_news?.toLocaleString()" />
-      <StatCard label="近 24h" :value="stats.total_24h?.toLocaleString()" tone="up" />
-      <StatCard label="未读" :value="stats.unread_count?.toLocaleString()" />
-      <StatCard label="收藏" :value="stats.favorite_count?.toLocaleString()" />
+  <div class="ff-page ff-dashboard-view">
+    <div class="ff-page__header">
+      <div>
+        <h1 class="ff-page__title">
+          <AppIcon name="dashboard" size="lg" /> 仪表盘
+        </h1>
+        <p class="ff-page__subtitle">系统运行状态、情绪分布与来源统计</p>
+      </div>
     </div>
 
-    <div class="grid" v-if="stats">
-      <!-- 运行状态 -->
-      <div class="card block">
-        <h3>运行状态</h3>
-        <ul>
-          <li>
-            <span>服务状态</span>
-            <b :class="(stats.status || '运行中') === '运行中' ? 'up' : 'down'">{{ stats.status || '运行中' }}</b>
-          </li>
-          <li><span>采集轮次</span><b class="num">{{ stats.cycle ?? 0 }}</b></li>
-          <li><span>本轮新增</span><b class="num up">{{ stats.new_count ?? 0 }}</b></li>
-          <li><span>数据源数</span><b class="num">{{ stats.source_count ?? 0 }}</b></li>
-        </ul>
+    <AppSkeleton v-if="loading" variant="text" :lines="8" />
+    <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
+
+    <template v-else>
+      <div class="ff-dashboard-view__stats">
+        <StatCard label="新闻总量" :value="stats.total_news?.toLocaleString()" />
+        <StatCard label="近 24h" :value="stats.total_24h?.toLocaleString()" tone="up" />
+        <StatCard label="未读" :value="stats.unread_count?.toLocaleString()" />
+        <StatCard label="收藏" :value="stats.favorite_count?.toLocaleString()" />
       </div>
 
-      <!-- 数据源健康 -->
-      <div class="card block">
-        <h3>数据源健康（{{ stats.source_health?.length || 0 }}）</h3>
-        <div class="srcs" v-if="stats.source_health?.length">
-          <div v-for="s in stats.source_health" :key="s.name" class="src">
-            <span class="dot" :class="healthClass(s)"></span>
-            <span class="sn">{{ s.name }}</span>
-            <span class="stext" :class="healthClass(s)">{{ healthText(s) }}</span>
-            <span class="sr num text-3">{{ s.success_rate }}%</span>
-            <span class="sc num text-3">{{ s.today_count }} 条</span>
-          </div>
+      <div class="ff-grid">
+        <div class="ff-col-12 ff-col-lg-6">
+          <AppCard title="运行状态">
+            <ul class="ff-dashboard-view__kv">
+              <li>
+                <span>服务状态</span>
+                <AppStatus :text="stats.status || '运行中'" :tone="(stats.status || '运行中') === '运行中' ? 'success' : 'danger'" />
+              </li>
+              <li><span>采集轮次</span><strong class="ff-num">{{ stats.cycle ?? 0 }}</strong></li>
+              <li><span>本轮新增</span><strong class="ff-num ff-t-up">{{ stats.new_count ?? 0 }}</strong></li>
+              <li><span>数据源数</span><strong class="ff-num">{{ stats.source_count ?? 0 }}</strong></li>
+            </ul>
+          </AppCard>
         </div>
-        <EmptyState v-else text="暂无数据源信息" />
-      </div>
-    </div>
 
-    <div class="grid" v-if="stats">
-      <div class="card chart-card">
-        <h3>情绪分布</h3>
-        <ChartPanel :option="sentimentOption" height="280px" />
+        <div class="ff-col-12 ff-col-lg-6">
+          <AppCard :title="`数据源健康（${stats.source_health?.length || 0}）`" :no-padding="true">
+            <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
+              <div v-for="s in stats.source_health" :key="s.name" class="ff-dashboard-view__source">
+                <AppStatus :tone="healthTone(s)" />
+                <span class="ff-dashboard-view__name">{{ s.name }}</span>
+                <span class="ff-dashboard-view__text" :class="`ff-t-${healthTone(s) === 'success' ? 'down' : healthTone(s)}`">
+                  {{ healthText(s) }}
+                </span>
+                <span class="ff-dashboard-view__num ff-num">{{ s.success_rate }}%</span>
+                <span class="ff-dashboard-view__num ff-num">{{ s.today_count }} 条</span>
+              </div>
+            </div>
+            <EmptyState v-else text="暂无数据源信息" icon="database" />
+          </AppCard>
+        </div>
       </div>
-      <div class="card chart-card">
-        <h3>来源 TOP10</h3>
-        <ChartPanel :option="sourceOption" height="280px" />
+
+      <div class="ff-grid">
+        <div class="ff-col-12 ff-col-lg-6">
+          <AppCard title="情绪分布">
+            <ChartPanel :option="sentimentOption" height="280px" />
+          </AppCard>
+        </div>
+        <div class="ff-col-12 ff-col-lg-6">
+          <AppCard title="来源 TOP10">
+            <ChartPanel :option="sourceOption" height="280px" />
+          </AppCard>
+        </div>
       </div>
-    </div>
-    <EmptyState v-if="!loading && !stats" text="无法加载统计数据" />
+    </template>
   </div>
 </template>
 
 <style scoped>
-.dash {
-  max-width: var(--content-max);
+.ff-dashboard-view {
+  max-width: var(--ff-container-max);
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-5);
 }
-.stats {
+
+.ff-dashboard-view__stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--sp-4);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ff-space-4);
+  margin-bottom: var(--ff-space-5);
 }
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-4);
-}
-.chart-card {
-  padding: var(--sp-4) var(--sp-5);
-}
-.chart-card h3 {
-  font-size: var(--fs-md);
-  margin-bottom: var(--sp-3);
-}
-.block {
-  padding: var(--sp-4) var(--sp-5);
-}
-.block h3 {
-  font-size: var(--fs-md);
-  margin-bottom: var(--sp-3);
-}
-.block ul {
+
+.ff-dashboard-view__kv {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--ff-space-3);
+  margin: 0;
+  padding: 0;
 }
-.block li {
+
+.ff-dashboard-view__kv li {
   display: flex;
   justify-content: space-between;
-  font-size: var(--fs-sm);
+  align-items: center;
+  font-size: var(--ff-fs-sm);
 }
-.srcs {
+
+.ff-dashboard-view__sources {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ff-space-2);
   max-height: 320px;
   overflow-y: auto;
+  padding: var(--ff-space-4);
 }
-.src {
+
+.ff-dashboard-view__source {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: var(--fs-sm);
+  gap: var(--ff-space-3);
+  font-size: var(--ff-fs-sm);
 }
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-3);
-  flex-shrink: 0;
-}
-.dot.ok {
-  background: var(--down);
-}
-.dot.warn {
-  background: var(--warn);
-}
-.dot.fused {
-  background: var(--up);
-}
-.dot.idle {
-  background: var(--text-3);
-}
-.stext {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-}
-.stext.ok {
-  color: var(--down);
-}
-.stext.warn {
-  color: var(--warn);
-}
-.stext.fused {
-  color: var(--up);
-}
-.stext.idle {
-  color: var(--text-3);
-}
-.sn {
-  flex: 1;
+
+.ff-dashboard-view__name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sr {
-  width: 54px;
-  text-align: right;
+
+.ff-dashboard-view__text {
+  font-size: var(--ff-fs-xs);
+  font-weight: 600;
 }
-.sc {
+
+.ff-dashboard-view__num {
   width: 56px;
   text-align: right;
+  color: var(--ff-text-tertiary);
 }
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (max-width: 880px) {
-  .stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .grid {
-    grid-template-columns: 1fr;
+
+@media (min-width: 1024px) {
+  .ff-dashboard-view__stats {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 </style>

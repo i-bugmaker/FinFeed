@@ -2,6 +2,11 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../api/client'
 import NewsCard from '../components/NewsCard.vue'
+import AppCard from '../ui/AppCard.vue'
+import AppEmpty from '../ui/AppEmpty.vue'
+import AppButton from '../ui/AppButton.vue'
+import AppIcon from '../ui/AppIcon.vue'
+import AppSkeleton from '../ui/AppSkeleton.vue'
 
 const filters = ref({ keyword: '', source: 'all', sentiment: 'all', start: '', end: '' })
 const list = ref([])
@@ -52,81 +57,76 @@ onUnmounted(() => observer && observer.disconnect())
 </script>
 
 <template>
-  <div class="view">
-    <div v-if="!loading && list.length === 0" class="empty-wrap">
-      <div class="empty-card card">
-        <div class="empty-ico">⭐</div>
-        <h3>收藏夹还是空的</h3>
-        <p class="text-2">在「新闻流」或「舆情」中点击任意条目右侧的 ☆ 图标，<br />即可把感兴趣的内容收藏到这里，随时回看。</p>
-        <router-link to="/news" class="btn btn-primary">去新闻流看看</router-link>
+  <div class="ff-page ff-favorites-view">
+    <div class="ff-page__header">
+      <div>
+        <h1 class="ff-page__title">
+          <AppIcon name="star" size="lg" /> 收藏
+        </h1>
+        <p class="ff-page__subtitle">持续关注的重要新闻与舆情</p>
       </div>
     </div>
+
+    <template v-if="!loading && list.length === 0">
+      <AppCard class="ff-favorites-view__empty-card">
+        <AppEmpty
+          title="收藏夹还是空的"
+          description="在「新闻流」或「舆情」中点击任意条目右侧的星形图标，即可把感兴趣的内容收藏到这里，随时回看。"
+          icon="star"
+        >
+          <template #action>
+            <AppButton variant="primary" icon="newspaper" href="#/news">去新闻流看看</AppButton>
+          </template>
+        </AppEmpty>
+      </AppCard>
+    </template>
+
     <template v-else>
-      <div class="list">
+      <div class="ff-favorites-view__list">
         <NewsCard v-for="item in list" :key="item.id" :item="item" mode="news" />
       </div>
-      <div ref="sentinel" class="sentinel">
-        <span v-if="loading" class="spinner"></span>
-        <span v-else-if="finished" class="text-3">— 共 {{ total }} 条收藏 —</span>
+      <div ref="sentinel" class="ff-favorites-view__sentinel">
+        <AppSkeleton v-if="loading" variant="text" :lines="2" />
+        <span v-else-if="finished" class="ff-text-muted">
+          <AppIcon name="check-circle" size="xs" /> 共 {{ total }} 条收藏
+        </span>
       </div>
     </template>
   </div>
 </template>
 
 <style scoped>
-.view {
-  max-width: var(--content-max);
+.ff-favorites-view {
+  max-width: var(--ff-container-max);
   margin: 0 auto;
 }
-.list {
+
+.ff-favorites-view__list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
-  gap: var(--sp-3);
+  gap: var(--ff-space-3);
 }
-@media (max-width: 920px) {
-  .list {
-    grid-template-columns: 1fr;
-  }
-}
-.sentinel {
-  text-align: center;
-  padding: var(--sp-5);
-  color: var(--text-3);
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: center;
-}
-.empty-wrap {
+
+.ff-favorites-view__empty-card {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 60vh;
 }
-.empty-card {
-  max-width: 460px;
-  width: 100%;
-  text-align: center;
-  padding: var(--sp-6) var(--sp-5);
+
+.ff-favorites-view__sentinel {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--sp-3);
-  box-shadow: var(--shadow-sm);
+  justify-content: center;
+  padding: var(--ff-space-5) 0 var(--ff-space-10);
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-sm);
+  gap: var(--ff-space-2);
 }
-.empty-ico {
-  font-size: 52px;
-  line-height: 1;
-  filter: grayscale(0.1);
-}
-.empty-card h3 {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  margin: 0;
-}
-.empty-card p {
-  font-size: var(--fs-sm);
-  line-height: 1.7;
-  margin: 0;
+
+@media (max-width: 920px) {
+  .ff-favorites-view__list {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="FinFeed">
+  <title>FinFeed</title>
+  <defs>
+    <linearGradient id="fvBrand" x1="4" y1="2" x2="44" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f8dff"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1b3fb8"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="48" height="48" rx="11.5" fill="url(#fvBrand)"/>
+  <!-- simplified glyph: heavier strokes, no baseline, for legibility at 16px -->
+  <path d="M11.5 31L19 23L25.5 28.5L34 15.5" fill="none" stroke="#ffffff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="34" cy="15.5" r="4.2" fill="#ffffff"/>
+</svg>

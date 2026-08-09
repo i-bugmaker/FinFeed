@@ -2,6 +2,14 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { api } from '../api/client'
 import EmptyState from '../components/EmptyState.vue'
+import AppCard from '../ui/AppCard.vue'
+import AppButton from '../ui/AppButton.vue'
+import AppInput from '../ui/AppInput.vue'
+import AppDatePicker from '../ui/AppDatePicker.vue'
+import AppTabs from '../ui/AppTabs.vue'
+import AppBadge from '../ui/AppBadge.vue'
+import AppIcon from '../ui/AppIcon.vue'
+import AppSkeleton from '../ui/AppSkeleton.vue'
 
 const tabs = [
   { key: 'overview', label: '总览' },
@@ -26,7 +34,6 @@ const loading = ref(false)
 const err = ref('')
 const kw = ref('')
 
-// 表头中文化映射（覆盖行情各子模块返回字段）
 const HEADER_MAP = {
   code: '代码', name: '名称', trade_date: '交易日', date: '日期', reason: '涨停原因',
   buy_amount: '买入额', sell_amount: '卖出额', net_amount: '净额', turnover_ratio: '换手率',
@@ -58,25 +65,23 @@ const SUMMARY_MAP = {
   fin_net_sum: '融资净买合计', short_balance_sum: '融券余额合计',
   total_balance_sum: '两融余额合计', net_in_cnt: '净买入家数',
 }
-const OVERVIEW_MAP = { tables: '数据表', boards: '板块数量', health: '系统健康度' }
 function header(k) {
   return HEADER_MAP[k] || k
 }
 function summaryLabel(k) {
   return SUMMARY_MAP[k] || k
 }
-// 单元格格式化：涨跌幅保留 2 位小数
 function fmt(k, v) {
   if (k === 'pct_chg' && typeof v === 'number') return v.toFixed(2)
   return v
 }
-// 市场情绪：单条对象逐字段展示
+
 const sentimentKeys = computed(() =>
   active.value === 'sentiment' && data.value
     ? Object.keys(data.value).filter((k) => k !== 'created_at')
     : [],
 )
-// 总览：健康度概览计数
+
 const healthSummary = computed(() => {
   if (active.value !== 'overview' || !data.value || !Array.isArray(data.value.health)) return null
   const h = data.value.health
@@ -88,10 +93,10 @@ const healthSummary = computed(() => {
 })
 
 const actions = [
-  { key: 'snapshot', label: '采集行情快照' },
-  { key: 'bars', label: '采集K线' },
-  { key: 'universe', label: '初始化股票池' },
-  { key: 'calibrate', label: '校准情绪模型' },
+  { key: 'snapshot', label: '采集行情快照', icon: 'download' },
+  { key: 'bars', label: '采集K线', icon: 'bar-chart' },
+  { key: 'universe', label: '初始化股票池', icon: 'database' },
+  { key: 'calibrate', label: '校准情绪模型', icon: 'activity' },
 ]
 const actionStatus = ref('')
 
@@ -158,262 +163,238 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="market">
-    <div class="toolbar card">
-      <div class="row">
-        <span class="lbl">交易日</span>
-        <input class="date" type="date" v-model="date" />
-        <input v-if="active === 'search'" class="kw" v-model="kw" @keyup.enter="load" placeholder="股票代码/名称" />
-        <button class="btn" @click="load">刷新</button>
-      </div>
-      <div class="row actions">
-        <button v-for="a in actions" :key="a.key" class="btn" @click="runAction(a)">{{ a.label }}</button>
-        <span v-if="actionStatus" class="astat text-2">{{ actionStatus }}</span>
+  <div class="ff-page ff-market-view">
+    <div class="ff-page__header">
+      <div>
+        <h1 class="ff-page__title">
+          <AppIcon name="trending-up" size="lg" /> 行情
+        </h1>
+        <p class="ff-page__subtitle">A 股全市场数据、涨停跌停、龙虎榜与资金流向</p>
       </div>
     </div>
 
-    <div class="tabs">
-      <button
-        v-for="t in tabs"
-        :key="t.key"
-        class="tab"
-        :class="{ active: active === t.key }"
-        @click="active = t.key"
-      >
-        {{ t.label }}
-      </button>
-    </div>
-
-    <div class="panel card">
-      <div v-if="summary" class="summary">
-        <span v-for="(v, k) in summary" :key="k" class="sc"><b>{{ summaryLabel(k) }}</b> {{ v }}</span>
+    <AppCard class="ff-market-view__toolbar">
+      <div class="ff-market-view__row">
+        <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" />
+        <AppInput
+          v-if="active === 'search'"
+          v-model="kw"
+          class="ff-market-view__field"
+          label="股票代码 / 名称"
+          prefix-icon="search"
+          @enter="load"
+        />
+        <AppButton variant="secondary" size="sm" icon="refresh" @click="load">刷新</AppButton>
       </div>
-      <div v-if="loading" class="loading"><span class="spinner"></span></div>
-      <div v-else-if="err" class="err">加载失败：{{ err }}</div>
-
-      <!-- 总览：三大区块独立渲染 -->
-      <div v-else-if="active === 'overview' && data" class="ov">
-        <section class="ov-sec">
-          <h3>数据表</h3>
-          <table class="tbl">
-            <thead>
-              <tr><th>表名</th><th>标签</th><th>记录数</th><th>最新日期</th><th>标的数量</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="t in data.tables" :key="t.table">
-                <td>{{ t.table }}</td>
-                <td>{{ t.label }}</td>
-                <td>{{ t.rows }}</td>
-                <td>{{ t.latest || '—' }}</td>
-                <td>{{ t.subjects }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-        <section class="ov-sec">
-          <h3>板块数量</h3>
-          <table class="tbl">
-            <thead>
-              <tr><th>板块</th><th>总数</th><th>活跃</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="b in data.boards" :key="b.board">
-                <td>{{ b.board }}</td>
-                <td>{{ b.n }}</td>
-                <td>{{ b.active }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-        <section class="ov-sec" v-if="healthSummary">
-          <h3>系统健康度（共 {{ healthSummary.total }} 个数据源，正常 {{ healthSummary.ok }} / 熔断 {{ healthSummary.fused }}）</h3>
-          <table class="tbl">
-            <thead>
-              <tr><th>数据源</th><th>请求数</th><th>成功</th><th>失败</th><th>平均延迟(s)</th><th>状态</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="h in data.health" :key="h.source_name">
-                <td>{{ h.source_name }}</td>
-                <td>{{ h.total_requests }}</td>
-                <td>{{ h.success_count }}</td>
-                <td>{{ h.failure_count }}</td>
-                <td>{{ h.avg_latency?.toFixed(2) }}</td>
-                <td :class="h.is_circuit_open ? 'bad' : 'good'">{{ h.is_circuit_open ? '熔断' : '正常' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+      <div class="ff-market-view__row ff-market-view__row--actions">
+        <AppButton
+          v-for="a in actions"
+          :key="a.key"
+          variant="tonal"
+          size="sm"
+          :icon="a.icon"
+          @click="runAction(a)"
+        >
+          {{ a.label }}
+        </AppButton>
+        <span v-if="actionStatus" class="ff-market-view__status">{{ actionStatus }}</span>
       </div>
+    </AppCard>
 
-      <!-- 市场情绪：单条快照逐字段卡片 -->
-      <div v-else-if="active === 'sentiment' && sentimentKeys.length" class="sent-cards">
-        <div class="sent-card" v-for="k in sentimentKeys" :key="k">
-          <div class="sl">{{ header(k) }}</div>
-          <div class="sv" :class="{ neg: k === 'down_limit' }">{{ fmt(k, data[k]) }}</div>
+    <AppTabs v-model="active" type="pill" :items="tabs" class="ff-market-view__tabs" />
+
+    <AppCard class="ff-market-view__panel" :no-padding="true">
+      <div v-if="summary" class="ff-market-view__summary">
+        <div v-for="(v, k) in summary" :key="k" class="ff-kv">
+          <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
+          <span class="ff-kv__value">{{ v }}</span>
         </div>
       </div>
 
-      <table v-else-if="rows.length" class="tbl">
+      <AppSkeleton v-if="loading" variant="text" :lines="8" />
+      <div v-else-if="err" class="ff-alert ff-alert--danger">
+        <AppIcon name="alert-circle" size="md" /> {{ err }}
+      </div>
+
+      <!-- 总览 -->
+      <div v-else-if="active === 'overview' && data" class="ff-market-view__ov">
+        <section class="ff-market-view__section">
+          <h3 class="ff-h3">数据表</h3>
+          <table class="ff-table">
+            <thead>
+              <tr>
+                <th class="ff-table__header">表名</th>
+                <th class="ff-table__header">标签</th>
+                <th class="ff-table__header ff-table__header--right">记录数</th>
+                <th class="ff-table__header">最新日期</th>
+                <th class="ff-table__header ff-table__header--right">标的数量</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in data.tables" :key="t.table" class="ff-table__row">
+                <td class="ff-table__cell">{{ t.table }}</td>
+                <td class="ff-table__cell">{{ t.label }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ t.rows }}</td>
+                <td class="ff-table__cell ff-num">{{ t.latest || '—' }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ t.subjects }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section class="ff-market-view__section">
+          <h3 class="ff-h3">板块数量</h3>
+          <table class="ff-table">
+            <thead>
+              <tr>
+                <th class="ff-table__header">板块</th>
+                <th class="ff-table__header ff-table__header--right">总数</th>
+                <th class="ff-table__header ff-table__header--right">活跃</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="b in data.boards" :key="b.board" class="ff-table__row">
+                <td class="ff-table__cell">{{ b.board }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ b.n }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ b.active }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section v-if="healthSummary" class="ff-market-view__section">
+          <h3 class="ff-h3">
+            系统健康度
+            <AppBadge :text="`正常 ${healthSummary.ok} / 熔断 ${healthSummary.fused}`" variant="default" />
+          </h3>
+          <table class="ff-table">
+            <thead>
+              <tr>
+                <th class="ff-table__header">数据源</th>
+                <th class="ff-table__header ff-table__header--right">请求数</th>
+                <th class="ff-table__header ff-table__header--right">成功</th>
+                <th class="ff-table__header ff-table__header--right">失败</th>
+                <th class="ff-table__header ff-table__header--right">平均延迟(s)</th>
+                <th class="ff-table__header">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="h in data.health" :key="h.source_name" class="ff-table__row">
+                <td class="ff-table__cell">{{ h.source_name }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.total_requests }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.success_count }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.failure_count }}</td>
+                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.avg_latency?.toFixed(2) }}</td>
+                <td class="ff-table__cell">
+                  <AppBadge :text="h.is_circuit_open ? '熔断' : '正常'" :variant="h.is_circuit_open ? 'danger' : 'success'" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <!-- 市场情绪 -->
+      <div v-else-if="active === 'sentiment' && sentimentKeys.length" class="ff-market-view__sentcards">
+        <AppCard v-for="k in sentimentKeys" :key="k" flat class="ff-market-view__sentcard">
+          <div class="ff-metric">
+            <span class="ff-metric__label">{{ header(k) }}</span>
+            <span class="ff-metric__value" :class="k === 'down_limit' && 'ff-t-down'">{{ fmt(k, data[k]) }}</span>
+          </div>
+        </AppCard>
+      </div>
+
+      <table v-else-if="rows.length" class="ff-table ff-table--sticky">
         <thead>
           <tr>
-            <th v-for="(v, k) in rows[0]" :key="k">{{ header(k) }}</th>
+            <th v-for="(v, k) in rows[0]" :key="k" class="ff-table__header">{{ header(k) }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(r, i) in rows" :key="i">
-            <td v-for="(v, k) in r" :key="k">{{ fmt(k, v) }}</td>
+          <tr v-for="(r, i) in rows" :key="i" class="ff-table__row">
+            <td v-for="(v, k) in r" :key="k" class="ff-table__cell">{{ fmt(k, v) }}</td>
           </tr>
         </tbody>
       </table>
-      <EmptyState v-else text="暂无数据（可能需要先采集行情）" />
-    </div>
+      <EmptyState v-else text="暂无数据（可能需要先采集行情）" icon="bar-chart" />
+    </AppCard>
   </div>
 </template>
 
 <style scoped>
-.market {
-  max-width: var(--content-max);
+.ff-market-view {
+  max-width: var(--ff-container-max);
   margin: 0 auto;
 }
-.toolbar {
-  padding: var(--sp-4) var(--sp-5);
-  margin-bottom: var(--sp-4);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+
+.ff-market-view__toolbar {
+  margin-bottom: var(--ff-space-4);
 }
-.row {
+
+.ff-market-view__row {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-end;
+  gap: var(--ff-space-3);
   flex-wrap: wrap;
 }
-.lbl {
-  font-weight: 600;
-  color: var(--text-2);
-  font-size: var(--fs-sm);
+
+.ff-market-view__row--actions {
+  padding-top: var(--ff-space-3);
+  border-top: 1px solid var(--ff-border);
 }
-.date,
-.kw {
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 8px 10px;
-  font-size: var(--fs-sm);
-  background: var(--bg-surface);
-  color: var(--text-1);
+
+.ff-market-view__field {
+  width: 200px;
 }
-.astat {
-  font-size: var(--fs-sm);
+
+.ff-market-view__status {
+  font-size: var(--ff-fs-sm);
+  color: var(--ff-text-secondary);
 }
-.tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: var(--sp-4);
+
+.ff-market-view__tabs {
+  margin-bottom: var(--ff-space-4);
 }
-.tab {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  color: var(--text-2);
-  border-radius: var(--r-pill);
-  padding: 7px 16px;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-}
-.tab.active {
-  background: var(--primary);
-  color: var(--primary-text);
-  border-color: var(--primary);
-}
-.panel {
-  padding: var(--sp-4) var(--sp-5);
+
+.ff-market-view__panel {
   overflow-x: auto;
 }
-.summary {
+
+.ff-market-view__summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: var(--sp-4);
-  font-size: var(--fs-sm);
+  gap: var(--ff-space-4);
+  padding: var(--ff-space-4) var(--ff-space-5);
+  border-bottom: 1px solid var(--ff-border);
 }
-.summary .sc b {
-  color: var(--text-2);
-  margin-right: 4px;
+
+.ff-market-view__section {
+  padding: var(--ff-space-4) var(--ff-space-5);
+  border-bottom: 1px solid var(--ff-border);
 }
-.tbl {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: var(--fs-sm);
+
+.ff-market-view__section:last-child {
+  border-bottom: none;
 }
-.tbl th {
-  text-align: left;
-  padding: 10px 12px;
-  background: var(--bg-surface-2);
-  border-bottom: 2px solid var(--border);
-  position: sticky;
-  top: 0;
-  white-space: nowrap;
+
+.ff-market-view__section h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
 }
-.tbl td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-.tbl tbody tr:hover {
-  background: var(--bg-hover);
-}
-.tbl td.good {
-  color: var(--down);
-  font-weight: 600;
-}
-.tbl td.bad {
-  color: var(--up);
-  font-weight: 600;
-}
-/* 总览区块 */
-.ov {
+
+.ff-market-view__ov {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
 }
-.ov-sec h3 {
-  font-size: var(--fs-base);
-  margin: 0 0 var(--sp-3);
-  color: var(--text-1);
-}
-/* 市场情绪卡片 */
-.sent-cards {
+
+.ff-market-view__sentcards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--sp-3);
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-4);
 }
-.sent-card {
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: var(--sp-4) var(--sp-4);
-  background: var(--bg-surface-2);
-}
-.sent-card .sl {
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  margin-bottom: 6px;
-}
-.sent-card .sv {
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.sent-card .sv.neg {
-  color: var(--up);
-}
-.loading,
-.err {
+
+.ff-market-view__sentcard {
   text-align: center;
-  padding: var(--sp-5);
-}
-.err {
-  color: var(--up);
 }
 </style>

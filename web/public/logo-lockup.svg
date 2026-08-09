@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 48" width="208" height="48" role="img" aria-label="FinFeed">
+  <title>FinFeed</title>
+  <defs>
+    <linearGradient id="lkBrand" x1="4" y1="2" x2="44" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f8dff"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1b3fb8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="48" height="48" rx="11.5" fill="url(#lkBrand)"/>
+  <path d="M11 35.4H34" stroke="#ffffff" stroke-opacity="0.4" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M11 30L18.5 22.5L25 27.5L34 15" fill="none" stroke="#ffffff" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="34" cy="15" r="3.6" fill="#ffffff"/>
+
+  <!-- Wordmark. Uses the product type stack; convert to outlines before external distribution. -->
+  <text x="62" y="31.5"
+        font-family="Inter, 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
+        font-size="23" font-weight="700" letter-spacing="-0.6">
+    <tspan fill="#0f172a">Fin</tspan><tspan fill="#2563eb">Feed</tspan>
+  </text>
+</svg>

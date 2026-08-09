@@ -1,27 +1,16 @@
 <script setup>
 defineProps({
   text: { type: String, default: '暂无数据' },
+  icon: { type: String, default: 'inbox' },
 })
 </script>
 
 <template>
-  <div class="empty">
-    <div class="ico">🗂️</div>
-    <p class="text-3">{{ text }}</p>
-  </div>
+  <AppEmpty class="ff-empty-state" :title="text" :icon="icon" />
 </template>
 
 <style scoped>
-.empty {
-  text-align: center;
-  padding: 60px 0;
-}
-.ico {
-  font-size: 40px;
-  opacity: 0.5;
-}
-.empty p {
-  margin-top: 12px;
-  font-size: var(--fs-base);
+.ff-empty-state {
+  padding: var(--ff-space-16) 0;
 }
 </style>

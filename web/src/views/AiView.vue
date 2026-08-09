@@ -2,6 +2,15 @@
 import { ref, onMounted, computed } from 'vue'
 import { api } from '../api/client'
 import EmptyState from '../components/EmptyState.vue'
+import AppCard from '../ui/AppCard.vue'
+import AppButton from '../ui/AppButton.vue'
+import AppInput from '../ui/AppInput.vue'
+import AppSelect from '../ui/AppSelect.vue'
+import AppBadge from '../ui/AppBadge.vue'
+import AppIcon from '../ui/AppIcon.vue'
+import AppStatus from '../ui/AppStatus.vue'
+import AppCheckbox from '../ui/AppCheckbox.vue'
+import AppModal from '../ui/AppModal.vue'
 
 const status = ref(null)
 const reports = ref([])
@@ -11,8 +20,8 @@ const chatInput = ref('')
 const chatLog = ref([])
 const sending = ref(false)
 const activeReport = ref(null)
+const showReportModal = ref(false)
 
-// ---- 模型可用性（优先用后端 available，缺省时按 default_provider 推导）----
 const modelAvailable = computed(() => {
   const s = status.value
   if (!s) return false
@@ -21,7 +30,6 @@ const modelAvailable = computed(() => {
   return !!(dp && dp.enabled && (dp.has_api_key || dp.test_status === 1))
 })
 
-// ---- 配置：恢复用户之前已保存的配置项 ----
 const LS_KEY = 'finfeed_ai_config'
 const providers = ref([])
 const defaultProvider = ref(null)
@@ -152,8 +160,10 @@ async function openReport(id) {
   try {
     const r = await api.llm('/report', { id })
     activeReport.value = r.report || null
+    showReportModal.value = true
   } catch (e) {
     activeReport.value = { error: e.message }
+    showReportModal.value = true
   }
 }
 async function sendChat() {
@@ -163,13 +173,11 @@ async function sendChat() {
   chatInput.value = ''
   sending.value = true
   try {
-    // 构建历史（最近 8 轮）
     const history = chatLog.value.slice(-16).map((m) => ({
       role: m.role === 'ai' ? 'assistant' : 'user',
       content: m.text,
     }))
     const payload = { question: q, history }
-    // 如果用户选中了某份报告，自动切换为报告追问模式
     if (activeReport.value && activeReport.value.id) {
       payload.report_id = activeReport.value.id
     }
@@ -184,7 +192,7 @@ async function sendChat() {
 }
 
 // ============================================================
-// 模型管理（新增）
+// 模型管理
 // ============================================================
 const PRESETS = [
   { key: 'openai', label: 'OpenAI', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -198,6 +206,7 @@ const PRESETS = [
   { key: 'lmstudio', label: '本地 LM Studio', base_url: 'http://127.0.0.1:1234/v1', model: 'local-model' },
   { key: 'custom', label: '自定义', base_url: '', model: '' },
 ]
+
 const providerList = ref([])
 const showProviderForm = ref(false)
 const editingId = ref(null)
@@ -300,10 +309,10 @@ async function testProvider() {
       : f
     const r = await api.llmPost('/provider/test', payload)
     testResult.value = r && r.ok
-      ? `✅ 连通正常（${r.model || ''}）${r.latency_ms ? ' · ' + Math.round(r.latency_ms) + 'ms' : ''}`
-      : '❌ ' + (r.message || '连通失败')
+      ? `连通正常（${r.model || ''}）${r.latency_ms ? ' · ' + Math.round(r.latency_ms) + 'ms' : ''}`
+      : (r.message || '连通失败')
   } catch (e) {
-    testResult.value = '❌ 测试失败：' + e.message
+    testResult.value = '测试失败：' + e.message
   } finally {
     busyProvider.value = false
   }
@@ -326,6 +335,16 @@ async function deleteProvider(id) {
   } catch (e) {}
 }
 
+const providerOptions = computed(() => [
+  { label: '自动（默认模型）', value: '' },
+  ...providers.value.map((p) => ({ label: p.name, value: String(p.id) })),
+])
+const scopeSelectOptions = computed(() => scopeOptions.value.map((s) => ({ label: s.label, value: s.key })))
+const windowSelectOptions = computed(() => windowOptions.value.map((w) => ({ label: `${w} 小时`, value: w })))
+const presetOptions = computed(() => PRESETS.map((p) => ({ label: p.label, value: p.key })))
+const testOk = computed(() => testResult.value && !testResult.value.includes('失败') && testResult.value !== '测试中…')
+const testBad = computed(() => testResult.value && (testResult.value.includes('失败') || testResult.value.includes('连通失败')))
+
 onMounted(() => {
   restoreLocal()
   loadStatus()
@@ -337,700 +356,531 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="ai">
-    <!-- 头部 -->
-    <div class="top card">
-      <div class="top-l">
-        <div class="brand">
-          <span class="brand-ico">🤖</span>
+  <div class="ff-page ff-ai-view">
+    <div class="ff-page__header">
+      <div>
+        <h1 class="ff-page__title">
+          <AppIcon name="sparkles" size="lg" /> AI 分析
+        </h1>
+        <p class="ff-page__subtitle">大模型驱动的每日复盘、报告追问与自定义提示词</p>
+      </div>
+      <AppButton
+        variant="primary"
+        size="lg"
+        icon="zap"
+        :loading="analyzing"
+        :disabled="analyzing"
+        @click="generate"
+      >
+        生成每日复盘
+      </AppButton>
+    </div>
+
+    <!-- 头部状态卡 -->
+    <AppCard class="ff-ai-view__status">
+      <div class="ff-ai-view__status-main">
+        <div class="ff-ai-view__brand">
+          <div class="ff-ai-view__brand-icon">
+            <AppIcon name="cpu" size="xl" />
+          </div>
           <div>
-            <h3>AI 分析</h3>
-            <div class="status-line">
+            <h3 class="ff-h3">AI 服务状态</h3>
+            <div class="ff-ai-view__status-line">
               <template v-if="status && !status.error">
-                <span class="chip" :class="modelAvailable ? 'ok' : 'bad'">
-                  {{ modelAvailable ? '模型可用' : '模型不可用' }}
-                </span>
-                <span class="text-3">
+                <AppBadge
+                  :text="modelAvailable ? '模型可用' : '模型不可用'"
+                  :variant="modelAvailable ? 'success' : 'danger'"
+                />
+                <span class="ff-text-secondary">
                   {{ status.default_provider?.name || '未配置' }}
                   <template v-if="status.default_provider?.model">· {{ status.default_provider.model }}</template>
                 </span>
               </template>
-              <span v-else-if="status && status.error" class="text-3">状态获取失败：{{ status.error }}</span>
+              <span v-else-if="status && status.error" class="ff-text-secondary">状态获取失败：{{ status.error }}</span>
             </div>
-            <div v-if="status && status.default_provider" class="status-sub text-3">
+            <div v-if="status && status.default_provider" class="ff-ai-view__status-sub">
               {{ status.default_provider.base_url }}
-              <span v-if="status.default_provider.test_status === 1" class="t-ok">· 已连通</span>
-              <span v-else-if="status.default_provider.test_status === 0" class="t-bad">· 连通失败</span>
-              <span v-else class="t-idle">· 未测试</span>
+              <span v-if="status.default_provider.test_status === 1" class="ff-t-down">· 已连通</span>
+              <span v-else-if="status.default_provider.test_status === 0" class="ff-t-up">· 连通失败</span>
+              <span v-else class="ff-text-muted">· 未测试</span>
             </div>
           </div>
         </div>
       </div>
-      <button class="btn btn-primary lg" :disabled="analyzing" @click="generate">
-        {{ analyzing ? '生成中…' : '⚡ 生成每日复盘' }}
-      </button>
-    </div>
-    <transition name="fade">
-      <div v-if="analyzeMsg" class="banner" :class="analyzeMsg.includes('已提交') ? 'ok' : 'err'">
+    </AppCard>
+
+    <Transition name="ff-fade">
+      <div v-if="analyzeMsg" class="ff-alert" :class="analyzeMsg.includes('已提交') ? 'ff-alert--success' : 'ff-alert--danger'">
+        <AppIcon :name="analyzeMsg.includes('已提交') ? 'check-circle' : 'alert-circle'" size="md" />
         {{ analyzeMsg }}
       </div>
-    </transition>
+    </Transition>
 
     <!-- 配置面板 -->
-    <div class="card cfg">
-      <div class="sec-head">
-        <span class="sec-bar"></span>
-        <h4>分析配置</h4>
-        <span class="sec-hint">已自动恢复本地保存的模型 / 范围 / 窗口与提示词</span>
+    <AppCard title="分析配置" subtitle="已自动恢复本地保存的模型 / 范围 / 窗口与提示词">
+      <template #actions>
+        <AppButton variant="primary" icon="save" size="sm" @click="saveConfig">保存配置</AppButton>
+      </template>
+
+      <div class="ff-ai-view__cfg-grid">
+        <AppSelect v-model="config.provider_id" label="模型" :options="providerOptions" />
+        <AppSelect v-model="config.scope" label="分析范围" :options="scopeSelectOptions" />
+        <AppSelect v-model="config.window" label="时间窗口" :options="windowSelectOptions" />
+        <AppInput v-model="config.focus" class="ff-ai-view__grow" label="自定义焦点（可选）" placeholder="如：重点关注半导体与新能源" />
       </div>
 
-      <div class="cfg-grid">
-        <label class="fld">
-          <span>模型</span>
-          <div class="ctrl">
-            <select v-model="config.provider_id">
-              <option value="">自动（默认模型）</option>
-              <option v-for="p in providers" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-            </select>
-          </div>
-        </label>
-        <label class="fld">
-          <span>分析范围</span>
-          <div class="ctrl">
-            <select v-model="config.scope">
-              <option v-for="s in scopeOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
-            </select>
-          </div>
-        </label>
-        <label class="fld">
-          <span>时间窗口</span>
-          <div class="ctrl">
-            <select v-model="config.window">
-              <option v-for="w in windowOptions" :key="w" :value="w">{{ w }} 小时</option>
-            </select>
-          </div>
-        </label>
-        <label class="fld grow">
-          <span>自定义焦点（可选）</span>
-          <div class="ctrl">
-            <input v-model="config.focus" placeholder="如：重点关注半导体与新能源" />
-          </div>
-        </label>
-      </div>
-
-      <div class="prompts">
-        <label v-for="(lbl, key) in promptLabels" :key="key" class="pfld">
+      <div class="ff-ai-view__prompts">
+        <label v-for="(lbl, key) in promptLabels" :key="key" class="ff-ai-view__pfld">
           <span>{{ lbl }}</span>
           <textarea v-model="config.prompts[key]" rows="6" :placeholder="lbl"></textarea>
         </label>
       </div>
 
-      <div class="cfg-foot">
-        <button class="btn btn-primary" @click="saveConfig">保存配置</button>
-        <transition name="fade">
-          <span v-if="saveMsg" class="save-msg" :class="{ ok: saveMsg.includes('已保存') }">{{ saveMsg }}</span>
-        </transition>
+      <div class="ff-ai-view__cfg-foot">
+        <AppStatus v-if="saveMsg" :text="saveMsg" :tone="saveMsg.includes('已保存') ? 'success' : 'danger'" />
       </div>
-    </div>
+    </AppCard>
 
-    <!-- 模型管理（新增） -->
-    <div class="card cfg">
-      <div class="sec-head">
-        <span class="sec-bar"></span>
-        <h4>模型管理</h4>
-        <span class="sec-hint">新增 / 编辑 OpenAI 兼容模型，可测试连通性并设为默认</span>
-        <button class="btn btn-primary sm" @click="openAddProvider">+ 添加模型</button>
-      </div>
+    <!-- 模型管理 -->
+    <AppCard title="模型管理" subtitle="新增 / 编辑 OpenAI 兼容模型，可测试连通性并设为默认">
+      <template #actions>
+        <AppButton variant="primary" icon="plus" size="sm" @click="openAddProvider">添加模型</AppButton>
+      </template>
 
-      <div v-if="providerList.length" class="providers">
-        <div v-for="p in providerList" :key="p.id" class="provider" :class="{ default: p.is_default }">
-          <div class="p-main">
-            <div class="p-name">
+      <div v-if="providerList.length" class="ff-ai-view__providers">
+        <div
+          v-for="p in providerList"
+          :key="p.id"
+          class="ff-ai-view__provider"
+          :class="p.is_default && 'ff-ai-view__provider--default'"
+        >
+          <div class="ff-ai-view__p-main">
+            <div class="ff-ai-view__p-name">
               {{ p.name }}
-              <span v-if="p.is_default" class="tag tag-default">默认</span>
-              <span v-if="p.enabled" class="tag tag-on">已启用</span>
-              <span v-else class="tag tag-off">已停用</span>
+              <AppBadge v-if="p.is_default" text="默认" variant="brand" />
+              <AppBadge v-if="p.enabled" text="已启用" variant="success" />
+              <AppBadge v-else text="已停用" variant="muted" />
             </div>
-            <div class="p-meta text-3">{{ p.model }} · {{ p.base_url }}</div>
+            <div class="ff-ai-view__p-meta">{{ p.model }} · {{ p.base_url }}</div>
           </div>
-          <div class="p-actions">
-            <button v-if="!p.is_default" class="btn xs" @click="setDefault(p.id)">设为默认</button>
-            <button class="btn xs" @click="openEditProvider(p)">编辑</button>
-            <button class="btn xs danger" @click="deleteProvider(p.id)">删除</button>
+          <div class="ff-ai-view__p-actions">
+            <AppButton v-if="!p.is_default" variant="tonal" size="xs" @click="setDefault(p.id)">设为默认</AppButton>
+            <AppButton variant="secondary" size="xs" icon="edit" @click="openEditProvider(p)">编辑</AppButton>
+            <AppButton variant="danger" size="xs" icon="trash" @click="deleteProvider(p.id)">删除</AppButton>
           </div>
         </div>
       </div>
-      <EmptyState v-else text="还没有配置任何模型" />
+      <EmptyState v-else text="还没有配置任何模型" icon="database" />
 
-      <transition name="fade">
-        <div v-if="showProviderForm" class="pform">
-          <div class="pform-grid">
-            <label class="pf">
-              <span>名称</span>
-              <input v-model="providerForm.name" placeholder="如：我的 DeepSeek" />
-            </label>
-            <label class="pf">
-              <span>预设</span>
-              <select v-model="providerForm.preset" @change="applyPreset">
-                <option v-for="pre in PRESETS" :key="pre.key" :value="pre.key">{{ pre.label }}</option>
-              </select>
-            </label>
-            <label class="pf span2">
-              <span>接口地址 (Base URL)</span>
-              <input v-model="providerForm.base_url" placeholder="https://..." />
-            </label>
-            <label class="pf">
-              <span>模型名称</span>
-              <input v-model="providerForm.model" placeholder="如：deepseek-chat" />
-            </label>
-            <label class="pf">
-              <span>API Key</span>
-              <input v-model="providerForm.api_key" type="password" :placeholder="editingId ? '留空则保留原密钥' : 'sk-...'" />
-            </label>
-            <label class="pf">
-              <span>温度 (0–2)</span>
-              <input v-model.number="providerForm.temperature" type="number" min="0" max="2" step="0.1" />
-            </label>
-            <label class="pf">
-              <span>最大 Token</span>
-              <input v-model.number="providerForm.max_tokens" type="number" min="256" max="131072" step="256" />
-            </label>
-            <label class="pf">
-              <span>超时 (秒)</span>
-              <input v-model.number="providerForm.timeout" type="number" min="5" max="900" step="5" />
-            </label>
-            <label class="pf check">
-              <input v-model="providerForm.is_default" type="checkbox" />
-              <span>设为默认模型</span>
-            </label>
+      <Transition name="ff-fade">
+        <div v-if="showProviderForm" class="ff-ai-view__pform">
+          <div class="ff-ai-view__pform-grid">
+            <AppInput v-model="providerForm.name" label="名称" placeholder="如：我的 DeepSeek" />
+            <AppSelect v-model="providerForm.preset" label="预设" :options="presetOptions" @change="applyPreset" />
+            <AppInput v-model="providerForm.base_url" class="ff-ai-view__span2" label="接口地址 (Base URL)" placeholder="https://..." />
+            <AppInput v-model="providerForm.model" label="模型名称" placeholder="如：deepseek-chat" />
+            <AppInput
+              v-model="providerForm.api_key"
+              type="password"
+              label="API Key"
+              :placeholder="editingId ? '留空则保留原密钥' : 'sk-...'"
+            />
+            <AppInput v-model.number="providerForm.temperature" type="number" label="温度 (0–2)" />
+            <AppInput v-model.number="providerForm.max_tokens" type="number" label="最大 Token" />
+            <AppInput v-model.number="providerForm.timeout" type="number" label="超时 (秒)" />
+            <AppCheckbox v-model="providerForm.is_default" label="设为默认模型" />
           </div>
-          <div class="pform-foot">
-            <button class="btn btn-primary" :disabled="busyProvider" @click="saveProvider">保存</button>
-            <button class="btn" :disabled="busyProvider" @click="testProvider">测试连接</button>
-            <button class="btn" @click="closeProviderForm">取消</button>
-            <transition name="fade">
-              <span v-if="providerMsg" class="save-msg" :class="{ ok: providerMsg.includes('已保存') }">{{ providerMsg }}</span>
-            </transition>
-            <span v-if="testResult" class="test-result" :class="{ ok: testResult.startsWith('✅'), bad: testResult.startsWith('❌') }">{{ testResult }}</span>
+          <div class="ff-ai-view__pform-foot">
+            <AppButton variant="primary" :loading="busyProvider" icon="save" @click="saveProvider">保存</AppButton>
+            <AppButton variant="secondary" :loading="busyProvider" icon="activity" @click="testProvider">测试连接</AppButton>
+            <AppButton variant="ghost" @click="closeProviderForm">取消</AppButton>
+            <AppStatus v-if="providerMsg" :text="providerMsg" :tone="providerMsg.includes('已保存') ? 'success' : 'danger'" />
+            <AppStatus v-if="testResult" :text="testResult" :tone="testOk ? 'success' : testBad ? 'danger' : 'neutral'" />
           </div>
         </div>
-      </transition>
-    </div>
+      </Transition>
+    </AppCard>
 
     <!-- 对话 + 报告 -->
-    <div class="grid">
-      <div class="card panel chat-panel">
-        <div class="sec-head">
-          <span class="sec-bar"></span>
-          <h4>对话</h4>
-        </div>
-        <div class="chat">
-          <div v-for="(m, i) in chatLog" :key="i" class="bubble" :class="m.role">
-            {{ m.text }}
+    <div class="ff-grid">
+      <div class="ff-col-12 ff-col-lg-6">
+        <AppCard title="对话" class="ff-ai-view__panel">
+          <div class="ff-ai-view__chat">
+            <div
+              v-for="(m, i) in chatLog"
+              :key="i"
+              class="ff-ai-view__bubble"
+              :class="`ff-ai-view__bubble--${m.role}`"
+            >
+              {{ m.text }}
+            </div>
+            <div v-if="sending" class="ff-ai-view__bubble ff-ai-view__bubble--ai ff-ai-view__typing">
+              <span /><span /><span />
+            </div>
+            <div v-if="!chatLog.length && !sending" class="ff-ai-view__empty-chat">
+              向 FinFeed 的 AI 提问市场 / 新闻相关问题
+            </div>
           </div>
-          <div v-if="sending" class="bubble ai typing">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <div class="ff-ai-view__chat-input">
+            <AppInput
+              v-model="chatInput"
+              class="ff-ai-view__chat-field"
+              placeholder="输入问题…"
+              :disabled="sending"
+              @enter="sendChat"
+            />
+            <AppButton variant="primary" icon="send" :loading="sending" :disabled="sending" @click="sendChat">发送</AppButton>
           </div>
-          <div v-if="!chatLog.length && !sending" class="text-3 empty-chat">向 FinFeed 的 AI 提问市场 / 新闻相关问题</div>
-        </div>
-        <div class="chat-input">
-          <input v-model="chatInput" @keyup.enter="sendChat" placeholder="输入问题…" :disabled="sending" />
-          <button class="btn btn-primary" @click="sendChat" :disabled="sending">发送</button>
-        </div>
+        </AppCard>
       </div>
 
-      <div class="card panel report-panel">
-        <div class="sec-head">
-          <span class="sec-bar"></span>
-          <h4>历史报告</h4>
-        </div>
-        <div class="reports">
-          <div v-for="rp in reports" :key="rp.id" class="report" @click="openReport(rp.id)">
-            <span class="rt">{{ rp.title || ('报告 #' + rp.id) }}</span>
-            <span class="text-3">{{ rp.created_at || '' }}</span>
+      <div class="ff-col-12 ff-col-lg-6">
+        <AppCard title="历史报告" class="ff-ai-view__panel">
+          <div class="ff-ai-view__reports">
+            <div v-for="rp in reports" :key="rp.id" class="ff-ai-view__report" @click="openReport(rp.id)">
+              <span class="ff-ai-view__report-title">{{ rp.title || ('报告 #' + rp.id) }}</span>
+              <span class="ff-text-muted">{{ rp.created_at || '' }}</span>
+            </div>
+            <EmptyState v-if="!reports.length" text="暂无报告，点击上方「生成每日复盘」" icon="file-text" />
           </div>
-          <EmptyState v-if="!reports.length" text="暂无报告，点击上方「生成每日复盘」" />
-        </div>
-        <transition name="fade">
-          <div v-if="activeReport" class="report-detail">
-            <button class="close" @click="activeReport = null">✕</button>
-            <h4>{{ activeReport.title || ('报告 #' + activeReport.id) }}</h4>
-            <pre>{{ activeReport.content || activeReport.error || '（无内容）' }}</pre>
-          </div>
-        </transition>
+        </AppCard>
       </div>
     </div>
+
+    <!-- 报告详情弹窗 -->
+    <AppModal
+      v-model="showReportModal"
+      :title="activeReport?.title || ('报告 #' + activeReport?.id)"
+      size="lg"
+    >
+      <pre v-if="activeReport" class="ff-ai-view__report-pre">{{ activeReport.content || activeReport.error || '（无内容）' }}</pre>
+    </AppModal>
   </div>
 </template>
 
 <style scoped>
-.ai {
-  width: 100%;
+.ff-ai-view {
+  max-width: var(--ff-container-max);
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: var(--ff-space-5);
 }
 
-/* ── 通用卡片 ── */
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-/* ── 分区标题 ── */
-.sec-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: var(--sp-4);
-}
-.sec-bar {
-  width: 4px;
-  height: 18px;
-  border-radius: var(--r-pill);
-  background: var(--primary);
-}
-.sec-head h4 {
-  font-size: var(--fs-md);
-  font-weight: 700;
-  color: var(--text-1);
-}
-.sec-hint {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  margin-left: auto;
-}
-
-/* ── 头部 ── */
-.top {
+.ff-ai-view__status {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: var(--sp-4) var(--sp-5);
+  gap: var(--ff-space-4);
 }
-.brand {
+
+.ff-ai-view__brand {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--ff-space-4);
 }
-.brand-ico {
-  font-size: 32px;
-  line-height: 1;
+
+.ff-ai-view__brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-icon-brand);
 }
-.top-l h3 {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-}
-.status-line {
+
+.ff-ai-view__status-line {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: var(--fs-sm);
+  gap: var(--ff-space-3);
+  margin-top: var(--ff-space-1);
+  font-size: var(--ff-fs-sm);
 }
-.status-sub {
-  margin-top: 4px;
-  font-size: var(--fs-xs);
+
+.ff-ai-view__status-sub {
+  margin-top: var(--ff-space-1);
+  font-size: var(--ff-fs-xs);
+  color: var(--ff-text-tertiary);
   word-break: break-all;
 }
-.t-ok { color: var(--down); }
-.t-bad { color: var(--up); }
-.t-idle { color: var(--text-3); }
-.chip {
-  padding: 3px 11px;
-  border-radius: var(--r-pill);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-}
-.chip.ok { background: var(--down-subtle); color: var(--down); }
-.chip.bad { background: var(--up-subtle); color: var(--up); }
 
-/* ── 结果横幅 ── */
-.banner {
-  padding: 11px 16px;
-  border-radius: var(--r-md);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-}
-.banner.ok { background: var(--down-subtle); color: var(--down); }
-.banner.err { background: var(--up-subtle); color: var(--up); }
-
-/* ── 配置面板 ── */
-.cfg { padding: var(--sp-5); }
-.cfg-grid {
+.ff-ai-view__cfg-grid {
   display: flex;
-  gap: 16px;
+  gap: var(--ff-space-4);
   flex-wrap: wrap;
-  margin-bottom: var(--sp-5);
-}
-.fld {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--text-2);
-  min-width: 170px;
-}
-.fld.grow { flex: 1; min-width: 240px; }
-.ctrl {
-  position: relative;
-}
-.ctrl select,
-.ctrl input {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 11px 13px;
-  font-size: var(--fs-base);
-  background: var(--bg-surface);
-  color: var(--text-1);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  appearance: none;
-}
-.ctrl select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239ca3af' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 13px center;
-  padding-right: 34px;
-}
-.ctrl select:focus,
-.ctrl input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-subtle);
+  margin-bottom: var(--ff-space-5);
 }
 
-/* ── 提示词 ── */
-.prompts {
+.ff-ai-view__cfg-grid > * {
+  width: 220px;
+}
+
+.ff-ai-view__grow {
+  flex: 1 1 280px;
+  min-width: 240px;
+}
+
+.ff-ai-view__prompts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: var(--sp-5);
-  padding-top: var(--sp-4);
-  border-top: 1px dashed var(--border);
-}
-.pfld {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--text-2);
-}
-.pfld textarea {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--primary);
-  border-radius: var(--r-md);
-  padding: 11px 13px;
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-  background: var(--bg-surface-2);
-  color: var(--text-1);
-  resize: vertical;
-  font-family: var(--font-num);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.pfld textarea:focus {
-  border-color: var(--primary);
-  border-left-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-subtle);
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-4);
+  margin-bottom: var(--ff-space-5);
+  padding-top: var(--ff-space-4);
+  border-top: 1px dashed var(--ff-border);
 }
 
-.cfg-foot {
+@media (min-width: 1024px) {
+  .ff-ai-view__prompts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ff-ai-view__pfld {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-2);
+  font-size: var(--ff-fs-xs);
+  font-weight: 500;
+  color: var(--ff-text-secondary);
+}
+
+.ff-ai-view__pfld textarea {
+  width: 100%;
+  border: 1px solid var(--ff-border);
+  border-left: 3px solid var(--ff-border-brand);
+  border-radius: var(--ff-radius-md);
+  padding: var(--ff-space-3);
+  font-size: var(--ff-fs-sm);
+  line-height: var(--ff-lh-normal);
+  background: var(--ff-bg-subtle);
+  color: var(--ff-text-primary);
+  resize: vertical;
+  font-family: var(--ff-font-mono);
+  outline: none;
+  transition: border-color var(--ff-dur-fast), box-shadow var(--ff-dur-fast);
+}
+
+.ff-ai-view__pfld textarea:focus {
+  border-color: var(--ff-border-focus);
+  box-shadow: var(--ff-focus-ring);
+}
+
+.ff-ai-view__cfg-foot {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--ff-space-3);
 }
-.save-msg { font-size: var(--fs-sm); color: var(--up); }
-.save-msg.ok { color: var(--down); }
 
-/* ── 模型管理 ── */
-.providers {
+.ff-ai-view__providers {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--ff-space-3);
 }
-.provider {
+
+.ff-ai-view__provider {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 13px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-  transition: all 0.15s;
+  gap: var(--ff-space-4);
+  padding: var(--ff-space-3) var(--ff-space-4);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-surface);
+  transition: border-color var(--ff-dur-fast);
 }
-.provider.default {
-  border-color: var(--primary);
-  background: var(--primary-subtle);
+
+.ff-ai-view__provider:hover {
+  border-color: var(--ff-border-hover);
 }
-.provider:hover { border-color: var(--border-strong); }
-.p-name {
-  font-size: var(--fs-base);
-  font-weight: 600;
+
+.ff-ai-view__provider--default {
+  border-color: var(--ff-border-brand);
+  background: var(--ff-bg-brand-subtle);
+}
+
+.ff-ai-view__p-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ff-space-2);
   flex-wrap: wrap;
+  font-weight: 600;
 }
-.p-meta {
-  margin-top: 4px;
-  font-size: var(--fs-xs);
+
+.ff-ai-view__p-meta {
+  margin-top: 2px;
+  font-size: var(--ff-fs-xs);
+  color: var(--ff-text-tertiary);
   word-break: break-all;
 }
-.tag {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-}
-.tag-default { background: var(--primary); color: #fff; }
-.tag-on { background: var(--down-subtle); color: var(--down); }
-.tag-off { background: var(--bg-surface-2); color: var(--text-3); }
-.p-actions {
+
+.ff-ai-view__p-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ff-space-2);
   flex-shrink: 0;
 }
 
-/* 模型表单 */
-.pform {
-  margin-top: var(--sp-4);
-  padding: var(--sp-4);
-  border: 1px dashed var(--border);
-  border-radius: var(--r-md);
-  background: var(--bg-surface-2);
+.ff-ai-view__pform {
+  margin-top: var(--ff-space-4);
+  padding: var(--ff-space-4);
+  border: 1px dashed var(--ff-border);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-subtle);
 }
-.pform-grid {
+
+.ff-ai-view__pform-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-3);
 }
-.pf {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--text-2);
+
+@media (min-width: 768px) {
+  .ff-ai-view__pform-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
-.pf.span2 { grid-column: 1 / -1; }
-.pf input,
-.pf select {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 10px 12px;
-  font-size: var(--fs-sm);
-  background: var(--bg-surface);
-  color: var(--text-1);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+
+.ff-ai-view__span2 {
+  grid-column: 1 / -1;
 }
-.pf input:focus,
-.pf select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-subtle);
-}
-.pf.check {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-.pf.check input { width: auto; }
-.pform-foot {
+
+.ff-ai-view__pform-foot {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: var(--sp-4);
+  gap: var(--ff-space-3);
+  margin-top: var(--ff-space-4);
   flex-wrap: wrap;
 }
-.test-result { font-size: var(--fs-sm); }
-.test-result.ok { color: var(--down); }
-.test-result.bad { color: var(--up); }
 
-/* ── 按钮 ── */
-.btn {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  color: var(--text-1);
-  border-radius: var(--r-md);
-  padding: 9px 18px;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn:hover { background: var(--bg-hover); }
-.btn-primary {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-}
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn.sm { padding: 7px 14px; font-size: var(--fs-xs); margin-left: auto; }
-.btn.xs { padding: 6px 12px; font-size: var(--fs-xs); }
-.btn.danger { color: var(--up); border-color: var(--up-subtle); }
-.btn.danger:hover { background: var(--up-subtle); }
-.btn.lg { padding: 12px 26px; font-size: var(--fs-base); font-weight: 600; }
-
-/* ── 对话 + 报告 ── */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-4);
-  align-items: stretch;
-}
-.panel {
-  padding: var(--sp-5);
+.ff-ai-view__panel {
   display: flex;
   flex-direction: column;
   min-height: 540px;
 }
-.chat {
+
+.ff-ai-view__chat {
   flex: 1;
   min-height: 380px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: var(--sp-2) var(--sp-1);
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-2);
 }
-.empty-chat {
+
+.ff-ai-view__empty-chat {
   margin: auto;
-  font-size: var(--fs-sm);
+  font-size: var(--ff-fs-sm);
+  color: var(--ff-text-tertiary);
 }
-.bubble {
+
+.ff-ai-view__bubble {
   max-width: 86%;
-  padding: 11px 15px;
-  border-radius: 14px;
-  font-size: var(--fs-sm);
+  padding: var(--ff-space-3) var(--ff-space-4);
+  border-radius: var(--ff-radius-xl);
+  font-size: var(--ff-fs-sm);
   white-space: pre-wrap;
-  line-height: 1.55;
+  line-height: var(--ff-lh-normal);
 }
-.bubble.user {
+
+.ff-ai-view__bubble--user {
   align-self: flex-end;
-  background: var(--primary);
-  color: #fff;
-  border-bottom-right-radius: 4px;
+  background: var(--ff-bg-brand);
+  color: var(--ff-text-inverse);
+  border-bottom-right-radius: var(--ff-radius-xs);
 }
-.bubble.ai {
+
+.ff-ai-view__bubble--ai {
   align-self: flex-start;
-  background: var(--bg-surface-2);
-  color: var(--text-1);
-  border-bottom-left-radius: 4px;
+  background: var(--ff-bg-subtle);
+  color: var(--ff-text-primary);
+  border-bottom-left-radius: var(--ff-radius-xs);
 }
-.bubble.typing {
+
+.ff-ai-view__typing {
   display: flex;
   gap: 4px;
-  padding: 14px 16px;
+  padding: var(--ff-space-4);
 }
-.bubble.typing .dot {
+
+.ff-ai-view__typing span {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--text-3);
-  animation: dot-bounce 1.2s infinite ease-in-out;
-}
-.bubble.typing .dot:nth-child(2) { animation-delay: 0.2s; }
-.bubble.typing .dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes dot-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-5px); opacity: 1; }
-}
-.chat-input {
-  display: flex;
-  gap: 10px;
-  margin-top: var(--sp-3);
-}
-.chat-input input {
-  flex: 1;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 11px 14px;
-  font-size: var(--fs-sm);
-  outline: none;
-  background: var(--bg-surface);
-  color: var(--text-1);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.chat-input input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-subtle);
-}
-.chat-input input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  background: var(--ff-icon-muted);
+  animation: ff-bounce-dot 1.2s infinite ease-in-out;
 }
 
-.reports {
+.ff-ai-view__typing span:nth-child(2) { animation-delay: 0.2s; }
+.ff-ai-view__typing span:nth-child(3) { animation-delay: 0.4s; }
+
+.ff-ai-view__chat-input {
+  display: flex;
+  gap: var(--ff-space-3);
+  margin-top: var(--ff-space-3);
+}
+
+.ff-ai-view__chat-field {
+  flex: 1 1 auto;
+}
+
+.ff-ai-view__reports {
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ff-space-2);
+  min-height: 380px;
 }
-.report {
+
+.ff-ai-view__report {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  align-items: center;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-3) var(--ff-space-4);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-md);
   cursor: pointer;
-  font-size: var(--fs-sm);
-  transition: all 0.15s;
+  font-size: var(--ff-fs-sm);
+  transition: background var(--ff-dur-fast), border-color var(--ff-dur-fast);
 }
-.report:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-}
-.rt { font-weight: 500; }
 
-.report-detail {
-  margin-top: var(--sp-3);
-  padding: var(--sp-4);
-  background: var(--bg-surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  position: relative;
+.ff-ai-view__report:hover {
+  background: var(--ff-bg-hover);
+  border-color: var(--ff-border-hover);
 }
-.report-detail pre {
+
+.ff-ai-view__report-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ff-ai-view__report-pre {
   white-space: pre-wrap;
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-  max-height: 280px;
+  font-size: var(--ff-fs-sm);
+  line-height: var(--ff-lh-normal);
+  max-height: 60vh;
   overflow-y: auto;
   margin: 0;
-}
-.close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  border: none;
-  background: none;
-  color: var(--text-3);
-  font-size: 16px;
-  cursor: pointer;
+  font-family: var(--ff-font-mono);
 }
 
-/* ── 过渡 ── */
-.fade-enter-active,
-.fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from,
-.fade-leave-to { opacity: 0; }
+.ff-fade-enter-active,
+.ff-fade-leave-active {
+  transition: opacity var(--ff-dur-fast);
+}
 
-@media (max-width: 880px) {
-  .grid { grid-template-columns: 1fr; }
-  .prompts { grid-template-columns: 1fr; }
-  .pform-grid { grid-template-columns: 1fr; }
-  .panel { min-height: 440px; }
+.ff-fade-enter-from,
+.ff-fade-leave-to {
+  opacity: 0;
+}
+
+@keyframes ff-bounce-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
 }
 </style>

@@ -1,116 +1,472 @@
-/* ============================================================
-   FinFeed 设计令牌 — 现代 SaaS 亮色风
-   语义色遵循 A 股惯例：涨=红，跌=绿（红涨绿跌）
-   ============================================================ */
-:root,
-[data-theme='light'] {
-  /* 背景层级 */
-  --bg-page: #f5f6f8;
-  --bg-surface: #ffffff;
-  --bg-surface-2: #f0f1f3;
-  --bg-hover: #eceef1;
-  --overlay: rgba(17, 24, 39, 0.45);
+/* ============================================================================
+   FinFeed Design Tokens  ·  v3.0
+   ----------------------------------------------------------------------------
+   唯一真源（Single Source of Truth）。任何组件、视图都不得硬编码颜色 / 字号 /
+   间距 / 圆角 / 阴影 / 动效参数，一律引用此处令牌。
+   命名约定：
+     --ff-<类别>-<角色>-<变体>
+     类别：color | text | space | radius | shadow | font | dur | ease | z | size
+   语义色遵循 A 股惯例：涨 / 利好 = 红，跌 / 利空 = 绿。
+   ========================================================================== */
 
-  /* 边框 */
-  --border: #e7eaef;
-  --border-strong: #d6dae2;
+:root {
+  /* ══════════════════════════════════════════════════════════════
+     1. 原始色板 (Primitive Palette) — 不直接在组件中使用
+     ══════════════════════════════════════════════════════════════ */
 
-  /* 文本 */
-  --text-1: #1a1d23;
-  --text-2: #5f5e5a;
-  --text-3: #9ca3af;
+  /* Brand · Cobalt */
+  --p-brand-50: #eff6ff;
+  --p-brand-100: #dbeafe;
+  --p-brand-200: #bfdbfe;
+  --p-brand-300: #93c5fd;
+  --p-brand-400: #60a5fa;
+  --p-brand-500: #3b82f6;
+  --p-brand-600: #2563eb;
+  --p-brand-700: #1d4ed8;
+  --p-brand-800: #1e40af;
+  --p-brand-900: #1e3a8a;
+  --p-brand-950: #172554;
 
-  /* 品牌主色（蓝） */
-  --primary: #185fa5;
-  --primary-hover: #134c84;
-  --primary-active: #0f3e6e;
-  --primary-subtle: rgba(24, 95, 165, 0.08);
-  --primary-text: #ffffff;
+  /* Neutral · Cool Graphite */
+  --p-gray-0: #ffffff;
+  --p-gray-25: #fbfcfd;
+  --p-gray-50: #f6f8fa;
+  --p-gray-100: #eef1f5;
+  --p-gray-200: #e3e8ef;
+  --p-gray-300: #cdd5e0;
+  --p-gray-400: #9aa4b2;
+  --p-gray-500: #697586;
+  --p-gray-600: #4b5565;
+  --p-gray-700: #364152;
+  --p-gray-800: #202939;
+  --p-gray-900: #121926;
+  --p-gray-950: #0b121e;
 
-  /* 语义色：红涨绿跌 */
-  --up: #e5484d;        /* 涨 / 利好 */
-  --up-subtle: rgba(229, 72, 77, 0.1);
-  --down: #16a34a;      /* 跌 / 利空 */
-  --down-subtle: rgba(22, 163, 74, 0.1);
-  --warn: #d97706;
-  --warn-subtle: rgba(217, 119, 6, 0.1);
-  --info: #2563eb;
-  --info-subtle: rgba(37, 99, 235, 0.08);
-  --star: #f59e0b;
-  --star-subtle: rgba(245, 158, 11, 0.12);
+  /* Semantic · Up (涨 / 利好) */
+  --p-up-50: #fef2f2;
+  --p-up-100: #fde4e5;
+  --p-up-200: #fbcdcf;
+  --p-up-300: #f6a2a5;
+  --p-up-400: #ee7377;
+  --p-up-500: #e5484d;
+  --p-up-600: #d02b31;
+  --p-up-700: #ad2126;
+  --p-up-900: #6d1518;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.07);
-  --shadow-lg: 0 12px 30px rgba(16, 24, 40, 0.1);
+  /* Semantic · Down (跌 / 利空) */
+  --p-down-50: #ecfdf3;
+  --p-down-100: #d1fadf;
+  --p-down-200: #a6f4c5;
+  --p-down-300: #6ce9a6;
+  --p-down-400: #32d583;
+  --p-down-500: #12a150;
+  --p-down-600: #0d8a43;
+  --p-down-700: #0a6c35;
+  --p-down-900: #054023;
 
-  /* 圆角 */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-pill: 999px;
+  /* Semantic · Warning / Amber */
+  --p-warn-50: #fffaeb;
+  --p-warn-100: #fef0c7;
+  --p-warn-200: #fedf89;
+  --p-warn-400: #fdb022;
+  --p-warn-500: #f59e0b;
+  --p-warn-600: #dc6803;
+  --p-warn-700: #b54708;
 
-  /* 间距 */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 20px;
-  --sp-6: 24px;
+  /* Accent · Teal（图表 / 次级强调） */
+  --p-teal-100: #cff2f0;
+  --p-teal-300: #5fd4cd;
+  --p-teal-500: #0ea5a5;
+  --p-teal-600: #0b8585;
 
-  /* 字号 */
-  --fs-xs: 13px;
-  --fs-sm: 14px;
-  --fs-base: 15px;
-  --fs-md: 17px;
-  --fs-lg: 20px;
-  --fs-xl: 24px;
-  --fs-2xl: 30px;
+  /* Accent · Violet（图表第 4 序列） */
+  --p-violet-100: #ece9fe;
+  --p-violet-400: #a48afb;
+  --p-violet-500: #875bf7;
+  --p-violet-600: #7839ee;
 
-  /* 侧栏宽度 */
-  --sidebar-w: 220px;
-  --header-h: 60px;
-  /* 内容区最大宽度（加宽以提升信息密度） */
-  --content-max: 100%;
+  /* ══════════════════════════════════════════════════════════════
+     2. 字体系统 (Typography)
+     ══════════════════════════════════════════════════════════════ */
+  --ff-font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'HarmonyOS Sans SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    'Source Han Sans CN', sans-serif;
+  --ff-font-display: var(--ff-font-sans);
+  --ff-font-mono:
+    'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Roboto Mono', ui-monospace,
+    'Menlo', 'Consolas', monospace;
 
-  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB',
-    'Noto Sans CJK SC', 'Source Han Sans CN', system-ui, -apple-system, sans-serif;
-  --font-num: 'SF Mono', 'JetBrains Mono', 'Roboto Mono', ui-monospace, 'Cascadia Code', monospace;
+  /* 字号刻度 */
+  --ff-fs-display: 30px;
+  --ff-fs-h1: 24px;
+  --ff-fs-h2: 20px;
+  --ff-fs-h3: 17px;
+  --ff-fs-h4: 15px;
+  --ff-fs-body-lg: 15px;
+  --ff-fs-body: 14px;
+  --ff-fs-body-sm: 13px;
+  --ff-fs-caption: 12px;
+  --ff-fs-overline: 11px;
+
+  /* 行高刻度 */
+  --ff-lh-tight: 1.2;
+  --ff-lh-snug: 1.35;
+  --ff-lh-normal: 1.5;
+  --ff-lh-relaxed: 1.65;
+
+  /* 字重刻度 */
+  --ff-fw-regular: 400;
+  --ff-fw-medium: 500;
+  --ff-fw-semibold: 600;
+  --ff-fw-bold: 700;
+
+  /* 字距 */
+  --ff-ls-tighter: -0.022em;
+  --ff-ls-tight: -0.014em;
+  --ff-ls-normal: -0.006em;
+  --ff-ls-wide: 0.02em;
+  --ff-ls-widest: 0.08em;
+
+  /* ══════════════════════════════════════════════════════════════
+     3. 间距刻度 (4pt Grid)
+     ══════════════════════════════════════════════════════════════ */
+  --ff-space-0: 0px;
+  --ff-space-px: 1px;
+  --ff-space-0-5: 2px;
+  --ff-space-1: 4px;
+  --ff-space-1-5: 6px;
+  --ff-space-2: 8px;
+  --ff-space-2-5: 10px;
+  --ff-space-3: 12px;
+  --ff-space-4: 16px;
+  --ff-space-5: 20px;
+  --ff-space-6: 24px;
+  --ff-space-7: 28px;
+  --ff-space-8: 32px;
+  --ff-space-10: 40px;
+  --ff-space-12: 48px;
+  --ff-space-16: 64px;
+  --ff-space-20: 80px;
+  --ff-space-24: 96px;
+
+  /* ══════════════════════════════════════════════════════════════
+     4. 圆角 (Radius)
+     ══════════════════════════════════════════════════════════════ */
+  --ff-radius-xs: 4px;
+  --ff-radius-sm: 6px;
+  --ff-radius-md: 8px;
+  --ff-radius-lg: 12px;
+  --ff-radius-xl: 16px;
+  --ff-radius-2xl: 20px;
+  --ff-radius-pill: 999px;
+  --ff-radius-circle: 50%;
+
+  /* ══════════════════════════════════════════════════════════════
+     5. 动效 (Motion)
+     ══════════════════════════════════════════════════════════════ */
+  --ff-dur-instant: 80ms;
+  --ff-dur-fast: 140ms;
+  --ff-dur-base: 200ms;
+  --ff-dur-slow: 280ms;
+  --ff-dur-slower: 400ms;
+
+  --ff-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ff-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --ff-ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --ff-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* ══════════════════════════════════════════════════════════════
+     6. 层级 (Z-Index)
+     ══════════════════════════════════════════════════════════════ */
+  --ff-z-base: 0;
+  --ff-z-raised: 10;
+  --ff-z-sticky: 100;
+  --ff-z-dropdown: 1000;
+  --ff-z-drawer: 1100;
+  --ff-z-overlay: 1200;
+  --ff-z-modal: 1300;
+  --ff-z-toast: 1400;
+  --ff-z-tooltip: 1500;
+
+  /* ══════════════════════════════════════════════════════════════
+     7. 布局尺寸 (Layout)
+     ══════════════════════════════════════════════════════════════ */
+  --ff-sidebar-w: 244px;
+  --ff-sidebar-w-collapsed: 68px;
+  --ff-topbar-h: 60px;
+  --ff-container-max: 1680px;
+  --ff-page-pad-x: var(--ff-space-6);
+  --ff-page-pad-y: var(--ff-space-6);
+  --ff-grid-gutter: var(--ff-space-4);
+
+  /* 控件高度刻度（≥ 36px 桌面，触控目标补足至 44px） */
+  --ff-control-h-xs: 28px;
+  --ff-control-h-sm: 32px;
+  --ff-control-h-md: 38px;
+  --ff-control-h-lg: 44px;
+
+  /* 图标尺寸刻度 */
+  --ff-icon-xs: 14px;
+  --ff-icon-sm: 16px;
+  --ff-icon-md: 18px;
+  --ff-icon-lg: 20px;
+  --ff-icon-xl: 24px;
+  --ff-icon-stroke: 1.75;
 }
 
+/* ============================================================================
+   8. 语义色 · 亮色主题 (Light)
+   ========================================================================== */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* 表面层级 */
+  --ff-bg-canvas: #f4f6f9;
+  --ff-bg-surface: var(--p-gray-0);
+  --ff-bg-surface-raised: var(--p-gray-0);
+  --ff-bg-subtle: var(--p-gray-50);
+  --ff-bg-muted: var(--p-gray-100);
+  --ff-bg-hover: rgba(18, 25, 38, 0.04);
+  --ff-bg-active: rgba(18, 25, 38, 0.07);
+  --ff-bg-selected: var(--p-brand-50);
+  --ff-bg-inverse: var(--p-gray-900);
+  --ff-bg-overlay: rgba(11, 18, 30, 0.44);
+  --ff-bg-scrim: rgba(255, 255, 255, 0.72);
+
+  /* 边框 */
+  --ff-border-subtle: #e9edf3;
+  --ff-border: var(--p-gray-200);
+  --ff-border-strong: var(--p-gray-300);
+  --ff-border-inverse: var(--p-gray-700);
+
+  /* 文本 */
+  --ff-text-primary: var(--p-gray-900);
+  --ff-text-secondary: var(--p-gray-600);
+  --ff-text-tertiary: var(--p-gray-500);
+  --ff-text-disabled: var(--p-gray-400);
+  --ff-text-placeholder: var(--p-gray-400);
+  --ff-text-inverse: var(--p-gray-0);
+  --ff-text-link: var(--p-brand-600);
+
+  /* 品牌 */
+  --ff-brand: var(--p-brand-600);
+  --ff-brand-hover: var(--p-brand-700);
+  --ff-brand-active: var(--p-brand-800);
+  --ff-brand-fg: #ffffff;
+  --ff-brand-subtle: var(--p-brand-50);
+  --ff-brand-subtle-hover: var(--p-brand-100);
+  --ff-brand-border: var(--p-brand-200);
+  --ff-brand-text: var(--p-brand-700);
+
+  /* 涨 / 利好 */
+  --ff-up: var(--p-up-500);
+  --ff-up-strong: var(--p-up-600);
+  --ff-up-fg: #ffffff;
+  --ff-up-subtle: var(--p-up-50);
+  --ff-up-border: var(--p-up-200);
+  --ff-up-text: var(--p-up-700);
+
+  /* 跌 / 利空 */
+  --ff-down: var(--p-down-500);
+  --ff-down-strong: var(--p-down-600);
+  --ff-down-fg: #ffffff;
+  --ff-down-subtle: var(--p-down-50);
+  --ff-down-border: var(--p-down-200);
+  --ff-down-text: var(--p-down-700);
+
+  /* 警示 */
+  --ff-warn: var(--p-warn-500);
+  --ff-warn-fg: #ffffff;
+  --ff-warn-subtle: var(--p-warn-50);
+  --ff-warn-border: var(--p-warn-200);
+  --ff-warn-text: var(--p-warn-700);
+
+  /* 危险（表单错误、破坏性操作）*/
+  --ff-danger: var(--p-up-600);
+  --ff-danger-hover: var(--p-up-700);
+  --ff-danger-fg: #ffffff;
+  --ff-danger-subtle: var(--p-up-50);
+  --ff-danger-border: var(--p-up-200);
+  --ff-danger-text: var(--p-up-700);
+
+  /* 信息 / 中性 */
+  --ff-info: var(--p-brand-600);
+  --ff-info-subtle: var(--p-brand-50);
+  --ff-info-text: var(--p-brand-700);
+  --ff-neutral-subtle: var(--p-gray-100);
+  --ff-neutral-text: var(--p-gray-600);
+
+  /* 收藏 / 高亮 */
+  --ff-star: var(--p-warn-500);
+  --ff-star-subtle: var(--p-warn-50);
+
+  /* 强调（图表序列） */
+  --ff-accent-teal: var(--p-teal-500);
+  --ff-accent-violet: var(--p-violet-500);
+
+  /* 阴影 */
+  --ff-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --ff-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --ff-shadow-md: 0 2px 4px -2px rgba(16, 24, 40, 0.06), 0 4px 10px -2px rgba(16, 24, 40, 0.08);
+  --ff-shadow-lg: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 22px -4px rgba(16, 24, 40, 0.1);
+  --ff-shadow-xl: 0 8px 10px -6px rgba(16, 24, 40, 0.05), 0 22px 42px -8px rgba(16, 24, 40, 0.14);
+  --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  /* 焦点环（无障碍） */
+  --ff-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.22);
+  --ff-focus-ring-danger: 0 0 0 3px rgba(208, 43, 49, 0.2);
+
+  /* 滚动条 */
+  --ff-scroll-thumb: rgba(105, 117, 134, 0.34);
+  --ff-scroll-thumb-hover: rgba(105, 117, 134, 0.56);
+  --ff-scroll-track: transparent;
+
+  /* 骨架屏 */
+  --ff-skeleton-base: var(--p-gray-100);
+  --ff-skeleton-shine: rgba(255, 255, 255, 0.85);
+}
+
+/* ============================================================================
+   9. 语义色 · 深色主题 (Dark)
+   ========================================================================== */
 [data-theme='dark'] {
-  --bg-page: #0d1117;
-  --bg-surface: #161b22;
-  --bg-surface-2: #1c2128;
-  --bg-hover: #1c2333;
-  --overlay: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
 
-  --border: #30363d;
-  --border-strong: #484f58;
+  --ff-bg-canvas: #0b121e;
+  --ff-bg-surface: #121a27;
+  --ff-bg-surface-raised: #18212f;
+  --ff-bg-subtle: #161f2c;
+  --ff-bg-muted: #1d2736;
+  --ff-bg-hover: rgba(255, 255, 255, 0.05);
+  --ff-bg-active: rgba(255, 255, 255, 0.09);
+  --ff-bg-selected: rgba(59, 130, 246, 0.14);
+  --ff-bg-inverse: var(--p-gray-100);
+  --ff-bg-overlay: rgba(3, 7, 14, 0.66);
+  --ff-bg-scrim: rgba(11, 18, 30, 0.72);
 
-  --text-1: #e6edf3;
-  --text-2: #9ba5b2;
-  --text-3: #6e7681;
+  --ff-border-subtle: #1d2735;
+  --ff-border: #263346;
+  --ff-border-strong: #35455c;
+  --ff-border-inverse: var(--p-gray-300);
 
-  --primary: #58a6ff;
-  --primary-hover: #79c0ff;
-  --primary-active: #1f6feb;
-  --primary-subtle: rgba(88, 166, 255, 0.12);
-  --primary-text: #0d1117;
+  --ff-text-primary: #e8edf5;
+  --ff-text-secondary: #a5b1c2;
+  --ff-text-tertiary: #7d8a9c;
+  --ff-text-disabled: #5a6779;
+  --ff-text-placeholder: #647285;
+  --ff-text-inverse: var(--p-gray-900);
+  --ff-text-link: var(--p-brand-400);
 
-  --up: #f85149;
-  --up-subtle: rgba(248, 81, 73, 0.12);
-  --down: #3fb950;
-  --down-subtle: rgba(63, 185, 80, 0.12);
-  --warn: #d29922;
-  --warn-subtle: rgba(210, 153, 34, 0.12);
-  --info: #58a6ff;
-  --info-subtle: rgba(88, 166, 255, 0.12);
-  --star: #f0b429;
-  --star-subtle: rgba(240, 180, 41, 0.15);
+  --ff-brand: var(--p-brand-500);
+  --ff-brand-hover: var(--p-brand-400);
+  --ff-brand-active: var(--p-brand-300);
+  --ff-brand-fg: #08121f;
+  --ff-brand-subtle: rgba(59, 130, 246, 0.14);
+  --ff-brand-subtle-hover: rgba(59, 130, 246, 0.22);
+  --ff-brand-border: rgba(96, 165, 250, 0.36);
+  --ff-brand-text: var(--p-brand-300);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.5);
-  --content-max: 100%;
+  --ff-up: #f0575c;
+  --ff-up-strong: #f47276;
+  --ff-up-fg: #1a0708;
+  --ff-up-subtle: rgba(240, 87, 92, 0.14);
+  --ff-up-border: rgba(240, 87, 92, 0.36);
+  --ff-up-text: #f6a2a5;
+
+  --ff-down: #2bb763;
+  --ff-down-strong: #43c877;
+  --ff-down-fg: #04140a;
+  --ff-down-subtle: rgba(43, 183, 99, 0.14);
+  --ff-down-border: rgba(43, 183, 99, 0.34);
+  --ff-down-text: #6ce9a6;
+
+  --ff-warn: #f0a728;
+  --ff-warn-fg: #1a1002;
+  --ff-warn-subtle: rgba(240, 167, 40, 0.14);
+  --ff-warn-border: rgba(240, 167, 40, 0.34);
+  --ff-warn-text: #fedf89;
+
+  --ff-danger: #f0575c;
+  --ff-danger-hover: #f47276;
+  --ff-danger-fg: #1a0708;
+  --ff-danger-subtle: rgba(240, 87, 92, 0.14);
+  --ff-danger-border: rgba(240, 87, 92, 0.36);
+  --ff-danger-text: #f6a2a5;
+
+  --ff-info: var(--p-brand-400);
+  --ff-info-subtle: rgba(96, 165, 250, 0.14);
+  --ff-info-text: var(--p-brand-300);
+  --ff-neutral-subtle: rgba(255, 255, 255, 0.07);
+  --ff-neutral-text: #a5b1c2;
+
+  --ff-star: #f0b429;
+  --ff-star-subtle: rgba(240, 180, 41, 0.16);
+
+  --ff-accent-teal: #2ec4c4;
+  --ff-accent-violet: var(--p-violet-400);
+
+  --ff-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ff-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --ff-shadow-md: 0 2px 4px -2px rgba(0, 0, 0, 0.5), 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --ff-shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.5), 0 14px 26px -4px rgba(0, 0, 0, 0.6);
+  --ff-shadow-xl: 0 10px 14px -6px rgba(0, 0, 0, 0.5), 0 26px 48px -8px rgba(0, 0, 0, 0.7);
+  --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --ff-focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.3);
+  --ff-focus-ring-danger: 0 0 0 3px rgba(240, 87, 92, 0.28);
+
+  --ff-scroll-thumb: rgba(165, 177, 194, 0.24);
+  --ff-scroll-thumb-hover: rgba(165, 177, 194, 0.42);
+  --ff-scroll-track: transparent;
+
+  --ff-skeleton-base: #1d2736;
+  --ff-skeleton-shine: rgba(255, 255, 255, 0.06);
+}
+
+/* ============================================================================
+   10. 紧凑密度（数据密集页可选，作用于容器子树）
+   ========================================================================== */
+[data-density='compact'] {
+  --ff-control-h-md: 34px;
+  --ff-control-h-lg: 40px;
+  --ff-page-pad-x: var(--ff-space-4);
+  --ff-page-pad-y: var(--ff-space-4);
+  --ff-grid-gutter: var(--ff-space-3);
+}
+
+/* ============================================================================
+   11. 降低动效偏好
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ff-dur-instant: 0ms;
+    --ff-dur-fast: 0ms;
+    --ff-dur-base: 0ms;
+    --ff-dur-slow: 0ms;
+    --ff-dur-slower: 0ms;
+  }
+}
+
+/* ============================================================================
+   12. 响应式令牌覆写（断点：sm 640 / md 768 / lg 1024 / xl 1280）
+   ========================================================================== */
+@media (max-width: 1024px) {
+  :root {
+    --ff-page-pad-x: var(--ff-space-5);
+    --ff-page-pad-y: var(--ff-space-5);
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --ff-page-pad-x: var(--ff-space-4);
+    --ff-page-pad-y: var(--ff-space-4);
+    --ff-topbar-h: 56px;
+    /* 移动端触控目标放大 */
+    --ff-control-h-sm: 36px;
+    --ff-control-h-md: 42px;
+    --ff-control-h-lg: 48px;
+  }
 }
