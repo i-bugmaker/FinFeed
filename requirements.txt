@@ -12,9 +12,8 @@ rich>=13.0.0
 playwright>=1.40.0
 openpyxl>=3.1.0
 
-# --- 方案 D 新 Web 后端（双轨并行） ---
+# --- Web 后端（FastAPI 单轨） ---
 fastapi>=0.110
 uvicorn>=0.27
-python-multipart>=0.0.9
 pydantic>=2.13,<3
 pydantic-core==2.46.4

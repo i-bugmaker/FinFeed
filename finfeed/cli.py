@@ -150,9 +150,8 @@ async def run_continuous(interval: int, web_port: int):
 
 
 # ---------------------------------------------------------------------------
-# Web 服务栈启动（方案 D：双轨并行）
+# Web 服务栈启动（FastAPI 单轨，8866）
 # ---------------------------------------------------------------------------
-FALLBACK_WEB_PORT = 8867  # 旧 server.py 回退端口（与 FastAPI 主端口 8866 区分）
 
 
 def _launch_fastapi(port: int) -> "subprocess.Popen":
@@ -204,7 +203,7 @@ def start_web_stack(mode: str, port: int) -> "subprocess.Popen | None":
     """按模式启动 Web 服务栈（已简化为单轨）。
 
     - ``mode='fastapi'``（默认）：仅 uvicorn(FastAPI) 监听 ``port``（默认 8866）。
-      旧的 8867 server.py 回退前端已移除；server.py 模块仅作为 SSE 广播通道被复用。
+      旧的 server.py 独立前端已移除；server.py 模块仅作为 SSE 广播通道被复用。
     - ``mode='legacy'``：仅旧 ``server.py`` 监听 ``port``（保留向后兼容）。
 
     返回 FastAPI 子进程句柄（可能为 ``None``），供退出时回收。
@@ -220,7 +219,7 @@ def start_web_stack(mode: str, port: int) -> "subprocess.Popen | None":
             mode = "legacy"
         else:
             fastapi_proc = _launch_fastapi(port)
-            # 单轨模式：仅 FastAPI(8866) 提供服务；旧的 8867 server.py 回退已移除
+            # 单轨模式：仅 FastAPI(8866) 提供服务；旧的 server.py 独立前端已移除
             # （server.py 中的 SSE 广播通道仍被 8866 复用，不得删除该模块）
     if mode != "fastapi":
         start_web_server(port=port)
@@ -304,7 +303,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python main.py                      # 启动实时监控（默认 FastAPI 双轨）
+  python main.py                      # 启动实时监控（默认 FastAPI 单轨，8866）
   python main.py --interval 60        # 每60秒抓取一次
   python main.py --once               # 只抓取一次
   python main.py --web-only           # 仅起 Web（无浏览器环境预览新界面）
@@ -331,7 +330,7 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="bars 回补数量上限")
     parser.add_argument(
         "--web", choices=["fastapi", "legacy"], default="fastapi",
-        help="Web 后端模式: fastapi(默认, 双轨并行 8866+8867回退) / legacy(旧 server.py 单轨)",
+        help="Web 后端模式: fastapi(默认, 单轨 8866) / legacy(降级: 仅旧 server.py，FastAPI 缺失时兜底)",
     )
     parser.add_argument(
         "--web-only", action="store_true",

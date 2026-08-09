@@ -61,7 +61,7 @@ FinFeed 并非单一的新闻聚合器，而是将**非结构化新闻**与**结
 - 供应商配置持久化于本地库，API Key 仅在接口返回掩码值，不回传前端。
 
 **Web 仪表盘与推送**
-- FastAPI 双轨并行：新版 Vue 3 + Vite SPA（8866，主入口）+ 旧版 `server.py`（8867，回退）。
+- FastAPI 单轨：新版 Vue 3 + Vite SPA（8866）由 FastAPI 同源托管；旧版 `server.py` 仅作为 SSE 广播通道被复用，不再作为独立前端。
 - 实时 SSE 增量推送、情感趋势、收藏、全文检索、历史导出、LLM 报表导出。
 - 完整 OpenAPI 文档（Swagger UI / ReDoc）。
 
@@ -153,7 +153,7 @@ pip install -e .
 # 4. 安装 Playwright 浏览器内核（用于绕过部分数据源反爬）
 playwright install chromium
 
-# 5. 构建前端（可选；若不构建，默认回退到 8867 旧版界面）
+# 5. 构建前端（可选；若不构建，FastAPI 仅提供 API，不含前端页面）
 cd web
 npm install
 npm run build        # 产出 web/dist，由 FastAPI 静态托管
@@ -208,7 +208,7 @@ LLM 供应商配置持久化于主库的 `llm_providers` 表，**推荐通过 We
 ### 启动实时监控
 
 ```bash
-# 启动实时监控（默认 FastAPI 双轨：8866 新界面 + 8867 回退）
+# 启动实时监控（默认 FastAPI 单轨：8866）
 python main.py
 
 # 自定义抓取间隔（每 60 秒）
@@ -218,8 +218,8 @@ python main.py --interval 60
 python main.py --once
 
 # 显式指定 Web 后端
-python main.py --web fastapi   # 默认：FastAPI(8866) + 旧 server.py 回退(8867)
-python main.py --web legacy    # 仅旧版 server.py 单轨（监听 --port，默认 8866）
+python main.py --web fastapi   # 默认：FastAPI 单轨(8866)
+python main.py --web legacy    # 降级：仅旧版 server.py（FastAPI 缺失时兜底，监听 --port，默认 8866）
 ```
 
 ### 无浏览器 / 仅预览界面
@@ -227,7 +227,7 @@ python main.py --web legacy    # 仅旧版 server.py 单轨（监听 --port，�
 若运行环境无可用浏览器（Playwright 无法启动），可用 `--web-only` 仅启动 Web 服务，避开监控器稳定预览：
 
 ```bash
-python main.py --web-only          # 仅 Web（8866 新 / 8867 回退），Ctrl+C 停止
+python main.py --web-only          # 仅 Web（8866），Ctrl+C 停止
 ```
 
 ### 数据导出
@@ -280,12 +280,11 @@ python main.py --market alerts      # 市场状态告警
 
 ## Web 界面与 API
 
-自 v2.1 起，Web 前端为 Vue 3 + Vite 构建的 SPA，由 FastAPI 同源托管；旧版 `server.py`（服务端模板渲染）保留为回退通道，二者并行运行。
+自 v2.1 起，Web 前端为 Vue 3 + Vite 构建的 SPA，由 FastAPI 同源单轨托管（8866）；旧版 `server.py` 仅作为 SSE 广播通道被复用，不再作为独立前端。
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| `8866` | FastAPI + Vue SPA（新） | 默认主入口，现代 SaaS 亮色风格 |
-| `8867` | 旧 `server.py`（回退） | 与旧接口完全一致，仅 UI 为旧版模板 |
+| `8866` | FastAPI + Vue SPA | 默认主入口，现代 SaaS 亮色风格 |
 
 - **API 交互文档（Swagger UI）**：`http://127.0.0.1:8866/docs`（OpenAPI 在 `/openapi.json`）
 - **交互式文档（ReDoc）**：`http://127.0.0.1:8866/redoc`
@@ -302,7 +301,7 @@ npm run dev        # 开发服务器（代理 /api → 8866，支持热更新，
 npm run build      # 产出 web/dist，由 FastAPI 静态托管
 ```
 
-> 若 `web/dist` 不存在，FastAPI 仅提供 API（不含前端页面），此时可访问 `8867` 回退界面。
+> 若 `web/dist` 不存在，FastAPI 仅提供 API（不含前端页面）；需先执行 `npm run build` 生成前端。
 
 ---
 
@@ -322,7 +321,7 @@ FinFeed/
 │   ├── market/                 # 市场事实层（A股快照/涨停归因/龙虎榜/日线）
 │   ├── storage/                # 数据持久化（database / exporter / models）
 │   ├── ui/                     # 用户界面
-│   │   ├── web/                # 旧版 Web（server.py + 模板，8867 回退）
+│   │   ├── web/                # 旧版 Web（server.py，仅作 SSE 广播通道被复用）
 │   │   └── web_fastapi/        # 新 Web 后端（FastAPI，8866 主入口）
 │   └── utils/                  # 工具函数
 ├── web/                        # 新前端（Vue 3 + Vite，构建产物 dist/）

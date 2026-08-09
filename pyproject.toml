@@ -28,7 +28,6 @@ openpyxl = ">=3.1.0"
 # --- 方案 D 新 Web 后端（双轨并行） ---
 fastapi = ">=0.110"
 uvicorn = ">=0.27"
-python-multipart = ">=0.0.9"
 pydantic = ">=2.13,<3"
 # pydantic-core 需与 pydantic 主版本严格匹配，否则 import fastapi 会报
 # `pydantic-core X incompatible with pydantic requiring Y`。当前锁定 2.46.4。
