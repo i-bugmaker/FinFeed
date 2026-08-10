@@ -22,6 +22,7 @@ import asyncio
 import logging
 import logging.handlers
 import subprocess
+import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -71,11 +72,16 @@ async def run_continuous(interval: int, web_port: int):
             logger.error(f"SSE 增量推送失败: {e}", exc_info=True)
 
         stats = db_get_statistics()
+        # 注意：db_get_statistics() 返回的字典 key 是 "total_news"，
+        # 历史写法 get("total", 0) 永远拿不到值（恒为 0），导致 TUI/前端
+        # 一直显示「库内 0 条」。这是 2026-08-10 现场定位的 bug，现统一为
+        # 正确 key，且与 ui/web/server.py、ui/web_fastapi/app.py 保持一致。
+        total_count = stats.get("total_news", 0)
         update_web_state(
             news=[],
             stats=_build_source_stats(),
             cycle=monitor.fetch_count,
-            total=stats.get("total", 0),
+            total=total_count,
             new_count=total_new,
             status=f"第{monitor.fetch_count}轮" if monitor.fetch_count > 0 else "运行中",
         )
@@ -99,6 +105,10 @@ async def run_continuous(interval: int, web_port: int):
                 news = db_get_recent_news(limit=200, category="finance")
                 stats = db_get_statistics()
                 source_stats = _build_source_stats()
+                # db_get_statistics() 返回的字典 key 是 "total_news"，
+                # 不是 "total"——历史写法 get("total", 0) 会恒为 0，
+                # 导致 TUI「库内 0 条」一直不更新（详见 push_callback 同注释）。
+                total_count = stats.get("total_news", 0)
 
                 status = "运行中" if monitor.is_running else "准备中"
                 if monitor.fetch_count > 0:
@@ -107,7 +117,7 @@ async def run_continuous(interval: int, web_port: int):
                 terminal_ui.update_data(
                     news_list=news,
                     cycle=monitor.fetch_count,
-                    total_news=stats.get("total", 0),
+                    total_news=total_count,
                     new_count=monitor.total_new_count,
                     source_stats=source_stats,
                     status=status,
@@ -117,7 +127,7 @@ async def run_continuous(interval: int, web_port: int):
                     news=[],
                     stats=source_stats,
                     cycle=monitor.fetch_count,
-                    total=stats.get("total", 0),
+                    total=total_count,
                     new_count=monitor.total_new_count,
                     status=status,
                 )
@@ -168,19 +178,27 @@ def _launch_fastapi(port: int) -> "subprocess.Popen":
         "--log-level", "info",
     ]
     logger.info("启动 FastAPI 服务(子进程): %s", " ".join(cmd))
-    # 子进程输出重定向到日志文件，避免刷屏黑窗口
-    log_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "finfeed.log"
+    # 子进程输出重定向到**独立**的日志文件，避免与主进程 RotatingFileHandler
+    # 共享同一个 fd 导致 doRollover 失败，进而在 TUI 顶部喷出
+    # ``--- Logging error ---``（见 SafeRotatingFileHandler 注释）。
+    log_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"
     )
-    child_log = open(log_path, "a", encoding="utf-8", buffering=1)
+    child_log_path = os.path.join(log_dir, "finfeed_web.log")
+    # 用 append + 显式 fileno 而非传文件对象：保证 关闭控制权 明确、子进程结束后
+    # 我们的 write 也走同一个 fd，且 fd 由主进程独占，与 logger 的 RotatingFileHandler
+    # 路径不同名 → 不再竞争。
+    child_log_fd = os.open(child_log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     proc = subprocess.Popen(
         cmd,
-        stdout=child_log,
-        stderr=child_log,
+        stdout=child_log_fd,
+        stderr=child_log_fd,
         stdin=subprocess.DEVNULL,
-        bufsize=1,
-        text=True,
+        bufsize=0,
     )
+    # subprocess 内部已 dup 了一个 fd，关闭我们手里的 fd 安全。
+    # 保留这个 handle 让退出时能优雅 close。
+    proc._finfeed_child_log_fd = child_log_fd  # type: ignore[attr-defined]
     return proc
 
 
@@ -197,6 +215,15 @@ def _terminate_fastapi(proc: "subprocess.Popen"):
             proc.kill()
         except Exception:
             pass
+    # 关闭我们持有的 child log fd（与子进程 stdout/stderr 关联），
+    # 不留 fd 泄漏，让 OS 在文件句柄回收时干净。
+    try:
+        fd = getattr(proc, "_finfeed_child_log_fd", None)
+        if fd is not None:
+            os.close(fd)
+            proc._finfeed_child_log_fd = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
 
 def start_web_stack(mode: str, port: int) -> "subprocess.Popen | None":
@@ -226,17 +253,106 @@ def start_web_stack(mode: str, port: int) -> "subprocess.Popen | None":
     return fastapi_proc
 
 
+class SafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """对 Windows 友好的日志轮转 handler，解决两个独立的现场问题：
+
+    **问题 A — TUI 屏幕顶部冒出 ``--- Logging error ---``**：stdlib ``Handler.handleError()``
+    在 handler 自身 ``emit()`` 抛异常时，会通过 ``sys.stderr.write()`` 把 fallback 信息写到
+    stderr。在 ``Live(screen=True)`` 启用 alt-screen 时，stderr 仍然走当前 TTY，活动 buffer
+    就是 alt buffer，于是该文本出现在 Rich 绘制的 header 之上一行，造成可见「抖动」。
+    这里覆盖 ``handleError``，把诊断写到独立的 ``finfeed_errors.log`` 文件，永远不碰 stderr。
+
+    **问题 B — 子进程与轮转的 fd 冲突**：FastAPI 子进程通过 ``open(log_path, "a")`` 持有
+    ``finfeed.log`` 的 fd，Windows 上 ``RotatingFileHandler.doRollover`` 的 ``os.rename``
+    会因此失败（其他进程持有句柄），同样会让 ``emit()`` 抛异常 → 触发「问题 A」。
+    这里在 ``doRollover`` 失败时降级为「先关闭 + 重新打开」的策略，让 handler 仍能写入，
+    同时把 maxBytes 临时上调避免高频抖动；不再让单条 log 的失败蔓延到整个进程。
+    """
+
+    _error_log_name = "finfeed_errors.log"
+
+    def _log_dir(self) -> str:
+        return os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"
+        )
+
+    def handleError(self, record):  # noqa: N802 - stdlib 命名
+        """覆盖：永远不写 stderr，仅落到独立错误日志。"""
+        try:
+            err_path = os.path.join(self._log_dir(), self._error_log_name)
+            os.makedirs(os.path.dirname(err_path), exist_ok=True)
+            ts = time.strftime("%Y-%m-%d %H:%M:%S")
+            with open(err_path, "a", encoding="utf-8") as fp:
+                fp.write(
+                    f"[{ts}] logging error in "
+                    f"{self.__class__.__module__}.{self.__class__.__qualname__}\n"
+                )
+                et, ev, tb = sys.exc_info()
+                if et is not None:
+                    traceback.print_exception(et, ev, tb, limit=10, file=fp)
+                fp.write(
+                    f"  record: name={record.name!r} "
+                    f"file={record.filename!r}:{record.lineno} "
+                    f"msg={record.msg!r}\n"
+                )
+                fp.write("-" * 60 + "\n")
+        except Exception:
+            # 最后一关：连错误文件都写不动时静默，绝不让线程崩溃污染 TUI。
+            pass
+
+    def doRollover(self):  # noqa: N802 - stdlib 命名
+        """容错版轮转：失败时降级为 close+reopen，handler 继续可用。"""
+        try:
+            super().doRollover()
+            return
+        except (OSError, PermissionError) as e:
+            # 极可能是子进程仍持有 fd（Windows 不允许 rename 一个被独占打开的文件）。
+            # 把这次失败记到错误日志，然后降级。
+            try:
+                err_path = os.path.join(self._log_dir(), self._error_log_name)
+                os.makedirs(os.path.dirname(err_path), exist_ok=True)
+                with open(err_path, "a", encoding="utf-8") as fp:
+                    fp.write(
+                        f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] doRollover failed, "
+                        f"falling back to in-place reopen: {e!r}\n"
+                    )
+            except Exception:
+                pass
+
+        # 降级路径：关闭并以 append 模式原地重开，不 rotate。
+        # 这样后续 emit() 不再抛，handler 仍能持续工作。
+        try:
+            if self.stream is not None:
+                try:
+                    self.stream.close()
+                except Exception:
+                    pass
+                self.stream = None
+            self.stream = self._open()
+            # 把 maxBytes 临时上调 50%，避免下一条日志马上又试图触发 rollover。
+            # 完全禁用（=0）会改变整盘语义，所以仅做缓冲上调。
+            try:
+                if self.maxBytes and self.maxBytes > 0:
+                    self.maxBytes = int(self.maxBytes * 1.5)
+            except Exception:
+                pass
+        except Exception:
+            # 连 reopen 都不行：留下 None，让基类的 ensure_opened 逻辑下次再尝试。
+            self.stream = None
+
+
 def _setup_logging():
-    """配置日志系统（RotatingFileHandler 轮转，避免单文件无限增长）"""
+    """配置日志系统（SafeRotatingFileHandler：容错轮转 + 静默错误）"""
     log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "finfeed.log")
     # 仅写文件，不向控制台输出，避免黑窗口被日志刷屏
-    file_handler = logging.handlers.RotatingFileHandler(
+    file_handler = SafeRotatingFileHandler(
         log_file,
         encoding='utf-8',
         maxBytes=LOG_MAX_BYTES,
         backupCount=LOG_BACKUP_COUNT,
+        delay=True,  # 延迟到首次 emit() 再开文件，减少 fd 占用时长
     )
     logging.basicConfig(
         level=logging.INFO,
