@@ -10,12 +10,13 @@
 """
 
 import logging
-from typing import Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional
+
+from finfeed.storage.database import get_db_manager
+from finfeed.utils.time_utils import now_bj
 
 from . import store
-from finfeed.storage.database import get_db_manager
-from finfeed.storage import sentiment_store as ss
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 
@@ -56,7 +57,6 @@ def produce_limit_up_report(trade_date: Optional[str] = None, top_n: int = 30) -
     codes = [r["code"] for r in zt]
     names = _code_names()
     # 最近 3 天相关新闻
-    import time
     since_ts = int(time.time()) - 3 * 86400
     news_map = _recent_news_for_codes(codes, since_ts)
     # 龙虎榜 / 资金流
@@ -72,15 +72,10 @@ def produce_limit_up_report(trade_date: Optional[str] = None, top_n: int = 30) -
         name = names.get(code, r["name"])
         b = bb.get(code)
         mf = mf_rows.get(code)
-        bb_net = f"{b['net_amount']/1e4:,.0f}" if b else "-"
-        mf_net = f"{mf/1e4:,.0f}" if mf is not None else "-"
         news = news_map.get(code, [])
         news_txt = news[0][:24] + ("…" if len(news[0]) > 24 else "") if news else "-"
         news_txt = news_txt.replace("|", "/")
-        lines.append(
-            f"| {i} | {code} | {name} | {r.get('reason','')} | {r.get('open_times',0)} | "
-            f"{r.get('limit_amount',0):.2f} | {r.get('circ_mv',0):.1f} | {bb_net} | {mf_net} | {news_txt} |"
-        )
+        lines.append(_format_limit_row(i, r, name, b, mf, news_txt))
 
     if len(zt) > top_n:
         lines.append("")
@@ -93,6 +88,27 @@ def produce_limit_up_report(trade_date: Optional[str] = None, top_n: int = 30) -
     for k, v in sorted(ind.items(), key=lambda x: -x[1])[:15]:
         lines.append(f"- {k or '未分类'}: {v} 只")
     return "\n".join(lines)
+
+
+def _format_limit_row(
+    i: int,
+    r: Dict[str, Any],
+    name: str,
+    b: Optional[Dict[str, Any]],
+    mf: Optional[float],
+    news_txt: str,
+) -> str:
+    """渲染单只涨停股的一行 markdown 表格。
+
+    『连板』列固定取 limit_pool.limit_streak（连板数），而非 open_times（开板次数）。
+    该约定由 tests/test_report.py 守护，防止回归到误用 open_times 的旧实现。
+    """
+    bb_net = f"{b['net_amount'] / 1e4:,.0f}" if b else "-"
+    mf_net = f"{mf / 1e4:,.0f}" if mf is not None else "-"
+    return (
+        f"| {i} | {r['code']} | {name} | {r.get('reason', '')} | {r.get('limit_streak', 0)} | "
+        f"{r.get('limit_amount', 0):.2f} | {r.get('circ_mv', 0):.1f} | {bb_net} | {mf_net} | {news_txt} |"
+    )
 
 
 def _money_flow_map(trade_date: str, codes: List[str]) -> Dict[str, float]:

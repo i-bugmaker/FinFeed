@@ -12,43 +12,50 @@
 3. **导出 / 健康检查 / 熔断状态**：与旧实现逐字段对齐。
 """
 
-import os
+import asyncio
 import csv
 import io
 import json
-import time
+import logging
 import queue as _queue
 import threading as _threading
-import asyncio
-import logging
+import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs
 
-from fastapi import FastAPI, Request, Query, Body, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+import uvicorn
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
-from urllib.parse import parse_qs
-from pathlib import Path
+
+from finfeed.config.settings import DEFAULT_WEB_PORT, get_display_name
+from finfeed.config.sources import get_enabled_sources
+from finfeed.core.health import get_health_monitor
+from finfeed.ecal import api as calendar_api
+from finfeed.ecal import fetcher as calendar_fetcher
+from finfeed.llm import api as llm_api
+from finfeed.storage.database import (
+    db_get_all_for_export,
+    db_get_all_stock_names,
+    db_get_date_range,
+    db_get_news_by_id,
+    db_get_statistics,
+    db_mark_read,
+    db_query_news,
+    db_search_news,
+    db_toggle_favorite,
+    get_db,
+)
 
 # ----------------------------------------------------------------------
 # 复用旧实现的模块级对象（SSE 客户端集合 / 广播 / 缓存 / 解析辅助）
 # ----------------------------------------------------------------------
 from finfeed.ui.web import server as legacy
-from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT, API_CACHE_TTL
-from finfeed.config.sources import get_enabled_sources, get_forum_sources
-from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
-from finfeed.storage.database import (
-    db_get_all_for_export, db_get_date_range, db_search_news,
-    db_get_news_by_id, db_mark_read, db_toggle_favorite, db_query_news,
-    db_get_statistics, db_get_favorites, get_db, db_get_all_stock_names,
-    db_get_news_after_id, db_get_max_news_id,
-)
-from finfeed.core.health import get_health_monitor
-from finfeed.llm import api as llm_api
-from finfeed.ecal import api as calendar_api
-from finfeed.ecal import fetcher as calendar_fetcher
+from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 logger = logging.getLogger("news_monitor")
 
@@ -439,7 +446,7 @@ def api_export(format: str = Query("json"), start: Optional[str] = None, end: Op
         return Response(content=data, media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="finfeed_news_{ts_str}.csv"'})
     elif format in ("markdown", "md"):
-        lines = [f"# FinFeed 财经新闻导出", "", f"导出时间: {now_bj().strftime('%Y-%m-%d %H:%M:%S')}", f"共 {len(news)} 条新闻", ""]
+        lines = ["# FinFeed 财经新闻导出", "", f"导出时间: {now_bj().strftime('%Y-%m-%d %H:%M:%S')}", f"共 {len(news)} 条新闻", ""]
         for n in news:
             time_str = n.publish_time or ""
             lines.append(f"### [{n.title}]({n.url})")
@@ -615,9 +622,9 @@ async def api_market(rest: str, request: Request):
             return default
 
     try:
+        from finfeed.market import alerts as mk_alerts
         from finfeed.market import store as mk_store
         from finfeed.storage import sentiment_store as ss
-        from finfeed.market import alerts as mk_alerts
 
         if sub == "sentiment":
             data = ss.get_market_sentiment(date) or {}

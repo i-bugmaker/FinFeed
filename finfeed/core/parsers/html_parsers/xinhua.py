@@ -2,17 +2,30 @@
 # -*- coding: utf-8 -*-
 """新华财经 解析器"""
 
-import re
-import json
 import asyncio
+import json
 import logging
-from datetime import datetime, timezone, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 import httpx
 from bs4 import BeautifulSoup
-from ..base import BaseParser
-from finfeed.storage.models import NewsItem
+
 from finfeed.config.settings import get_display_name
+from finfeed.storage.models import NewsItem
+
+from ..base import BaseParser
+
+# CNFIN_* 常量（BASE_URL / FLASH_API / FLASH_QUERY_IDS / CHANNELS）定义在同目录
+# 的 cnstock.py 中，本解析器复用之；缺失则运行时 NameError 导致新华财经整源失败。
+from .cnstock import (
+    CNFIN_BASE_URL,
+    CNFIN_CHANNELS,
+    CNFIN_FLASH_API,
+    CNFIN_FLASH_QUERY_IDS,
+)
+
 logger = logging.getLogger("news_monitor")
 class XinhuaCaijingParser(BaseParser):
     """新华财经（中国金融信息网 cnfin.com）- 多栏目聚合解析器

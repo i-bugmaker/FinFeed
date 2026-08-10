@@ -41,7 +41,8 @@ where = ["finfeed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["finfeed"]
+pythonpath = ["."]
+addopts = "-q"
 
 [tool.black]
 line-length = 100
@@ -50,3 +51,33 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 multi_line_output = 3
+
+# ---------------------------------------------------------------------------
+# Ruff：静态检查门禁（替代 pyflakes，覆盖 F/E/UP/B 等）
+# 目标：提交前拦截 undefined-name(F821) / unused-import(F401) 类问题，
+# 防止出现如 xinhua.py 缺失 CNFIN_* 导入导致整源静默失败的回归。
+# 运行：python -m ruff check .   /   格式化：python -m ruff format .
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["finfeed", "tests"]
+
+[tool.ruff.lint]
+# 当前门禁聚焦「防回归 / 基础卫生」：
+#   F=pyflakes(含 F821 未定义名 / F401 未用导入) —— 直接拦住 Bug 1 类缺失导入
+#   E/W=pycodestyle 基础风格；I=import 排序
+# 注：UP(pyupgrade: List->list / Optional->X|None)、B(bugbear)、C4、SIM 暂未纳入强制，
+# 因其会在全仓触发大量现代化改写，宜在独立「现代化专项」PR 中分批处理，避免本门禁被噪音淹没。
+select = ["F", "E", "W", "I"]
+ignore = [
+    "E501",  # 行长交由 black 管理，ruff 不重复报错
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试文件容忍更宽松的风格与"宽泛 except"
+"tests/*" = ["B", "UP", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
