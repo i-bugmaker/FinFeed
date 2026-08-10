@@ -29,7 +29,7 @@ const sentimentOption = computed(() => {
       text: total ? String(total) : '—',
       subtext: '总新闻',
       left: 'center',
-      top: '34%',
+      top: '36%',
       textStyle: { fontSize: 18, fontWeight: 700, color: chartVar('--ff-text-primary') },
       subtextStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary') },
     },
@@ -38,7 +38,7 @@ const sentimentOption = computed(() => {
     series: [
       {
         type: 'pie',
-        radius: ['48%', '72%'],
+        radius: ['52%', '76%'],
         center: ['50%', '46%'],
         avoidLabelOverlap: true,
         itemStyle: {
@@ -50,10 +50,10 @@ const sentimentOption = computed(() => {
           show: true,
           formatter: '{d}%',
           color: chartVar('--ff-text-secondary'),
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: 500,
         },
-        labelLine: { length: 8, length2: 6 },
+        labelLine: { length: 6, length2: 4 },
         data: [
           { name: '利好', value: s.positive || 0, itemStyle: { color: chartVar('--ff-chart-up') } },
           { name: '利空', value: s.negative || 0, itemStyle: { color: chartVar('--ff-chart-down') } },
@@ -184,14 +184,14 @@ onMounted(async () => {
 
       <!-- ═══ L2 数据洞察（图表）═══ -->
       <div class="ff-grid ff-dashboard-view__charts">
-        <div class="ff-col-12 ff-col-lg-6">
+        <div class="ff-col-12 ff-col-lg-4">
           <AppCard title="情绪分布" subtitle="近 24h 舆情倾向">
-            <ChartPanel :option="sentimentOption" height="228px" />
+            <ChartPanel :option="sentimentOption" height="220px" />
           </AppCard>
         </div>
-        <div class="ff-col-12 ff-col-lg-6">
+        <div class="ff-col-12 ff-col-lg-8">
           <AppCard title="来源 TOP10" subtitle="各数据源新闻量">
-            <ChartPanel :option="sourceOption" height="228px" />
+            <ChartPanel :option="sourceOption" height="220px" />
           </AppCard>
         </div>
       </div>
