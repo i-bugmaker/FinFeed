@@ -63,7 +63,8 @@ def _qb(qs: Dict[str, List[str]], key: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
-def _cal_type(qs: Dict[str, List[str]], default: str = "finance") -> str:
+def _cal_type(qs: Dict[str, List[str]], default: str = "all") -> str:
+    """解析日历类型参数；缺省视为 'all'（全类型），避免静默退化为单类型"""
     t = _q(qs, "type", default)
     return t if t in CAL_TYPE_KEYS or t == "all" else default
 

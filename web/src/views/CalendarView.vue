@@ -26,15 +26,6 @@ const typeOptions = computed(() => [
   ...(filters.value.types || []).map(t => ({ label: t.label, value: t.key })),
 ])
 
-const typeSummary = computed(() => {
-  const map = {}
-  for (const e of events.value) {
-    const k = e.cal_type || 'finance'
-    map[k] = (map[k] || 0) + 1
-  }
-  return Object.entries(map).map(([k, v]) => ({ key: k, label: CAL_TYPE_LABEL[k] || k, count: v }))
-})
-
 async function loadInit() {
   try {
     const init = await api.calendar('/init')
@@ -47,7 +38,7 @@ async function loadList() {
   loading.value = true
   try {
     const res = await api.calendar('/list', {
-      type: type.value !== 'all' ? type.value : undefined,
+      type: type.value,  // 'all' 也要传,否则后端 _cal_type 默认退化为 finance
       start: date.value || undefined,
       end: date.value || undefined,
       limit: 500,
@@ -120,39 +111,23 @@ onMounted(async () => {
       </div>
     </AppCard>
 
-    <div v-if="typeSummary.length" class="ff-calendar-view__types">
-      <button
-        type="button"
-        class="ff-chip"
-        :class="type === 'all' && 'ff-chip--active'"
-        @click="type = 'all'; reload()"
-      >
-        全部 {{ events.length }}
-      </button>
-      <button
-        v-for="s in typeSummary"
-        :key="s.key"
-        type="button"
-        class="ff-chip"
-        :class="[
-          `ff-chip--${CAL_TYPE_VARIANT[s.key] || 'default'}`,
-          type === s.key && 'ff-chip--active',
-        ]"
-        @click="type = s.key; reload()"
-      >
-        {{ s.label }} {{ s.count }}
-      </button>
-    </div>
-
     <div class="ff-grid">
       <div class="ff-col-12 ff-col-lg-9">
         <AppCard title="事件列表" :subtitle="`共 ${events.length} 条`" :no-padding="true">
           <div v-if="events.length" class="ff-calendar-view__events">
-            <div v-for="(e, i) in events" :key="i" class="ff-calendar-view__event">
-              <span class="ff-calendar-view__date ff-num">{{ e.event_date }}</span>
-              <AppBadge :text="CAL_TYPE_LABEL[e.cal_type] || e.cal_type" :variant="CAL_TYPE_VARIANT[e.cal_type] || 'default'" />
-              <span class="ff-calendar-view__cat">{{ e.category }}</span>
-              <span class="ff-calendar-view__title">{{ e.title }}</span>
+            <div class="ff-calendar-view__head">
+              <span class="ff-calendar-view__head-date">日期</span>
+              <span class="ff-calendar-view__head-type">类型</span>
+              <span class="ff-calendar-view__head-cat">分类</span>
+              <span class="ff-calendar-view__head-title">事件</span>
+            </div>
+            <div class="ff-calendar-view__body">
+              <div v-for="(e, i) in events" :key="i" class="ff-calendar-view__event">
+                <span class="ff-calendar-view__date ff-num">{{ e.event_date }}</span>
+                <AppBadge :text="CAL_TYPE_LABEL[e.cal_type] || e.cal_type" :variant="CAL_TYPE_VARIANT[e.cal_type] || 'default'" />
+                <span class="ff-calendar-view__cat">{{ e.category }}</span>
+                <span class="ff-calendar-view__title">{{ e.title }}</span>
+              </div>
             </div>
           </div>
           <AppSkeleton v-else-if="loading" variant="text" :lines="6" />
@@ -198,37 +173,80 @@ onMounted(async () => {
   color: var(--ff-text-secondary);
 }
 
-.ff-calendar-view__types {
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  flex-wrap: wrap;
-  margin-bottom: var(--ff-space-4);
-}
-
 .ff-calendar-view__events {
   display: flex;
   flex-direction: column;
-  max-height: 600px;
-  overflow-y: auto;
+  height: 560px;
+  max-height: calc(100vh - 320px);
+  min-height: 320px;
 }
 
-.ff-calendar-view__event {
-  display: flex;
+/* 表头：sticky 吸顶 */
+.ff-calendar-view__head {
+  display: grid;
+  grid-template-columns: 100px 84px 120px minmax(0, 1fr);
+  gap: var(--ff-space-3);
   align-items: center;
-  gap: var(--ff-space-4);
-  padding: var(--ff-space-3) var(--ff-space-4);
+  padding: var(--ff-space-2-5) var(--ff-space-4);
+  border-bottom: 1px solid var(--ff-border);
+  background: var(--ff-bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  font-size: var(--ff-fs-caption);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-tertiary);
+  letter-spacing: 0.03em;
+}
+
+/* 滚动主体 */
+.ff-calendar-view__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 自定义滚动条（WebKit + Firefox） */
+.ff-calendar-view__body::-webkit-scrollbar {
+  width: 8px;
+}
+.ff-calendar-view__body::-webkit-scrollbar-track {
+  background: var(--ff-bg-subtle);
+  border-radius: var(--ff-radius-pill);
+}
+.ff-calendar-view__body::-webkit-scrollbar-thumb {
+  background: var(--ff-border-strong);
+  border-radius: var(--ff-radius-pill);
+}
+.ff-calendar-view__body::-webkit-scrollbar-thumb:hover {
+  background: var(--ff-text-tertiary);
+}
+.ff-calendar-view__body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ff-border-strong) var(--ff-bg-subtle);
+}
+
+/* 事件行：与表头同列宽对齐 */
+.ff-calendar-view__event {
+  display: grid;
+  grid-template-columns: 100px 84px 120px minmax(0, 1fr);
+  gap: var(--ff-space-3);
+  align-items: center;
+  padding: var(--ff-space-2-5) var(--ff-space-4);
   border-bottom: 1px solid var(--ff-border);
   font-size: var(--ff-fs-base);
   transition: background var(--ff-dur-fast);
 }
-
 .ff-calendar-view__event:last-child {
   border-bottom: none;
 }
-
 .ff-calendar-view__event:hover {
   background: var(--ff-bg-hover);
+}
+.ff-calendar-view__event:hover .ff-calendar-view__title {
+  color: var(--ff-text-brand);
 }
 
 .ff-calendar-view__date {
@@ -256,11 +274,5 @@ onMounted(async () => {
 
 .ff-calendar-view__chart {
   padding: var(--ff-space-3);
-}
-
-@media (max-width: 1023px) {
-  .ff-calendar-view__types {
-    gap: var(--ff-space-1-5);
-  }
 }
 </style>

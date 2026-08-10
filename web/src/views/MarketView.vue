@@ -7,25 +7,24 @@ import AppButton from '../ui/AppButton.vue'
 import AppInput from '../ui/AppInput.vue'
 import AppDatePicker from '../ui/AppDatePicker.vue'
 import AppTabs from '../ui/AppTabs.vue'
-import AppBadge from '../ui/AppBadge.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
 const tabs = [
-  { key: 'overview', label: '总览' },
-  { key: 'sentiment', label: '市场情绪' },
-  { key: 'limitup', label: '涨停' },
-  { key: 'limitdown', label: '跌停' },
-  { key: 'limitbroken', label: '炸板' },
-  { key: 'billboard', label: '龙虎榜' },
-  { key: 'moneyflow', label: '资金流' },
-  { key: 'margin', label: '两融' },
-  { key: 'forecast', label: '业绩预告' },
-  { key: 'ipo', label: '新股' },
-  { key: 'sectors', label: '板块' },
-  { key: 'search', label: '股票搜索' },
+  { value: 'overview', label: '总览' },
+  { value: 'sentiment', label: '市场情绪' },
+  { value: 'limitup', label: '涨停' },
+  { value: 'limitdown', label: '跌停' },
+  { value: 'limitbroken', label: '炸板' },
+  { value: 'billboard', label: '龙虎榜' },
+  { value: 'moneyflow', label: '资金流' },
+  { value: 'margin', label: '两融' },
+  { value: 'forecast', label: '业绩预告' },
+  { value: 'ipo', label: '新股' },
+  { value: 'sectors', label: '板块' },
+  { value: 'search', label: '股票搜索' },
 ]
-const active = ref('limitup')
+const active = ref('overview')
 const date = ref('')
 const data = ref(null)
 const rows = ref([])
@@ -81,16 +80,6 @@ const sentimentKeys = computed(() =>
     ? Object.keys(data.value).filter((k) => k !== 'created_at')
     : [],
 )
-
-const healthSummary = computed(() => {
-  if (active.value !== 'overview' || !data.value || !Array.isArray(data.value.health)) return null
-  const h = data.value.health
-  return {
-    total: h.length,
-    ok: h.filter((x) => !x.is_circuit_open).length,
-    fused: h.filter((x) => x.is_circuit_open).length,
-  }
-})
 
 const actions = [
   { key: 'snapshot', label: '采集行情快照', icon: 'download' },
@@ -201,9 +190,11 @@ onMounted(async () => {
       </div>
     </AppCard>
 
-    <AppTabs v-model="active" type="pill" :items="tabs" class="ff-market-view__tabs" />
-
     <AppCard class="ff-market-view__panel" :no-padding="true">
+      <div class="ff-market-view__nav">
+        <AppTabs v-model="active" type="line" :items="tabs" class="ff-market-view__tabs" />
+      </div>
+
       <div v-if="summary" class="ff-market-view__summary">
         <div v-for="(v, k) in summary" :key="k" class="ff-kv">
           <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
@@ -260,36 +251,7 @@ onMounted(async () => {
             </tbody>
           </table>
         </section>
-        <section v-if="healthSummary" class="ff-market-view__section">
-          <h3 class="ff-h3">
-            系统健康度
-            <AppBadge :text="`正常 ${healthSummary.ok} / 熔断 ${healthSummary.fused}`" variant="default" />
-          </h3>
-          <table class="ff-table">
-            <thead>
-              <tr>
-                <th class="ff-table__header">数据源</th>
-                <th class="ff-table__header ff-table__header--right">请求数</th>
-                <th class="ff-table__header ff-table__header--right">成功</th>
-                <th class="ff-table__header ff-table__header--right">失败</th>
-                <th class="ff-table__header ff-table__header--right">平均延迟(s)</th>
-                <th class="ff-table__header">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="h in data.health" :key="h.source_name" class="ff-table__row">
-                <td class="ff-table__cell">{{ h.source_name }}</td>
-                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.total_requests }}</td>
-                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.success_count }}</td>
-                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.failure_count }}</td>
-                <td class="ff-table__cell ff-table__cell--right ff-num">{{ h.avg_latency?.toFixed(2) }}</td>
-                <td class="ff-table__cell">
-                  <AppBadge :text="h.is_circuit_open ? '熔断' : '正常'" :variant="h.is_circuit_open ? 'danger' : 'success'" />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+        <!-- 系统健康度属于 SRE 监控指标，不再暴露在行情产品页 (2026-08-10) -->
       </div>
 
       <!-- 市场情绪 -->
@@ -350,8 +312,41 @@ onMounted(async () => {
   color: var(--ff-text-secondary);
 }
 
+.ff-market-view__panel :deep(.ff-card__body) {
+  padding: 0;
+}
+
+.ff-market-view__nav {
+  padding: 0 var(--ff-space-3);
+  border-bottom: 1px solid var(--ff-border-subtle);
+}
+
 .ff-market-view__tabs {
-  margin-bottom: var(--ff-space-4);
+  margin-bottom: 0;
+}
+
+.ff-market-view__tabs :deep(.ff-tabs__tab) {
+  height: 48px;
+  padding: 0 var(--ff-space-4);
+  font-size: var(--ff-fs-body);
+  font-weight: var(--ff-fw-medium);
+  color: var(--ff-text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.ff-market-view__tabs :deep(.ff-tabs__tab:hover) {
+  color: var(--ff-text-primary);
+  background: var(--ff-bg-hover);
+}
+
+.ff-market-view__tabs :deep(.ff-tabs__tab--active) {
+  color: var(--ff-brand-text);
+  font-weight: var(--ff-fw-semibold);
+}
+
+.ff-market-view__tabs :deep(.ff-tabs__tab--active::after) {
+  height: 3px;
+  border-radius: var(--ff-radius-sm);
 }
 
 .ff-market-view__panel {
