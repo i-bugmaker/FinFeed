@@ -37,11 +37,8 @@ const imp = computed(() => {
   return { variant: 'muted', label: '低' }
 })
 
-/* 时间：去掉秒 */
-const timeText = computed(() => {
-  const t = props.item.publish_time || ''
-  return t.length >= 16 ? t.slice(0, 16) : t
-})
+/* 时间：精确到秒 */
+const timeText = computed(() => props.item.publish_time || '')
 
 /* 情绪 */
 const sentTone = computed(() => {
