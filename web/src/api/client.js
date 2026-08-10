@@ -29,6 +29,7 @@ export const api = {
     http
       .get('/export', { params: { format, ...opts }, responseType: 'blob' })
       .then((r) => r),
+  downloadBlob,
   toggleFavorite: (id) => http.post('/favorite', { id }).then((r) => r.data),
   markRead: (id, read = true) => http.post('/read', { id, read }).then((r) => r.data),
 
