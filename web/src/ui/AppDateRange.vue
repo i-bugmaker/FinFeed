@@ -3,8 +3,8 @@
  * AppDateRange — 单一日期区间选择器
  *
  * 顶部仅一个触发器显示当前区间；展开后提供快捷预设（全部 / 今日 / 近3日 /
- * 近7日 / 近30日 / 本月）与可选自定义区间。v-model 结构为 { start, end }，
- * 日期均为 ISO（yyyy-mm-dd），空字符串表示不限制。
+ * 近7日 / 近30日 / 本月）与可选自定义区间。预设与自定义输入均实时生效，
+ * 无须「应用」确认。v-model 结构为 { start, end }，ISO 日期，空串表示不限。
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import AppIcon from './AppIcon.vue'
@@ -41,12 +41,12 @@ function presetRange(k) {
     const t = iso(today)
     return { start: t, end: t }
   }
-  const d = new Date(today)
   const days = k === '3d' ? 2 : k === '7d' ? 6 : k === '30d' ? 29 : 0
   if (k === 'month') {
-    d.setDate(1)
+    const d = new Date(today.getFullYear(), today.getMonth(), 1)
     return { start: iso(d), end: iso(today) }
   }
+  const d = new Date(today)
   d.setDate(d.getDate() - days)
   return { start: iso(d), end: iso(today) }
 }
@@ -77,16 +77,41 @@ function push(r) {
 
 function choosePreset(k) {
   const r = presetRange(k)
+  syncing = true
   customStart.value = r.start
   customEnd.value = r.end
+  syncing = false
   push(r)
   open.value = false
 }
 
-function applyCustom() {
-  push({ start: customStart.value, end: customEnd.value })
-  open.value = false
-}
+// 防止 watch 回调和 choosePreset/props 回写之间相互触发
+let syncing = false
+
+// 自定义输入实时同步：与预设一致，无须「应用」按钮
+watch(
+  () => [customStart.value, customEnd.value],
+  ([s, e]) => {
+    if (!open.value || syncing) return
+    if (s && e && s > e) return
+    const ns = s || ''
+    const ne = e || ''
+    if (ns === props.modelValue.start && ne === props.modelValue.end) return
+    push({ start: ns, end: ne })
+  },
+)
+
+// 父组件更新时（如"全部"按钮外部重置）回写到本地
+watch(
+  () => props.modelValue,
+  (v) => {
+    syncing = true
+    customStart.value = v.start || ''
+    customEnd.value = v.end || ''
+    syncing = false
+  },
+  { deep: true },
+)
 
 function onDocClick(e) {
   if (root.value && !root.value.contains(e.target)) open.value = false
@@ -102,15 +127,6 @@ onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onEsc)
 })
-
-watch(
-  () => props.modelValue,
-  (v) => {
-    customStart.value = v.start || ''
-    customEnd.value = v.end || ''
-  },
-  { deep: true },
-)
 </script>
 
 <template>
@@ -151,7 +167,7 @@ watch(
           <label class="ff-daterange__custom-label">结束</label>
           <input v-model="customEnd" type="date" class="ff-daterange__input" :min="customStart || undefined" />
         </div>
-        <button type="button" class="ff-daterange__apply" @click="applyCustom">应用</button>
+        <p class="ff-daterange__hint">修改即生效</p>
       </div>
     </div>
   </div>
@@ -290,20 +306,10 @@ watch(
   border-color: var(--ff-border-focus);
   box-shadow: var(--ff-focus-ring);
 }
-.ff-daterange__apply {
-  width: 100%;
-  height: 32px;
-  margin-top: var(--ff-space-1);
-  border: none;
-  border-radius: var(--ff-radius-sm);
-  background: var(--ff-brand);
-  color: var(--ff-brand-fg);
-  font-size: var(--ff-fs-body-sm);
-  font-weight: var(--ff-fw-semibold);
-  cursor: pointer;
-  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard);
-}
-.ff-daterange__apply:hover {
-  background: var(--ff-brand-hover);
+.ff-daterange__hint {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  text-align: right;
+  margin: var(--ff-space-1) 0 0;
 }
 </style>
