@@ -290,16 +290,10 @@
   align-items: center;
   justify-content: center;
   opacity: 1 !important;
+  color: inherit;
 }
-.ff-btn__spinner::after {
-  content: '';
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  animation: ff-spin 620ms linear infinite;
-}
+/* 旋转由内嵌 <AppIcon name="refresh" spin> 单一提供 —— 这里故意不画 ::after 圆环，
+   避免与 AppIcon 的旋转箭头在同一位置叠成"两个圈"。 */
 .ff-btn--primary .ff-btn__spinner,
 .ff-btn--danger .ff-btn__spinner {
   color: var(--ff-brand-fg);

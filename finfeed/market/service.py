@@ -93,21 +93,32 @@ async def run_daily_snapshot(trade_date: Optional[str] = None,
 
 async def collect_bars_for_date(trade_date: Optional[str] = None,
                                 limit: Optional[int] = None,
-                                bars: int = kline.DEFAULT_LIMIT) -> Dict[str, int]:
-    """日线增量采集（仅在市标的，默认每只取最近 bars 根）。"""
+                                bars: int = kline.DEFAULT_LIMIT,
+                                progress_cb=None) -> Dict[str, int]:
+    """日线增量采集（仅在市标的，默认每只取最近 bars 根）。
+
+    Args:
+        progress_cb: 可选回调 progress_cb(done:int, total:int)，
+                     沿 collect_daily_bars 透传到每 50 只一次。
+    """
     codes = get_all_codes(active_only=True)
     if limit:
         codes = codes[:limit]
-    return await kline.collect_daily_bars(codes, trade_date, limit=bars)
+    return await kline.collect_daily_bars(
+        codes, trade_date, limit=bars, progress_cb=progress_cb,
+    )
 
 
 async def backfill_bars(beg: str, end: Optional[str] = None,
-                        limit: Optional[int] = None) -> Dict[str, int]:
+                        limit: Optional[int] = None,
+                        progress_cb=None) -> Dict[str, int]:
     """历史区间回补（区间模式，请务必错峰执行）。"""
     codes = get_all_codes(active_only=True)
     if limit:
         codes = codes[:limit]
-    return await kline.collect_daily_bars(codes, end, beg=beg)
+    return await kline.collect_daily_bars(
+        codes, end, beg=beg, progress_cb=progress_cb,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,13 +156,19 @@ def run_daily_snapshot_sync(trade_date: Optional[str] = None,
 
 def collect_bars_sync(trade_date: Optional[str] = None,
                       limit: Optional[int] = None,
-                      bars: int = kline.DEFAULT_LIMIT) -> Dict[str, int]:
-    return asyncio.run(collect_bars_for_date(trade_date, limit, bars))
+                      bars: int = kline.DEFAULT_LIMIT,
+                      progress_cb=None) -> Dict[str, int]:
+    return asyncio.run(
+        collect_bars_for_date(trade_date, limit, bars, progress_cb=progress_cb),
+    )
 
 
 def backfill_bars_sync(beg: str, end: Optional[str] = None,
-                       limit: Optional[int] = None) -> Dict[str, int]:
-    return asyncio.run(backfill_bars(beg, end, limit))
+                       limit: Optional[int] = None,
+                       progress_cb=None) -> Dict[str, int]:
+    return asyncio.run(
+        backfill_bars(beg, end, limit, progress_cb=progress_cb),
+    )
 
 
 def collect_snapshot_sync(trade_date: Optional[str] = None) -> Dict[str, Any]:

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { api } from '../api/client'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
@@ -82,12 +82,22 @@ const sentimentKeys = computed(() =>
 )
 
 const actions = [
-  { key: 'snapshot', label: '采集行情快照', icon: 'download' },
-  { key: 'bars', label: '采集K线', icon: 'bar-chart' },
-  { key: 'universe', label: '初始化股票池', icon: 'database' },
-  { key: 'calibrate', label: '校准情绪模型', icon: 'activity' },
+  { key: 'snapshot', label: '采集行情快照', icon: 'download',
+    help: '全市场快照+宽度、龙虎榜、两融/预告/IPO' },
+  { key: 'bars', label: '采集K线', icon: 'bar-chart',
+    help: '逐只拉取在市 A 股日线（受 push2his 限流保护）' },
+  { key: 'universe', label: '初始化股票池', icon: 'database',
+    help: 'A 股名录、在市标记、概念/行业板块' },
+  { key: 'calibrate', label: '校准情绪模型', icon: 'activity',
+    help: 'T+1 收益回测校准各情感标签/来源' },
 ]
-const actionStatus = ref('')
+// 当前正在跑后台任务的 action key；用于按钮 loading 态
+const runningAction = ref('')
+// 各 action 的最新进度快照：{ key: { stage_index, stage_total, stage_name, done, total, pct } }
+const actionProgress = ref({})
+// 终态/失败结果：{ key: { status, message, result, started } } 一次性展示
+const actionResults = ref({})
+let pollTimer = null
 
 async function loadDates() {
   try {
@@ -133,14 +143,99 @@ async function load() {
 }
 
 function runAction(a) {
-  actionStatus.value = '执行中：' + a.label
+  // 触发新一轮：清掉上一轮结果并立即进入 loading 态，按钮即时反馈
+  runningAction.value = a.key
+  actionResults.value = { ...actionResults.value, [a.key]: null }
+  actionProgress.value = {
+    ...actionProgress.value,
+    [a.key]: { stage_index: 0, stage_total: 0, stage_name: '已启动…', done: null, total: null, pct: 0 },
+  }
   api
     .marketAction({ action: a.key, date: date.value || undefined })
-    .then((r) => {
-      actionStatus.value = r.success ? '已启动：' + a.label : '失败：' + (r.error || '')
+    .then(() => {
+      // 立即返回不代表任务成功——状态以轮询为准
+      startPolling()
     })
-    .catch((e) => (actionStatus.value = '错误：' + e.message))
+    .catch((e) => {
+      runningAction.value = ''
+      actionResults.value = {
+        ...actionResults.value,
+        [a.key]: { status: 'error', message: '请求失败：' + (e.message || e) },
+      }
+    })
 }
+
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(pollActions, 1000)
+  // 立即拉一次，避免 1 秒空窗
+  pollActions()
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+async function pollActions() {
+  if (!runningAction.value) return
+  try {
+    const r = await api.marketAction({ action: 'status' })
+    if (!r || !r.success) return
+    const tasks = r.data || {}
+    const key = runningAction.value
+    const t = tasks[key]
+    if (!t) return
+    actionProgress.value = { ...actionProgress.value, [key]: t.progress }
+    if (t.status === 'running') return
+    // 终态：done / error
+    runningAction.value = ''
+    actionResults.value = {
+      ...actionResults.value,
+      [key]: {
+        status: t.status, message: t.message, result: t.result, started: t.started,
+      },
+    }
+    stopPolling()
+  } catch (e) {
+    // 单次拉取失败不打断轮询；连续失败也仅延迟一次，无副作用
+  }
+}
+
+// 进度条辅助渲染
+function progressOf(key) {
+  return actionProgress.value[key] || { stage_index: 0, stage_total: 0, stage_name: '', done: null, total: null, pct: 0 }
+}
+
+function resultOf(key) {
+  return actionResults.value[key]
+}
+
+function progressText(key) {
+  const p = progressOf(key)
+  if (!p.stage_name) return ''
+  if (p.done != null && p.total) return `${p.stage_name}  ${p.done}/${p.total}`
+  return p.stage_name
+}
+
+// 当前正在运行 action 的中文标签（用于进度条上方）
+const activeActionLabel = computed(() => {
+  if (!runningAction.value) return ''
+  return actions.find((a) => a.key === runningAction.value)?.label || runningAction.value
+})
+
+// 历史结果列表：按 action 顺序稳定展示，跳过仍处 running 的项
+const completedList = computed(() => {
+  return actions
+    .map((a) => {
+      const r = actionResults.value[a.key]
+      if (!r) return null
+      return { key: a.key, label: a.label, ...r }
+    })
+    .filter(Boolean)
+})
 
 watch(active, load)
 watch(date, load)
@@ -149,6 +244,8 @@ onMounted(async () => {
   await loadDates()
   await load()
 })
+
+onBeforeUnmount(() => stopPolling())
 </script>
 
 <template>
@@ -182,11 +279,61 @@ onMounted(async () => {
           variant="tonal"
           size="sm"
           :icon="a.icon"
+          :title="a.help"
+          :loading="runningAction === a.key"
+          :disabled="!!runningAction && runningAction !== a.key"
           @click="runAction(a)"
         >
           {{ a.label }}
         </AppButton>
-        <span v-if="actionStatus" class="ff-market-view__status">{{ actionStatus }}</span>
+      </div>
+      <!-- 进度区：单一运行中进度条 + 紧凑历史结果列表
+           - 进行中：只渲染当前那一条，避免四进度条无意义占位
+           - 动画只在按钮内（AppButton loading），进度条不再叠 spin 图标 -->
+      <div class="ff-market-view__progress">
+        <div v-if="runningAction" class="ff-market-view__progress-current">
+          <div class="ff-market-view__progress-current-meta">
+            <span class="ff-market-view__progress-current-name">{{ activeActionLabel }}</span>
+            <span class="ff-market-view__progress-current-stage">
+              {{ progressText(runningAction) || '已启动…' }}
+            </span>
+            <span class="ff-market-view__progress-current-pct">
+              {{ progressOf(runningAction).pct || 0 }}%
+            </span>
+          </div>
+          <div
+            class="ff-progress ff-progress--lg"
+            role="progressbar"
+            :aria-valuenow="progressOf(runningAction).pct || 0"
+            :aria-valuemin="0"
+            :aria-valuemax="100"
+          >
+            <div
+              class="ff-progress__bar"
+              :style="{ width: (progressOf(runningAction).pct || 0) + '%' }"
+            />
+          </div>
+        </div>
+
+        <ul v-if="completedList.length" class="ff-market-view__history">
+          <li
+            v-for="r in completedList"
+            :key="r.key"
+            class="ff-market-view__history-item"
+            :class="{
+              'ff-market-view__history-item--done': r.status === 'done',
+              'ff-market-view__history-item--error': r.status === 'error',
+            }"
+          >
+            <AppIcon
+              :name="r.status === 'done' ? 'check-circle' : 'alert-circle'"
+              size="xs"
+            />
+            <span class="ff-market-view__history-name">{{ r.label }}</span>
+            <span class="ff-market-view__history-time">{{ r.started }}</span>
+            <span class="ff-market-view__history-msg">{{ r.message }}</span>
+          </li>
+        </ul>
       </div>
     </AppCard>
 
@@ -307,9 +454,85 @@ onMounted(async () => {
   width: 200px;
 }
 
-.ff-market-view__status {
+/* ---------------- 进度区（单条当前进度 + 紧凑历史） ---------------- */
+.ff-market-view__progress {
+  margin-top: var(--ff-space-3);
+  padding-top: var(--ff-space-3);
+  border-top: 1px dashed var(--ff-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+.ff-market-view__progress-current {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-2);
+}
+.ff-market-view__progress-current-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  font-size: var(--ff-fs-sm);
+}
+.ff-market-view__progress-current-name {
+  color: var(--ff-brand-text);
+  font-weight: var(--ff-fw-medium);
+}
+.ff-market-view__progress-current-stage {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ff-text-secondary);
+}
+.ff-market-view__progress-current-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--ff-fw-medium);
+  color: var(--ff-brand-text);
+  min-width: 48px;
+  text-align: right;
+}
+/* 大进度条：比通用 ff-progress(6px) 更高，更显眼 */
+.ff-progress--lg {
+  height: 8px;
+}
+/* ---------- 历史结果 ---------- */
+.ff-market-view__history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ff-market-view__history-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: 4px 0;
   font-size: var(--ff-fs-sm);
   color: var(--ff-text-secondary);
+}
+.ff-market-view__history-item--done {
+  color: var(--ff-text-primary);
+}
+.ff-market-view__history-item--error {
+  color: var(--ff-text-primary);
+}
+.ff-market-view__history-name {
+  font-weight: var(--ff-fw-medium);
+}
+.ff-market-view__history-time {
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.ff-market-view__history-msg {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ff-text-tertiary);
 }
 
 .ff-market-view__panel :deep(.ff-card__body) {

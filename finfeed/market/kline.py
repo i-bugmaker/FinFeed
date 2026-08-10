@@ -102,8 +102,13 @@ async def collect_daily_bars(
     trade_date: Optional[str] = None,
     limit: int = DEFAULT_LIMIT,
     beg: Optional[str] = None,
+    progress_cb=None,
 ) -> Dict[str, int]:
     """批量采集日线并写入 daily_bar。
+
+    Args:
+        progress_cb: 可选回调 progress_cb(done:int, total:int)，按完成标的粒度上报。
+                     限流中断与正常完成都会触发；接口签名向后兼容（默认 None）。
 
     Returns: {'codes': 计划数, 'done': 实际完成数, 'rows': 写入行数, 'aborted': 0/1}
     """
@@ -115,6 +120,12 @@ async def collect_daily_bars(
     total_rows = 0
     done = 0
     aborted = 0
+    total = len(codes)
+    if progress_cb:
+        try:
+            progress_cb(0, total)
+        except Exception:  # noqa: BLE001
+            pass
     for code in codes:
         if cooldown_remaining("em_push2his") > 0:
             aborted = 1
@@ -133,6 +144,12 @@ async def collect_daily_bars(
         if bars:
             total_rows += store.upsert_daily_bar(bars)
         done += 1
+        # 每 50 只（且终态必报），避免高频回调拖慢主循环
+        if progress_cb and (done % 50 == 0 or done == total):
+            try:
+                progress_cb(done, total)
+            except Exception:  # noqa: BLE001
+                pass
 
     logger.info(f"日线采集：计划 {len(codes)} 只 / 完成 {done} 只 / 写入 {total_rows} 行（截至 {td}）")
     return {"codes": len(codes), "done": done, "rows": total_rows, "aborted": aborted}

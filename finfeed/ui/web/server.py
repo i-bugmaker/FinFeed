@@ -1117,74 +1117,241 @@ class _WebHandler(BaseHTTPRequestHandler):
     # ----------------- 事实层：页面内采集触发 -----------------
     # 后台任务状态追踪（进程级单例）
     _market_tasks: Dict[str, Dict] = {}
+    # 任务字典并发写保护：worker 线程与 status 查询线程都会改 dict
+    _market_tasks_lock = threading.Lock()
+
+    # 各 action 的阶段定义（label, total）—— 前端进度条依据
+    _ACTION_STAGES = {
+        "snapshot":  ["全市场快照+宽度", "龙虎榜", "参考数据(两融/预告/IPO)"],
+        "bars":      ["日线增量"],
+        "universe":  ["A 股名录", "在市标记", "概念板块成分", "行业板块成分"],
+        "calibrate": ["情感闭环校准"],
+    }
+
+    def _update_task(self, action: str, **fields):
+        """线程安全地更新任务状态（含进度快照）。"""
+        with self._market_tasks_lock:
+            t = self._market_tasks.get(action)
+            if t is None:
+                return
+            t.update(fields)
+
+    def _make_progress_cb(self, action: str, label: str):
+        """构造进度回调：写入当前 stage + done/total，前端据此渲染进度条。
+
+        cb(stage_index:int, done_in_stage:int=None, total_in_stage:int=None)
+          - 未给出 done/total 表示「只切阶段」，进度条按阶段等分；
+          - 给出 done/total 表示「在当前阶段内细粒度上报」（如 K 线逐只推进）。
+
+        注意：异步 handler 完成后 worker 才结束，回调可能在 status 已被前端
+        拉到 done 之后才被调用；为避免「已完成 + 进度跳变」做幂等保护——写
+        入时若 status 已非 running 则跳过进度字段（仅允许 message 微调）。
+        """
+        stages = self._ACTION_STAGES.get(action, ["执行中"])
+        n_stages = max(1, len(stages))
+
+        def _cb(stage_idx, done=None, total=None):
+            # stage_idx 允许 1..n_stages（含终态），兼容只切阶段的情况
+            if stage_idx < 1:
+                stage_idx = 1
+            if stage_idx > n_stages:
+                stage_idx = n_stages
+            stage_name = stages[stage_idx - 1] if stages else "执行中"
+            pct = int((stage_idx - 1) * 100 / n_stages)
+            if done is not None and total:
+                # 当前阶段内部又分了 100%，把阶段间余量平均分给本阶段
+                pct = int((stage_idx - 1) * 100 / n_stages
+                          + (done * 100 / total) / n_stages)
+            pct = max(0, min(100, pct))
+            with self._market_tasks_lock:
+                t = self._market_tasks.get(action)
+                if t is None:
+                    return
+                if t["status"] != "running":
+                    # 已经 done/error；不再回写进度，避免覆盖完成态
+                    return
+                t["progress"] = {
+                    "stage_index": stage_idx,
+                    "stage_total": n_stages,
+                    "stage_name": stage_name,
+                    "done": done,
+                    "total": total,
+                    "pct": pct,
+                }
+                if done is not None and total:
+                    t["message"] = f"⏳ {label} · {stage_name} {done}/{total}"
+                else:
+                    t["message"] = f"⏳ {label} · {stage_name}"
+        return _cb
 
     def _serve_market_action(self, q: dict):
         """POST/GET /api/market/action?action=snapshot|bars|universe|calibrate&date=
 
         立即返回任务状态，实际工作在后台线程执行。
-        前端可轮询 /api/market/action?action=status 获取进度。
+        前端可轮询 /api/market/action?action=status 获取进度（message + progress{}）。
         """
         action = (q.get("action", [""])[0] or "").strip().lower()
         date = q.get("date", [None])[0]
 
         # 查询状态
         if action == "status":
-            tasks = {k: {"status": v["status"], "message": v.get("message", ""),
-                         "started": v.get("started", ""), "result": v.get("result")}
-                    for k, v in self._market_tasks.items()}
-            self._send_json({"success": True, "data": tasks})
+            with self._market_tasks_lock:
+                snapshot = {
+                    k: {
+                        "status": v["status"],
+                        "message": v.get("message", ""),
+                        "started": v.get("started", ""),
+                        "result": v.get("result"),
+                        "progress": v.get("progress") or {
+                            "stage_index": 0, "stage_total": 0,
+                            "stage_name": "", "done": None, "total": None, "pct": 0,
+                        },
+                    }
+                    for k, v in self._market_tasks.items()
+                }
+            self._send_json({"success": True, "data": snapshot})
             return
 
-        # 有效 action 映射
+        # 有效 action 映射：线程实际跑的工作（同步入口，便于捕获异常）
         svc = _get_mk_service()
         ACTION_MAP = {
-            "snapshot": ("采集行情快照", lambda: _run_in_thread(
-                lambda d=date: svc.run_daily_snapshot_sync(d))),
-            "bars": ("采集K线数据", lambda: _run_in_thread(
-                lambda d=date: svc.collect_bars_sync(d))),
-            "universe": ("初始化股票池", lambda: _run_in_thread(
-                lambda: svc.run_universe_sync())),
-            "calibrate": ("校准情绪模型", lambda: _run_in_thread(
-                lambda: _mk_calibrate())),
+            "snapshot": "采集行情快照",
+            "bars": "采集K线数据",
+            "universe": "初始化股票池",
+            "calibrate": "校准情绪模型",
         }
-
         if action not in ACTION_MAP:
             self._send_json({"success": False, "error":
                 f"未知操作: {action}，可选: {', '.join(ACTION_MAP)}"}, status=400)
             return
+        label = ACTION_MAP[action]
 
         # 防止重复提交（同一 action 正在运行时拒绝）
-        existing = self._market_tasks.get(action)
-        if existing and existing["status"] == "running":
-            self._send_json({"success": False, "error":
-                f"「{ACTION_MAP[action][0]}」正在执行中，请等待完成"}, status=409)
-            return
+        with self._market_tasks_lock:
+            existing = self._market_tasks.get(action)
+            if existing and existing["status"] == "running":
+                self._send_json({"success": False, "error":
+                    f"「{label}」正在执行中，请等待完成"}, status=409)
+                return
 
-        label = ACTION_MAP[action][0]
-        task_id = f"{action}_{int(time.time())}"
-        self._market_tasks[action] = {
-            "status": "running", "message": f"⏳ {label} 执行中…",
-            "started": datetime.now().strftime("%H:%M:%S"), "result": None
-        }
+            task_id = f"{action}_{int(time.time())}"
+            self._market_tasks[action] = {
+                "status": "running",
+                "message": f"⏳ {label} 执行中…",
+                "started": datetime.now().strftime("%H:%M:%S"),
+                "result": None,
+                "progress": {
+                    "stage_index": 0, "stage_total": len(self._ACTION_STAGES[action]),
+                    "stage_name": "排队中", "done": None, "total": None, "pct": 0,
+                },
+            }
 
         def _worker():
+            # 进度回调绑定到当前 action / label
+            cb = self._make_progress_cb(action, label)
             try:
-                result = ACTION_MAP[action][1]()
-                self._market_tasks[action]["status"] = "done"
-                self._market_tasks[action]["message"] = f"✅ {label} 完成"
-                self._market_tasks[action]["result"] = result
+                if action == "snapshot":
+                    # 3 个阶段在异步事件循环里依次调用，阶段间保留钩子点
+                    self._run_snapshot_staged(date, cb)
+                    result = {"stages": "market+board+reference"}
+                elif action == "bars":
+                    # K 线本身已在 collect_daily_bars 内部按只回调；总阶段=1
+                    self._run_bars_staged(date, cb)
+                    result = {"stages": "kline"}
+                elif action == "universe":
+                    self._run_universe_staged(date, cb)
+                    result = {"stages": "stock_meta+active+concept+industry"}
+                elif action == "calibrate":
+                    cb(1, 1, 1)  # 单阶段，标满占位（前端显示 indeterminate）
+                    result = self._run_calibrate_blocking()
+                    # 校准是同步重 SQL，回调可能晚于 worker 写入完成态，
+                    # 故不在此重复发「完成」信号，由下面统一的 except/finally 写
+                else:
+                    result = None
+                with self._market_tasks_lock:
+                    t = self._market_tasks.get(action)
+                    if t is not None and t["status"] == "running":
+                        t["status"] = "done"
+                        t["message"] = f"✅ {label} 完成"
+                        # 终态把进度条推到 100%
+                        n_stages = max(1, len(self._ACTION_STAGES.get(action, [])))
+                        t["progress"] = {
+                            "stage_index": n_stages, "stage_total": n_stages,
+                            "stage_name": "完成", "done": None, "total": None,
+                            "pct": 100,
+                        }
+                        t["result"] = result
                 logger.info("Market action '%s' completed: %s", action, result)
             except Exception as exc:  # noqa: BLE001
-                self._market_tasks[action]["status"] = "error"
-                self._market_tasks[action]["message"] = f"❌ {label} 失败: {exc}"
-                self._market_tasks[action]["result"] = str(exc)
-                logger.error("Market action '%s' failed: %s", action, exc, exc_info=True)
+                with self._market_tasks_lock:
+                    t = self._market_tasks.get(action)
+                    if t is not None:
+                        t["status"] = "error"
+                        t["message"] = f"❌ {label} 失败: {str(exc)[:200]}"
+                        t["result"] = str(exc)[:500]
+                logger.error(
+                    "Market action '%s' failed: %s", action, exc, exc_info=True,
+                )
 
         t = threading.Thread(target=_worker, daemon=True, name=f"mk-{action}")
         t.start()
         self._send_json({"success": True, "data":
             {"task_id": task_id, "action": action, "label": label,
              "status": "running", "message": f"已启动「{label}」，后台执行中"}})
+
+    # ---------------- 阶段化 worker（异步循环内插入进度回调） ----------------
+
+    def _run_snapshot_staged(self, date, cb):
+        """snapshot：3 个独立阶段，依次 await；阶段间上报进度。"""
+        import asyncio
+        from finfeed.market import quote, board, reference
+
+        async def _go():
+            cb(1)  # 全市场快照
+            market = await quote.collect_daily_market(date)
+            cb(2)  # 龙虎榜
+            n = await board.collect_billboard(date)
+            cb(3)  # 参考数据
+            ref = await reference.collect_all_reference(date)
+            return {"market": market, "billboard": n, "reference": ref}
+
+        return asyncio.run(_go())
+
+    def _run_bars_staged(self, date, cb):
+        """bars：1 个总阶段，进度回调嵌入主循环（每 50 只一次）。"""
+        from finfeed.market import service as svc
+
+        def _bars_cb(done, total):
+            cb(1, done, total)
+
+        return svc.collect_bars_sync(date, progress_cb=_bars_cb)
+
+    def _run_universe_staged(self, date, cb):
+        """universe：4 个独立 populate_*，阶段间上报进度。"""
+        import asyncio
+        from finfeed.market import universe
+
+        async def _go():
+            cb(1)  # A 股名录
+            n_stock = await universe.populate_stock_meta()
+            cb(2)  # 在市标记
+            act = await universe.refresh_active_flags(date)
+            cb(3)  # 概念板块
+            n_concept = await universe.populate_concept_members()
+            cb(4)  # 行业板块
+            n_industry = await universe.populate_industry_members()
+            return {
+                "stock_meta": n_stock,
+                "active": act.get("active", 0),
+                "concept": n_concept,
+                "industry": n_industry,
+            }
+
+        return asyncio.run(_go())
+
+    def _run_calibrate_blocking(self):
+        """calibrate：同步重 SQL，调一次包一层即可，单阶段占位。"""
+        return _mk_calibrate()
 
     def _send_json(self, data: dict, status: int = 200, max_age: int = 0):
         resp = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
