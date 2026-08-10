@@ -44,10 +44,10 @@ function go() {
 <style scoped>
 .ff-statcard {
   position: relative;
-  padding: var(--ff-space-4) var(--ff-space-5);
+  padding: var(--ff-space-3) var(--ff-space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-2);
+  gap: var(--ff-space-1-5);
   background: var(--ff-bg-surface);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
