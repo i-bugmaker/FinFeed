@@ -110,7 +110,7 @@ function healthText(s) {
   return '正常'
 }
 
-// 数据源健康明细：桌面默认展开，移动端默认收起（次要内容可折叠）
+// 数据源健康明细：桌面默认展开，移动端默认收起（健康度信息始终可见）
 const mqMobile = window.matchMedia('(max-width: 767px)')
 const healthOpen = ref(!mqMobile.matches)
 function onMqChange() {
@@ -149,62 +149,7 @@ onMounted(async () => {
     <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
 
     <template v-else>
-      <!-- ═══ L1 运行状态与数据源健康（置顶）═══ -->
-      <div class="ff-dashboard-view__statusbar">
-        <div class="ff-dashboard-view__statusbar-left">
-          <span class="ff-dashboard-view__statusbar-label">
-            <AppIcon name="server" size="sm" /> 运行状态
-          </span>
-          <AppStatus :text="stats.status || '运行中'" :tone="(stats.status || '运行中') === '运行中' ? 'success' : 'danger'" />
-          <span class="ff-dashboard-view__kv-mini">轮次 <strong class="ff-num">{{ stats.cycle ?? 0 }}</strong></span>
-          <span class="ff-dashboard-view__kv-mini">本轮 <strong class="ff-num ff-t-up">{{ stats.new_count ?? 0 }}</strong></span>
-          <span class="ff-dashboard-view__kv-mini">数据源 <strong class="ff-num">{{ stats.source_count ?? 0 }}</strong></span>
-        </div>
-        <div class="ff-dashboard-view__statusbar-right">
-          <span class="ff-dashboard-view__statusbar-label">
-            <AppIcon name="database" size="sm" /> 健康
-          </span>
-          <span class="ff-dash-badge ff-dash-badge--ok">正常 {{ healthSummary.ok }}</span>
-          <span v-if="healthSummary.warn" class="ff-dash-badge ff-dash-badge--warn">预警 {{ healthSummary.warn }}</span>
-          <span v-if="healthSummary.fused" class="ff-dash-badge ff-dash-badge--fused">熔断 {{ healthSummary.fused }}</span>
-          <span v-if="healthSummary.idle" class="ff-dash-badge ff-dash-badge--idle">闲置 {{ healthSummary.idle }}</span>
-          <AppButton
-            variant="ghost"
-            size="sm"
-            :icon="healthOpen ? 'chevron-up' : 'chevron-down'"
-            @click="healthOpen = !healthOpen"
-          >
-            {{ healthOpen ? '收起' : '明细' }}
-          </AppButton>
-        </div>
-      </div>
-
-      <!-- 数据源健康明细（折叠） -->
-      <div v-if="healthOpen" class="ff-dashboard-view__sources-wrap">
-        <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
-          <div class="ff-dashboard-view__sources-head">
-            <span></span>
-            <span>名称</span>
-            <span class="ff-dashboard-view__cell-status">状态</span>
-            <span class="ff-dashboard-view__num">成功率</span>
-            <span class="ff-dashboard-view__num">今日</span>
-          </div>
-          <div
-            v-for="s in stats.source_health"
-            :key="s.name"
-            class="ff-dashboard-view__source"
-          >
-            <AppStatus :tone="healthTone(s)" />
-            <span class="ff-dashboard-view__name">{{ s.name }}</span>
-            <span class="ff-dashboard-view__status">{{ healthText(s) }}</span>
-            <span class="ff-dashboard-view__num ff-num">{{ s.success_rate }}%</span>
-            <span class="ff-dashboard-view__num ff-num">{{ s.today_count }} 条</span>
-          </div>
-        </div>
-        <EmptyState v-else text="暂无数据源信息" icon="database" />
-      </div>
-
-      <!-- ═══ L2 核心指标 ═══ -->
+      <!-- ═══ L1 核心指标（首要）═══ -->
       <div class="ff-dashboard-view__kpis">
         <StatCard
           label="新闻总量"
@@ -237,6 +182,34 @@ onMounted(async () => {
         />
       </div>
 
+      <!-- ═══ L2 运行状态 + 数据源健康（紧凑单条）═══ -->
+      <div class="ff-dashboard-view__statusbar">
+        <span class="ff-dashboard-view__statusbar-label">
+          <AppIcon name="server" size="sm" /> 运行状态
+        </span>
+        <AppStatus :text="stats.status || '运行中'" :tone="(stats.status || '运行中') === '运行中' ? 'success' : 'danger'" />
+        <span class="ff-dashboard-view__sep" aria-hidden="true"></span>
+        <span class="ff-dashboard-view__kv-mini">轮次 <strong class="ff-num">{{ stats.cycle ?? 0 }}</strong></span>
+        <span class="ff-dashboard-view__kv-mini">本轮 <strong class="ff-num ff-t-up">{{ stats.new_count ?? 0 }}</strong></span>
+        <span class="ff-dashboard-view__kv-mini">数据源 <strong class="ff-num">{{ stats.source_count ?? 0 }}</strong></span>
+        <span class="ff-dashboard-view__statusbar-spacer"></span>
+        <span class="ff-dashboard-view__statusbar-label">
+          <AppIcon name="database" size="sm" /> 健康
+        </span>
+        <span class="ff-dash-badge ff-dash-badge--ok">正常 {{ healthSummary.ok }}</span>
+        <span v-if="healthSummary.warn" class="ff-dash-badge ff-dash-badge--warn">预警 {{ healthSummary.warn }}</span>
+        <span v-if="healthSummary.fused" class="ff-dash-badge ff-dash-badge--fused">熔断 {{ healthSummary.fused }}</span>
+        <span v-if="healthSummary.idle" class="ff-dash-badge ff-dash-badge--idle">闲置 {{ healthSummary.idle }}</span>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          :icon="healthOpen ? 'chevron-up' : 'chevron-down'"
+          @click="healthOpen = !healthOpen"
+        >
+          {{ healthOpen ? '收起' : '明细' }}
+        </AppButton>
+      </div>
+
       <!-- ═══ L3 数据洞察（两图等宽并列）═══ -->
       <div class="ff-grid ff-dashboard-view__charts">
         <div class="ff-col-12 ff-col-lg-6">
@@ -250,6 +223,33 @@ onMounted(async () => {
           </AppCard>
         </div>
       </div>
+
+      <!-- ═══ L4 数据源健康明细（按需展开）═══ -->
+      <Transition name="ff-fade">
+        <div v-if="healthOpen" class="ff-dashboard-view__sources-wrap">
+          <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
+            <div class="ff-dashboard-view__sources-head">
+              <span></span>
+              <span>名称</span>
+              <span class="ff-dashboard-view__cell-status">状态</span>
+              <span class="ff-dashboard-view__num">成功率</span>
+              <span class="ff-dashboard-view__num">今日</span>
+            </div>
+            <div
+              v-for="s in stats.source_health"
+              :key="s.name"
+              class="ff-dashboard-view__source"
+            >
+              <AppStatus :tone="healthTone(s)" />
+              <span class="ff-dashboard-view__name">{{ s.name }}</span>
+              <span class="ff-dashboard-view__status">{{ healthText(s) }}</span>
+              <span class="ff-dashboard-view__num ff-num">{{ s.success_rate }}%</span>
+              <span class="ff-dashboard-view__num ff-num">{{ s.today_count }} 条</span>
+            </div>
+          </div>
+          <EmptyState v-else text="暂无数据源信息" icon="database" />
+        </div>
+      </Transition>
     </template>
   </div>
 </template>
@@ -279,21 +279,18 @@ onMounted(async () => {
 .ff-dashboard-view__statusbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: var(--ff-space-2) var(--ff-space-4);
-  padding: var(--ff-space-3) var(--ff-space-4);
+  gap: var(--ff-space-2) var(--ff-space-3);
+  padding: var(--ff-space-2-5) var(--ff-space-4);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
   background: var(--ff-bg-surface);
   box-shadow: var(--ff-shadow-xs);
 }
-.ff-dashboard-view__statusbar-left,
-.ff-dashboard-view__statusbar-right {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--ff-space-2) var(--ff-space-3);
+.ff-dashboard-view__statusbar-spacer {
+  flex: 1 1 auto;
+  min-width: var(--ff-space-3);
 }
 .ff-dashboard-view__statusbar-label {
   display: inline-flex;
@@ -303,6 +300,14 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--ff-text-secondary);
   white-space: nowrap;
+}
+/* 分隔线（视觉分组） */
+.ff-dashboard-view__sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: var(--ff-border);
+  margin: 0 var(--ff-space-1);
 }
 .ff-dashboard-view__kv-mini {
   display: inline-flex;

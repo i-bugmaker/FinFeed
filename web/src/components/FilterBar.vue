@@ -176,24 +176,26 @@ async function exportAs(fmt) {
       <span class="ff-filterbar__label">
         <AppIcon name="layers" size="xs" /> 来源
       </span>
-      <button
-        type="button"
-        class="ff-chip"
-        :class="(!local.source || local.source === 'all') && 'ff-chip--active'"
-        @click="setSource('all')"
-      >
-        全部
-      </button>
-      <button
-        v-for="s in sources"
-        :key="s.name"
-        type="button"
-        class="ff-chip"
-        :class="local.source === s.name && 'ff-chip--active'"
-        @click="setSource(s.name)"
-      >
-        {{ s.name }}
-      </button>
+      <div class="ff-filterbar__chips">
+        <button
+          type="button"
+          class="ff-chip"
+          :class="(!local.source || local.source === 'all') && 'ff-chip--active'"
+          @click="setSource('all')"
+        >
+          全部
+        </button>
+        <button
+          v-for="s in sources"
+          :key="s.name"
+          type="button"
+          class="ff-chip"
+          :class="local.source === s.name && 'ff-chip--active'"
+          @click="setSource(s.name)"
+        >
+          {{ s.name }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -219,6 +221,63 @@ async function exportAs(fmt) {
 
 .ff-filterbar__row--wrap {
   gap: var(--ff-space-2);
+  /* 来源行整体不换行：标签与首个 chip 始终同行 */
+  flex-wrap: nowrap;
+}
+
+/* 来源标签容器：完整展示全部标签，超宽时在容器内自动换行 */
+.ff-filterbar__chips {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ff-space-2);
+  min-width: 0;
+}
+/* chip 自身不压缩；标签不压缩，避免被挤到下一行 */
+.ff-filterbar__chips .ff-chip {
+  flex-shrink: 0;
+}
+.ff-filterbar__row--wrap .ff-filterbar__label {
+  flex-shrink: 0;
+}
+
+/* 来源行：胶囊样式美化 */
+.ff-filterbar__row--wrap .ff-chip {
+  height: 28px;
+  padding: 0 var(--ff-space-3);
+  border-radius: var(--ff-radius-pill);
+  font-size: var(--ff-fs-body-sm);
+  font-weight: var(--ff-fw-medium);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-secondary);
+  border: 1px solid var(--ff-border);
+  letter-spacing: var(--ff-ls-normal);
+  transition:
+    background-color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard),
+    color var(--ff-dur-fast) var(--ff-ease-standard),
+    transform var(--ff-dur-instant) var(--ff-ease-standard);
+}
+.ff-filterbar__row--wrap .ff-chip:hover {
+  background: var(--ff-bg-hover);
+  border-color: var(--ff-border-strong);
+  color: var(--ff-text-primary);
+}
+.ff-filterbar__row--wrap .ff-chip:active {
+  transform: scale(0.97);
+}
+.ff-filterbar__row--wrap .ff-chip--active {
+  background: var(--ff-brand);
+  border-color: var(--ff-brand);
+  color: var(--ff-brand-fg);
+  font-weight: var(--ff-fw-semibold);
+  box-shadow: var(--ff-shadow-xs);
+}
+.ff-filterbar__row--wrap .ff-chip--active:hover {
+  background: var(--ff-brand-hover);
+  border-color: var(--ff-brand-hover);
+  color: var(--ff-brand-fg);
 }
 
 .ff-filterbar__search {
@@ -237,7 +296,7 @@ async function exportAs(fmt) {
   font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-secondary);
   font-weight: 600;
-  margin-right: var(--ff-space-1);
+  /* 由父级 gap 控制标签与首个 chip 的间距，避免与换行后的对齐错位 */
 }
 
 .ff-export {

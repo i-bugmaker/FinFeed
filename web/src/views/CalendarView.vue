@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { api } from '../api/client'
-import ChartPanel from '../components/ChartPanel.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
 import AppDatePicker from '../ui/AppDatePicker.vue'
@@ -13,13 +12,20 @@ import AppIcon from '../ui/AppIcon.vue'
 const CAL_TYPE_LABEL = { finance: '财经', stock: '股市', ipo: '新股', global: '全球' }
 const CAL_TYPE_VARIANT = { finance: 'brand', stock: 'up', ipo: 'warn', global: 'info' }
 
-const filters = ref({ types: [], today: '' })
+// 默认日期：本地当日（YYYY-MM-DD），避免接口未回包时日期为空
+function todayStr() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const type = ref('all')
-const date = ref('')
+const date = ref(todayStr())
 const events = ref([])
-const stats = ref(null)
+const filters = ref({ types: [], today: todayStr() })
 const loading = ref(false)
-const statsOption = ref({})
 
 const typeOptions = computed(() => [
   { label: '全部', value: 'all' },
@@ -29,7 +35,8 @@ const typeOptions = computed(() => [
 async function loadInit() {
   try {
     const init = await api.calendar('/init')
-    filters.value = { types: init.types || [], today: init.today || '' }
+    filters.value = { types: init.types || [], today: init.today || todayStr() }
+    // 服务端明确返回 today 时使用之；否则保持客户端当日
     if (init.today) date.value = init.today
   } catch (e) {}
 }
@@ -51,36 +58,9 @@ async function loadList() {
   }
 }
 
-async function loadStats() {
-  try {
-    const s = await api.calendar('/stats', { date: date.value || undefined })
-    stats.value = s
-    const dist = s.by_type || {}
-    statsOption.value = {
-      tooltip: { trigger: 'item' },
-      series: [
-        {
-          type: 'pie',
-          radius: ['45%', '70%'],
-          data: Object.entries(dist).map(([k, v]) => ({
-            name: CAL_TYPE_LABEL[k] || k,
-            value: v,
-          })),
-          label: { formatter: '{b}\n{d}%' },
-        },
-      ],
-    }
-  } catch (e) {}
-}
-
-function reload() {
-  loadList()
-  loadStats()
-}
-
 onMounted(async () => {
   await loadInit()
-  reload()
+  await loadList()
 })
 </script>
 
@@ -97,13 +77,13 @@ onMounted(async () => {
 
     <AppCard class="ff-calendar-view__toolbar">
       <div class="ff-calendar-view__row">
-        <AppDatePicker v-model="date" class="ff-calendar-view__field" label="日期" @change="reload" />
+        <AppDatePicker v-model="date" class="ff-calendar-view__field" label="日期" @change="loadList" />
         <AppSelect
           v-model="type"
           class="ff-calendar-view__field"
           label="类型"
           :options="typeOptions"
-          @update:model-value="reload"
+          @update:model-value="loadList"
         />
         <span class="ff-calendar-view__count">
           共 <strong>{{ events.length }}</strong> 个事件
@@ -111,38 +91,26 @@ onMounted(async () => {
       </div>
     </AppCard>
 
-    <div class="ff-grid">
-      <div class="ff-col-12 ff-col-lg-9">
-        <AppCard title="事件列表" :subtitle="`共 ${events.length} 条`" :no-padding="true">
-          <div v-if="events.length" class="ff-calendar-view__events">
-            <div class="ff-calendar-view__head">
-              <span class="ff-calendar-view__head-date">日期</span>
-              <span class="ff-calendar-view__head-type">类型</span>
-              <span class="ff-calendar-view__head-cat">分类</span>
-              <span class="ff-calendar-view__head-title">事件</span>
-            </div>
-            <div class="ff-calendar-view__body">
-              <div v-for="(e, i) in events" :key="i" class="ff-calendar-view__event">
-                <span class="ff-calendar-view__date ff-num">{{ e.event_date }}</span>
-                <AppBadge :text="CAL_TYPE_LABEL[e.cal_type] || e.cal_type" :variant="CAL_TYPE_VARIANT[e.cal_type] || 'default'" />
-                <span class="ff-calendar-view__cat">{{ e.category }}</span>
-                <span class="ff-calendar-view__title">{{ e.title }}</span>
-              </div>
-            </div>
+    <AppCard title="事件列表" :subtitle="`共 ${events.length} 条`" :no-padding="true">
+      <div v-if="events.length" class="ff-calendar-view__events">
+        <div class="ff-calendar-view__head">
+          <span class="ff-calendar-view__head-date">日期</span>
+          <span class="ff-calendar-view__head-type">类型</span>
+          <span class="ff-calendar-view__head-cat">分类</span>
+          <span class="ff-calendar-view__head-title">事件</span>
+        </div>
+        <div class="ff-calendar-view__body">
+          <div v-for="(e, i) in events" :key="i" class="ff-calendar-view__event">
+            <span class="ff-calendar-view__date ff-num">{{ e.event_date }}</span>
+            <AppBadge :text="CAL_TYPE_LABEL[e.cal_type] || e.cal_type" :variant="CAL_TYPE_VARIANT[e.cal_type] || 'default'" />
+            <span class="ff-calendar-view__cat">{{ e.category }}</span>
+            <span class="ff-calendar-view__title">{{ e.title }}</span>
           </div>
-          <AppSkeleton v-else-if="loading" variant="text" :lines="6" />
-          <EmptyState v-else text="当日无财经事件" icon="calendar" />
-        </AppCard>
+        </div>
       </div>
-      <div class="ff-col-12 ff-col-lg-3">
-        <AppCard title="类型分布" :no-padding="true">
-          <div class="ff-calendar-view__chart">
-            <ChartPanel :option="statsOption" height="320px" v-if="stats" />
-            <EmptyState v-else text="无统计" icon="pie-chart" />
-          </div>
-        </AppCard>
-      </div>
-    </div>
+      <AppSkeleton v-else-if="loading" variant="text" :lines="6" />
+      <EmptyState v-else text="当日无财经事件" icon="calendar" />
+    </AppCard>
   </div>
 </template>
 
@@ -176,9 +144,6 @@ onMounted(async () => {
 .ff-calendar-view__events {
   display: flex;
   flex-direction: column;
-  height: 560px;
-  max-height: calc(100vh - 320px);
-  min-height: 320px;
 }
 
 /* 表头：sticky 吸顶 */
@@ -200,32 +165,9 @@ onMounted(async () => {
   letter-spacing: 0.03em;
 }
 
-/* 滚动主体 */
+/* 主体：直接展示全部事件，不内置滚动 */
 .ff-calendar-view__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-/* 自定义滚动条（WebKit + Firefox） */
-.ff-calendar-view__body::-webkit-scrollbar {
-  width: 8px;
-}
-.ff-calendar-view__body::-webkit-scrollbar-track {
-  background: var(--ff-bg-subtle);
-  border-radius: var(--ff-radius-pill);
-}
-.ff-calendar-view__body::-webkit-scrollbar-thumb {
-  background: var(--ff-border-strong);
-  border-radius: var(--ff-radius-pill);
-}
-.ff-calendar-view__body::-webkit-scrollbar-thumb:hover {
-  background: var(--ff-text-tertiary);
-}
-.ff-calendar-view__body {
-  scrollbar-width: thin;
-  scrollbar-color: var(--ff-border-strong) var(--ff-bg-subtle);
+  flex: 0 0 auto;
 }
 
 /* 事件行：与表头同列宽对齐 */
@@ -270,9 +212,5 @@ onMounted(async () => {
   flex: 1 1 auto;
   min-width: 0;
   line-height: var(--ff-lh-normal);
-}
-
-.ff-calendar-view__chart {
-  padding: var(--ff-space-3);
 }
 </style>
