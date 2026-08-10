@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { api } from '../api/client'
+import { useAppStore } from '../store/app'
 import StatCard from '../components/StatCard.vue'
 import ChartPanel from '../components/ChartPanel.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -9,43 +10,65 @@ import AppStatus from '../ui/AppStatus.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
+const store = useAppStore()
 const stats = ref(null)
 const loading = ref(true)
 
+// ECharts 走 canvas 渲染，无法解析 var()，须取具体色值
+function chartVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined
+}
+
 const sentimentOption = computed(() => {
+  void store.theme // 换肤后重绘
   const s = stats.value?.sentiment_stats || {}
   return {
-    tooltip: { trigger: 'item' },
-    legend: { bottom: 0 },
+    tooltip: { trigger: 'item', formatter: '{b}：{c} 条（{d}%）' },
+    legend: { bottom: 0, left: 'center', icon: 'circle', itemWidth: 8, itemHeight: 8 },
     series: [
       {
         type: 'pie',
-        radius: ['45%', '70%'],
-        center: ['50%', '45%'],
+        radius: ['46%', '70%'],
+        center: ['50%', '46%'],
+        avoidLabelOverlap: true,
+        itemStyle: {
+          borderColor: chartVar('--ff-bg-surface'),
+          borderWidth: 2,
+          borderRadius: 4,
+        },
+        label: {
+          show: true,
+          formatter: '{d}%',
+          color: chartVar('--ff-text-secondary'),
+          fontSize: 12,
+          fontWeight: 500,
+        },
+        labelLine: { length: 10, length2: 8 },
         data: [
-          { name: '利好', value: s.positive || 0, itemStyle: { color: 'var(--ff-chart-up)' } },
-          { name: '利空', value: s.negative || 0, itemStyle: { color: 'var(--ff-chart-down)' } },
-          { name: '中性', value: s.neutral || 0, itemStyle: { color: 'var(--ff-chart-neutral)' } },
+          { name: '利好', value: s.positive || 0, itemStyle: { color: chartVar('--ff-chart-up') } },
+          { name: '利空', value: s.negative || 0, itemStyle: { color: chartVar('--ff-chart-down') } },
+          { name: '中性', value: s.neutral || 0, itemStyle: { color: chartVar('--ff-chart-neutral') } },
         ],
-        label: { formatter: '{b}\n{d}%' },
       },
     ],
   }
 })
 
 const sourceOption = computed(() => {
+  void store.theme
   const ss = stats.value?.source_stats || {}
   const entries = Object.entries(ss).sort((a, b) => b[1] - a[1]).slice(0, 10)
   return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 90, right: 20, top: 10, bottom: 20 },
-    xAxis: { type: 'value' },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 90, right: 16, top: 6, bottom: 20 },
+    xAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
     yAxis: { type: 'category', data: entries.map((e) => e[0]).reverse() },
     series: [
       {
         type: 'bar',
         data: entries.map((e) => e[1]).reverse(),
-        itemStyle: { color: 'var(--ff-chart-primary)', borderRadius: [0, 4, 4, 0] },
+        barMaxWidth: 18,
+        itemStyle: { color: chartVar('--ff-chart-primary'), borderRadius: [0, 4, 4, 0] },
       },
     ],
   }

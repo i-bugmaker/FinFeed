@@ -111,6 +111,10 @@ onUnmounted(() => clearInterval(timer))
   color: var(--ff-down-text);
   box-shadow: 0 0 0 1px var(--ff-down-border);
 }
+/* 仅保留右侧独立脉冲点作为唯一指示器，隐藏 AppStatus 自带状态点（左侧） */
+.ff-topbar__live .ff-status__dot {
+  display: none;
+}
 .ff-topbar__live-dot {
   width: 6px;
   height: 6px;

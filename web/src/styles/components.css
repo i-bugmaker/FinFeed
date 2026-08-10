@@ -448,6 +448,39 @@
   color: var(--ff-brand-text);
 }
 
+/* 胶囊分段标签页（无下划线，横向可滚动） */
+.ff-tabs--pill {
+  border-bottom: none;
+  gap: var(--ff-space-1);
+  padding: 2px 0;
+}
+.ff-tabs--pill .ff-tabs__tab {
+  height: 32px;
+  padding: 0 var(--ff-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--ff-radius-pill);
+  font-size: var(--ff-fs-body-sm);
+  transition:
+    background-color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard),
+    color var(--ff-dur-fast) var(--ff-ease-standard),
+    box-shadow var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-tabs--pill .ff-tabs__tab::after {
+  display: none;
+}
+.ff-tabs--pill .ff-tabs__tab:hover {
+  background: var(--ff-bg-hover);
+  color: var(--ff-text-primary);
+}
+.ff-tabs--pill .ff-tabs__tab.ff-tabs__tab--active {
+  background: var(--ff-brand);
+  border-color: var(--ff-brand);
+  color: var(--ff-brand-fg);
+  font-weight: var(--ff-fw-semibold);
+  box-shadow: var(--ff-shadow-xs);
+}
+
 /* 胶囊筛选组 */
 .ff-pills {
   display: flex;

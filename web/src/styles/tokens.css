@@ -307,6 +307,16 @@
   --ff-accent-teal: var(--p-teal-500);
   --ff-accent-violet: var(--p-violet-500);
 
+  /* 图表语义色（具体十六进制值，供 ECharts canvas 直接消费；
+     canvas 无法解析 var()，故此处必须为具体色值，禁止 var() 引用） */
+  --ff-chart-up: #e5484d;
+  --ff-chart-down: #12a150;
+  --ff-chart-neutral: #697586;
+  --ff-chart-primary: #2563eb;
+  --ff-chart-primary-2: #0ea5a5;
+  --ff-chart-primary-3: #875bf7;
+  --ff-chart-axis: #cdd5e0;
+
   /* 阴影 */
   --ff-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
   --ff-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.05);
@@ -407,6 +417,15 @@
 
   --ff-accent-teal: #2ec4c4;
   --ff-accent-violet: var(--p-violet-400);
+
+  /* 图表语义色（暗色主题具体值，供 ECharts canvas 消费） */
+  --ff-chart-up: #f0575c;
+  --ff-chart-down: #2bb763;
+  --ff-chart-neutral: #7d8a9c;
+  --ff-chart-primary: #60a5fa;
+  --ff-chart-primary-2: #2ec4c4;
+  --ff-chart-primary-3: #a48afb;
+  --ff-chart-axis: #263346;
 
   --ff-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --ff-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);

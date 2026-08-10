@@ -16,6 +16,7 @@ const props = defineProps({
   size: { type: [String, Number], default: 'md' },
   stroke: { type: [String, Number], default: null },
   tone: { type: String, default: '' }, // '' | brand | up | down | warn | muted | inverse
+  color: { type: String, default: '' }, // 任意 CSS 颜色（如 var(--ff-brand)），优先级高于 tone
   spin: { type: Boolean, default: false },
   label: { type: String, default: '' }, // 提供后视为语义图标，暴露给读屏
 })
@@ -26,6 +27,8 @@ const px = computed(() => {
   if (typeof props.size === 'number') return props.size
   return SIZE_TOKENS[props.size] ?? SIZE_TOKENS.md
 })
+
+const colorStyle = computed(() => (props.color ? { color: props.color } : null))
 
 // 小尺寸自动加粗描边，避免视觉过淡
 const strokeWidth = computed(() => {
@@ -42,6 +45,7 @@ const body = computed(() => ICONS[props.name] || ICONS.dot)
   <svg
     class="ff-icon"
     :class="[tone ? `ff-icon--${tone}` : '', { 'ff-icon--spin': spin }]"
+    :style="colorStyle"
     :width="px"
     :height="px"
     viewBox="0 0 24 24"

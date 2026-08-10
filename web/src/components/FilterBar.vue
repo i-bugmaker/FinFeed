@@ -1,8 +1,8 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { api } from '../api/client'
 import AppInput from '../ui/AppInput.vue'
-import AppDatePicker from '../ui/AppDatePicker.vue'
+import AppDateRange from '../ui/AppDateRange.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppCheckbox from '../ui/AppCheckbox.vue'
 import AppIcon from '../ui/AppIcon.vue'
@@ -42,13 +42,23 @@ function setSource(s) {
   emitChange()
 }
 
+// 单一日期区间选择器 ↔ local.start / local.end 映射
+const range = computed({
+  get: () => ({ start: local.value.start || '', end: local.value.end || '' }),
+  set: (v) => {
+    local.value.start = v.start || ''
+    local.value.end = v.end || ''
+    emitChange()
+  },
+})
+
 const exportOpen = ref(false)
 const exportRoot = ref(null)
 
 const exportFormats = [
-  { k: 'json', label: 'JSON', desc: '结构化数据，便于二次处理' },
-  { k: 'csv', label: 'CSV', desc: '表格软件通用格式' },
-  { k: 'md', label: 'Markdown', desc: '适合阅读与文档归档' },
+  { k: 'json', label: 'JSON', desc: '结构化数据，便于二次处理', icon: 'file-json', color: 'var(--ff-brand)' },
+  { k: 'csv', label: 'CSV', desc: '表格软件通用格式', icon: 'file-csv', color: 'var(--ff-accent-teal)' },
+  { k: 'md', label: 'Markdown', desc: '适合阅读与文档归档', icon: 'file-md', color: 'var(--ff-accent-violet)' },
 ]
 
 function toggleExport() {
@@ -100,17 +110,9 @@ async function exportAs(fmt) {
         @enter="emitChange"
         @blur="emitChange"
       />
-      <AppDatePicker
-        v-model="local.start"
-        class="ff-filterbar__date"
-        placeholder="开始日期"
-        @change="emitChange"
-      />
-      <span class="ff-filterbar__sep">~</span>
-      <AppDatePicker
-        v-model="local.end"
-        class="ff-filterbar__date"
-        placeholder="结束日期"
+      <AppDateRange
+        v-model="range"
+        class="ff-filterbar__daterange"
         @change="emitChange"
       />
       <div ref="exportRoot" class="ff-export">
@@ -135,7 +137,7 @@ async function exportAs(fmt) {
             role="menuitem"
             @click="exportAs(f.k)"
           >
-            <AppIcon name="download" size="sm" class="ff-export__icon" />
+            <AppIcon :name="f.icon" size="sm" :color="f.color" class="ff-export__icon" />
             <span class="ff-menu__item-text">
               <span class="ff-export__label">{{ f.label }}</span>
               <span class="ff-export__desc">{{ f.desc }}</span>
@@ -224,13 +226,8 @@ async function exportAs(fmt) {
   min-width: 200px;
 }
 
-.ff-filterbar__date {
-  width: 150px;
-}
-
-.ff-filterbar__sep {
-  color: var(--ff-text-tertiary);
-  font-weight: 500;
+.ff-filterbar__daterange {
+  flex: 0 0 auto;
 }
 
 .ff-filterbar__label {
@@ -283,7 +280,10 @@ async function exportAs(fmt) {
 }
 
 @media (max-width: 767px) {
-  .ff-filterbar__date {
+  .ff-filterbar__daterange {
+    width: 100%;
+  }
+  .ff-filterbar__daterange .ff-daterange__trigger {
     width: 100%;
   }
 }
