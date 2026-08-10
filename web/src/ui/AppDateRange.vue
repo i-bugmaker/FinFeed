@@ -167,7 +167,6 @@ onUnmounted(() => {
           <label class="ff-daterange__custom-label">结束</label>
           <input v-model="customEnd" type="date" class="ff-daterange__input" :min="customStart || undefined" />
         </div>
-        <p class="ff-daterange__hint">修改即生效</p>
       </div>
     </div>
   </div>
@@ -305,11 +304,5 @@ onUnmounted(() => {
 .ff-daterange__input:focus {
   border-color: var(--ff-border-focus);
   box-shadow: var(--ff-focus-ring);
-}
-.ff-daterange__hint {
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
-  text-align: right;
-  margin: var(--ff-space-1) 0 0;
 }
 </style>
