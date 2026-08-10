@@ -15,7 +15,7 @@ export function useSSE() {
       try {
         const payload = JSON.parse(ev.data)
         if (payload && payload.type === 'new_news' && Array.isArray(payload.items)) {
-          store.pushPending(payload.items)
+          store.pushPending(payload.items, !!payload.truncated)
         }
       } catch (e) {
         /* ignore */

@@ -61,6 +61,14 @@ logger = logging.getLogger("news_monitor")
 
 SSE_CLIENT_QUEUE_MAXSIZE = legacy.SSE_CLIENT_QUEUE_MAXSIZE
 
+# SSE 兜底轮询间隔（秒）。本服务以独立子进程运行，主进程 monitor 的
+# broadcast_new_news() 只能广播到它自己进程的 _sse_clients（为空），
+# 浏览器的 SSE 连接注册在本进程，二者内存隔离，导致 Web 端永远收不到
+# 增量推送（日志特征：广播侧恒为「客户端 0」）。本进程通过按 DB 自增 id
+# 水位线轮询 broadcast_new_news()（幂等、单调推进），自行发现新入库新闻
+# 并推送给本进程的 SSE 客户端。
+SSE_POLL_INTERVAL = 5.0
+
 app = FastAPI(
     title="FinFeed API",
     version="2.1.0",
@@ -741,13 +749,47 @@ async def sse_events(request: Request):
     )
 
 
+async def _sse_poll_loop() -> None:
+    """SSE 兜底轮询：周期性从 DB 水位线拉取增量并广播给本进程客户端。
+
+    主进程 monitor 每轮抓取后都会广播，但广播发生在主进程内存中；
+    本进程（FastAPI 子进程）的 SSE 客户端只能由本进程的广播送达。
+    由于 broadcast_new_news() 基于数据库自增 id 水位线且严格幂等，
+    本进程周期轮询 DB 即可补上跨进程丢失的全部推送，不重复、不遗漏；
+    同时顺带让 /api/news 等 API 缓存按新数据失效。
+    """
+    logger.info(f"SSE 兜底轮询已启动（间隔 {SSE_POLL_INTERVAL}s）")
+    while True:
+        try:
+            await asyncio.to_thread(legacy.broadcast_new_news)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"SSE 兜底轮询异常: {e}")
+        try:
+            await asyncio.sleep(SSE_POLL_INTERVAL)
+        except asyncio.CancelledError:
+            break
+
+
 @app.on_event("startup")
-def _startup():
+async def _startup():
     legacy.init_broadcast_watermark()
     try:
         calendar_fetcher.warmup()
     except Exception as e:
         logger.warning(f"日历连接池预热失败（可忽略）: {e}")
+    # 启动 SSE 兜底轮询，修复子进程跨进程广播失效导致的 Web 端不实时更新
+    app.state.sse_poll_task = asyncio.create_task(_sse_poll_loop())
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    task = getattr(app.state, "sse_poll_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
 
 
 @app.get("/api/ping")

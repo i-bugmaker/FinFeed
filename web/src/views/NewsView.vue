@@ -71,12 +71,17 @@ function onFilterChange() {
 }
 
 function prependPending() {
-  const pend = store.takePending()
-  if (!pend.length) return
+  const { items, truncated } = store.takePending()
+  if (!items.length && !truncated) return
+  // 单轮增量被截断（items 只含部分条目）时，局部插入会漏条目，
+  // 直接整表刷新兜底。
+  if (truncated) {
+    loadFirst()
+    return
+  }
   const ids = new Set(list.value.map((n) => n.id))
-  const fresh = pend.filter((n) => !ids.has(n.id))
+  const fresh = items.filter((n) => !ids.has(n.id))
   list.value = [...fresh, ...list.value]
-  store.pendingNews = []
 }
 
 watch(
