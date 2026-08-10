@@ -110,7 +110,15 @@ function positionMenu() {
   // 不再把菜单宽度强制等于触发器宽度；让菜单按内容自适应，
   // 避免触发器很宽而选项很短时出现大片右侧留白。
   menu.style.top = `${rect.bottom + 6}px`
-  menu.style.left = `${rect.left}px`
+  // 默认右对齐触发器右缘；若会越过视口右边则改为左对齐
+  const vw = document.documentElement.clientWidth
+  const menuW = menu.offsetWidth
+  const rightAlignedLeft = rect.right - menuW
+  if (rightAlignedLeft + menuW > vw - 8) {
+    menu.style.left = `${Math.max(8, rect.left)}px`
+  } else {
+    menu.style.left = `${rightAlignedLeft}px`
+  }
 }
 
 function onClear(e) {
