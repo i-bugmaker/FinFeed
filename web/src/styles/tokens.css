@@ -109,6 +109,11 @@
   --ff-fs-body-sm: 14px;
   --ff-fs-caption: 13px;
   --ff-fs-overline: 11px;
+  /* 简写别名（兼容历史引用；此前未定义导致 font-size 声明失效回退继承值） */
+  --ff-fs-lg: 18px;
+  --ff-fs-md: 16px;
+  --ff-fs-sm: 14px;
+  --ff-fs-xs: 12px;
 
   /* 行高刻度 */
   --ff-lh-tight: 1.2;
