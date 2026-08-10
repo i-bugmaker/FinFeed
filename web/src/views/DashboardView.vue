@@ -29,7 +29,7 @@ const sentimentOption = computed(() => {
       text: total ? String(total) : '—',
       subtext: '总新闻',
       left: 'center',
-      top: '36%',
+      top: '34%',
       textStyle: { fontSize: 18, fontWeight: 700, color: chartVar('--ff-text-primary') },
       subtextStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary') },
     },
@@ -38,7 +38,7 @@ const sentimentOption = computed(() => {
     series: [
       {
         type: 'pie',
-        radius: ['52%', '76%'],
+        radius: ['48%', '72%'],
         center: ['50%', '46%'],
         avoidLabelOverlap: true,
         itemStyle: {
@@ -50,10 +50,10 @@ const sentimentOption = computed(() => {
           show: true,
           formatter: '{d}%',
           color: chartVar('--ff-text-secondary'),
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: 500,
         },
-        labelLine: { length: 6, length2: 4 },
+        labelLine: { length: 8, length2: 6 },
         data: [
           { name: '利好', value: s.positive || 0, itemStyle: { color: chartVar('--ff-chart-up') } },
           { name: '利空', value: s.negative || 0, itemStyle: { color: chartVar('--ff-chart-down') } },
@@ -149,54 +149,7 @@ onMounted(async () => {
     <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
 
     <template v-else>
-      <!-- ═══ L1 核心指标（置顶）═══ -->
-      <div class="ff-dashboard-view__kpis">
-        <StatCard
-          label="新闻总量"
-          :value="stats.total_news?.toLocaleString()"
-          sub="全部已入库"
-          icon="newspaper"
-          to="/news"
-        />
-        <StatCard
-          label="近 24h"
-          :value="stats.total_24h?.toLocaleString()"
-          sub="24 小时内新增"
-          tone="up"
-          icon="activity"
-          to="/news"
-        />
-        <StatCard
-          label="未读"
-          :value="stats.unread_count?.toLocaleString()"
-          sub="待阅读"
-          icon="inbox"
-          to="/news"
-        />
-        <StatCard
-          label="收藏"
-          :value="stats.favorite_count?.toLocaleString()"
-          sub="我的收藏"
-          icon="star"
-          to="/favorites"
-        />
-      </div>
-
-      <!-- ═══ L2 数据洞察（图表）═══ -->
-      <div class="ff-grid ff-dashboard-view__charts">
-        <div class="ff-col-12 ff-col-lg-4">
-          <AppCard title="情绪分布" subtitle="近 24h 舆情倾向">
-            <ChartPanel :option="sentimentOption" height="220px" />
-          </AppCard>
-        </div>
-        <div class="ff-col-12 ff-col-lg-8">
-          <AppCard title="来源 TOP10" subtitle="各数据源新闻量">
-            <ChartPanel :option="sourceOption" height="220px" />
-          </AppCard>
-        </div>
-      </div>
-
-      <!-- ═══ L3 运行状态与数据源健康（一行状态条）═══ -->
+      <!-- ═══ L1 运行状态与数据源健康（置顶）═══ -->
       <div class="ff-dashboard-view__statusbar">
         <div class="ff-dashboard-view__statusbar-left">
           <span class="ff-dashboard-view__statusbar-label">
@@ -249,6 +202,53 @@ onMounted(async () => {
           </div>
         </div>
         <EmptyState v-else text="暂无数据源信息" icon="database" />
+      </div>
+
+      <!-- ═══ L2 核心指标 ═══ -->
+      <div class="ff-dashboard-view__kpis">
+        <StatCard
+          label="新闻总量"
+          :value="stats.total_news?.toLocaleString()"
+          sub="全部已入库"
+          icon="newspaper"
+          to="/news"
+        />
+        <StatCard
+          label="近 24h"
+          :value="stats.total_24h?.toLocaleString()"
+          sub="24 小时内新增"
+          tone="up"
+          icon="activity"
+          to="/news"
+        />
+        <StatCard
+          label="未读"
+          :value="stats.unread_count?.toLocaleString()"
+          sub="待阅读"
+          icon="inbox"
+          to="/news"
+        />
+        <StatCard
+          label="收藏"
+          :value="stats.favorite_count?.toLocaleString()"
+          sub="我的收藏"
+          icon="star"
+          to="/favorites"
+        />
+      </div>
+
+      <!-- ═══ L3 数据洞察（两图等宽并列）═══ -->
+      <div class="ff-grid ff-dashboard-view__charts">
+        <div class="ff-col-12 ff-col-lg-6">
+          <AppCard title="情绪分布" subtitle="近 24h 舆情倾向">
+            <ChartPanel :option="sentimentOption" height="220px" />
+          </AppCard>
+        </div>
+        <div class="ff-col-12 ff-col-lg-6">
+          <AppCard title="来源 TOP10" subtitle="各数据源新闻量">
+            <ChartPanel :option="sourceOption" height="220px" />
+          </AppCard>
+        </div>
       </div>
     </template>
   </div>
