@@ -15,6 +15,21 @@ http.interceptors.response.use(
   },
 )
 
+// LLM 推理（chat / analyze / report / provider test）经常超过 20s，
+// 单独走长超时实例，避免「timeout of 20000ms exceeded」误导为服务端故障。
+const httpLlm = axios.create({
+  baseURL: '/api',
+  timeout: 120000,
+})
+httpLlm.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    const data = err.response && err.response.data
+    if (data && data.error) err.message = data.error
+    return Promise.reject(err)
+  },
+)
+
 export const api = {
   health: () => http.get('/health').then((r) => r.data),
   stats: () => http.get('/stats').then((r) => r.data),
@@ -34,8 +49,10 @@ export const api = {
   markRead: (id, read = true) => http.post('/read', { id, read }).then((r) => r.data),
 
   // LLM / 日历 / 市场 透传
-  llm: (path, params) => http.get('/llm' + path, { params }).then((r) => r.data),
-  llmPost: (path, data) => http.post('/llm' + path, data).then((r) => r.data),
+  llm: (path, params, config = {}) =>
+    httpLlm.get('/llm' + path, { ...config, params }).then((r) => r.data),
+  llmPost: (path, data, config = {}) =>
+    httpLlm.post('/llm' + path, data, config).then((r) => r.data),
   calendar: (path, params) => http.get('/calendar' + path, { params }).then((r) => r.data),
   market: (sub, params) => http.get('/market/' + sub, { params }).then((r) => r.data),
   marketAction: (params) => http.get('/market/action', { params }).then((r) => r.data),

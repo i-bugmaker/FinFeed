@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { api } from '../api/client'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
@@ -21,6 +21,10 @@ const chatLog = ref([])
 const sending = ref(false)
 const activeReport = ref(null)
 const showReportModal = ref(false)
+// 中断控制器：sending 中可由用户中止当前 LLM 请求
+let chatAbortController = null
+// 聊天容器 DOM ref，用于自动滚到底部
+const chatScrollEl = ref(null)
 
 const modelAvailable = computed(() => {
   const s = status.value
@@ -169,25 +173,81 @@ async function openReport(id) {
 async function sendChat() {
   const q = chatInput.value.trim()
   if (!q || sending.value) return
+  // 乐观渲染：先入栈用户消息 + AI 占位，立刻滚动到底部
   chatLog.value.push({ role: 'user', text: q })
   chatInput.value = ''
+  const aiIndex = chatLog.value.length
+  chatLog.value.push({ role: 'ai', text: '', pending: true })
+  scrollChatToBottom()
+  // 构造请求
+  const history = chatLog.value
+    .slice(0, aiIndex) // 仅截止到用户消息
+    .filter((m) => !m.pending && m.text)
+    .slice(-16)
+    .map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }))
+  const payload = { question: q, history }
+  if (activeReport.value && activeReport.value.id) {
+    payload.report_id = activeReport.value.id
+  }
+  chatAbortController = new AbortController()
   sending.value = true
   try {
-    const history = chatLog.value.slice(-16).map((m) => ({
-      role: m.role === 'ai' ? 'assistant' : 'user',
-      content: m.text,
-    }))
-    const payload = { question: q, history }
-    if (activeReport.value && activeReport.value.id) {
-      payload.report_id = activeReport.value.id
-    }
-    const r = await api.llmPost('/chat', payload)
+    const r = await api.llmPost('/chat', payload, {
+      signal: chatAbortController.signal,
+    })
     const text = r.reply || r.answer || r.text || JSON.stringify(r)
-    chatLog.value.push({ role: 'ai', text })
+    chatLog.value[aiIndex] = { role: 'ai', text, pending: false }
   } catch (e) {
-    chatLog.value.push({ role: 'ai', text: '出错了：' + e.message })
+    // 用户主动中止：保留已渲染的 AI 占位，但标 stopped，不当错误
+    const stopped =
+      e?.name === 'CanceledError' ||
+      e?.code === 'ERR_CANCELED' ||
+      e?.message?.includes('canceled')
+    if (stopped) {
+      chatLog.value[aiIndex] = {
+        role: 'ai',
+        text: chatLog.value[aiIndex].text
+          ? chatLog.value[aiIndex].text + '\n[已停止生成]'
+          : '[已停止生成]',
+        pending: false,
+        stopped: true,
+      }
+    } else {
+      chatLog.value[aiIndex] = {
+        role: 'ai',
+        text: '出错了：' + (e.message || String(e)),
+        pending: false,
+        error: true,
+      }
+    }
   } finally {
     sending.value = false
+    chatAbortController = null
+    scrollChatToBottom()
+  }
+}
+
+function stopChat() {
+  // 立刻把按钮反馈从「停止」切走，并通知 axios 取消当前请求
+  if (chatAbortController) {
+    chatAbortController.abort()
+    chatAbortController = null
+  }
+}
+
+function scrollChatToBottom() {
+  nextTick(() => {
+    const el = chatScrollEl.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+function onChatEnter() {
+  // 回车发送：sending 中等价于停止（与按钮行为一致）
+  if (sending.value) {
+    stopChat()
+  } else {
+    sendChat()
   }
 }
 
@@ -495,17 +555,38 @@ onMounted(() => {
     <div class="ff-grid">
       <div class="ff-col-12 ff-col-lg-6">
         <AppCard title="对话" class="ff-ai-view__panel">
-          <div class="ff-ai-view__chat">
+          <div ref="chatScrollEl" class="ff-ai-view__chat">
             <div
               v-for="(m, i) in chatLog"
               :key="i"
-              class="ff-ai-view__bubble"
-              :class="`ff-ai-view__bubble--${m.role}`"
+              class="ff-ai-view__msg"
+              :class="`ff-ai-view__msg--${m.role}`"
             >
-              {{ m.text }}
-            </div>
-            <div v-if="sending" class="ff-ai-view__bubble ff-ai-view__bubble--ai ff-ai-view__typing">
-              <span /><span /><span />
+              <div class="ff-ai-view__avatar" :class="`ff-ai-view__avatar--${m.role}`">
+                <AppIcon v-if="m.role === 'ai'" name="sparkles" size="sm" />
+                <span v-else class="ff-ai-view__avatar-me">我</span>
+              </div>
+              <div
+                class="ff-ai-view__bubble"
+                :class="[
+                  `ff-ai-view__bubble--${m.role}`,
+                  m.pending && 'ff-ai-view__bubble--pending',
+                  m.error && 'ff-ai-view__bubble--error',
+                  m.stopped && 'ff-ai-view__bubble--stopped',
+                ]"
+              >
+                <AppIcon
+                  v-if="m.pending"
+                  name="sparkles"
+                  size="sm"
+                  class="ff-ai-view__bubble-spin"
+                />
+                <span v-if="m.pending" class="ff-ai-view__typing-label">AI 正在思考…</span>
+                <span v-else class="ff-ai-view__bubble-text">{{ m.text }}</span>
+                <span v-if="m.pending" class="ff-ai-view__typing-dots">
+                  <span /><span /><span />
+                </span>
+              </div>
             </div>
             <div v-if="!chatLog.length && !sending" class="ff-ai-view__empty-chat">
               向 FinFeed 的 AI 提问市场 / 新闻相关问题
@@ -517,9 +598,21 @@ onMounted(() => {
               class="ff-ai-view__chat-field"
               placeholder="输入问题…"
               :disabled="sending"
-              @enter="sendChat"
+              @enter="onChatEnter"
             />
-            <AppButton variant="primary" icon="send" :loading="sending" :disabled="sending" @click="sendChat">发送</AppButton>
+            <AppButton
+              v-if="!sending"
+              variant="primary"
+              icon="send"
+              :disabled="!chatInput.trim()"
+              @click="sendChat"
+            >发送</AppButton>
+            <AppButton
+              v-else
+              variant="danger"
+              icon="x-circle"
+              @click="stopChat"
+            >停止</AppButton>
           </div>
         </AppCard>
       </div>
@@ -768,7 +861,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--ff-space-3);
-  padding: var(--ff-space-2);
+  padding: var(--ff-space-3);
 }
 
 .ff-ai-view__empty-chat {
@@ -777,45 +870,107 @@ onMounted(() => {
   color: var(--ff-text-tertiary);
 }
 
+/* 消息行：头像 + 气泡，左右分列（IM 风格） */
+.ff-ai-view__msg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ff-space-2);
+  max-width: 100%;
+}
+.ff-ai-view__msg--ai {
+  justify-content: flex-start;
+}
+.ff-ai-view__msg--user {
+  justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+
+.ff-ai-view__avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: var(--ff-fs-xs);
+  font-weight: 600;
+}
+.ff-ai-view__avatar--ai {
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-icon-brand);
+}
+.ff-ai-view__avatar--user {
+  background: var(--ff-brand);
+  color: var(--ff-brand-fg, #fff);
+}
+.ff-ai-view__avatar-me {
+  font-size: 12px;
+}
+
 .ff-ai-view__bubble {
-  max-width: 86%;
+  max-width: 78%;
   padding: var(--ff-space-3) var(--ff-space-4);
   border-radius: var(--ff-radius-xl);
   font-size: var(--ff-fs-sm);
   white-space: pre-wrap;
   line-height: var(--ff-lh-normal);
+  word-break: break-word;
 }
 
 .ff-ai-view__bubble--user {
-  align-self: flex-end;
   background: var(--ff-bg-brand);
   color: var(--ff-text-inverse);
   border-bottom-right-radius: var(--ff-radius-xs);
 }
 
 .ff-ai-view__bubble--ai {
-  align-self: flex-start;
   background: var(--ff-bg-subtle);
   color: var(--ff-text-primary);
   border-bottom-left-radius: var(--ff-radius-xs);
 }
 
-.ff-ai-view__typing {
-  display: flex;
-  gap: 4px;
-  padding: var(--ff-space-4);
+.ff-ai-view__bubble--pending {
+  background: var(--ff-bg-brand-subtle);
+  border: 1px dashed var(--ff-border-brand);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  flex-wrap: wrap;
 }
-
-.ff-ai-view__typing span {
-  width: 7px;
-  height: 7px;
+.ff-ai-view__bubble-spin {
+  color: var(--ff-icon-brand);
+}
+.ff-ai-view__typing-label {
+  color: var(--ff-text-brand);
+  font-weight: 500;
+}
+.ff-ai-view__typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 2px;
+}
+.ff-ai-view__typing-dots span {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--ff-icon-muted);
+  background: var(--ff-icon-brand);
   animation: ff-bounce-dot 1.2s infinite ease-in-out;
+  opacity: 0.7;
 }
+.ff-ai-view__typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ff-ai-view__typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-.ff-ai-view__typing span:nth-child(2) { animation-delay: 0.2s; }
-.ff-ai-view__typing span:nth-child(3) { animation-delay: 0.4s; }
+.ff-ai-view__bubble--error {
+  background: var(--ff-down-subtle);
+  color: var(--ff-down-text);
+  border-left: 3px solid var(--ff-down);
+}
+.ff-ai-view__bubble--stopped {
+  font-style: italic;
+  color: var(--ff-text-secondary);
+  background: var(--ff-bg-subtle);
+}
 
 .ff-ai-view__chat-input {
   display: flex;

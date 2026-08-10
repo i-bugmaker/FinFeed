@@ -266,6 +266,27 @@
   --ff-brand-border: var(--p-brand-200);
   --ff-brand-text: var(--p-brand-700);
 
+  /* ---- 兼容别名（历史代码引用的旧名称，映射到现行 token；勿删） ---- */
+  --ff-bg-brand: var(--ff-brand);
+  --ff-bg-brand-subtle: var(--ff-brand-subtle);
+  --ff-icon-brand: var(--ff-brand);
+  --ff-text-brand: var(--ff-brand-text);
+  --ff-border-brand: var(--ff-brand-border);
+  --ff-border-hover: var(--p-gray-300);
+  --ff-border-focus: var(--ff-brand);
+  --ff-border-up: var(--ff-up-border);
+  --ff-border-down: var(--ff-down-border);
+  --ff-icon-muted: var(--ff-text-tertiary);
+  --ff-icon-warn: var(--ff-warn);
+  --ff-text-up: var(--ff-up-text);
+  --ff-bg-disabled: var(--ff-bg-muted);
+  --ff-bg-error: var(--ff-down-subtle);
+  --ff-border-error: var(--ff-down);
+  --ff-focus-ring-error: var(--ff-focus-ring-danger);
+  --ff-ease-out: var(--ff-ease-decelerate);
+  --ff-fs-base: var(--ff-fs-body);
+  --ff-z-popover: var(--ff-z-dropdown);
+
   /* 涨 / 利好 */
   --ff-up: var(--p-up-500);
   --ff-up-strong: var(--p-up-600);
@@ -383,6 +404,27 @@
   --ff-brand-subtle-hover: rgba(59, 130, 246, 0.22);
   --ff-brand-border: rgba(96, 165, 250, 0.36);
   --ff-brand-text: var(--p-brand-300);
+
+  /* ---- 兼容别名（暗色，映射到现行 token；勿删） ---- */
+  --ff-bg-brand: var(--ff-brand);
+  --ff-bg-brand-subtle: var(--ff-brand-subtle);
+  --ff-icon-brand: var(--ff-brand);
+  --ff-text-brand: var(--ff-brand-text);
+  --ff-border-brand: var(--ff-brand-border);
+  --ff-border-hover: var(--p-gray-500);
+  --ff-border-focus: var(--ff-brand);
+  --ff-border-up: var(--ff-up-border);
+  --ff-border-down: var(--ff-down-border);
+  --ff-icon-muted: var(--ff-text-tertiary);
+  --ff-icon-warn: var(--ff-warn);
+  --ff-text-up: var(--ff-up-text);
+  --ff-bg-disabled: var(--ff-bg-muted);
+  --ff-bg-error: var(--ff-down-subtle);
+  --ff-border-error: var(--ff-down);
+  --ff-focus-ring-error: var(--ff-focus-ring-danger);
+  --ff-ease-out: var(--ff-ease-decelerate);
+  --ff-fs-base: var(--ff-fs-body);
+  --ff-z-popover: var(--ff-z-dropdown);
 
   --ff-up: #f0575c;
   --ff-up-strong: #f47276;
