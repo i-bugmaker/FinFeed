@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import { useAppStore } from '../store/app'
 import NewsRow from '../components/NewsRow.vue'
@@ -10,7 +9,6 @@ import AppCard from '../ui/AppCard.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
-const route = useRoute()
 const store = useAppStore()
 
 const filters = ref({ source: 'all', sentiment: 'all', keyword: '', start: '', end: '', favorites: false })
@@ -22,6 +20,7 @@ const loading = ref(false)
 const finished = ref(false)
 const sources = ref([])
 const sentinel = ref(null)
+const contentEl = ref(null)
 let observer = null
 
 async function loadFirst() {
@@ -70,27 +69,51 @@ function onFilterChange() {
   loadFirst()
 }
 
-function prependPending() {
-  const { items, truncated } = store.takePending()
-  if (!items.length && !truncated) return
-  // 单轮增量被截断（items 只含部分条目）时，局部插入会漏条目，
-  // 直接整表刷新兜底。
-  if (truncated) {
+function isNearTop() {
+  if (!contentEl.value) return true
+  return contentEl.value.scrollTop < 80
+}
+
+// 实时合并 SSE 推送的增量：增量到达即前置插入可见列表，不再要求用户
+// 滚到顶部或手动点击。pendingNews 作为「未读」缓冲保留，用于驱动右上角
+// 「N 条新新闻」提示；当用户已在顶部（新条目立即可见）时自动标记已读。
+function applyPending() {
+  const items = store.pendingNews.filter((n) => n.category === 'finance')
+  // 单轮增量被截断（items 只含部分条目）时，局部插入会漏条目，整表刷新兜底。
+  if (store.pendingTruncated.finance) {
+    store.pendingNews = store.pendingNews.filter((n) => n.category !== 'finance')
+    store.pendingTruncated.finance = false
     loadFirst()
     return
   }
   const ids = new Set(list.value.map((n) => n.id))
   const fresh = items.filter((n) => !ids.has(n.id))
-  list.value = [...fresh, ...list.value]
+  if (fresh.length) {
+    list.value = [...fresh, ...list.value]
+  }
+  // 已在顶部：新条目立即可见，标记已读（清空未读缓冲，角标自动隐藏）
+  if (isNearTop()) store.markSeen('finance')
 }
 
+function onContentScroll() {
+  // 滚到顶部即视为已读最新条目，清空未读缓冲
+  if (isNearTop()) store.markSeen('finance')
+}
+
+// 增量到达即实时合并，不再受滚动位置限制
 watch(
-  () => route.query._new,
-  () => prependPending(),
+  () => store.pendingNews.length,
+  () => applyPending(),
 )
 
 onMounted(async () => {
+  contentEl.value = document.querySelector('.ff-app__content')
+  if (contentEl.value) {
+    contentEl.value.addEventListener('scroll', onContentScroll)
+  }
   await loadFirst()
+  // 首屏列表已包含最新数据；若处于顶部，直接清空未读缓冲
+  if (isNearTop()) store.markSeen('finance')
   await nextTick()
   observer = new IntersectionObserver(
     (entries) => {
@@ -102,6 +125,9 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   if (observer) observer.disconnect()
+  if (contentEl.value) {
+    contentEl.value.removeEventListener('scroll', onContentScroll)
+  }
 })
 </script>
 

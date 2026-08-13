@@ -1,16 +1,17 @@
 <script setup>
 import { computed } from 'vue'
 import { useAppStore } from '../store/app'
-import { useRouter } from 'vue-router'
 import AppButton from '../ui/AppButton.vue'
 import AppIcon from '../ui/AppIcon.vue'
 
 const store = useAppStore()
-const router = useRouter()
 const count = computed(() => store.pendingNews.length)
 
-function go() {
-  router.push({ path: '/news', query: { _new: String(Date.now()) } })
+// 新闻已实时合并进列表；角标仅作为「回到顶部看新消息」的便捷入口。
+function onClick() {
+  const el = document.querySelector('.ff-app__content')
+  if (el) el.scrollTo({ top: 0, behavior: 'smooth' })
+  store.markSeen()
 }
 </script>
 
@@ -22,7 +23,7 @@ function go() {
       variant="primary"
       size="md"
       pill
-      @click="go"
+      @click="onClick"
     >
       <AppIcon name="arrow-up" size="sm" />
       {{ count }} 条新新闻
