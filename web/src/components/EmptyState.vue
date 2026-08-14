@@ -6,7 +6,14 @@ defineProps({
 </script>
 
 <template>
-  <AppEmpty class="ff-empty-state" :title="text" :icon="icon" />
+  <AppEmpty class="ff-empty-state" :title="text" :icon="icon">
+    <template v-if="$slots.description" #description>
+      <slot name="description" />
+    </template>
+    <template v-if="$slots.action" #action>
+      <slot name="action" />
+    </template>
+  </AppEmpty>
 </template>
 
 <style scoped>

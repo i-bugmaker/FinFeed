@@ -4,9 +4,11 @@ import { api } from '../api/client'
 import { useAppStore } from '../store/app'
 import AppIcon from '../ui/AppIcon.vue'
 import AppBadge from '../ui/AppBadge.vue'
+import HighlightText from './HighlightText.vue'
 
 const props = defineProps({
   item: { type: Object, required: true },
+  keyword: { type: String, default: '' },
 })
 
 const store = useAppStore()
@@ -92,7 +94,7 @@ function markRead() {
           size="xs"
         />
         <a :href="item.url" target="_blank" rel="noopener" @click.stop="markRead">
-          {{ item.title }}
+          <HighlightText :text="item.title" :keyword="keyword" />
         </a>
         <AppBadge v-if="isNew" text="NEW" variant="brand" class="ff-newsrow__new" />
       </div>

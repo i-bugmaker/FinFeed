@@ -7,6 +7,7 @@ import FilterBar from '../components/FilterBar.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
 import AppIcon from '../ui/AppIcon.vue'
+import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
 const store = useAppStore()
@@ -66,6 +67,11 @@ async function fetchPage() {
 }
 
 function onFilterChange() {
+  loadFirst()
+}
+
+function clearKeyword() {
+  filters.value.keyword = ''
   loadFirst()
 }
 
@@ -148,6 +154,14 @@ onUnmounted(() => {
       @change="onFilterChange"
     />
 
+    <div v-if="filters.keyword" class="ff-news-view__result">
+      <AppIcon name="search" size="xs" />
+      <span>找到 <strong class="ff-num">{{ total }}</strong> 条与「<strong>{{ filters.keyword }}</strong>」相关的新闻</span>
+      <button type="button" class="ff-news-view__result-clear" @click="clearKeyword">
+        <AppIcon name="x" size="xs" /> 清除关键词
+      </button>
+    </div>
+
     <AppCard :no-padding="true" class="ff-news-view__table">
       <table class="ff-table ff-table--sticky ff-table--hover" v-if="list.length > 0">
         <thead>
@@ -160,10 +174,21 @@ onUnmounted(() => {
           </tr>
         </thead>
         <tbody>
-          <NewsRow v-for="item in list" :key="item.id" :item="item" />
+          <NewsRow v-for="item in list" :key="item.id" :item="item" :keyword="filters.keyword" />
         </tbody>
       </table>
-      <EmptyState v-else-if="!loading" text="没有符合条件的新闻" icon="search" />
+      <EmptyState
+        v-else-if="!loading"
+        :text="filters.keyword ? `未找到与「${filters.keyword}」相关的新闻` : '没有符合条件的新闻'"
+        icon="search"
+      >
+        <template v-if="filters.keyword" #description>
+          换个关键词试试，或清除筛选条件查看全部新闻。
+        </template>
+        <template v-if="filters.keyword" #action>
+          <AppButton variant="secondary" size="sm" icon="x" @click="clearKeyword">清除筛选</AppButton>
+        </template>
+      </EmptyState>
     </AppCard>
 
     <div ref="sentinel" class="ff-news-view__sentinel">
@@ -183,6 +208,47 @@ onUnmounted(() => {
 
 .ff-news-view__table {
   overflow: hidden;
+}
+
+.ff-news-view__result {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
+  padding: var(--ff-space-2-5) var(--ff-space-4);
+  border: 1px solid var(--ff-brand-border);
+  background: var(--ff-brand-subtle);
+  border-radius: var(--ff-radius-lg);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-body-sm);
+}
+.ff-news-view__result strong {
+  color: var(--ff-text-primary);
+  font-weight: 600;
+}
+.ff-news-view__result-clear {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--ff-space-2-5);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard),
+    color var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-news-view__result-clear:hover {
+  background: var(--ff-bg-hover);
+  border-color: var(--ff-border-strong);
+  color: var(--ff-text-primary);
 }
 
 .ff-news-view__sentinel {

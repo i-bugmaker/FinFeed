@@ -41,11 +41,7 @@ const sentimentOption = computed(() => {
         radius: ['48%', '72%'],
         center: ['50%', '46%'],
         avoidLabelOverlap: true,
-        itemStyle: {
-          borderColor: chartVar('--ff-bg-surface'),
-          borderWidth: 2,
-          borderRadius: 4,
-        },
+        itemStyle: { borderColor: chartVar('--ff-bg-surface'), borderWidth: 2, borderRadius: 4 },
         label: {
           show: true,
           formatter: '{d}%',
@@ -79,6 +75,117 @@ const sourceOption = computed(() => {
         data: entries.map((e) => e[1]).reverse(),
         barMaxWidth: 14,
         itemStyle: { color: chartVar('--ff-chart-primary'), borderRadius: [0, 4, 4, 0] },
+      },
+    ],
+  }
+})
+
+// 近 24h 新闻量时间趋势（补全缺失数据：stats.time_trend）
+const trendOption = computed(() => {
+  void store.theme
+  const arr = stats.value?.time_trend || []
+  const xs = arr.map((d) => d.time)
+  const ys = arr.map((d) => d.count)
+  return {
+    tooltip: { trigger: 'axis', formatter: '{b}<br/>新闻量：{c} 条' },
+    grid: { left: 36, right: 14, top: 18, bottom: 28 },
+    xAxis: {
+      type: 'category',
+      data: xs,
+      boundaryGap: false,
+      axisLabel: { fontSize: 10, color: chartVar('--ff-text-tertiary'), hideOverlap: true },
+      axisLine: { lineStyle: { color: chartVar('--ff-border') } },
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { type: 'dashed', color: chartVar('--ff-bg-subtle') } },
+      axisLabel: { fontSize: 10, color: chartVar('--ff-text-tertiary') },
+    },
+    series: [
+      {
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        data: ys,
+        lineStyle: { width: 2, color: chartVar('--ff-chart-primary') },
+        itemStyle: { color: chartVar('--ff-chart-primary') },
+        areaStyle: { color: 'rgba(37,99,235,0.12)' },
+      },
+    ],
+  }
+})
+
+// 重要性分布（补全缺失数据：stats.importance_distribution）
+const importanceOption = computed(() => {
+  void store.theme
+  const d = stats.value?.importance_distribution || {}
+  const order = ['极重要', '重要', '一般', '较低', '低']
+  const entries = order.filter((k) => d[k] != null).map((k) => [k, d[k]])
+  const cats = entries.map((e) => e[0]).reverse()
+  const vals = entries.map((e) => e[1]).reverse()
+  const palette = {
+    '极重要': chartVar('--ff-chart-down'),
+    '重要': chartVar('--ff-warn'),
+    '一般': chartVar('--ff-chart-primary'),
+    '较低': chartVar('--ff-text-tertiary'),
+    '低': chartVar('--ff-text-tertiary'),
+  }
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: '{b}：{c} 条' },
+    grid: { left: 56, right: 28, top: 12, bottom: 10 },
+    xAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { type: 'dashed', color: chartVar('--ff-bg-subtle') } },
+      axisLabel: { fontSize: 10, color: chartVar('--ff-text-tertiary') },
+    },
+    yAxis: {
+      type: 'category',
+      data: cats,
+      axisLabel: { fontSize: 11, color: chartVar('--ff-text-secondary') },
+    },
+    series: [
+      {
+        type: 'bar',
+        data: vals.map((v, i) => ({
+          value: v,
+          itemStyle: { color: palette[cats[i]] || chartVar('--ff-chart-primary'), borderRadius: [0, 4, 4, 0] },
+        })),
+        barMaxWidth: 16,
+        label: { show: true, position: 'right', fontSize: 10, color: chartVar('--ff-text-tertiary') },
+      },
+    ],
+  }
+})
+
+// 分类分布（补全缺失数据：stats.category_stats）
+const categoryOption = computed(() => {
+  void store.theme
+  const d = stats.value?.category_stats || {}
+  const entries = Object.entries(d).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+  const palette = [
+    chartVar('--ff-chart-primary'),
+    chartVar('--ff-chart-up'),
+    chartVar('--ff-chart-down'),
+    chartVar('--ff-warn'),
+    '#8b5cf6',
+    '#0ea5e9',
+  ]
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}：{c} 条（{d}%）' },
+    legend: { bottom: 0, left: 'center', icon: 'circle', itemWidth: 8, itemHeight: 8 },
+    series: [
+      {
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '44%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: chartVar('--ff-bg-surface'), borderWidth: 2, borderRadius: 4 },
+        label: { show: true, formatter: '{d}%', fontSize: 11, color: chartVar('--ff-text-secondary') },
+        data: entries.map((e, i) => ({
+          name: e[0],
+          value: e[1],
+          itemStyle: { color: palette[i % palette.length] },
+        })),
       },
     ],
   }
@@ -123,6 +230,9 @@ onUnmounted(() => {
   mqMobile.removeEventListener('change', onMqChange)
 })
 
+// 统计更新时间提示
+const updateTime = computed(() => stats.value?.update_time || '')
+
 onMounted(async () => {
   try {
     stats.value = await api.stats()
@@ -143,6 +253,9 @@ onMounted(async () => {
         </h1>
         <p class="ff-page__subtitle">核心指标 · 情绪结构 · 系统状态 一屏总览</p>
       </div>
+      <span v-if="updateTime" class="ff-dashboard-view__updated">
+        <AppIcon name="refresh" size="xs" /> 更新于 {{ updateTime }}
+      </span>
     </div>
 
     <AppSkeleton v-if="loading" variant="text" :lines="8" />
@@ -210,21 +323,30 @@ onMounted(async () => {
         </AppButton>
       </div>
 
-      <!-- ═══ L3 数据洞察（两图等宽并列）═══ -->
-      <div class="ff-grid ff-dashboard-view__charts">
-        <div class="ff-col-12 ff-col-lg-6">
-          <AppCard title="情绪分布" subtitle="近 24h 舆情倾向">
-            <ChartPanel :option="sentimentOption" height="220px" />
-          </AppCard>
-        </div>
-        <div class="ff-col-12 ff-col-lg-6">
-          <AppCard title="来源 TOP10" subtitle="各数据源新闻量">
-            <ChartPanel :option="sourceOption" height="220px" />
-          </AppCard>
-        </div>
+      <!-- ═══ L3 数据洞察（三图等宽并列）═══ -->
+      <div class="ff-dashboard-view__charts">
+        <AppCard title="情绪分布" subtitle="全部新闻舆情倾向">
+          <ChartPanel :option="sentimentOption" height="220px" />
+        </AppCard>
+        <AppCard title="来源 TOP10" subtitle="近 7 天各数据源新闻量">
+          <ChartPanel :option="sourceOption" height="220px" />
+        </AppCard>
+        <AppCard title="近 24h 趋势" subtitle="按小时新闻量">
+          <ChartPanel :option="trendOption" height="220px" />
+        </AppCard>
       </div>
 
-      <!-- ═══ L4 数据源健康明细（按需展开）═══ -->
+      <!-- ═══ L4 结构分布（两图并列，补全缺失数据）═══ -->
+      <div class="ff-dashboard-view__dist">
+        <AppCard title="重要性分布" subtitle="按新闻重要性分级">
+          <ChartPanel :option="importanceOption" height="220px" />
+        </AppCard>
+        <AppCard title="分类分布" subtitle="新闻 / 论坛等来源构成">
+          <ChartPanel :option="categoryOption" height="220px" />
+        </AppCard>
+      </div>
+
+      <!-- ═══ L5 数据源健康明细（按需展开）═══ -->
       <Transition name="ff-fade">
         <div v-if="healthOpen" class="ff-dashboard-view__sources-wrap">
           <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
@@ -263,6 +385,15 @@ onMounted(async () => {
   gap: var(--ff-space-3);
 }
 
+.ff-dashboard-view__updated {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-1);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  white-space: nowrap;
+}
+
 /* L1 核心指标：移动 2 列 / 桌面 4 列 */
 .ff-dashboard-view__kpis {
   display: grid;
@@ -270,12 +401,36 @@ onMounted(async () => {
   gap: var(--ff-space-3);
 }
 
-/* L2 图表区 */
+/* L3 图区：移动 1 列 / 桌面 3 列 */
 .ff-dashboard-view__charts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-3);
   row-gap: var(--ff-space-3);
 }
 
-/* L3 状态条：一行排布，移动端换行 */
+/* L4 分布区：移动 1 列 / 桌面 2 列 */
+.ff-dashboard-view__dist {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-3);
+  row-gap: var(--ff-space-3);
+}
+
+@media (min-width: 1024px) {
+  .ff-dashboard-view__kpis {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--ff-space-4);
+  }
+  .ff-dashboard-view__charts {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .ff-dashboard-view__dist {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* L2 状态条 */
 .ff-dashboard-view__statusbar {
   display: flex;
   align-items: center;
@@ -295,13 +450,12 @@ onMounted(async () => {
 .ff-dashboard-view__statusbar-label {
   display: inline-flex;
   align-items: center;
-  gap: var(--ff-space-1-5);
+  gap: var(--ff-space-1);
   font-size: var(--ff-fs-body-sm);
   font-weight: 600;
   color: var(--ff-text-secondary);
   white-space: nowrap;
 }
-/* 分隔线（视觉分组） */
 .ff-dashboard-view__sep {
   display: inline-block;
   width: 1px;
@@ -423,12 +577,5 @@ onMounted(async () => {
   color: var(--ff-text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-@media (min-width: 1024px) {
-  .ff-dashboard-view__kpis {
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--ff-space-4);
-  }
 }
 </style>

@@ -38,6 +38,7 @@ from finfeed.core.health import get_health_monitor
 from finfeed.ecal import api as calendar_api
 from finfeed.ecal import fetcher as calendar_fetcher
 from finfeed.llm import api as llm_api
+from finfeed.market import scheduler as market_scheduler
 from finfeed.storage.database import (
     db_get_all_for_export,
     db_get_all_stock_names,
@@ -587,6 +588,14 @@ def _market_action(q: Dict[str, List[str]]):
                  for k, v in _market_tasks.items()}
         return {"success": True, "data": tasks}
 
+    if action == "autocollect":
+        enable = gv("enable", "1") not in ("0", "false", "no")
+        if enable:
+            market_scheduler.start()
+        else:
+            market_scheduler.stop()
+        return {"success": True, "data": market_scheduler.get_state()}
+
     svc = legacy._get_mk_service()
     ACTION_MAP = {
         "snapshot": ("采集行情快照", lambda: legacy._run_in_thread(lambda d=date: svc.run_daily_snapshot_sync(d))),
@@ -694,6 +703,8 @@ async def api_market(rest: str, request: Request):
             data = mk_store.get_stock_profile(code, _int("bars", 120))
         elif sub == "search":
             data = mk_store.search_stock(q.get("kw", [""])[0], _int("limit", 20, 50))
+        elif sub == "autostatus":
+            data = market_scheduler.get_state()
         elif sub == "overview":
             data = mk_store.get_fact_overview()
         elif sub == "kline":
@@ -804,6 +815,12 @@ async def _startup():
     # 广播失效导致的 Web 端不实时更新。
     app.state.sse_poll_task = asyncio.create_task(_sse_poll_loop())
 
+    # 行情后台自动采集调度器（按交易日时点定时自我完成采集任务）
+    try:
+        market_scheduler.maybe_autostart()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"行情自动采集调度器启动失败（可忽略）: {e}")
+
 
 @app.on_event("shutdown")
 async def _shutdown():
@@ -814,6 +831,11 @@ async def _shutdown():
             await task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
+    # 关闭行情自动采集调度器
+    try:
+        market_scheduler.stop()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @app.get("/api/ping")

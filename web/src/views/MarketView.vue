@@ -1,12 +1,14 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { api } from '../api/client'
+import { useAutoToday, todayStr } from '../composables/useAutoToday'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppInput from '../ui/AppInput.vue'
 import AppDatePicker from '../ui/AppDatePicker.vue'
 import AppTabs from '../ui/AppTabs.vue'
+import AppSwitch from '../ui/AppSwitch.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
@@ -25,13 +27,20 @@ const tabs = [
   { value: 'search', label: '股票搜索' },
 ]
 const active = ref('overview')
-const date = ref('')
+// 默认选中当日；用户未手动改日期时随时间自动滚动到当前日期
+const { date, markTouched } = useAutoToday()
 const data = ref(null)
 const rows = ref([])
 const summary = ref(null)
 const loading = ref(false)
 const err = ref('')
 const kw = ref('')
+
+// 后台自动采集调度状态
+const autoEnabled = ref(false)
+const autoLast = ref({})
+const autoNext = ref({})
+let statusTimer = null
 
 const HEADER_MAP = {
   code: '代码', name: '名称', trade_date: '交易日', date: '日期', reason: '涨停原因',
@@ -102,8 +111,36 @@ let pollTimer = null
 async function loadDates() {
   try {
     const r = await api.market('dates')
-    if (r.success && r.data.default_date) date.value = r.data.default_date
+    if (r.success && r.data.default_date) latestDate.value = r.data.default_date
   } catch (e) {}
+}
+
+const latestDate = ref('')
+
+async function loadAutoStatus() {
+  try {
+    const r = await api.market('autostatus')
+    if (r && r.success) {
+      autoEnabled.value = !!r.data.enabled
+      autoLast.value = r.data.last_run || {}
+      autoNext.value = r.data.next_run || {}
+    }
+  } catch (e) {
+    /* 自动采集状态不可用时静默降级 */
+  }
+}
+
+async function toggleAuto(v) {
+  try {
+    const r = await api.marketAction({ action: 'autocollect', enable: v ? 1 : 0 })
+    if (r && r.success) {
+      autoEnabled.value = !!r.data.enabled
+      autoLast.value = r.data.last_run || {}
+      autoNext.value = r.data.next_run || {}
+    }
+  } catch (e) {
+    /* 失败时保持原状态 */
+  }
 }
 
 async function load() {
@@ -242,10 +279,18 @@ watch(date, load)
 
 onMounted(async () => {
   await loadDates()
+  await loadAutoStatus()
+  statusTimer = setInterval(loadAutoStatus, 30000)
   await load()
 })
 
-onBeforeUnmount(() => stopPolling())
+onBeforeUnmount(() => {
+  stopPolling()
+  if (statusTimer) {
+    clearInterval(statusTimer)
+    statusTimer = null
+  }
+})
 </script>
 
 <template>
@@ -261,7 +306,7 @@ onBeforeUnmount(() => stopPolling())
 
     <AppCard class="ff-market-view__toolbar">
       <div class="ff-market-view__row">
-        <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" />
+        <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />
         <AppInput
           v-if="active === 'search'"
           v-model="kw"
@@ -286,6 +331,39 @@ onBeforeUnmount(() => stopPolling())
         >
           {{ a.label }}
         </AppButton>
+      </div>
+
+      <!-- 后台自动采集状态：开关 + 下次/上次执行 + 跳到最新数据 -->
+      <div class="ff-market-view__autocollect">
+        <div class="ff-market-view__autocollect-main">
+          <AppIcon name="clock" size="sm" />
+          <span class="ff-market-view__autocollect-label">后台自动采集</span>
+          <AppSwitch :model-value="autoEnabled" @change="toggleAuto" />
+          <span class="ff-market-view__autocollect-state" :class="autoEnabled ? 'is-on' : 'is-off'">
+            {{ autoEnabled ? '已开启' : '已关闭' }}
+          </span>
+          <span v-if="autoEnabled" class="ff-market-view__autocollect-next">
+            下次快照 ~{{ autoNext.snapshot || '—' }}
+          </span>
+        </div>
+        <div class="ff-market-view__autocollect-meta">
+          <span v-if="autoLast.snapshot" class="ff-market-view__autocollect-last">
+            快照：{{ autoLast.snapshot.message }}
+          </span>
+          <span v-if="autoLast.universe" class="ff-market-view__autocollect-last">
+            股票池：{{ autoLast.universe.message }}
+          </span>
+          <button
+            v-if="latestDate"
+            type="button"
+            class="ff-market-view__latest"
+            :disabled="date === latestDate"
+            :title="date === latestDate ? '已是最新数据日期' : `跳到最新数据日期 ${latestDate}`"
+            @click="date = latestDate; markTouched()"
+          >
+            <AppIcon name="history" size="xs" /> 最新数据 {{ latestDate }}
+          </button>
+        </div>
       </div>
       <!-- 进度区：单一运行中进度条 + 紧凑历史结果列表
            - 进行中：只渲染当前那一条，避免四进度条无意义占位
@@ -448,6 +526,82 @@ onBeforeUnmount(() => stopPolling())
 .ff-market-view__row--actions {
   padding-top: var(--ff-space-3);
   border-top: 1px solid var(--ff-border);
+}
+
+/* ---------------- 后台自动采集状态面板 ---------------- */
+.ff-market-view__autocollect {
+  margin-top: var(--ff-space-3);
+  padding-top: var(--ff-space-3);
+  border-top: 1px dashed var(--ff-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-2);
+}
+.ff-market-view__autocollect-main {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  flex-wrap: wrap;
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-body-sm);
+}
+.ff-market-view__autocollect-label {
+  font-weight: 600;
+  color: var(--ff-text-primary);
+}
+.ff-market-view__autocollect-state {
+  font-weight: 600;
+}
+.ff-market-view__autocollect-state.is-on {
+  color: var(--ff-down-text);
+}
+.ff-market-view__autocollect-state.is-off {
+  color: var(--ff-text-tertiary);
+}
+.ff-market-view__autocollect-next {
+  color: var(--ff-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ff-market-view__autocollect-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  flex-wrap: wrap;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-market-view__autocollect-last {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-market-view__latest {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--ff-space-2-5);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard),
+    color var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-market-view__latest:hover:not(:disabled) {
+  background: var(--ff-bg-hover);
+  border-color: var(--ff-border-strong);
+  color: var(--ff-text-primary);
+}
+.ff-market-view__latest:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .ff-market-view__field {

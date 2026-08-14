@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount } from 'vue'
 import { api } from '../api/client'
 import AppInput from '../ui/AppInput.vue'
 import AppDateRange from '../ui/AppDateRange.vue'
@@ -32,6 +32,22 @@ function emitChange() {
   emit('update:modelValue', { ...local.value })
   emit('change', { ...local.value })
 }
+
+// 即时搜索：关键词输入即触发，防抖 350ms 避免每次按键都打后端；
+// 来源/情绪/日期等其它筛选仍为即时（emitChange 立即触发）。
+let kwTimer = null
+const KW_DEBOUNCE = 350
+function scheduleKeywordEmit() {
+  if (kwTimer) clearTimeout(kwTimer)
+  kwTimer = setTimeout(() => emitChange(), KW_DEBOUNCE)
+}
+watch(
+  () => local.value.keyword,
+  () => scheduleKeywordEmit(),
+)
+onBeforeUnmount(() => {
+  if (kwTimer) clearTimeout(kwTimer)
+})
 
 function setSentiment(k) {
   local.value.sentiment = k
@@ -105,10 +121,8 @@ async function exportAs(fmt) {
         v-model="local.keyword"
         class="ff-filterbar__search"
         prefix-icon="search"
-        placeholder="关键词 / 股票代码…"
+        placeholder="关键词 / 股票代码…（输入即搜索）"
         clearable
-        @enter="emitChange"
-        @blur="emitChange"
       />
       <AppDateRange
         v-model="range"
