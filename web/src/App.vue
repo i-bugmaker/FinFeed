@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from './store/app'
 import { useSSE } from './composables/useSSE'
 import Sidebar from './components/Sidebar.vue'
@@ -7,7 +8,11 @@ import TopBar from './components/TopBar.vue'
 import NewNewsBadge from './components/NewNewsBadge.vue'
 
 const store = useAppStore()
+const router = useRouter()
 useSSE()
+
+// 新新闻角标仅在新闻流页显示，其他模块页面不应出现
+const isNewsPage = computed(() => router.currentRoute.value.name === 'news')
 
 const mobileDrawerOpen = ref(false)
 const isDesktop = computed(() => typeof window !== 'undefined' && window.innerWidth >= 1024)
@@ -46,7 +51,7 @@ onMounted(() => {
       </main>
     </div>
 
-    <NewNewsBadge />
+    <NewNewsBadge v-if="isNewsPage" />
   </div>
 </template>
 
