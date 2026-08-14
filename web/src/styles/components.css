@@ -860,10 +860,11 @@
 
 /* AppSelect 通过 Teleport 将菜单挂到 body 并按触发器宽度定位，
    此时 .ff-menu 的 min-width:100% 会相对于视口导致菜单铺满屏幕，
-   所以对这种组合禁用 min-width，让 JS 精确控制宽度。 */
+   所以对这种组合禁用 min-width，宽度由 JS 根据触发器精确计算。 */
 .ff-dropdown.ff-menu {
   min-width: auto;
   width: auto;
+  box-sizing: border-box;
 }
 .ff-select__trigger {
   display: flex;
@@ -956,7 +957,21 @@
   right: 0;
   left: auto;
 }
+
+/* 菜单列表：清除 ul 默认内边距，避免内部选项与面板边缘错位 */
+.ff-menu__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
 .ff-menu__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: var(--ff-space-1-5) var(--ff-space-2-5) var(--ff-space-1);
   font-size: var(--ff-fs-overline);
   letter-spacing: var(--ff-ls-widest);
@@ -969,6 +984,7 @@
   align-items: center;
   gap: var(--ff-space-2);
   width: 100%;
+  box-sizing: border-box;
   min-height: 28px;
   padding: var(--ff-space-1) var(--ff-space-2-5);
   border-radius: var(--ff-radius-sm);
@@ -1013,6 +1029,11 @@
   white-space: nowrap;
 }
 .ff-menu__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 16px;
   color: var(--ff-brand);
   flex-shrink: 0;
 }

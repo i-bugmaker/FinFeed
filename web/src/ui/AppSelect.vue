@@ -107,18 +107,19 @@ function positionMenu() {
   if (!triggerRef.value || !menuRef.value) return
   const rect = triggerRef.value.getBoundingClientRect()
   const menu = menuRef.value
-  // 不再把菜单宽度强制等于触发器宽度；让菜单按内容自适应，
-  // 避免触发器很宽而选项很短时出现大片右侧留白。
-  menu.style.top = `${rect.bottom + 6}px`
-  // 默认右对齐触发器右缘；若会越过视口右边则改为左对齐
   const vw = document.documentElement.clientWidth
-  const menuW = menu.offsetWidth
-  const rightAlignedLeft = rect.right - menuW
-  if (rightAlignedLeft + menuW > vw - 8) {
-    menu.style.left = `${Math.max(8, rect.left)}px`
-  } else {
-    menu.style.left = `${rightAlignedLeft}px`
-  }
+  const margin = 8
+
+  // 菜单宽度与触发器保持一致，左右边缘与触发器对齐；
+  // 在窄视口下按视口宽度裁剪，避免溢出屏幕。
+  const menuW = Math.min(rect.width, vw - margin * 2)
+  menu.style.width = `${menuW}px`
+  menu.style.maxWidth = `${menuW}px`
+  menu.style.top = `${rect.bottom + 6}px`
+
+  // 默认左边缘对齐触发器左边缘；若右侧超出视口则右边缘贴紧视口内侧。
+  const left = Math.min(Math.max(margin, rect.left), vw - margin - menuW)
+  menu.style.left = `${left}px`
 }
 
 function onClear(e) {
@@ -200,7 +201,7 @@ onUnmounted(() => {
                 <span class="ff-menu__check">
                   <AppIcon v-if="isSelected(opt)" name="check" size="sm" />
                 </span>
-                <span class="ff-menu__label">{{ opt.label }}</span>
+                <span class="ff-menu__item-text">{{ opt.label }}</span>
               </li>
             </ul>
             <div v-if="!options.length" class="ff-empty ff-empty--xs">

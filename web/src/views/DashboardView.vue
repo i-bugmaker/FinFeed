@@ -10,6 +10,8 @@ import AppStatus from '../ui/AppStatus.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+import AppBadge from '../ui/AppBadge.vue'
+import { useMarketSocket } from '../composables/useMarketSocket'
 
 const store = useAppStore()
 const stats = ref(null)
@@ -233,6 +235,59 @@ onUnmounted(() => {
 // 统计更新时间提示
 const updateTime = computed(() => stats.value?.update_time || '')
 
+// ─── 实时行情推送（WebSocket）：作为仪表盘的一部分提供实时行情与采集告警 ───
+const {
+  connected: liveConnected,
+  connecting: liveConnecting,
+  data: liveData,
+  alerts: liveAlerts,
+  lastUpdate: liveLastUpdate,
+  error: liveError,
+  reconnectAttempts: liveReconnects,
+} = useMarketSocket({ autoConnect: true })
+
+const liveSentiment = computed(() => liveData.value && liveData.value.sentiment)
+const liveOverview = computed(() => liveData.value && liveData.value.overview)
+const liveLimitUp = computed(() => (liveData.value ? liveData.value.limit_up : null))
+const liveTradeDate = computed(() => (liveData.value ? liveData.value.trade_date : null))
+
+const liveLastUpdateText = computed(() => {
+  if (!liveLastUpdate.value) return '—'
+  const d = new Date(liveLastUpdate.value)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+})
+const liveConnTone = computed(() =>
+  liveConnected.value ? 'success' : liveConnecting.value ? 'warn' : 'danger',
+)
+const liveConnText = computed(() =>
+  liveConnected.value ? '推送已连接' : liveConnecting.value ? '连接中…' : '已断开（自动重连）',
+)
+
+const LIVE_KIND_LABEL = { exception: '异常', timeout: '超时', empty: '空数据', exhausted: '重试耗尽' }
+function liveKindLabel(k) {
+  return LIVE_KIND_LABEL[k] || k
+}
+function liveFmtTs(ts) {
+  if (!ts) return ''
+  const d = new Date(ts * 1000)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+const liveMetrics = computed(() => {
+  const s = liveSentiment.value
+  if (!s) return []
+  return [
+    { label: '交易日', value: s.trade_date || '—', tone: '' },
+    { label: '涨跌家数', value: s.breadth ?? '—', tone: '' },
+    { label: '涨停家数', value: s.up_limit ?? '—', tone: 'up' },
+    { label: '跌停家数', value: s.down_limit ?? '—', tone: 'down' },
+    { label: '情绪指数', value: s.sentiment_index ?? '—', tone: '' },
+    { label: '涨停池', value: liveLimitUp.value ?? '—', tone: 'up' },
+  ]
+})
+
 onMounted(async () => {
   try {
     stats.value = await api.stats()
@@ -255,6 +310,13 @@ onMounted(async () => {
       </div>
       <span v-if="updateTime" class="ff-dashboard-view__updated">
         <AppIcon name="refresh" size="xs" /> 更新于 {{ updateTime }}
+      </span>
+      <span
+        class="ff-dashboard-view__live-badge"
+        :class="liveConnected ? 'is-on' : liveConnecting ? 'is-wait' : 'is-off'"
+      >
+        <span class="ff-dashboard-view__live-dot"></span>
+        {{ liveConnText }}
       </span>
     </div>
 
@@ -344,6 +406,74 @@ onMounted(async () => {
         <AppCard title="分类分布" subtitle="新闻 / 论坛等来源构成">
           <ChartPanel :option="categoryOption" height="220px" />
         </AppCard>
+      </div>
+
+      <!-- ═══ L4.5 实时行情推送（WebSocket，作为仪表盘一部分）═══ -->
+      <div class="ff-dashboard-view__live">
+        <div class="ff-dashboard-view__live-head">
+          <div>
+            <h2 class="ff-dashboard-view__live-title">
+              <AppIcon name="activity" size="sm" /> 实时行情推送
+            </h2>
+            <p class="ff-dashboard-view__live-sub">WebSocket 实时行情快照与采集失败告警 · 断线自动重连</p>
+          </div>
+          <div class="ff-dashboard-view__live-meta">
+            <span class="ff-dashboard-view__live-meta-item">
+              <AppIcon name="clock" size="xs" /> 最近推送 <strong class="ff-num">{{ liveLastUpdateText }}</strong>
+            </span>
+            <span class="ff-dashboard-view__live-meta-item">
+              交易日 <strong>{{ liveTradeDate || '—' }}</strong>
+            </span>
+            <AppStatus :text="liveConnText" :tone="liveConnTone" :pulse="liveConnected" />
+            <span v-if="liveReconnects" class="ff-dashboard-view__live-retry">第 {{ liveReconnects }} 次重连</span>
+          </div>
+        </div>
+
+        <div v-if="liveError" class="ff-dashboard-view__live-err">
+          <AppIcon name="alert-triangle" size="sm" /> {{ liveError }}
+        </div>
+
+        <div class="ff-dashboard-view__live-grid">
+          <AppCard title="行情快照" subtitle="每 5 秒推送一次">
+            <div v-if="liveMetrics.length" class="ff-dashboard-view__live-metrics">
+              <div
+                v-for="m in liveMetrics"
+                :key="m.label"
+                class="ff-dashboard-view__live-metric"
+                :class="m.tone && `ff-t-${m.tone}`"
+              >
+                <span class="ff-dashboard-view__live-metric-label">{{ m.label }}</span>
+                <span class="ff-dashboard-view__live-metric-value ff-num">{{ m.value }}</span>
+              </div>
+            </div>
+            <div v-if="liveOverview" class="ff-dashboard-view__live-ov">
+              数据表 <strong>{{ liveOverview.tables }}</strong> · 板块 <strong>{{ liveOverview.boards }}</strong>
+            </div>
+            <div v-if="!liveData" class="ff-dashboard-view__live-empty">
+              <AppIcon name="activity" size="lg" />
+              <span>等待行情数据推送{{ liveConnected ? '…' : '（未连接）' }}</span>
+            </div>
+          </AppCard>
+
+          <AppCard title="采集失败告警" subtitle="实时来自后端告警模块">
+            <div v-if="liveAlerts.length" class="ff-dashboard-view__live-alerts">
+              <div
+                v-for="(a, i) in liveAlerts"
+                :key="i"
+                class="ff-dashboard-view__live-alert"
+              >
+                <AppBadge :text="liveKindLabel(a.kind)" variant="warn" />
+                <span class="ff-dashboard-view__live-alert-task">{{ a.task }}</span>
+                <span class="ff-dashboard-view__live-alert-time ff-num">{{ liveFmtTs(a.ts) }}</span>
+                <span class="ff-dashboard-view__live-alert-msg">{{ a.error }}</span>
+              </div>
+            </div>
+            <div v-else class="ff-dashboard-view__live-empty">
+              <AppIcon name="check-circle" size="lg" />
+              <span>暂无告警，采集运行正常</span>
+            </div>
+          </AppCard>
+        </div>
       </div>
 
       <!-- ═══ L5 数据源健康明细（按需展开）═══ -->
@@ -577,5 +707,204 @@ onMounted(async () => {
   color: var(--ff-text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* 头部实时推送指示灯 */
+.ff-dashboard-view__live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-1);
+  font-size: var(--ff-fs-caption);
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 2px var(--ff-space-2);
+  border-radius: var(--ff-radius-pill);
+  border: 1px solid var(--ff-border);
+  background: var(--ff-bg-subtle);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ff-text-tertiary);
+  flex-shrink: 0;
+}
+.ff-dashboard-view__live-badge.is-on {
+  color: var(--ff-down-text);
+  background: var(--ff-down-subtle);
+  border-color: var(--ff-down-border);
+}
+.ff-dashboard-view__live-badge.is-on .ff-dashboard-view__live-dot {
+  background: var(--ff-chart-up);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
+  animation: ff-live-pulse 1.6s ease-in-out infinite;
+}
+.ff-dashboard-view__live-badge.is-wait {
+  color: var(--ff-warn-text);
+  background: var(--ff-warn-subtle);
+  border-color: var(--ff-warn-border);
+}
+.ff-dashboard-view__live-badge.is-wait .ff-dashboard-view__live-dot {
+  background: var(--ff-warn);
+}
+.ff-dashboard-view__live-badge.is-off {
+  color: var(--ff-danger-text);
+  background: var(--ff-danger-subtle);
+  border-color: var(--ff-danger-border);
+}
+.ff-dashboard-view__live-badge.is-off .ff-dashboard-view__live-dot {
+  background: var(--ff-danger);
+}
+@keyframes ff-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* L4.5 实时行情推送 */
+.ff-dashboard-view__live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-4);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-bg-surface);
+  box-shadow: var(--ff-shadow-xs);
+}
+.ff-dashboard-view__live-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ff-space-3);
+}
+.ff-dashboard-view__live-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin: 0;
+  font-size: var(--ff-fs-h3);
+  font-weight: 700;
+  color: var(--ff-text-primary);
+}
+.ff-dashboard-view__live-sub {
+  margin: var(--ff-space-1) 0 0;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__live-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ff-space-2) var(--ff-space-3);
+}
+.ff-dashboard-view__live-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  white-space: nowrap;
+}
+.ff-dashboard-view__live-meta-item strong {
+  color: var(--ff-text-primary);
+  font-weight: 600;
+  margin-left: 2px;
+}
+.ff-dashboard-view__live-retry {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-warn-text);
+}
+.ff-dashboard-view__live-err {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: var(--ff-space-2) var(--ff-space-3);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-danger-subtle);
+  color: var(--ff-text-down);
+  font-size: var(--ff-fs-sm);
+}
+.ff-dashboard-view__live-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ff-space-3);
+}
+@media (max-width: 880px) {
+  .ff-dashboard-view__live-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.ff-dashboard-view__live-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ff-space-3);
+}
+.ff-dashboard-view__live-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--ff-space-3);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-surface);
+}
+.ff-dashboard-view__live-metric-label {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__live-metric-value {
+  font-size: var(--ff-fs-lg);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+}
+.ff-dashboard-view__live-ov {
+  margin-top: var(--ff-space-3);
+  font-size: var(--ff-fs-sm);
+  color: var(--ff-text-secondary);
+}
+.ff-dashboard-view__live-ov strong {
+  color: var(--ff-text-primary);
+}
+.ff-dashboard-view__live-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-2);
+  max-height: 360px;
+  overflow-y: auto;
+}
+.ff-dashboard-view__live-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: var(--ff-space-2) var(--ff-space-3);
+  border-radius: var(--ff-radius-sm);
+  background: var(--ff-bg-subtle);
+  font-size: var(--ff-fs-sm);
+}
+.ff-dashboard-view__live-alert-task {
+  font-weight: var(--ff-fw-medium);
+  color: var(--ff-text-primary);
+}
+.ff-dashboard-view__live-alert-time {
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-xs);
+}
+.ff-dashboard-view__live-alert-msg {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ff-text-secondary);
+}
+.ff-dashboard-view__live-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: var(--ff-space-6) 0;
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-sm);
 }
 </style>
