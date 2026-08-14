@@ -33,7 +33,7 @@ _state = {
     "enabled": False,
     "running": False,
     "last_run": {},  # action -> {executed_date, started, finished, status, message}
-    "next_run": {},  # action -> "HH:MM"
+    "next_run": {},  # action -> "YYYY-MM-DD HH:MM:SS"
 }
 
 _enabled_by_default = os.environ.get("FINFEED_MK_AUTO", "1") != "0"
@@ -64,7 +64,7 @@ def _next_slot_str(action: str, now: datetime) -> str:
         target = today
     else:
         target = today + timedelta(days=1)
-    return target.strftime("%H:%M")
+    return target.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _maybe_run(action: str, now: datetime) -> bool:
