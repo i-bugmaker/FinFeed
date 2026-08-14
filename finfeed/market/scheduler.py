@@ -83,9 +83,34 @@ def _maybe_run(action: str, now: datetime) -> bool:
     return True
 
 
+def _empty_check(action: str):
+    """按任务类型判定采集结果是否为空（空数据视为一次失败）。"""
+
+    def check(res):
+        if res is None:
+            return True
+        if action == "universe":
+            sm = res.get("stock_meta")
+            ac = res.get("active")
+            return (sm in (None, "", "?", 0, "0")) and (ac in (None, "", "?", 0, "0"))
+        if action == "snapshot":
+            return not res.get("trade_date")
+        if action == "bars":
+            saved = res.get("saved", res.get("total"))
+            try:
+                return int(saved or 0) <= 0
+            except (TypeError, ValueError):
+                return False
+        return False
+
+    return check
+
+
 def _run_action(action: str, today: str):
+    from finfeed.market import alerting as mk_alerting
     from finfeed.market import service as svc
 
+    task = f"market:{action}"
     started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _state_lock:
         _state["last_run"][action] = {
@@ -96,13 +121,25 @@ def _run_action(action: str, today: str):
         }
     try:
         if action == "universe":
-            res = svc.run_universe_sync()
+            res = mk_alerting.with_retry(
+                task, lambda: svc.run_universe_sync(),
+                max_retries=3, backoff_base=2.0, timeout=180,
+                is_empty=_empty_check(action),
+            )
             msg = f"完成（名录 {res.get('stock_meta', '?')} / 在市 {res.get('active', '?')}）"
         elif action == "snapshot":
-            res = svc.run_daily_snapshot_sync()
+            res = mk_alerting.with_retry(
+                task, lambda: svc.run_daily_snapshot_sync(),
+                max_retries=3, backoff_base=2.0, timeout=300,
+                is_empty=_empty_check(action),
+            )
             msg = f"完成（交易日 {res.get('trade_date', today)}）"
         elif action == "bars":
-            res = svc.collect_bars_sync(bars=5)
+            res = mk_alerting.with_retry(
+                task, lambda: svc.collect_bars_sync(bars=5),
+                max_retries=2, backoff_base=2.0, timeout=600,
+                is_empty=_empty_check(action),
+            )
             msg = f"完成（{res.get('saved', res.get('total', '已同步'))} 条）"
         else:
             return

@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +39,8 @@ from finfeed.ecal import api as calendar_api
 from finfeed.ecal import fetcher as calendar_fetcher
 from finfeed.llm import api as llm_api
 from finfeed.market import scheduler as market_scheduler
+from finfeed.market import alerting as market_alerting
+from finfeed.market import ws_feed as market_ws
 from finfeed.storage.database import (
     db_get_all_for_export,
     db_get_all_stock_names,
@@ -705,6 +707,11 @@ async def api_market(rest: str, request: Request):
             data = mk_store.search_stock(q.get("kw", [""])[0], _int("limit", 20, 50))
         elif sub == "autostatus":
             data = market_scheduler.get_state()
+        elif sub == "alertlog":
+            data = {
+                "recent": market_alerting.get_recent(limit=_int("limit", 50)),
+                "stats": market_alerting.get_stats(),
+            }
         elif sub == "overview":
             data = mk_store.get_fact_overview()
         elif sub == "kline":
@@ -821,6 +828,14 @@ async def _startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"行情自动采集调度器启动失败（可忽略）: {e}")
 
+    # WebSocket 行情推送服务：把采集失败告警实时推送给在线客户端
+    # （回调接线同时内置于 ws_feed.start()，避免依赖启动顺序）
+    try:
+        market_alerting.manager.on_alert_callback = market_ws.push_alert
+        market_ws.start()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"行情 WebSocket 推送服务启动失败（可忽略）: {e}")
+
 
 @app.on_event("shutdown")
 async def _shutdown():
@@ -831,6 +846,11 @@ async def _shutdown():
             await task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
+    # 关闭行情 WebSocket 推送服务
+    try:
+        await market_ws.stop()
+    except Exception:  # noqa: BLE001
+        pass
     # 关闭行情自动采集调度器
     try:
         market_scheduler.stop()
@@ -860,6 +880,14 @@ def sse_health():
         "watermark": dict(legacy._broadcast_watermarks),
         "watermark_initialized": legacy._watermark_initialized,
     }
+
+
+# ----------------------------------------------------------------------
+# WebSocket 行情推送（独立于 SSE 的实时行情通道）
+# ----------------------------------------------------------------------
+@app.websocket("/ws/market")
+async def ws_market(websocket: WebSocket):
+    await market_ws.handle_connection(websocket)
 
 
 # ----------------------------------------------------------------------
