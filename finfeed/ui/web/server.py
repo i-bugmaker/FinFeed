@@ -121,6 +121,47 @@ _sources_cache_lock = threading.Lock()
 _api_cache = {}
 _api_cache_lock = threading.Lock()
 
+# ----------------- SSE 跨进程触发哨兵（tick 文件） -----------------
+# 背景：monitor 运行在主进程，浏览器 SSE 连接注册在 FastAPI 子进程的
+# ``_sse_clients``。主进程直接 ``broadcast_new_news()`` 只能推到自己的（空）
+# 客户端集合，对浏览器无效；此前仅靠 FastAPI 子进程每 5s 盲轮询 DB 兜底，
+# 一旦该子进程/轮询任务异常，Web 端 SSE 连接虽在却收不到任何数据，必须手动刷新。
+# 修复：monitor 抓取完成后「触碰」本哨兵文件，FastAPI 监听到 mtime 变化即
+# 立即触发 broadcast_new_news()，推送延迟降到亚秒级，且不再依赖盲轮询时序。
+import os as _os
+_SSE_TICK_PATH = _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+    ".finfeed_sse_tick",
+)
+# 最近一次「实际广播出数据」的时间戳，供 /api/sse/health 上报，用于诊断桥接是否存活。
+_last_broadcast_ts = 0.0
+
+
+def touch_sse_tick() -> None:
+    """通知 FastAPI 子进程：主进程已产生新数据，请立即推送。
+
+    跨进程、进程安全的轻量信号——只更新一个文件的 mtime，开销可忽略。
+    """
+    try:
+        _os.utime(_SSE_TICK_PATH, None)
+    except FileNotFoundError:
+        try:
+            with open(_SSE_TICK_PATH, "a"):
+                pass
+            _os.utime(_SSE_TICK_PATH, None)
+        except OSError:
+            pass
+    except OSError:
+        pass
+
+
+def get_sse_tick_mtime() -> float:
+    """返回 tick 文件 mtime（秒，含小数）；文件不存在返回 0.0。"""
+    try:
+        return _os.path.getmtime(_SSE_TICK_PATH)
+    except OSError:
+        return 0.0
+
 
 def _cache_get(key: str):
     with _api_cache_lock:
@@ -1482,6 +1523,7 @@ def broadcast_new_news(batch_limit: int = BROADCAST_BATCH_LIMIT) -> Dict[str, in
         return {}
 
     pushed: Dict[str, int] = {}
+    global _last_broadcast_ts
     cache_invalidated = False
 
     with _broadcast_lock:
@@ -1531,6 +1573,10 @@ def broadcast_new_news(batch_limit: int = BROADCAST_BATCH_LIMIT) -> Dict[str, in
                 f"{_broadcast_watermarks[category]}, 客户端 {len(_sse_clients)})"
             )
 
+    if pushed:
+        # 仅在有真实增量时更新，使 /api/sse/health 的 last_broadcast_ts 能区分
+        # 「存活但无新数据」与「桥接已死」。
+        _last_broadcast_ts = time.time()
     return pushed
 
 

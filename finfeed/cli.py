@@ -38,6 +38,7 @@ from finfeed.core.monitor import get_monitor
 from finfeed.ui.terminal import print_once_result, TerminalUI
 from finfeed.ui.web.server import (
     start_web_server, stop_web_server, update_web_state, broadcast_new_news,
+    touch_sse_tick,
 )
 
 
@@ -59,17 +60,21 @@ async def run_continuous(interval: int, web_port: int):
         return {src: 1 for src in db_get_all_source_last_ts()}
 
     async def push_callback(total_new):
-        """抓取轮结束后的即时推送。
+        """抓取轮结束后的即时推送触发。
 
-        增量条目由 broadcast_new_news() 依据数据库自增 id 水位线自行确定，
-        这里不再自行猜测「哪几条是新的」——此前用
-        db_get_recent_news(limit=total_new) 按 publish_ts 取前 N 条，
-        新抓到的条目若发布时间偏旧就会被挤出该窗口，导致 Web 端漏更新。
+        增量条目由 FastAPI 子进程的 broadcast_new_news() 依据数据库自增 id
+        水位线自行确定，这里不再自行猜测「哪几条是新的」。
+
+        关键修复：monitor 运行在主进程，浏览器 SSE 连接注册在 FastAPI 子进程
+        的 _sse_clients；主进程直接 broadcast_new_news() 只能推到自己进程的
+        空客户端集合（对浏览器无效），且每轮浪费一次 DB 扫描。改为触碰 tick
+        哨兵文件（finfeed/.finfeed_sse_tick），FastAPI 子进程监听到 mtime 变化
+        即立即触发广播——推送延迟从 5s 盲轮询降到亚秒级，与 TUI 同级实时性。
         """
         try:
-            broadcast_new_news()
+            touch_sse_tick()
         except Exception as e:
-            logger.error(f"SSE 增量推送失败: {e}", exc_info=True)
+            logger.error(f"SSE tick 触发失败: {e}", exc_info=True)
 
         stats = db_get_statistics()
         # 注意：db_get_statistics() 返回的字典 key 是 "total_news"，
@@ -132,9 +137,10 @@ async def run_continuous(interval: int, web_port: int):
                     status=status,
                 )
 
-                # 兜底对账：push_callback 若因异常/时序问题漏推，这里 5 秒内补齐。
-                # broadcast_new_news 幂等（水位线单调），与即时推送并存不会重复。
-                broadcast_new_news()
+                # 兜底对账：push_callback 若因异常/时序问题漏推，这里 5 秒内
+                # 再触碰一次 tick 文件，FastAPI 子进程据此立即补推。
+                # broadcast_new_news 幂等（水位线单调），重复触发不会重复推送。
+                touch_sse_tick()
             except Exception as e:
                 logger.debug(f"TUI 更新异常: {e}")
             await asyncio.sleep(5)

@@ -191,6 +191,9 @@ junit-results.xml
 *.sqlite
 *.sqlite3
 
+# SSE 跨进程触发哨兵（运行时由 monitor/FastAPI 生成，非源码）
+.finfeed_sse_tick
+
 
 # -------------------------
 # 业务导出文件

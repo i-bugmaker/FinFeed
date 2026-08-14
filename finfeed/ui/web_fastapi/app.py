@@ -61,13 +61,18 @@ logger = logging.getLogger("news_monitor")
 
 SSE_CLIENT_QUEUE_MAXSIZE = legacy.SSE_CLIENT_QUEUE_MAXSIZE
 
-# SSE 兜底轮询间隔（秒）。本服务以独立子进程运行，主进程 monitor 的
-# broadcast_new_news() 只能广播到它自己进程的 _sse_clients（为空），
-# 浏览器的 SSE 连接注册在本进程，二者内存隔离，导致 Web 端永远收不到
-# 增量推送（日志特征：广播侧恒为「客户端 0」）。本进程通过按 DB 自增 id
-# 水位线轮询 broadcast_new_news()（幂等、单调推进），自行发现新入库新闻
-# 并推送给本进程的 SSE 客户端。
-SSE_POLL_INTERVAL = 5.0
+# SSE 增量推送的触发策略（亚秒级 + 兜底）：
+# - SSE_TICK_POLL_INTERVAL：高频检查 monitor 主进程写入的 tick 哨兵文件
+#   （finfeed/.finfeed_sse_tick）mtime。主进程每轮抓取完成即触碰该文件，
+#   本进程随即立即触发 broadcast_new_news()，推送延迟降到亚秒级，与 TUI 同级。
+# - SSE_SAFETY_POLL_INTERVAL：兜底全量轮询。即便 tick 文件机制因极端时序
+#   （如同一秒内两次抓取导致 1s 精度 mtime 未变）漏触发，也能在 15s 内补上，
+#   避免 Web 端静默停更。
+# 设计依据：monitor 在主进程，浏览器 SSE 连接在本（FastAPI）子进程的
+# _sse_clients；主进程直接 broadcast_new_news() 只能推到自己进程的空集合，
+# 对浏览器无效。故仅由本进程负责推送，主进程改为触碰 tick 文件来「唤醒」本进程。
+SSE_TICK_POLL_INTERVAL = 0.5
+SSE_SAFETY_POLL_INTERVAL = 15.0
 
 app = FastAPI(
     title="FinFeed API",
@@ -750,34 +755,53 @@ async def sse_events(request: Request):
 
 
 async def _sse_poll_loop() -> None:
-    """SSE 兜底轮询：周期性从 DB 水位线拉取增量并广播给本进程客户端。
+    """SSE 增量推送循环：tick 即时触发 + 定时兜底轮询。
 
-    主进程 monitor 每轮抓取后都会广播，但广播发生在主进程内存中；
-    本进程（FastAPI 子进程）的 SSE 客户端只能由本进程的广播送达。
-    由于 broadcast_new_news() 基于数据库自增 id 水位线且严格幂等，
-    本进程周期轮询 DB 即可补上跨进程丢失的全部推送，不重复、不遗漏；
-    同时顺带让 /api/news 等 API 缓存按新数据失效。
+    主进程 monitor 每轮抓取完成会触碰 tick 哨兵文件（finfeed/.finfeed_sse_tick）；
+    本循环高频（SSE_TICK_POLL_INTERVAL）检查其 mtime，一旦变化立即调用
+    broadcast_new_news() 把增量推给本进程的 SSE 客户端（即浏览器连接）。
+    同时保留 SSE_SAFETY_POLL_INTERVAL 的兜底全量轮询，防止 tick 机制在
+    极短时序下漏触发导致 Web 端静默停更。broadcast_new_news() 基于 DB 自增
+    id 水位线且严格幂等，重复/兜底触发不会重复推送、也不会遗漏。
     """
-    logger.info(f"SSE 兜底轮询已启动（间隔 {SSE_POLL_INTERVAL}s）")
+    logger.info(
+        f"SSE 增量推送循环已启动（tick 轮询 {SSE_TICK_POLL_INTERVAL}s / 兜底 {SSE_SAFETY_POLL_INTERVAL}s）"
+    )
+    last_tick = legacy.get_sse_tick_mtime()
+    acc = 0.0
     while True:
         try:
-            await asyncio.to_thread(legacy.broadcast_new_news)
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"SSE 兜底轮询异常: {e}")
-        try:
-            await asyncio.sleep(SSE_POLL_INTERVAL)
+            await asyncio.sleep(SSE_TICK_POLL_INTERVAL)
+            acc += SSE_TICK_POLL_INTERVAL
+            tick = legacy.get_sse_tick_mtime()
+            triggered = bool(tick) and tick != last_tick
+            if triggered:
+                last_tick = tick
+            if triggered or acc >= SSE_SAFETY_POLL_INTERVAL:
+                acc = 0.0
+                await asyncio.to_thread(legacy.broadcast_new_news)
         except asyncio.CancelledError:
             break
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"SSE 增量推送循环异常: {e}")
+            try:
+                await asyncio.sleep(SSE_TICK_POLL_INTERVAL)
+            except asyncio.CancelledError:
+                break
 
 
 @app.on_event("startup")
 async def _startup():
     legacy.init_broadcast_watermark()
+    # 创建 tick 哨兵文件并置为当前时间，使 _sse_poll_loop 的 last_tick 基准有效；
+    # 之后主进程每次抓取完成都会更新其 mtime 以「唤醒」本进程的即时推送。
+    legacy.touch_sse_tick()
     try:
         calendar_fetcher.warmup()
     except Exception as e:
         logger.warning(f"日历连接池预热失败（可忽略）: {e}")
-    # 启动 SSE 兜底轮询，修复子进程跨进程广播失效导致的 Web 端不实时更新
+    # 启动 SSE 增量推送循环（tick 即时触发 + 定时兜底），修复子进程跨进程
+    # 广播失效导致的 Web 端不实时更新。
     app.state.sse_poll_task = asyncio.create_task(_sse_poll_loop())
 
 
@@ -795,6 +819,25 @@ async def _shutdown():
 @app.get("/api/ping")
 def ping():
     return {"service": "FinFeed API", "version": "2.1.0", "docs": "/docs"}
+
+
+@app.get("/api/sse/health")
+def sse_health():
+    """SSE 推送桥接健康度：供前端/运维判断 Web 实时通道是否存活。
+
+    - clients: 当前本进程 SSE 客户端数（即已连浏览器数）
+    - last_broadcast_ts: 最近一次「实际广播出数据」的时间戳（0 表示从未）
+    - watermark: 各分类增量推送水位线（自增 id）
+    - watermark_initialized: 水位线是否已初始化
+    """
+    with legacy._sse_clients_lock:
+        n = len(legacy._sse_clients)
+    return {
+        "clients": n,
+        "last_broadcast_ts": legacy._last_broadcast_ts,
+        "watermark": dict(legacy._broadcast_watermarks),
+        "watermark_initialized": legacy._watermark_initialized,
+    }
 
 
 # ----------------------------------------------------------------------

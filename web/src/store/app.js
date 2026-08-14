@@ -8,6 +8,7 @@ export const useAppStore = defineStore('app', {
     live: false,
     pendingNews: [], // SSE 收到的、尚未并入列表的新条目
     pendingTruncated: { finance: false, forum: false }, // 按分类记录是否被截断
+    badgeDismissedAt: 0, // 用户手动点击 badge 清除的时间戳，用于冷却期
     sources: [], // 数据源健康
   }),
   actions: {
@@ -40,13 +41,17 @@ export const useAppStore = defineStore('app', {
       this.live = v
     },
     pushPending(items, truncated = false) {
+      // 论坛(forum)新闻在新闻流页不展示（API 显式排除），进入未读缓冲只会
+      // 让角标永远清不掉、点了又出现，故直接忽略。
+      const incoming = items.filter((it) => it.category !== 'forum')
+      if (!incoming.length) return
       // 去重（按 id）
       const seen = new Set(this.pendingNews.map((n) => n.id))
-      for (const it of items) if (!seen.has(it.id)) this.pendingNews.unshift(it)
+      for (const it of incoming) if (!seen.has(it.id)) this.pendingNews.unshift(it)
       // 最多暂存 200 条
       if (this.pendingNews.length > 200) this.pendingNews.length = 200
-      if (truncated && items.length > 0 && items[0].category) {
-        this.pendingTruncated[items[0].category] = true
+      if (truncated && incoming.length > 0 && incoming[0].category) {
+        this.pendingTruncated[incoming[0].category] = true
       }
     },
     takePending(category = null) {
@@ -77,6 +82,8 @@ export const useAppStore = defineStore('app', {
       } else {
         this.pendingNews = []
         this.pendingTruncated = { finance: false, forum: false }
+        // 记录手动清除时间，用于冷却期防止 SSE 竞态导致 badge 立即重现
+        this.badgeDismissedAt = Date.now()
       }
     },
     setSources(s) {

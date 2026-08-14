@@ -5,7 +5,24 @@ import AppButton from '../ui/AppButton.vue'
 import AppIcon from '../ui/AppIcon.vue'
 
 const store = useAppStore()
-const count = computed(() => store.pendingNews.length)
+// 角标只统计「新闻流页实际展示」的未读。SSE 会广播 finance 与 forum 两类，
+// 但新闻流页（NewsView）的 API 显式排除 forum（不展示论坛）。若把 forum
+// 计入未读，会导致 forum 源源不断推送时角标永远清不掉、点了又出现。
+const count = computed(() =>
+  store.pendingNews.filter((n) => n.category === 'finance').length,
+)
+
+// 冷却期（ms）：用户手动点击 badge 后，即使 SSE 立即推送新条目，
+// 也在冷却期内不重新显示 badge，避免「点了又出来」的体验问题
+const BADGE_COOLDOWN = 3000
+
+const visible = computed(() => {
+  if (count.value === 0) return false
+  if (store.badgeDismissedAt > 0) {
+    return Date.now() - store.badgeDismissedAt > BADGE_COOLDOWN
+  }
+  return true
+})
 
 // 新闻已实时合并进列表；角标仅作为「回到顶部看新消息」的便捷入口。
 function onClick() {
@@ -18,7 +35,7 @@ function onClick() {
 <template>
   <Transition name="ff-newsbadge">
     <AppButton
-      v-if="count > 0"
+      v-if="visible"
       class="ff-newsbadge"
       variant="primary"
       size="md"
