@@ -3,10 +3,12 @@
 """论坛解析器工具函数"""
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+
 from typing import Optional
 from urllib.parse import urlparse, urljoin
-from bs4 import BeautifulSoup, Tag
+from bs4 import Tag
+
 
 from finfeed.utils.time_utils import now_bj, TZ_BJ, parse_relative_time
 

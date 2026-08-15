@@ -12,7 +12,6 @@
 本模块不侵入抓取热路径；回填与校准均为离线批处理。
 """
 
-import asyncio
 import logging
 import re
 from collections import defaultdict

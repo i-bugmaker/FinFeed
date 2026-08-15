@@ -19,7 +19,8 @@ from contextlib import contextmanager
 from typing import Optional, Dict, List, Tuple, Any
 
 from finfeed.config.settings import DB_PATH, USE_WAL_MODE
-from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
+from finfeed.utils.time_utils import now_bj, ts_from_bj_str
+
 from .models import NewsItem
 
 logger = logging.getLogger("news_monitor")

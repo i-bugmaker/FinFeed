@@ -9,7 +9,8 @@ import re
 import math
 import logging
 import time
-from typing import List, Dict, Tuple, Optional
+from typing import List, Optional
+
 
 from finfeed.storage.models import NewsItem
 from finfeed.storage.database import db_insert_news, db_update_stock_meta, db_merge_duplicate

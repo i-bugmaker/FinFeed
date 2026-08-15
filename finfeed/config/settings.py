@@ -8,7 +8,8 @@
 """
 
 import os
-from typing import Dict, Optional, Any
+from typing import Dict, Any
+
 
 
 def _get_env(name: str, default: Any, type_cast: type = str) -> Any:

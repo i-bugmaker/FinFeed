@@ -9,10 +9,10 @@
 - BaseJsonForumParser：JSON API论坛解析器基类
 """
 
-import re
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+
 from typing import Optional, List
 from abc import abstractmethod
 

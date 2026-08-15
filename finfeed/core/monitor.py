@@ -12,7 +12,8 @@
 import asyncio
 import time
 import logging
-from typing import Callable, Optional, List
+from typing import Callable, Optional
+
 
 from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE
 from .fetcher import get_fetcher, fetch_all_news

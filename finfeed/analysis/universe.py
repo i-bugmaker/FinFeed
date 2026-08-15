@@ -10,17 +10,12 @@
 用例：python -m finfeed.analysis.universe
 """
 
-import asyncio
 import logging
 from typing import Dict, List
 
 from finfeed.market.universe import (
-    fetch_all_a_shares,
     fetch_all_board_members,
-    populate_stock_meta,
-    populate_concept_members,
     populate_industry_members,
-    populate_all,
     run_populate_all,
 )
 

@@ -5,7 +5,8 @@
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+
 
 from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import now_bj

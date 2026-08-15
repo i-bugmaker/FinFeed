@@ -23,8 +23,8 @@ import logging
 import threading
 import queue
 import traceback
-from typing import Optional, Dict, List, Any, Tuple, Set
-from functools import lru_cache
+from typing import Optional, Dict, List, Any, Tuple
+
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime

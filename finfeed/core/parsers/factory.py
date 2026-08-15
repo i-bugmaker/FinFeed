@@ -7,7 +7,8 @@
 """
 
 import logging
-from typing import Dict, Type, Optional
+from typing import Dict, Type
+
 
 from finfeed.config.sources import NewsSource
 from .base import BaseParser, get_registered_parsers

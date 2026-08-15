@@ -11,7 +11,6 @@
 """
 
 import re
-from typing import Optional
 
 # 来源权重配置
 _SOURCE_WEIGHTS = {

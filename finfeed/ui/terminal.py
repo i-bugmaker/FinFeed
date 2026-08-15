@@ -19,7 +19,7 @@ logger = logging.getLogger("news_monitor")
 from rich.layout import Layout
 
 from finfeed.config.settings import (
-    get_source_color, get_display_name, DEFAULT_WEB_PORT,
+    get_source_color, DEFAULT_WEB_PORT,
 )
 from finfeed.config.sources import get_flash_display_names
 from finfeed.utils.time_utils import now_bj

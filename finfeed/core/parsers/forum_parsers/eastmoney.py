@@ -5,14 +5,16 @@
 import re
 import asyncio
 import logging
-from typing import Optional, List
+from typing import Optional
+
 from datetime import datetime, timedelta
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
 from .base import BaseHtmlForumParser, BaseJsonForumParser
-from finfeed.utils.time_utils import parse_relative_time, now_bj, bj_str_from_ts, TZ_BJ, ts_from_bj_str
+from finfeed.utils.time_utils import parse_relative_time, now_bj, TZ_BJ
+
 from finfeed.config.sources import NewsSource
 from .utils import extract_stocks_from_text, parse_forum_time, find_time_in_element, STOCK_NAME_MAP
 

@@ -11,7 +11,8 @@
 
 import re
 import asyncio
-from typing import List, Optional
+from typing import List
+
 
 from finfeed.storage.models import NewsItem
 

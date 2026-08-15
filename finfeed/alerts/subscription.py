@@ -10,8 +10,6 @@
 
 import json
 import logging
-import sqlite3
-from typing import Optional
 
 from finfeed.storage.database import get_db
 

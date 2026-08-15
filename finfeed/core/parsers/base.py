@@ -5,19 +5,18 @@
 策略模式：每个新闻源对应一个 Parser 子类，负责将 HTTP 响应解析为 NewsItem 列表。
 """
 
-import re
 import time
 import logging
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
+
 
 import httpx
-from bs4 import BeautifulSoup
 
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_relative_time
-from finfeed.utils.http_utils import strip_html
+from finfeed.utils.time_utils import bj_str_from_ts, now_bj
+
 from finfeed.config.sources import NewsSource, get_source_category
 from finfeed.config.settings import get_display_name, CATCH_UP_MAX_DAYS
 

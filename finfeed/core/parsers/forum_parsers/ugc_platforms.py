@@ -12,7 +12,8 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from .base import BaseHtmlForumParser, BaseJsonForumParser
-from finfeed.utils.time_utils import now_bj, TZ_BJ, bj_str_from_ts
+from finfeed.utils.time_utils import now_bj, TZ_BJ
+
 from .utils import extract_stocks_from_text, parse_forum_time
 
 logger = logging.getLogger("news_monitor")

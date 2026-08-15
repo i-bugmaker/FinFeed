@@ -25,7 +25,6 @@ import asyncio
 import json
 import logging
 import re
-import sys
 from typing import Dict, List, Optional
 
 import httpx

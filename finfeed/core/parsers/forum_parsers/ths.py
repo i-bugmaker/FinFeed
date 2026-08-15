@@ -18,7 +18,6 @@ B. ThsHotRankParser —— 同花顺热股榜
 （详见《同花顺10jqka数据源全面分析报告》第4、5、7节）。
 """
 
-import re
 import asyncio
 import logging
 import random

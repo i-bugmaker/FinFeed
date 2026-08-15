@@ -12,7 +12,8 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 
 from .database import get_db_manager
-from ..utils.time_utils import now_bj, bj_str_from_ts
+from ..utils.time_utils import now_bj
+
 
 logger = logging.getLogger("news_monitor")
 
