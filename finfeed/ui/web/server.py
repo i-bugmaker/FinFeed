@@ -41,7 +41,10 @@ class DualStackThreadingHTTPServer(ThreadingHTTPServer):
         super().server_bind()
 
 from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT, API_CACHE_TTL
-from finfeed.config.sources import get_enabled_sources, get_forum_sources
+from finfeed.config.sources import (
+    get_enabled_sources, get_forum_sources,
+    get_flash_sources, get_article_sources,
+)
 from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
 from finfeed.storage.database import (
     db_get_all_for_export, db_get_date_range, db_search_news,
@@ -95,9 +98,8 @@ _sse_clients_lock = threading.Lock()
 _notification_queue: queue.Queue = queue.Queue()
 
 # ----------------- SSE 增量推送水位线 -----------------
-# 按分类独立维护，避免 finance / forum 两条流互相污染水位（曾导致 finance
-# 新闻的 id 低于被 forum 抬高的全局水位而永久漏播）。
-BROADCAST_CATEGORIES = ("finance", "forum")
+# 按分类独立维护，避免三条流（快讯 flash / 文章 article / 舆情 forum）互相污染水位。
+BROADCAST_CATEGORIES = ("flash", "article", "forum")
 # 单次 SSE 事件携带的条目上限；超出时置 truncated=True，由前端整表刷新
 SSE_MAX_ITEMS_PER_EVENT = 50
 # 单轮从数据库拉取的增量上限；剩余部分下一轮继续（水位线只推进到已发送的最大 id）
@@ -116,6 +118,8 @@ _forum_source_raw_set: set | None = None
 _forum_source_display_names: list | None = None
 _forum_source_display_set: set | None = None
 _finance_source_display_names: list | None = None
+_flash_source_display_names: list | None = None
+_article_source_display_names: list | None = None
 _sources_cache_lock = threading.Lock()
 
 _api_cache = {}
@@ -195,21 +199,51 @@ def invalidate_sources_cache():
 
 
 def _get_cached_sources():
+    """返回缓存的来源集合元组（首次调用时构建）。
+
+    返回 (forum_raw_names, forum_raw_set, forum_display_names, forum_display_set,
+           finance_display_names)：
+      - forum_* 为舆情论坛源的内部名/展示名
+      - finance_display_names 语义保持不变（= 非论坛源的展示名去重并集），
+        兼容历史调用方（FastAPI 适配层等）。
+    """
     global _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
     with _sources_cache_lock:
         if _forum_source_raw_names is None:
-            forum_sources = get_forum_sources()
-            _forum_source_raw_names = [s.name for s in forum_sources]
-            _forum_source_raw_set = set(_forum_source_raw_names)
-            _forum_source_display_names = list(dict.fromkeys(
-                get_display_name(s.name) for s in forum_sources
-            ))
-            _forum_source_display_set = set(_forum_source_display_names)
-            _finance_source_display_names = list(dict.fromkeys(
-                get_display_name(s.name) for s in get_enabled_sources()
-                if s.name not in _forum_source_raw_set
-            ))
+            _build_categorized_sources()
         return _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names, _forum_source_display_set, _finance_source_display_names
+
+
+def _build_categorized_sources() -> None:
+    """一次性构建 flash / article / forum 三类的展示名缓存与兼容的 finance 并集。"""
+    global _forum_source_raw_names, _forum_source_raw_set, _forum_source_display_names
+    global _forum_source_display_set, _finance_source_display_names
+    global _flash_source_display_names, _article_source_display_names
+    forum_sources = get_forum_sources()
+    _forum_source_raw_names = [s.name for s in forum_sources]
+    _forum_source_raw_set = set(_forum_source_raw_names)
+    _forum_source_display_names = list(dict.fromkeys(
+        get_display_name(s.name) for s in forum_sources
+    ))
+    _forum_source_display_set = set(_forum_source_display_names)
+    _flash_source_display_names = list(dict.fromkeys(
+        get_display_name(s.name) for s in get_flash_sources()
+    ))
+    _article_source_display_names = list(dict.fromkeys(
+        get_display_name(s.name) for s in get_article_sources()
+    ))
+    # 兼容语义：finance 展示名 = flash + article 展示名并集（去重保序）
+    _finance_source_display_names = list(dict.fromkeys(
+        _flash_source_display_names + _article_source_display_names
+    ))
+
+
+def _get_flash_article_display_names():
+    """返回 (flash_display_names, article_display_names)。"""
+    with _sources_cache_lock:
+        if _flash_source_display_names is None:
+            _build_categorized_sources()
+        return _flash_source_display_names, _article_source_display_names
 
 
 _template_cache_map = {
@@ -332,7 +366,9 @@ class _WebHandler(BaseHTTPRequestHandler):
     _GET_ROUTES: List[Tuple[str, bool, str, str]] = [
         ("/", True, "_serve_html", "none"),
         ("/index", False, "_serve_html", "none"),
-        ("/api/news", False, "_serve_news", "none"),
+        # 新闻流已拆分为「快讯 flash」与「财经文章 article」两个独立模块
+        ("/api/flash", False, "_serve_flash", "none"),
+        ("/api/articles", False, "_serve_articles", "none"),
         ("/api/sentiment", False, "_serve_sentiment_api", "none"),
         ("/api/favorites", False, "_serve_favorites_api", "none"),
         ("/api/search", False, "_serve_search", "none"),
@@ -495,15 +531,24 @@ class _WebHandler(BaseHTTPRequestHandler):
             "min_importance": float(min_importance) if min_importance else None,
         }
 
-    def _serve_news(self):
+    def _serve_flash(self):
+        """快讯模块：7×24 实时短消息（category=flash）"""
+        flash_names, _ = _get_flash_article_display_names()
+        self._serve_category_news("flash", flash_names)
+
+    def _serve_articles(self):
+        """财经文章模块：长文/深度内容（category=article）"""
+        _, article_names = _get_flash_article_display_names()
+        self._serve_category_news("article", article_names)
+
+    def _serve_category_news(self, category: str, display_names: list):
+        """快讯/文章共用的分类新闻列表端点。"""
         try:
             params = self._parse_query_params(urlparse(self.path).query)
-            forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = _get_cached_sources()
-
-            if params["source"] and params["source"] not in finance_display_names and params["source"] != "all":
+            if params["source"] and params["source"] not in display_names and params["source"] != "all":
                 params["source"] = None
 
-            cache_key = f"news:{json.dumps(params, sort_keys=True, default=str)}"
+            cache_key = f"{category}:{json.dumps(params, sort_keys=True, default=str)}"
             cached = _cache_get(cache_key)
             if cached is not None:
                 self._send_json(cached, max_age=1)
@@ -519,24 +564,21 @@ class _WebHandler(BaseHTTPRequestHandler):
                 "is_favorite": params["is_favorite"],
                 "stock_name": params["stock"],
                 "min_importance": params["min_importance"],
-                # 财经新闻端必须隔离舆情：即便选中“东方财富”这类与股吧共享
-                # 显示来源名的信源，也只返回 category!=forum 的条目。
-                "category_exclude": "forum",
+                # 分类隔离：快讯/文章/舆情互不混流
+                "category": category,
             }
 
             if params["source"]:
                 db_kwargs["source"] = params["source"]
-            else:
-                db_kwargs["category"] = "finance"
 
             news_items, db_total = db_query_news(**db_kwargs)
             result = _build_news_response(
-                news_items, db_total, params["offset"], params["page_size"], finance_display_names
+                news_items, db_total, params["offset"], params["page_size"], display_names
             )
             _cache_set(cache_key, result)
             self._send_json(result, max_age=1)
         except Exception as e:
-            logger.error(f"新闻API错误: {e}")
+            logger.error(f"{category} API错误: {e}")
             logger.error(traceback.format_exc())
             self._send_json({"error": str(e)}, status=500)
 

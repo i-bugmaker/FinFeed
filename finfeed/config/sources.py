@@ -10,6 +10,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+# get_display_name 定义于 settings.py（SOURCE_DISPLAY_NAMES 映射），
+# settings.py 不反向依赖 sources.py，此处导入无循环依赖风险。
+from finfeed.config.settings import get_display_name
+
 
 @dataclass
 class NewsSource:
@@ -588,17 +592,75 @@ THSFINANCE_CHANNELS = [
 THSFINANCE_BASE_URL = "https://news.10jqka.com.cn"
 
 
+# ============================================================
+# 来源分类体系
+# ------------------------------------------------------------
+# 原单一「财经新闻」分类（FINANCE_NEWS_SOURCES，上方预定义列表，保留作参考/兼容，
+# 已不再被 get_enabled_sources 使用）已按内容时效性拆分为：
+#   - 快讯类（flash）：7×24 实时滚动短消息，见 config/flash_sources.py
+#   - 文章类（article）：长文/深度内容，见 config/article_sources.py
+# 舆情论坛（forum）为独立分类，保持原状。三分类为互斥集合，见 get_source_category()。
+# ============================================================
+
+
+def get_flash_sources() -> list[NewsSource]:
+    """获取全部快讯类数据源（7×24 实时滚动短消息）"""
+    from finfeed.config.flash_sources import FLASH_NEWS_SOURCES
+    return [s for s in FLASH_NEWS_SOURCES if s.enabled]
+
+
+def get_article_sources() -> list[NewsSource]:
+    """获取全部文章类数据源（长文/深度内容）"""
+    from finfeed.config.article_sources import ARTICLE_NEWS_SOURCES
+    return [s for s in ARTICLE_NEWS_SOURCES if s.enabled]
+
+
+def get_flash_source_names() -> set[str]:
+    """获取全部快讯类数据源的内部名称集合"""
+    return {s.name for s in get_flash_sources()}
+
+
+def get_article_source_names() -> set[str]:
+    """获取全部文章类数据源的内部名称集合"""
+    return {s.name for s in get_article_sources()}
+
+
+def get_flash_display_names() -> list[str]:
+    """获取快讯类数据源的展示名称列表（去重保序）"""
+    return list(dict.fromkeys(get_display_name(s.name) for s in get_flash_sources()))
+
+
+def get_article_display_names() -> list[str]:
+    """获取文章类数据源的展示名称列表（去重保序）"""
+    return list(dict.fromkeys(get_display_name(s.name) for s in get_article_sources()))
+
+
+def get_source_category(internal_name: str) -> str:
+    """根据来源内部名称返回分类标签：flash（快讯）/ article（文章）/ forum（舆情）。
+
+    三分类互斥：优先 forum（UGC 论坛），其次 flash，再次 article；
+    未知来源兜底返回 "flash"（保持实时短消息语义）。
+    """
+    if internal_name in get_forum_source_names():
+        return "forum"
+    if internal_name in get_flash_source_names():
+        return "flash"
+    if internal_name in get_article_source_names():
+        return "article"
+    return "flash"
+
+
 def get_source_by_name(name: str) -> Optional[NewsSource]:
-    """根据名称获取新闻源"""
-    for src in FINANCE_NEWS_SOURCES:
+    """根据名称获取新闻源（在快讯/文章/舆情三类中查找）"""
+    for src in get_flash_sources() + get_article_sources() + FORUM_SOURCES:
         if src.name == name:
             return src
     return None
 
 
 def get_enabled_sources() -> list[NewsSource]:
-    """获取所有启用的新闻源（包含舆情论坛源）"""
-    return [s for s in FINANCE_NEWS_SOURCES + FORUM_SOURCES if s.enabled]
+    """获取所有启用的新闻源（快讯类 + 文章类 + 舆情论坛类）"""
+    return [s for s in get_flash_sources() + get_article_sources() + FORUM_SOURCES if s.enabled]
 
 
 def get_forum_sources() -> list[NewsSource]:

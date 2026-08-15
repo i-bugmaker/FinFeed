@@ -69,7 +69,10 @@ class THSFinanceParser(BaseParser):
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=enhanced_intro[:300] if len(enhanced_intro) > 300 else enhanced_intro,
-            category=channel_name or "同花顺财经",
+            # 同花顺财经属文章类（栏目图文/深度内容）→ 固定 article 分类。
+            # 栏目名保留在 intro 的【栏目名】前缀中，不再占用 category 字段
+            # （category 现为模块级分类标签：flash/article/forum）。
+            category="article",
             stocks=stocks,
         )
 

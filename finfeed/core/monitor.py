@@ -22,7 +22,6 @@ from finfeed.storage.database import (
     db_set_source_last_ts,
 )
 from finfeed.core.health import get_health_monitor
-from finfeed.config.sources import get_forum_source_names
 
 logger = logging.getLogger("news_monitor")
 
@@ -69,23 +68,33 @@ class NewsMonitor:
 
         三种抓取模式（catch_up / single / 主循环）共用的核心处理逻辑。
         返回新增条数。
-        """
-        forum_sources = set(get_forum_source_names())
 
+        分类分桶：按 NewsItem.category 划分（由解析器按来源归属打标）：
+          - flash  快讯类（7×24 实时短消息）
+          - article 文章类（长文/深度内容）
+          - forum  舆情论坛类（UGC 内容）
+        """
         for src_name, parser in fetcher._parsers.items():
             db_set_source_last_ts(src_name, parser.last_ts)
 
-        finance_items = []
+        flash_items = []
+        article_items = []
         forum_items = []
         for item in all_news:
-            if item.source in forum_sources:
+            cat = item.category or "flash"
+            if cat == "forum":
                 forum_items.append(item)
+            elif cat == "article":
+                article_items.append(item)
             else:
-                finance_items.append(item)
+                flash_items.append(item)
 
         total_new = 0
-        if finance_items:
-            n = await process_and_store(finance_items, source_name="finance")
+        if flash_items:
+            n = await process_and_store(flash_items, source_name="flash")
+            total_new += n
+        if article_items:
+            n = await process_and_store(article_items, source_name="article")
             total_new += n
         if forum_items:
             n = await process_and_store(forum_items, source_name="forum")

@@ -5,11 +5,11 @@ import AppButton from '../ui/AppButton.vue'
 import AppIcon from '../ui/AppIcon.vue'
 
 const store = useAppStore()
-// 角标只统计「新闻流页实际展示」的未读。SSE 会广播 finance 与 forum 两类，
-// 但新闻流页（NewsView）的 API 显式排除 forum（不展示论坛）。若把 forum
-// 计入未读，会导致 forum 源源不断推送时角标永远清不掉、点了又出现。
+// 角标只统计「快讯页实际展示」的未读。SSE 会广播 flash / article / forum 三类，
+// 但快讯页（FlashView）的 API 只取 category='flash'，财经文章页只取 category='article'。
+// 若把 article / forum 计入未读，会导致其源源不断推送时角标永远清不掉、点了又出现。
 const count = computed(() =>
-  store.pendingNews.filter((n) => n.category === 'finance').length,
+  store.pendingNews.filter((n) => n.category === 'flash').length,
 )
 
 // 冷却期（ms）：用户手动点击 badge 后，即使 SSE 立即推送新条目，

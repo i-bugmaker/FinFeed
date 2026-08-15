@@ -33,7 +33,9 @@ httpLlm.interceptors.response.use(
 export const api = {
   health: () => http.get('/health').then((r) => r.data),
   stats: () => http.get('/stats').then((r) => r.data),
-  news: (params) => http.get('/news', { params }).then((r) => r.data),
+  // 原「新闻流」(news) 已拆分为快讯(flash)与财经文章(articles)两个独立模块
+  flash: (params) => http.get('/flash', { params }).then((r) => r.data),
+  articles: (params) => http.get('/articles', { params }).then((r) => r.data),
   sentiment: (params) => http.get('/sentiment', { params }).then((r) => r.data),
   favorites: (params) => http.get('/favorites', { params }).then((r) => r.data),
   search: (q, limit = 100) => http.get('/search', { params: { q, limit } }).then((r) => r.data),

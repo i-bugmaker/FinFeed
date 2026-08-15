@@ -11,8 +11,9 @@ const store = useAppStore()
 const router = useRouter()
 useSSE()
 
-// 新新闻角标仅在新闻流页显示，其他模块页面不应出现
-const isNewsPage = computed(() => router.currentRoute.value.name === 'news')
+// 新新闻角标仅在快讯页显示（快讯为 7×24 实时滚动内容，SSE 增量主要面向该页），
+// 财经文章页为低频深度内容、不叠加实时角标，其他模块页面也不应出现
+const isNewsPage = computed(() => router.currentRoute.value.name === 'flash')
 
 const mobileDrawerOpen = ref(false)
 const isDesktop = computed(() => typeof window !== 'undefined' && window.innerWidth >= 1024)

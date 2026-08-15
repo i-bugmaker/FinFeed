@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import ts_from_bj_str, bj_str_from_ts, now_bj, parse_relative_time
 from finfeed.utils.http_utils import strip_html
-from finfeed.config.sources import NewsSource
+from finfeed.config.sources import NewsSource, get_source_category
 from finfeed.config.settings import get_display_name, CATCH_UP_MAX_DAYS
 
 logger = logging.getLogger("news_monitor")
@@ -258,7 +258,10 @@ class BaseParser(ABC):
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=intro[:150] if len(intro) > 150 else intro,
-            category="finance",
+            # 分类标签按来源归属：快讯源 -> "flash"，文章来源 -> "article"。
+            # 论坛(UGC)解析器不经过本方法（使用 forum_parsers/base.py 的 _build_news_item，
+            # 固定 category="forum"），因此此处仅会出现 flash / article 两种取值。
+            category=get_source_category(self.source.name),
         )
 
     def _is_newer_than_last(self, ts: int) -> bool:

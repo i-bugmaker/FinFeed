@@ -13,7 +13,8 @@ const emit = defineEmits(['close'])
 const route = useRoute()
 
 const nav = [
-  { to: '/news', label: '新闻流', icon: 'newspaper' },
+  { to: '/flash', label: '快讯', icon: 'zap' },
+  { to: '/articles', label: '财经', icon: 'newspaper' },
   { to: '/sentiment', label: '舆情', icon: 'chatter' },
   { to: '/calendar', label: '财经日历', icon: 'calendar' },
   { to: '/market', label: '行情', icon: 'trending-up' },

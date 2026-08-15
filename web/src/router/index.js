@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import NewsView from '../views/NewsView.vue'
+import FlashView from '../views/FlashView.vue'
+import ArticlesView from '../views/ArticlesView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import SentimentView from '../views/SentimentView.vue'
 import FavoritesView from '../views/FavoritesView.vue'
@@ -8,9 +9,13 @@ import CalendarView from '../views/CalendarView.vue'
 import MarketView from '../views/MarketView.vue'
 import StyleGuideView from '../views/StyleGuideView.vue'
 
+// 原「新闻流」已拆分为「快讯」与「财经」两个独立模块：
+//   - /flash    ：快讯（7×24 实时短消息）
+//   - /articles ：财经（长文/深度内容）
 const routes = [
-  { path: '/', redirect: '/news' },
-  { path: '/news', name: 'news', component: NewsView, meta: { title: '新闻流' } },
+  { path: '/', redirect: '/flash' },
+  { path: '/flash', name: 'flash', component: FlashView, meta: { title: '快讯' } },
+  { path: '/articles', name: 'articles', component: ArticlesView, meta: { title: '财经' } },
   { path: '/sentiment', name: 'sentiment', component: SentimentView, meta: { title: '舆情' } },
   { path: '/calendar', name: 'calendar', component: CalendarView, meta: { title: '财经日历' } },
   { path: '/market', name: 'market', component: MarketView, meta: { title: '行情' } },

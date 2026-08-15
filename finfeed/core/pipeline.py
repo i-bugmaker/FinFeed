@@ -19,6 +19,7 @@ from finfeed.analysis.importance import compute_importance
 from finfeed.analysis.text_analyzer import extract_keywords_simple
 from finfeed.core.parsers.forum_parsers.utils import extract_stocks_from_text
 from finfeed.utils.hash_utils import compute_normalized_title_hash, compute_simhash, simhash_to_hex
+from finfeed.config.sources import get_flash_display_names, get_article_display_names
 
 logger = logging.getLogger("news_monitor")
 
@@ -125,7 +126,16 @@ async def process_news_items(raw_items: List[NewsItem], source_name: str = "") -
                 item.source = source_name
 
             if not item.category:
-                item.category = "finance"
+                # 兜底：解析器未打标时，按来源展示名归属分类。
+                # 快讯展示名（财联社/金十数据/东方财富/…）→ "flash"；
+                # 文章展示名（新浪财经/华尔街见闻/巨潮公告/…）→ "article"；
+                # 其余（含 UGC 论坛源）→ "forum"。
+                if item.source in get_flash_display_names():
+                    item.category = "flash"
+                elif item.source in get_article_display_names():
+                    item.category = "article"
+                else:
+                    item.category = "forum"
 
             item.publish_ts = _validate_timestamp(item.publish_ts, item.source)
 

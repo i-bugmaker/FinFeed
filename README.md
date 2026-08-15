@@ -289,7 +289,8 @@ python main.py --market alerts      # 市场状态告警
 - **API 交互文档（Swagger UI）**：`http://127.0.0.1:8866/docs`（OpenAPI 在 `/openapi.json`）
 - **交互式文档（ReDoc）**：`http://127.0.0.1:8866/redoc`
 - **健康检查**：`http://127.0.0.1:8866/api/ping`
-- 主要接口：`/api/news`、`/api/stats`、`/api/sentiment`、`/api/search`、`/api/detail`、`/api/favorites`、`/api/export`、`/api/calendar/export`、`/api/llm/report/export`、`/api/events` 等。
+- 主要接口：`/api/flash`（快讯）、`/api/articles`（财经文章）、`/api/stats`、`/api/sentiment`（舆情）、`/api/search`、`/api/detail`、`/api/favorites`、`/api/export`、`/api/calendar/export`、`/api/llm/report/export`、`/api/events` 等。
+- 注：原「新闻流」模块已拆分为「快讯」（`/api/flash`）与「财经」（`/api/articles`）两个独立模块，`/api/news` 已移除。
 - 约定沿用旧版：**红涨绿跌**（涨 = 红 `#e5484d`，跌 = 绿 `#16a34a`）。
 
 前端开发 / 重新构建：

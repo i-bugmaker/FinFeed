@@ -21,17 +21,26 @@ from rich.layout import Layout
 from finfeed.config.settings import (
     get_source_color, get_display_name, DEFAULT_WEB_PORT,
 )
-from finfeed.config.sources import get_forum_source_names
+from finfeed.config.sources import get_flash_display_names
 from finfeed.utils.time_utils import now_bj
 from finfeed.storage.models import NewsItem
 
-_FORUM_SOURCE_NAMES = get_forum_source_names()
+# 快讯类来源的展示名集合（7×24 实时短消息源）。
+# TUI 终端仅展示快讯内容：文章类（长文/深度内容）与舆情论坛类一律过滤。
+_FLASH_SOURCE_NAMES: set[str] = set(get_flash_display_names())
 
 
-def _filter_forum_content(news_list: list[NewsItem], source_stats: dict[str, int]) -> tuple[list[NewsItem], dict[str, int]]:
-    """过滤掉舆情相关的新闻和统计数据，仅保留财经新闻"""
-    filtered_news = [n for n in news_list if n.source not in _FORUM_SOURCE_NAMES]
-    filtered_stats = {name: cnt for name, cnt in source_stats.items() if name not in _FORUM_SOURCE_NAMES}
+def _filter_flash_only(news_list: list[NewsItem], source_stats: dict[str, int]) -> tuple[list[NewsItem], dict[str, int]]:
+    """仅保留快讯类内容，过滤掉文章类与舆情类新闻及其统计。
+
+    条目过滤依据：NewsItem.category == 'flash'（与 cli.py 中
+    db_get_recent_news(category='flash') 的查询口径一致）。不按来源名过滤，
+    避免「格隆汇」这类快讯/文章共享展示名的来源被误保留文章内容。
+    统计过滤依据：来源展示名 ∈ 快讯来源集合（见 config/flash_sources.py
+    与 SOURCE_DISPLAY_NAMES 映射），仅展示快讯源的最近更新时间。
+    """
+    filtered_news = [n for n in news_list if n.category == 'flash']
+    filtered_stats = {name: cnt for name, cnt in source_stats.items() if name in _FLASH_SOURCE_NAMES}
     return filtered_news, filtered_stats
 
 
@@ -101,7 +110,7 @@ def build_display(
     now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     assert len(now_str) == 19, "时间戳格式必须固定 19 字符"
 
-    news_list, source_stats = _filter_forum_content(news_list, source_stats)
+    news_list, source_stats = _filter_flash_only(news_list, source_stats)
 
     if "补抓" in status or "离线" in status:
         status_style = "yellow"
@@ -358,7 +367,7 @@ class TerminalUI:
 
 def print_once_result(news_list: list[NewsItem], total_inserted: int, total_in_db: int, catch_up_cycles: int = 0):
     """单次模式打印结果"""
-    news_list, _ = _filter_forum_content(news_list, {})
+    news_list, _ = _filter_flash_only(news_list, {})
     console.print()
     catch_up_str = f" │ [yellow]离线补抓 {catch_up_cycles} 轮[/]" if catch_up_cycles > 0 else ""
     console.print(Panel(

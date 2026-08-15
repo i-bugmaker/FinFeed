@@ -331,7 +331,7 @@ onMounted(async () => {
           :value="stats.total_news?.toLocaleString()"
           sub="全部已入库"
           icon="newspaper"
-          to="/news"
+          to="/flash"
         />
         <StatCard
           label="近 24h"
@@ -339,14 +339,14 @@ onMounted(async () => {
           sub="24 小时内新增"
           tone="up"
           icon="activity"
-          to="/news"
+          to="/flash"
         />
         <StatCard
           label="未读"
           :value="stats.unread_count?.toLocaleString()"
           sub="待阅读"
           icon="inbox"
-          to="/news"
+          to="/flash"
         />
         <StatCard
           label="收藏"

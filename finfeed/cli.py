@@ -107,7 +107,10 @@ async def run_continuous(interval: int, web_port: int):
     async def update_tui():
         while not shutdown_event.is_set():
             try:
-                news = db_get_recent_news(limit=200, category="finance")
+                # TUI 终端仅展示快讯（7×24 实时短消息）；文章类与舆情类不进入终端。
+                # 快讯列表按 DB category='flash' 精确取数，与 terminal._filter_flash_only
+                # 的来源过滤互为双保险（增量窗口内新入库条目的分类由解析器打标）。
+                news = db_get_recent_news(limit=200, category="flash")
                 stats = db_get_statistics()
                 source_stats = _build_source_stats()
                 # db_get_statistics() 返回的字典 key 是 "total_news"，

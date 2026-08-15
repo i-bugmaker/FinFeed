@@ -71,11 +71,11 @@ onUnmounted(() => observer && observer.disconnect())
       <AppCard class="ff-favorites-view__empty-card">
         <AppEmpty
           title="收藏夹还是空的"
-          description="在「新闻流」或「舆情」中点击任意条目右侧的星形图标，即可把感兴趣的内容收藏到这里，随时回看。"
+          description="在「快讯」「财经」或「舆情」中点击任意条目右侧的星形图标，即可把感兴趣的内容收藏到这里，随时回看。"
           icon="star"
         >
           <template #action>
-            <AppButton variant="primary" icon="newspaper" href="#/news">去新闻流看看</AppButton>
+            <AppButton variant="primary" icon="zap" href="#/flash">去快讯看看</AppButton>
           </template>
         </AppEmpty>
       </AppCard>

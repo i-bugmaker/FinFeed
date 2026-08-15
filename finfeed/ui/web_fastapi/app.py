@@ -281,16 +281,20 @@ def api_stats():
 
 
 # ----------------------------------------------------------------------
-# 新闻 / 舆情 / 收藏 / 搜索 / 详情
+# 快讯 / 财经文章 / 舆情 / 收藏 / 搜索 / 详情
 # ----------------------------------------------------------------------
-@app.get("/api/news")
-def api_news(request: Request):
+def _api_category_news(request: Request, category: str, display_names: list):
+    """快讯(category=flash)与财经文章(category=article)共用的分类新闻端点。
+
+    原「新闻流」(/api/news) 已拆分为本函数支撑的两个独立模块：
+      - /api/flash   ：快讯（7×24 实时短消息）
+      - /api/articles：财经文章（长文/深度内容）
+    """
     try:
         params = parse_query_params(qdict(request))
-        forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = legacy._get_cached_sources()
-        if params["source"] and params["source"] not in finance_display_names and params["source"] != "all":
+        if params["source"] and params["source"] not in display_names and params["source"] != "all":
             params["source"] = None
-        cache_key = f"news:{json.dumps(params, sort_keys=True, default=str)}"
+        cache_key = f"{category}:{json.dumps(params, sort_keys=True, default=str)}"
         cached = legacy._cache_get(cache_key)
         if cached is not None:
             return json_resp(cached, max_age=1)
@@ -304,19 +308,30 @@ def api_news(request: Request):
             "is_favorite": params["is_favorite"],
             "stock_name": params["stock"],
             "min_importance": params["min_importance"],
-            "category_exclude": "forum",
+            # 分类隔离：快讯/文章/舆情互不混流
+            "category": category,
         }
         if params["source"]:
             db_kwargs["source"] = params["source"]
-        else:
-            db_kwargs["category"] = "finance"
         news_items, db_total = db_query_news(**db_kwargs)
-        result = legacy._build_news_response(news_items, db_total, params["offset"], params["page_size"], finance_display_names)
+        result = legacy._build_news_response(news_items, db_total, params["offset"], params["page_size"], display_names)
         legacy._cache_set(cache_key, result)
         return json_resp(result, max_age=1)
     except Exception as e:
-        logger.error(f"新闻API错误: {e}")
+        logger.error(f"{category}API错误: {e}")
         return json_resp({"error": str(e)}, status=500)
+
+
+@app.get("/api/flash")
+def api_flash(request: Request):
+    flash_names, _ = legacy._get_flash_article_display_names()
+    return _api_category_news(request, "flash", flash_names)
+
+
+@app.get("/api/articles")
+def api_articles(request: Request):
+    _, article_names = legacy._get_flash_article_display_names()
+    return _api_category_news(request, "article", article_names)
 
 
 @app.get("/api/sentiment")
