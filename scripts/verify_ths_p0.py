@@ -13,16 +13,23 @@
 
 import asyncio
 import json
+import os
 import sys
 import traceback
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+from finfeed.analysis.forum_sentiment import SOURCE_SIGNAL
 from finfeed.config.sources import NewsSource, get_forum_sources
 from finfeed.core.parsers.factory import create_parser
 from finfeed.core.parsers.forum_parsers.ths import (
-    ThsGubaJsonParser, ThsHotRankParser, THS_GUBA_FOCUS_CODES,
+    ThsGubaJsonParser,
+    ThsHotRankParser,
 )
 from finfeed.core.pipeline import _boost_importance_with_meta
-from finfeed.analysis.forum_sentiment import SOURCE_SIGNAL
 
 
 def banner(t):
@@ -210,7 +217,7 @@ if __name__ == "__main__":
     for fn in (test_import_smoke, test_guba_parse_post, test_source_attribution_fix, test_hot_rank_parse, test_boost, test_signal_map, test_live):
         try:
             fn()
-        except Exception as e:
+        except Exception:
             fails.append((fn.__name__, traceback.format_exc()))
             print(f"\n!!! {fn.__name__} 失败:\n{traceback.format_exc()}")
     banner("结果汇总")

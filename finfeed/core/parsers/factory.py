@@ -9,8 +9,8 @@
 import logging
 from typing import Dict, Type
 
-
 from finfeed.config.sources import NewsSource
+
 from .base import BaseParser, get_registered_parsers
 from .rss_parsers import RSSParser
 
@@ -25,39 +25,74 @@ def _import_all_parsers() -> None:
     global _initialized
     if _initialized:
         return
-    
-    from . import json_parsers, html_parsers, rss_parsers
-    from . import forum_parsers
-    
+
+
     _register_known_parsers()
     _initialized = True
 
 
 def _register_known_parsers() -> None:
     """注册已知的解析器类型映射"""
-    from .json_parsers import (
-        SinaParser, CLSParser, THSParser, EastMoneyParser,
-        Jingji21Parser, WallStreetCNParser, Jin10Parser,
-        GelonghuiLiveParser, QCCParser, CninfoParser, THSYCParser,
-        THSFinanceParser, AiGuPiaoParser, JrjParser,
-    )
-    from .html_parsers import (
-        GelonghuiArticleParser, FastbullParser, NBDParser,
-        HexunParser, IfengParser, JiemianParser, ThePaperParser,
-        YicaiParser, JiuyanParser, LuoBoParser, CNStockParser,
-        ZhongzhengParser, XinhuaCaijingParser,
-    )
     from .forum_parsers import (
-        EastMoneyStockBarParser, EastMoneyHotBarParser,
-        EastMoneyMobileGubaParser, EastMoneyHotRankParser,
-        EastMoneyDynamicGubaParser, SinaStockBarParser,
-        ThsAdvisorParser, ThsStockBarParser,
-        ThsLoungeParser, WeiboFinanceParser,
-        XueqiuHotParser, BaiduFinanceHotParser, ZhihuHotParser,
-        TaogubaParser, JisiluParser,
+        BaiduFinanceHotParser,
+        EastMoneyDynamicGubaParser,
+        EastMoneyHotBarParser,
+        EastMoneyHotRankParser,
+        EastMoneyMobileGubaParser,
+        EastMoneyStockBarParser,
+        JisiluParser,
+        SinaStockBarParser,
+        TaogubaParser,
+        ThsAdvisorParser,
+        ThsLoungeParser,
+        ThsStockBarParser,
+        WeiboFinanceParser,
+        XueqiuHotParser,
+        ZhihuHotParser,
     )
     from .forum_parsers.ths import ThsGubaJsonParser, ThsHotRankParser
-    
+    from .html_parsers import (
+        CNStockParser,
+        FastbullParser,
+        GelonghuiArticleParser,
+        HexunParser,
+        IfengParser,
+        InvestingCnParser,
+        JiemianParser,
+        JiuyanParser,
+        LuoBoParser,
+        NBDParser,
+        SecEdgarParser,
+        ThePaperParser,
+        XinhuaCaijingParser,
+        YicaiParser,
+        ZhongzhengParser,
+    )
+    from .json_parsers import (
+        AiGuPiaoParser,
+        CaixinParser,
+        CLSParser,
+        CninfoParser,
+        EastMoneyParser,
+        EmResearchParser,
+        FutuParser,
+        Fx678Parser,
+        GelonghuiLiveParser,
+        HkexNewsParser,
+        Jin10Parser,
+        Jingji21Parser,
+        JrjParser,
+        QCCParser,
+        Sina724Parser,
+        SinaParser,
+        SseParser,
+        SzseParser,
+        THSFinanceParser,
+        THSParser,
+        THSYCParser,
+        WallStreetCNParser,
+    )
+
     _PARSER_MAP.update({
         "sina": SinaParser,
         "cls": CLSParser,
@@ -86,6 +121,16 @@ def _register_known_parsers() -> None:
         "xinhuacaijing": XinhuaCaijingParser,
         "aigupiao": AiGuPiaoParser,
         "jrj": JrjParser,
+        "caixin": CaixinParser,
+        "fx678": Fx678Parser,
+        "sina724": Sina724Parser,
+        "futu": FutuParser,
+        "em_research": EmResearchParser,
+        "hkexnews": HkexNewsParser,
+        "sse": SseParser,
+        "szse": SzseParser,
+        "investing_cn": InvestingCnParser,
+        "sec_edgar": SecEdgarParser,
         "rss": RSSParser,
         "eastmoney_forum": EastMoneyStockBarParser,
         "eastmoney_hot": EastMoneyHotBarParser,
@@ -105,7 +150,7 @@ def _register_known_parsers() -> None:
         "taoguba": TaogubaParser,
         "jisilu": JisiluParser,
     })
-    
+
     for parser_type, parser_cls in get_registered_parsers().items():
         if parser_type not in _PARSER_MAP:
             _PARSER_MAP[parser_type] = parser_cls
@@ -122,7 +167,7 @@ def create_parser(source: NewsSource) -> BaseParser:
     """
     if not _initialized:
         _import_all_parsers()
-    
+
     parser_cls = _PARSER_MAP.get(source.parser_type, RSSParser)
     return parser_cls(source)
 

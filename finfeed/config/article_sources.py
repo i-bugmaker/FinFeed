@@ -170,6 +170,70 @@ ARTICLE_NEWS_SOURCES: list[NewsSource] = [
             'Accept': 'text/html'
         },
     ),
+
+    NewsSource(
+        name='东方财富研报',
+        url='https://reportapi.eastmoney.com/report/list',
+        parser_type='em_research',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://data.eastmoney.com/report/',
+            'Accept': 'application/json, text/plain, */*'
+        },
+    ),
+
+    NewsSource(
+        name='港交所披露易',
+        url='https://www1.hkexnews.hk/search/titleSearchServlet.do',
+        parser_type='hkexnews',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*'
+        },
+    ),
+
+    NewsSource(
+        name='SEC EDGAR',
+        url='https://www.sec.gov/cgi-bin/browse-edgar',
+        parser_type='sec_edgar',
+        headers={
+            'User-Agent': 'FinFeed research contact@finfeed.example.com',
+            'Accept': 'application/atom+xml, application/xml, text/xml, */*'
+        },
+        params={
+            'type': '8-K'
+        },
+    ),
+
+    NewsSource(
+        name='上交所公告',
+        url='http://query.sse.com.cn/security/stock/queryCompanyBulletinNew.do',
+        parser_type='sse',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+            'Referer': 'http://www.sse.com.cn/disclosure/listedinfo/announcement/',
+            'Accept': 'application/json, text/plain, */*'
+        },
+    ),
+
+    NewsSource(
+        name='深交所公告',
+        url='http://www.szse.cn/api/disc/announcement/annList',
+        parser_type='szse',
+        method='POST',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+            'Referer': 'http://www.szse.cn/disclosure/listed/notice/index.html',
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+        },
+        params={
+            'channelCode': ['listedNotice_disc'],
+            'seDate': [],
+            'pageSize': 50,
+            'pageNum': 1,
+        },
+    ),
 ]
 
 

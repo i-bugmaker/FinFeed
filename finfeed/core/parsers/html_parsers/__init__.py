@@ -5,19 +5,21 @@
 import logging
 
 from ._shared import _extract_time_from_parent, _find_link_near_time
-from .gelonghui import GelonghuiArticleParser
+from .cnstock import CNStockParser
 from .fastbull import FastbullParser
-from .nbd import NBDParser
+from .gelonghui import GelonghuiArticleParser
 from .hexun import HexunParser
 from .ifeng import IfengParser
+from .investing_cn import InvestingCnParser
 from .jiemian import JiemianParser
-from .thepaper import ThePaperParser
-from .yicai import YicaiParser
-from .luobo import LuoBoParser
-from .zhongzheng import ZhongzhengParser
 from .jiuyan import JiuyanParser
-from .cnstock import CNStockParser
+from .luobo import LuoBoParser
+from .nbd import NBDParser
+from .sec_edgar import SecEdgarParser
+from .thepaper import ThePaperParser
 from .xinhua import XinhuaCaijingParser
+from .yicai import YicaiParser
+from .zhongzheng import ZhongzhengParser
 
 logger = logging.getLogger("news_monitor")
 
@@ -37,4 +39,6 @@ __all__ = [
     "JiuyanParser",
     "CNStockParser",
     "XinhuaCaijingParser",
+    "InvestingCnParser",
+    "SecEdgarParser",
 ]

@@ -221,6 +221,78 @@ FLASH_NEWS_SOURCES: list[NewsSource] = [
             'makeDate': ''
         },
     ),
+
+    NewsSource(
+        name='财新网',
+        url='https://gateway.caixin.com/api/dataplatform/scroll/index',
+        parser_type='caixin',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://www.caixin.com/',
+            'Accept': 'application/json, text/plain, */*'
+        },
+        params={
+            'page': 1,
+            'size': 50,
+            'date': '',
+            'channel': ''
+        },
+    ),
+
+    NewsSource(
+        name='汇通网快讯',
+        url='https://www.fx678.com/kx/ajax/zykx',
+        parser_type='fx678',
+        method='POST',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://www.fx678.com/kx/',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+    ),
+
+    NewsSource(
+        name='新浪财经7×24',
+        url='https://zhibo.sina.com.cn/api/zhibo/feed',
+        parser_type='sina724',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://zhibo.sina.com.cn/finance/152',
+            'Accept': 'application/json, text/plain, */*'
+        },
+        params={
+            'page_size': 100,
+            'zhibo_id': 152,
+            'tag_id': 0,
+            'dire': 'f',
+            'dpc': 1
+        },
+    ),
+
+    NewsSource(
+        name='富途牛牛快讯',
+        url='https://news.futunn.com/news-site-api/main/get-flash-list',
+        parser_type='futu',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://news.futunn.com/main/live',
+            'Accept': 'application/json, text/plain, */*'
+        },
+        params={
+            'pageSize': 20
+        },
+    ),
+
+NewsSource(
+        name='英为财情',
+        url='https://cn.investing.com/news/latest-news',
+        parser_type='investing_cn',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+        },
+    ),
 ]
 
 
