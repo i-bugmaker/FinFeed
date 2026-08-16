@@ -21,7 +21,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from . import board, client, kline, quote, reference, snapshot, store, universe
+from . import board, client, kline, quote, reference, snapshot, store, ths_hotrank, universe
 from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import now_bj
 
@@ -89,6 +89,11 @@ async def run_daily_snapshot(trade_date: Optional[str] = None,
             out["reference_error"] = str(e)[:200]
 
     return out
+
+
+async def collect_hotrank(trade_date: Optional[str] = None) -> Dict[str, Any]:
+    """同花顺热榜自动采集：落库为某交易日的多子榜快照。"""
+    return await ths_hotrank.collect_all(trade_date)
 
 
 async def collect_bars_for_date(trade_date: Optional[str] = None,
@@ -161,6 +166,10 @@ def collect_bars_sync(trade_date: Optional[str] = None,
     return asyncio.run(
         collect_bars_for_date(trade_date, limit, bars, progress_cb=progress_cb),
     )
+
+
+def collect_hotrank_sync(trade_date: Optional[str] = None) -> Dict[str, Any]:
+    return asyncio.run(collect_hotrank(trade_date))
 
 
 def backfill_bars_sync(beg: str, end: Optional[str] = None,

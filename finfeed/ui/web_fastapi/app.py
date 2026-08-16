@@ -780,6 +780,15 @@ async def api_market(rest: str, request: Request):
                 "recent": market_alerting.get_recent(limit=_int("limit", 50)),
                 "stats": market_alerting.get_stats(),
             }
+        elif sub == "hotrank":
+            from finfeed.market.ths_hotrank import fetch_hotrank
+            list_type = (q.get("list", ["normal"])[0] or "normal").strip()
+            period = (q.get("period", ["hour"])[0] or "hour").strip()
+            date = (q.get("date", [None])[0]) or None
+            data = await fetch_hotrank(list_type, period, _int("limit", 100, 200), date)
+        elif sub == "hotrank_dates":
+            from finfeed.market import store as mk_store
+            data = mk_store.get_ths_hotrank_dates()
         elif sub == "overview":
             data = mk_store.get_fact_overview()
         elif sub == "kline":

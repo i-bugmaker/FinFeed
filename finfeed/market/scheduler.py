@@ -25,6 +25,7 @@ logger = logging.getLogger("news_monitor")
 SLOTS = {
     "universe": {"h": 8, "m": 40, "default_on": True},
     "snapshot": {"h": 16, "m": 10, "default_on": True},
+    "hotrank": {"h": 16, "m": 15, "default_on": True},
     "bars": {"h": 16, "m": 40, "default_on": False},
 }
 
@@ -95,6 +96,8 @@ def _empty_check(action: str):
             return (sm in (None, "", "?", 0, "0")) and (ac in (None, "", "?", 0, "0"))
         if action == "snapshot":
             return not res.get("trade_date")
+        if action == "hotrank":
+            return not res.get("saved")
         if action == "bars":
             saved = res.get("saved", res.get("total"))
             try:
@@ -134,6 +137,13 @@ def _run_action(action: str, today: str):
                 is_empty=_empty_check(action),
             )
             msg = f"完成（交易日 {res.get('trade_date', today)}）"
+        elif action == "hotrank":
+            res = mk_alerting.with_retry(
+                task, lambda: svc.collect_hotrank_sync(),
+                max_retries=3, backoff_base=2.0, timeout=300,
+                is_empty=_empty_check(action),
+            )
+            msg = f"完成（采集 {res.get('saved', 0)} 条 / {res.get('trade_date', today)}）"
         elif action == "bars":
             res = mk_alerting.with_retry(
                 task, lambda: svc.collect_bars_sync(bars=5),

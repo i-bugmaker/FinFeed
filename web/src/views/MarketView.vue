@@ -11,6 +11,7 @@ import AppTabs from '../ui/AppTabs.vue'
 import AppSwitch from '../ui/AppSwitch.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+import ThsHotList from '../components/ThsHotList.vue'
 
 const tabs = [
   { value: 'overview', label: '总览' },
@@ -24,6 +25,7 @@ const tabs = [
   { value: 'forecast', label: '业绩预告' },
   { value: 'ipo', label: '新股' },
   { value: 'sectors', label: '板块' },
+  { value: 'hotrank', label: '热榜' },
   { value: 'search', label: '股票搜索' },
 ]
 const active = ref('overview')
@@ -144,6 +146,8 @@ async function toggleAuto(v) {
 }
 
 async function load() {
+  // 热榜由 ThsHotList 组件自行拉取，避免与通用行情快照流程冲突
+  if (active.value === 'hotrank') return
   loading.value = true
   err.value = ''
   rows.value = []
@@ -304,7 +308,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <AppCard class="ff-market-view__toolbar">
+    <AppCard class="ff-market-view__toolbar" v-if="active !== 'hotrank'">
       <div class="ff-market-view__row">
         <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />
         <AppInput
@@ -415,25 +419,29 @@ onBeforeUnmount(() => {
       </div>
     </AppCard>
 
-    <AppCard class="ff-market-view__panel" :no-padding="true">
-      <div class="ff-market-view__nav">
-        <AppTabs v-model="active" type="line" :items="tabs" class="ff-market-view__tabs" />
-      </div>
-
-      <div v-if="summary" class="ff-market-view__summary">
-        <div v-for="(v, k) in summary" :key="k" class="ff-kv">
-          <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
-          <span class="ff-kv__value">{{ v }}</span>
+      <AppCard class="ff-market-view__panel" :no-padding="true">
+        <div class="ff-market-view__nav">
+          <AppTabs v-model="active" type="line" :items="tabs" class="ff-market-view__tabs" />
         </div>
-      </div>
 
-      <AppSkeleton v-if="loading" variant="text" :lines="8" />
-      <div v-else-if="err" class="ff-alert ff-alert--danger">
-        <AppIcon name="alert-circle" size="md" /> {{ err }}
-      </div>
+        <!-- 同花顺热榜：独立组件，自管数据与布局 -->
+        <ThsHotList v-if="active === 'hotrank'" />
 
-      <!-- 总览 -->
-      <div v-else-if="active === 'overview' && data" class="ff-market-view__ov">
+        <template v-else>
+          <div v-if="summary" class="ff-market-view__summary">
+          <div v-for="(v, k) in summary" :key="k" class="ff-kv">
+            <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
+            <span class="ff-kv__value">{{ v }}</span>
+          </div>
+        </div>
+
+        <AppSkeleton v-if="loading" variant="text" :lines="8" />
+        <div v-else-if="err" class="ff-alert ff-alert--danger">
+          <AppIcon name="alert-circle" size="md" /> {{ err }}
+        </div>
+
+        <!-- 总览 -->
+        <div v-else-if="active === 'overview' && data" class="ff-market-view__ov">
         <section class="ff-market-view__section">
           <h3 class="ff-h3">数据表</h3>
           <table class="ff-table">
@@ -501,7 +509,8 @@ onBeforeUnmount(() => {
           </tr>
         </tbody>
       </table>
-      <EmptyState v-else text="暂无数据（可能需要先采集行情）" icon="bar-chart" />
+        <EmptyState v-else text="暂无数据（可能需要先采集行情）" icon="bar-chart" />
+        </template>
     </AppCard>
   </div>
 </template>

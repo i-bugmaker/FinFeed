@@ -268,6 +268,29 @@ def ensure_market_tables() -> None:
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_ipo_apply ON ipo_calendar(apply_date)")
 
+        # ---- 同花顺热榜快照（按交易日自动采集，支撑历史日期回看）----
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ths_hotrank (
+                trade_date TEXT,
+                list_type TEXT,
+                period TEXT,
+                rank INTEGER,
+                code TEXT,
+                name TEXT DEFAULT '',
+                market TEXT DEFAULT '',
+                heat REAL DEFAULT 0.0,
+                change_pct REAL DEFAULT 0.0,
+                rank_chg INTEGER DEFAULT 0,
+                popularity_tag TEXT DEFAULT '',
+                concept_tags TEXT DEFAULT '[]',
+                topic TEXT DEFAULT '',
+                collected_at TEXT DEFAULT '',
+                PRIMARY KEY (trade_date, list_type, period, code)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_thr_date ON ths_hotrank(trade_date)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_thr_lp ON ths_hotrank(list_type, period)")
+
 
 def _add_column(c, table: str, col: str, definition: str) -> None:
     try:
@@ -875,6 +898,90 @@ def get_ipo_calendar(start: Optional[str] = None, end: Optional[str] = None,
             params,
         )
         return [dict(r) for r in c.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# 同花顺热榜快照（按交易日自动采集，供历史日期回看）
+# ---------------------------------------------------------------------------
+def upsert_ths_hotrank(rows: List[Dict[str, Any]]) -> int:
+    """批量写入热榜快照（幂等 upsert）。
+
+    rows: {trade_date, list_type, period, rank, code, name, market, heat,
+           change_pct, rank_chg, popularity_tag, concept_tags(JSON 字符串),
+           topic, collected_at}
+    """
+    if not rows:
+        return 0
+    db = get_db_manager()
+    data = [
+        (r["trade_date"], r["list_type"], r["period"], int(r.get("rank", 0) or 0),
+         r["code"], r.get("name", "") or "", r.get("market", "") or "",
+         float(r.get("heat", 0) or 0), float(r.get("change_pct", 0) or 0),
+         int(r.get("rank_chg", 0) or 0), (r.get("popularity_tag") or "")[:64],
+         r.get("concept_tags", "[]"), (r.get("topic") or "")[:256],
+         r.get("collected_at", ""))
+        for r in rows
+    ]
+    with db.get_db() as c:
+        c.executemany(
+            """INSERT INTO ths_hotrank (trade_date, list_type, period, rank, code,
+                   name, market, heat, change_pct, rank_chg, popularity_tag,
+                   concept_tags, topic, collected_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date, list_type, period, code) DO UPDATE SET
+                   rank=excluded.rank, name=excluded.name, market=excluded.market,
+                   heat=excluded.heat, change_pct=excluded.change_pct,
+                   rank_chg=excluded.rank_chg, popularity_tag=excluded.popularity_tag,
+                   concept_tags=excluded.concept_tags, topic=excluded.topic,
+                   collected_at=excluded.collected_at
+            """,
+            data,
+        )
+        return len(data)
+
+
+def get_ths_hotrank(trade_date: str, list_type: str, period: str,
+                    limit: int = 200) -> List[Dict[str, Any]]:
+    """读取指定交易日 + 子榜单 + 时间维度的热榜快照（按排名升序）。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT * FROM ths_hotrank WHERE trade_date = ? AND list_type = ? "
+            "AND period = ? ORDER BY rank ASC LIMIT ?",
+            (trade_date, list_type, period, int(limit)),
+        )
+        return [dict(r) for r in c.fetchall()]
+
+
+def get_latest_ths_hotrank_date(list_type: str, period: str) -> Optional[str]:
+    """返回某子榜单最近一次有采集数据的交易日（用于实时获取失败时的回退）。"""
+    db = get_db_manager()
+    try:
+        with db.get_db() as c:
+            c.execute(
+                "SELECT MAX(trade_date) AS d FROM ths_hotrank "
+                "WHERE list_type = ? AND period = ?",
+                (list_type, period),
+            )
+            row = c.fetchone()
+            return row["d"] if row and row["d"] else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def get_ths_hotrank_dates() -> Dict[str, Any]:
+    """返回所有已采集热榜的交易日列表（倒序）与最新日期。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        try:
+            c.execute(
+                "SELECT DISTINCT trade_date FROM ths_hotrank ORDER BY trade_date DESC"
+            )
+            dates = [r["trade_date"] for r in c.fetchall()]
+        except Exception:  # noqa: BLE001
+            dates = []
+        latest = dates[0] if dates else None
+        return {"dates": dates, "latest": latest, "count": len(dates)}
 
 
 def get_sector_heat(trade_date: str, sector_type: str = "concept",
