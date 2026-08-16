@@ -32,7 +32,7 @@ DEFAULT_WEB_PORT: int = _get_env("WEB_PORT", 8866, int)
 # ============================================================
 # 抓取配置
 # ============================================================
-DEFAULT_INTERVAL: int = _get_env("INTERVAL", 5, int)
+DEFAULT_INTERVAL: int = _get_env("INTERVAL", 10, int)
 MAX_NEWS_CACHE: int = 500
 FETCH_CONCURRENCY: int = _get_env("FETCH_CONCURRENCY", 10, int)
 
