@@ -10,6 +10,7 @@ import AppStatus from '../ui/AppStatus.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+import IndexKlineCard from '../components/IndexKlineCard.vue'
 import AppBadge from '../ui/AppBadge.vue'
 import { useMarketSocket } from '../composables/useMarketSocket'
 
@@ -408,6 +409,16 @@ onMounted(async () => {
         </AppCard>
       </div>
 
+      <!-- ═══ L4.5 指数 K 线（上证 / 深证，多周期 + 分时）═══ -->
+      <div class="ff-dashboard-view__kline">
+        <AppCard title="上证指数" subtitle="000001 · 蜡烛/分时">
+          <IndexKlineCard code="000001" name="上证指数" />
+        </AppCard>
+        <AppCard title="深证成指" subtitle="399001 · 蜡烛/分时">
+          <IndexKlineCard code="399001" name="深证成指" />
+        </AppCard>
+      </div>
+
       <!-- ═══ L4.5 实时行情推送（WebSocket，作为仪表盘一部分）═══ -->
       <div class="ff-dashboard-view__live">
         <div class="ff-dashboard-view__live-head">
@@ -547,6 +558,14 @@ onMounted(async () => {
   row-gap: var(--ff-space-3);
 }
 
+/* L4.5 指数 K 线：移动 1 列 / 桌面 2 列 */
+.ff-dashboard-view__kline {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-3);
+  row-gap: var(--ff-space-3);
+}
+
 @media (min-width: 1024px) {
   .ff-dashboard-view__kpis {
     grid-template-columns: repeat(4, 1fr);
@@ -556,6 +575,9 @@ onMounted(async () => {
     grid-template-columns: repeat(3, 1fr);
   }
   .ff-dashboard-view__dist {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ff-dashboard-view__kline {
     grid-template-columns: repeat(2, 1fr);
   }
 }

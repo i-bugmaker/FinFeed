@@ -646,6 +646,58 @@ def _market_action(q: Dict[str, List[str]]):
     return {"success": True, "data": {"task_id": task_id, "action": action, "label": label, "status": "running", "message": f"已启动「{label}，后台执行中"}}
 
 
+# ---------------------------------------------------------------------------
+# 指数 K 线 / 分时：实时拉取 + 内存 TTL 缓存
+# 仪表盘仅两个指数，内存缓存足够，且规避东财 push2his 限流；
+# 不改动 daily_bar 表结构（该表仅存日线）。
+# ---------------------------------------------------------------------------
+_KLINE_CACHE: Dict[tuple, tuple] = {}
+_KLINE_CACHE_TTL = 300.0
+
+
+async def _get_chart_data(code, chart_type, klt, ndays, lmt, start, end):
+    """返回 {rows: [...], reason: 'ok'|'empty'|'rate_limited'|'error', error?: str}。
+
+    仅缓存 reason='ok' 的成功结果；限流/错误不缓存，便于前端稍后自动重试。
+    """
+    from finfeed.market import kline as _mk_kline
+    from finfeed.market import store as _mk_store
+    from finfeed.market.client import RateLimited
+
+    now = time.time()
+    key = (code, chart_type, klt, ndays, lmt, start, end)
+    cached = _KLINE_CACHE.get(key)
+    if cached and (now - cached[0]) < _KLINE_CACHE_TTL:
+        return cached[1]
+
+    def finish(result):
+        # 仅缓存成功结果；限流/错误不缓存，便于前端稍后重试
+        if result["reason"] == "ok":
+            _KLINE_CACHE[key] = (now, result)
+        return result
+
+    def ok(rows_list):
+        return {"rows": rows_list or [], "reason": "ok" if rows_list else "empty"}
+
+    try:
+        if chart_type == "trends":
+            return finish(ok(await _mk_kline.fetch_trends(code, ndays=ndays)))
+        # 日线且有起止区间时优先读本地库（盘后快照已入库的标的）
+        if klt == 101 and start and end:
+            db_rows = _mk_store.get_daily_bar(code, start, end)
+            if db_rows:
+                return finish(ok(db_rows))
+        return finish(ok(await _mk_kline.fetch_daily_bar(
+            code, end_date=end, limit=lmt, beg=start, klt=klt
+        )))
+    except RateLimited:
+        logger.warning("K线/分时获取被限流：%s", code)
+        return {"rows": [], "reason": "rate_limited"}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("K线/分时获取失败 %s: %s", code, e)
+        return {"rows": [], "reason": "error", "error": str(e)[:200]}
+
+
 @app.api_route("/api/market/{rest:path}", methods=["GET", "POST"])
 async def api_market(rest: str, request: Request):
     q = qdict(request)
@@ -732,7 +784,16 @@ async def api_market(rest: str, request: Request):
             data = mk_store.get_fact_overview()
         elif sub == "kline":
             code = q.get("code", [""])[0]
-            data = mk_store.get_daily_bar(code, q.get("start", [None])[0], q.get("end", [None])[0]) if code else []
+            if not code:
+                data = []
+            else:
+                chart_type = (q.get("type", ["kline"])[0] or "kline").strip()
+                klt = _int("klt", 101, 105)
+                ndays = _int("ndays", 1, 10)
+                lmt = _int("lmt", 250, 2000)
+                start = q.get("start", [None])[0]
+                end = q.get("end", [None])[0]
+                data = await _get_chart_data(code, chart_type, klt, ndays, lmt, start, end)
         else:
             data = {"error": f"unknown market action: {sub}"}
         return {"success": True, "data": data}

@@ -27,8 +27,27 @@ import logging
 from typing import Dict, List, Optional
 
 from .client import RateLimited, cooldown_remaining, get_json
-from .endpoints import FLTT, KLINE_FIELDS2, PUSH2HIS, UT, compact_date, secid_of
+from .endpoints import (
+    FLTT,
+    KLINE_FIELDS2,
+    PUSH2HIS,
+    PUSH2HIS_TRENDS,
+    TRENDS_FIELDS2,
+    UT,
+    compact_date,
+    secid_of,
+)
 from . import store
+
+# 指数代码 -> 东财 secid。前缀规则对 000001/399001 失效：
+# 000001 既是上证指数（沪，1.000001）又是平安银行（深，0.000001），
+# 399001 同理。仪表盘固定取这两只指数，故在此显式映射。
+INDEX_SECID = {"000001": "1.000001", "399001": "0.399001"}
+
+
+def _resolve_secid(code: str) -> str:
+    """代码 -> 东财 secid，指数走显式映射，其余回退通用规则。"""
+    return INDEX_SECID.get((code or "").strip()) or secid_of(code)
 from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
@@ -64,20 +83,24 @@ async def fetch_daily_bar(
     end_date: Optional[str] = None,
     limit: int = DEFAULT_LIMIT,
     beg: Optional[str] = None,
+    klt: int = 101,
 ) -> List[Dict]:
-    """拉取单只股票日线。
+    """拉取单只证券 K 线（支持多周期）。
 
     Args:
-        code: 6 位代码
+        code: 6 位代码（含指数，如 000001 / 399001）
         end_date: 截止日（任意格式，内部归一化为 YYYYMMDD）
         limit: 增量模式下取最近多少根（beg 为空时生效）
         beg: 起始日；给定则切换为区间模式（用于历史回补）
+        klt: K 线周期类型
+             101 日线 / 102 周线 / 103 月线 / 104 季线 / 105 年线
+             （分钟线 1/5/15/30/60 也可传，但本项目仪表盘仅用日级以上）
     """
     params = {
-        "secid": secid_of(code),
+        "secid": _resolve_secid(code),
         "fields1": "f1,f2,f3,f4,f5,f6",
         "fields2": KLINE_FIELDS2,
-        "klt": 101, "fqt": 1, "fltt": FLTT, "ut": UT,
+        "klt": klt, "fqt": 0 if code in INDEX_SECID else 1, "fltt": FLTT, "ut": UT,
         "end": compact_date(end_date) if end_date else "20500101",
     }
     if beg:
@@ -95,6 +118,51 @@ async def fetch_daily_bar(
 
     klines = (data.get("data") or {}).get("klines") or []
     return _parse_kline(klines)
+
+
+async def fetch_trends(code: str, ndays: int = 1) -> List[Dict]:
+    """拉取分时数据（当日/近 N 日 每分钟 价 + 均价）。
+
+    端点：push2his trends2。返回 [{time, price, avg_price}]。
+    仅用于指数/个股分时图，与 K 线（kline）数据结构不同。
+
+    Args:
+        code: 6 位代码（含指数）
+        ndays: 1=当日；5=近 5 个交易日（本仪表盘仅用当日）
+    """
+    params = {
+        "secid": _resolve_secid(code),
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": TRENDS_FIELDS2,
+        "ndays": int(ndays),
+        "forcect": 1,
+        "ut": UT,
+    }
+    try:
+        data = await get_json(PUSH2HIS_TRENDS, params=params, group="em_push2his")
+    except RateLimited:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"分时 {code} 获取失败: {e}")
+        return []
+
+    raw = (data.get("data") or {})
+    rows = raw.get("trends") or raw.get("klines") or []
+    out: List[Dict] = []
+    for line in rows or []:
+        p = (line or "").split(",")
+        if len(p) < 8:  # 完整字段集固定 11 列；少于 8 列视为异常行
+            continue
+        try:
+            out.append({
+                "time": p[0],
+                "price": float(p[2]),
+                "avg_price": float(p[7]),
+                "volume": float(p[5] or 0),
+            })
+        except (ValueError, IndexError):
+            continue
+    return out
 
 
 async def collect_daily_bars(

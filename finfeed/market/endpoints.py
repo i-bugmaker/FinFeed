@@ -121,6 +121,8 @@ PUSH2 = "https://push2.eastmoney.com/api/qt"
 PUSH2EX = "https://push2ex.eastmoney.com"
 PUSH2HIS = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 PUSH2HIS_FFLOW = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
+# 分时（当日/近 N 日 每分钟 价+均价），与 kline 数据结构不同，独立端点
+PUSH2HIS_TRENDS = "https://push2his.eastmoney.com/api/qt/stock/trends2/get"
 
 # 延时行情集群。2026-08-07 实测：在 push2/push2his 对本 IP 全部断连（限流）时，
 # push2delay 仍返回 HTTP 200 且数据正确（f43 收盘价与 datacenter 快照一致）。
@@ -238,5 +240,11 @@ FUND_FIELDS = "f12,f14,f62,f184,f66,f72,f75,f78,f81,f84,f87,f160,f170,f43,f57"
 # K 线 fields2：f51 日期 f52 开 f53 收 f54 高 f55 低 f56 量 f57 额
 #               f58 振幅 f59 涨跌幅 f60 涨跌额 f61 换手
 KLINE_FIELDS2 = "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"
+
+# 分时 trends2 字段：⚠️ 必须传完整字段集（实测短字段集会被服务器断连）。
+# 行序（f51..f61）：f51 时间 f52 开 f53 当前价 f54 高 f55 低
+#                  f56 成交量(手) f57 成交额 f58 均价 f59..f61 其他
+# 解析时取：时间=p[0] 价格=p[2] 均价=p[7] 量=p[5]
+TRENDS_FIELDS2 = "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"
 
 FLTT = 2
