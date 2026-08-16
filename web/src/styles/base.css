@@ -31,11 +31,15 @@ body {
   color: var(--ff-text-primary);
   font-family: var(--ff-font-sans);
   font-size: var(--ff-fs-body);
-  line-height: var(--ff-lh-normal);
-  letter-spacing: var(--ff-ls-normal);
+  line-height: var(--ff-lh-body);
+  letter-spacing: var(--ff-ls-body);
   font-weight: var(--ff-fw-regular);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* 主题化字体渲染（亮：亚像素锐利 / 暗：灰度抗彩边） */
+  -webkit-font-smoothing: var(--ff-font-smoothing);
+  -moz-osx-font-smoothing: var(--ff-font-smoothing-moz);
+  font-synthesis: var(--ff-font-synthesis);
+  font-optical-sizing: auto;
+  font-feature-settings: var(--ff-ff-text);
   text-rendering: optimizeLegibility;
   font-variant-numeric: tabular-nums;
   overflow-wrap: break-word;
@@ -155,7 +159,17 @@ hr {
   border-radius: var(--ff-radius-xs);
 }
 
-/* ── 2. 排版 ─────────────────────────────────────────────────────────────── */
+/* ── 2. 排版（角色化字体系统）─────────────────────────────────────────────
+   每个文字角色 = 字号 + 字重 + 行高 + 字距 的精心组合，全部引用 tokens.css。
+   角色清单：
+     display  展示级标题（Hero）
+     2xl      超大统计数字
+     h1-h4    页面 / 区块 / 子区块 / 卡片 标题
+     lede     导语（正文强调，中字重）
+     body / body-sm / caption  正文三档
+     label / overline  标签 / 眉题（小字号、宽字距）
+     num      数据数字（等宽 + 表格对齐）
+   ──────────────────────────────────────────────────────────────────────── */
 h1,
 h2,
 h3,
@@ -164,70 +178,129 @@ h5,
 h6 {
   font-family: var(--ff-font-display);
   font-weight: var(--ff-fw-semibold);
-  line-height: var(--ff-lh-snug);
+  line-height: var(--ff-lh-h2);
   color: var(--ff-text-primary);
+  text-wrap: balance;
 }
 
+/* 展示级标题 */
 .ff-display {
+  font-family: var(--ff-font-display);
   font-size: var(--ff-fs-display);
-  line-height: var(--ff-lh-tight);
+  font-weight: var(--ff-fw-display);
+  line-height: var(--ff-lh-display);
   letter-spacing: var(--ff-ls-tighter);
+}
+/* 超大统计数字 */
+.ff-2xl {
+  font-size: var(--ff-fs-2xl);
   font-weight: var(--ff-fw-bold);
+  line-height: var(--ff-lh-h1);
+  letter-spacing: var(--ff-ls-tight);
 }
 .ff-h1 {
   font-size: var(--ff-fs-h1);
-  line-height: var(--ff-lh-tight);
-  letter-spacing: var(--ff-ls-tighter);
   font-weight: var(--ff-fw-bold);
+  line-height: var(--ff-lh-h1);
+  letter-spacing: var(--ff-ls-tight);
 }
 .ff-h2 {
   font-size: var(--ff-fs-h2);
-  line-height: var(--ff-lh-snug);
-  letter-spacing: var(--ff-ls-tight);
   font-weight: var(--ff-fw-semibold);
+  line-height: var(--ff-lh-h2);
+  letter-spacing: var(--ff-ls-tight);
 }
 .ff-h3 {
   font-size: var(--ff-fs-h3);
-  line-height: var(--ff-lh-snug);
-  letter-spacing: var(--ff-ls-tight);
   font-weight: var(--ff-fw-semibold);
+  line-height: var(--ff-lh-h3);
+  letter-spacing: var(--ff-ls-snug);
 }
 .ff-h4 {
   font-size: var(--ff-fs-h4);
-  line-height: var(--ff-lh-snug);
-  letter-spacing: var(--ff-ls-normal);
   font-weight: var(--ff-fw-semibold);
+  line-height: var(--ff-lh-h4);
+  letter-spacing: var(--ff-ls-snug);
+}
+/* 导语 / 正文强调 */
+.ff-lede {
+  font-size: var(--ff-fs-body-lg);
+  font-weight: var(--ff-fw-medium);
+  line-height: var(--ff-lh-body-lg);
+  letter-spacing: var(--ff-ls-body);
+  color: var(--ff-text-secondary);
 }
 .ff-body-lg {
   font-size: var(--ff-fs-body-lg);
-  line-height: var(--ff-lh-relaxed);
+  font-weight: var(--ff-fw-regular);
+  line-height: var(--ff-lh-body-lg);
+  letter-spacing: var(--ff-ls-body);
 }
 .ff-body {
   font-size: var(--ff-fs-body);
-  line-height: var(--ff-lh-normal);
+  font-weight: var(--ff-fw-regular);
+  line-height: var(--ff-lh-body);
+  letter-spacing: var(--ff-ls-body);
 }
 .ff-body-sm {
   font-size: var(--ff-fs-body-sm);
-  line-height: var(--ff-lh-normal);
+  font-weight: var(--ff-fw-regular);
+  line-height: var(--ff-lh-body-sm);
+  letter-spacing: var(--ff-ls-body);
+}
+/* 辅助文本别名（兼容历史引用） */
+.ff-small {
+  font-size: var(--ff-fs-body-sm);
+  font-weight: var(--ff-fw-regular);
+  line-height: var(--ff-lh-body-sm);
+  letter-spacing: var(--ff-ls-body);
 }
 .ff-caption {
   font-size: var(--ff-fs-caption);
-  line-height: var(--ff-lh-snug);
+  font-weight: var(--ff-fw-regular);
+  line-height: var(--ff-lh-caption);
+  letter-spacing: var(--ff-ls-body);
+  color: var(--ff-text-tertiary);
+}
+/* 标签 / 眉题：小字号、字重提升、宽字距 */
+.ff-label {
+  font-size: var(--ff-fs-caption);
+  font-weight: var(--ff-fw-semibold);
+  line-height: var(--ff-lh-caption);
+  letter-spacing: var(--ff-ls-label);
+  color: var(--ff-text-tertiary);
 }
 .ff-overline {
   font-size: var(--ff-fs-overline);
-  line-height: var(--ff-lh-snug);
+  font-weight: var(--ff-fw-bold);
+  line-height: var(--ff-lh-overline);
   letter-spacing: var(--ff-ls-widest);
   text-transform: uppercase;
-  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-tertiary);
 }
 
-/* 数字：等宽 + 表格对齐 */
+/* 数据数字：等宽 + 表格对齐（价格 / 涨跌幅 / 成交量 / 代码） */
 .ff-num {
   font-family: var(--ff-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
+  font-feature-settings: var(--ff-ff-data);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: var(--ff-fw-medium);
   letter-spacing: 0;
+  font-size: var(--ff-fs-data);
+  line-height: var(--ff-lh-body);
+}
+.ff-num--lg {
+  font-size: var(--ff-fs-data-lg);
+  line-height: var(--ff-lh-h4);
+}
+.ff-num--sm {
+  font-size: var(--ff-fs-data-sm);
+  line-height: var(--ff-lh-caption);
+}
+/* 行内等宽数字：保留上下文字号，仅对齐数字 */
+.ff-tabular {
+  font-feature-settings: var(--ff-ff-data);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* 文本颜色工具 */

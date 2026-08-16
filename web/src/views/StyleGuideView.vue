@@ -85,15 +85,88 @@ const selectOptions = [
       </div>
 
       <div class="ff-col-12 ff-col-lg-6">
-        <AppCard title="字体层级">
+        <AppCard title="字体层级" subtitle="每个文字角色 = 字号 + 字重 + 行高 + 字距 的组合，亮暗主题自动适配">
           <div class="ff-styleguide__type">
-            <p class="ff-display">Display</p>
-            <p class="ff-h1">H1 标题</p>
-            <p class="ff-h2">H2 标题</p>
-            <p class="ff-h3">H3 标题</p>
-            <p class="ff-body">Body 正文</p>
-            <p class="ff-small">Small 辅助文本</p>
-            <p class="ff-caption">Caption 标注</p>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">display</code>
+              <span class="ff-display">实时财经信号中枢</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">h1</code>
+              <span class="ff-h1">市场复盘与情绪总览</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">h2</code>
+              <span class="ff-h2">板块资金流向</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">h3</code>
+              <span class="ff-h3">北向资金净流入</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">h4</code>
+              <span class="ff-h4">今日涨停个股</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">lede</code>
+              <span class="ff-lede">多源聚合 · 情绪量化 · 事件日历 · AI 解读</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">body</code>
+              <span class="ff-body">正文以 15px / 行高 1.6 呈现，保证长文阅读舒适性与信息密度平衡。</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">body-sm</code>
+              <span class="ff-body-sm">辅助正文用于列表项与说明文字，字重常规、行高 1.55。</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">caption</code>
+              <span class="ff-caption">标注 / 脚注文字，使用三级文本色。</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">label</code>
+              <span class="ff-label">栏目眉题 LABEL</span>
+            </div>
+            <div class="ff-styleguide__type-row">
+              <code class="ff-styleguide__type-tag">overline</code>
+              <span class="ff-overline">Market Overview</span>
+            </div>
+          </div>
+        </AppCard>
+      </div>
+
+      <div class="ff-col-12 ff-col-lg-6">
+        <AppCard title="数据字体" subtitle="等宽 + 表格数字（tabular-nums），列对齐；红涨绿跌沿用语义色">
+          <div class="ff-styleguide__num">
+            <div class="ff-styleguide__num-row">
+              <span class="ff-styleguide__num-name">最新价</span>
+              <span class="ff-num ff-num--lg ff-t-up">3,284.56</span>
+            </div>
+            <div class="ff-styleguide__num-row">
+              <span class="ff-styleguide__num-name">涨跌幅</span>
+              <span class="ff-num ff-t-up">+2.37%</span>
+            </div>
+            <div class="ff-styleguide__num-row">
+              <span class="ff-styleguide__num-name">成交额</span>
+              <span class="ff-num ff-t-down">-1,204.80 亿</span>
+            </div>
+            <div class="ff-styleguide__num-row">
+              <span class="ff-styleguide__num-name">标准</span>
+              <span class="ff-num">12,345,678.90</span>
+            </div>
+            <div class="ff-styleguide__num-row">
+              <span class="ff-styleguide__num-name">小号</span>
+              <span class="ff-num ff-num--sm">1,024.50</span>
+            </div>
+            <div class="ff-styleguide__num-row ff-styleguide__num-row--sample">
+              <span class="ff-styleguide__num-name">对齐示例</span>
+              <span class="ff-styleguide__num-block">
+                <span class="ff-num">100.00</span>
+                <span class="ff-num">2,584.37</span>
+                <span class="ff-num">36.05</span>
+                <span class="ff-num">9,999.99</span>
+              </span>
+            </div>
           </div>
         </AppCard>
       </div>
@@ -253,6 +326,67 @@ const selectOptions = [
   display: flex;
   flex-direction: column;
   gap: var(--ff-space-2);
+}
+
+.ff-styleguide__type-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ff-space-3);
+  padding-bottom: var(--ff-space-2);
+  border-bottom: 1px dashed var(--ff-border-subtle);
+}
+
+.ff-styleguide__type-row:last-child {
+  border-bottom: 0;
+}
+
+.ff-styleguide__type-tag {
+  flex: 0 0 64px;
+  font-family: var(--ff-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ff-text-tertiary);
+  background: var(--ff-bg-subtle);
+  border: 1px solid var(--ff-border-subtle);
+  border-radius: var(--ff-radius-sm);
+  padding: 2px 6px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.ff-styleguide__num {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+
+.ff-styleguide__num-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ff-space-3);
+}
+
+.ff-styleguide__num-name {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  font-weight: 500;
+}
+
+.ff-styleguide__num-row--sample {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ff-space-2);
+  padding-top: var(--ff-space-2);
+  border-top: 1px solid var(--ff-border);
+}
+
+.ff-styleguide__num-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: var(--ff-fs-data);
 }
 
 .ff-styleguide__icons {

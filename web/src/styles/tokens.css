@@ -87,52 +87,94 @@
 
   /* ══════════════════════════════════════════════════════════════
      2. 字体系统 (Typography)
+     ------------------------------------------------------------------
+     设计原则：
+       · 双语（中文 + 拉丁/数字）混合排版：西文走 Inter，CJK 自动回退到
+         苹方 / 鸿蒙 / 微软雅黑 / 思源黑体；浏览器逐字选择首个可渲染字体。
+       · 数据数字统一走等宽 + 表格数字（tabular-nums），保证列对齐。
+       · 每个「文字角色」= 字号 + 字重 + 行高 + 字距 的组合，见下方令牌。
+       · 字号采用 1.2 模块化刻度（12 · 13 · 15 · 17 · 19 · 24 · 26 · 32），
+         兼顾金融终端的信息密度与可读性。
      ══════════════════════════════════════════════════════════════ */
   --ff-font-sans:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'HarmonyOS Sans SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
-    'Source Han Sans CN', sans-serif;
+    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'HarmonyOS Sans SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans CN', sans-serif;
   --ff-font-display: var(--ff-font-sans);
   --ff-font-mono:
-    'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Roboto Mono', ui-monospace,
-    'Menlo', 'Consolas', monospace;
+    'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace,
+    'Roboto Mono', 'Menlo', 'Consolas', monospace;
+  --ff-font-cjk:
+    'PingFang SC', 'HarmonyOS Sans SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans CN', sans-serif;
 
-  /* 字号刻度 */
-  --ff-fs-display: 30px;
-  --ff-fs-2xl: 26px;
-  --ff-fs-h1: 24px;
-  --ff-fs-h2: 20px;
-  --ff-fs-h3: 17px;
-  --ff-fs-h4: 16px;
-  --ff-fs-body-lg: 16px;
-  --ff-fs-body: 15px;
-  --ff-fs-body-sm: 14px;
-  --ff-fs-caption: 13px;
-  --ff-fs-overline: 11px;
-  /* 简写别名（兼容历史引用；此前未定义导致 font-size 声明失效回退继承值） */
+  /* —— 字号刻度（模块化 1.2） —— */
+  --ff-fs-display: 32px;     /* Hero / 落地页主标题 */
+  --ff-fs-2xl: 26px;         /* 超大统计数字 */
+  --ff-fs-h1: 24px;          /* 页面主标题 */
+  --ff-fs-h2: 19px;          /* 区块标题 */
+  --ff-fs-h3: 17px;          /* 子区块标题 */
+  --ff-fs-h4: 16px;          /* 卡片标题 */
+  --ff-fs-body-lg: 17px;     /* 导语 / 强调正文 */
+  --ff-fs-body: 15px;        /* 正文基准 */
+  --ff-fs-body-sm: 14px;     /* 辅助正文 */
+  --ff-fs-caption: 13px;     /* 标注 / 脚注 */
+  --ff-fs-overline: 11.5px;  /* 眉题 / 标签 */
+  /* 数据数字专用字号（等宽对齐） */
+  --ff-fs-data-lg: 18px;
+  --ff-fs-data: 15px;
+  --ff-fs-data-sm: 13px;
+  /* 简写别名（兼容历史引用） */
   --ff-fs-lg: 18px;
   --ff-fs-md: 16px;
   --ff-fs-sm: 14px;
   --ff-fs-xs: 12px;
 
-  /* 行高刻度 */
+  /* —— 行高刻度（按角色微调：标题紧、正文舒） —— */
+  --ff-lh-display: 1.15;
+  --ff-lh-h1: 1.25;
+  --ff-lh-h2: 1.3;
+  --ff-lh-h3: 1.35;
+  --ff-lh-h4: 1.4;
+  --ff-lh-body-lg: 1.65;
+  --ff-lh-body: 1.6;
+  --ff-lh-body-sm: 1.55;
+  --ff-lh-caption: 1.5;
+  --ff-lh-overline: 1.4;
+  /* 通用刻度（组件层沿用） */
   --ff-lh-tight: 1.2;
   --ff-lh-snug: 1.35;
   --ff-lh-normal: 1.5;
   --ff-lh-relaxed: 1.65;
 
-  /* 字重刻度 */
+  /* —— 字重刻度 —— */
+  --ff-fw-thin: 300;
   --ff-fw-regular: 400;
   --ff-fw-medium: 500;
   --ff-fw-semibold: 600;
   --ff-fw-bold: 700;
+  --ff-fw-black: 800;
+  --ff-fw-display: 700;      /* 展示标题专用字重 */
 
-  /* 字距 */
-  --ff-ls-tighter: -0.022em;
-  --ff-ls-tight: -0.014em;
-  --ff-ls-normal: -0.006em;
+  /* —— 字距（负字距收紧西文大标题，正文近 0 以保 CJK 清晰） —— */
+  --ff-ls-tighter: -0.02em;  /* display */
+  --ff-ls-tight: -0.014em;   /* h1 / h2 */
+  --ff-ls-snug: -0.008em;    /* h3 / h4 */
+  --ff-ls-normal: -0.006em;  /* body */
+  --ff-ls-label: 0.04em;     /* 标签 / 眉题 */
   --ff-ls-wide: 0.02em;
-  --ff-ls-widest: 0.08em;
+  --ff-ls-widest: 0.09em;    /* overline（大写拉丁） */
+
+  /* —— OpenType 特性（数字对齐 / 文本渲染） —— */
+  --ff-ff-data: 'tnum' 1, 'lnum' 1, 'zero' 1;  /* 表格数字 + 衬线零 */
+  --ff-ff-text: 'kern' 1, 'liga' 1;            /* 字距 + 连字 */
+  --ff-ff-cjk: 'palt' 1;                        /* CJK 比例字宽，提升间距 */
+
+  /* —— 字体渲染（亮暗可覆写；见第 8/9 节主题块） —— */
+  --ff-font-smoothing: antialiased;
+  --ff-font-smoothing-moz: grayscale;
+  --ff-font-synthesis: none;   /* 禁止伪粗体 / 伪斜体（CJK 无斜体） */
+  --ff-ls-body: -0.006em;      /* 正文追踪，暗色放宽至 0 */
 
   /* ══════════════════════════════════════════════════════════════
      3. 间距刻度 (4pt Grid)
@@ -227,6 +269,12 @@
 :root,
 [data-theme='light'] {
   color-scheme: light;
+
+  /* 字体渲染 · 亮色：亚像素抗锯齿，边缘锐利、字重饱满 */
+  --ff-font-smoothing: subpixel-antialiased;
+  --ff-font-smoothing-moz: auto;
+  --ff-font-synthesis: none;
+  --ff-ls-body: -0.006em;
 
   /* 表面层级 */
   --ff-bg-canvas: #f4f6f9;
@@ -370,6 +418,13 @@
    ========================================================================== */
 [data-theme='dark'] {
   color-scheme: dark;
+
+  /* 字体渲染 · 暗色：灰度抗锯齿，避免彩边与大面积光晕；
+     CJK 在小字号下易显拥挤，正文追踪放宽到 0 提升清晰度 */
+  --ff-font-smoothing: antialiased;
+  --ff-font-smoothing-moz: grayscale;
+  --ff-font-synthesis: none;
+  --ff-ls-body: 0;
 
   --ff-bg-canvas: #0b121e;
   --ff-bg-surface: #121a27;
