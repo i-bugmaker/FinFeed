@@ -196,7 +196,41 @@ const option = computed(() => {
     itemStyle: { color: chartVar(d.close >= d.open ? '--ff-chart-up' : '--ff-chart-down') },
   }))
   return {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: (ps) => {
+        const t = ps[0]?.axisValue || ''
+        const row = data.find((d) => d.trade_date === t)
+        if (!row) return t
+        const fmt = (n) => (Number.isFinite(n) ? String(Number(n).toFixed(2)) : null)
+        const fmtBig = (n) => {
+          if (!Number.isFinite(n)) return null
+          if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(2) + '亿'
+          if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(2) + '万'
+          return String(Math.round(n))
+        }
+        const open = fmt(row.open)
+        const close = fmt(row.close)
+        const high = fmt(row.high)
+        const low = fmt(row.low)
+        const lines = [`<div style="font-weight:600;margin-bottom:4px">${t}</div>`]
+        if (open) lines.push(`开盘价：${open}`)
+        if (close) lines.push(`收盘价：${close}`)
+        if (high) lines.push(`最高价：${high}`)
+        if (low) lines.push(`最低价：${low}`)
+        if (Number.isFinite(row.pct_chg)) {
+          const pct = Number(row.pct_chg)
+          const color = chartVar(pct >= 0 ? '--ff-chart-up' : '--ff-chart-down') || '#888888'
+          lines.push(`涨跌幅：<span style="color:${color}">${(pct >= 0 ? '+' : '') + pct.toFixed(2)}%</span>`)
+        }
+        const vol = fmtBig(row.volume)
+        if (vol) lines.push(`成交量：${vol}`)
+        const amt = fmtBig(row.amount)
+        if (amt) lines.push(`成交额：${amt}`)
+        return lines.join('<br/>')
+      },
+    },
     grid: [
       { left: 56, right: 16, top: 16, height: '62%' },
       { left: 56, right: 16, top: '74%', height: '16%' },
@@ -240,6 +274,7 @@ const option = computed(() => {
     ],
     series: [
       {
+        name: 'K线',
         type: 'candlestick',
         xAxisIndex: 0,
         yAxisIndex: 0,

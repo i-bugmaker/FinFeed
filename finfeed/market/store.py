@@ -19,6 +19,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from finfeed.storage.database import get_db_manager
+from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 
@@ -52,6 +53,21 @@ def ensure_market_tables() -> None:
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_bar_date ON daily_bar(trade_date)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_bar_code ON daily_bar(code)")
+
+        # ---- K 线缓存（仪表盘多周期 K 线本地持久化，规避 push2his 限流）----
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS kline_cache (
+                code TEXT NOT NULL,
+                klt INTEGER NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL, high REAL, low REAL, close REAL,
+                volume INTEGER, amount REAL,
+                pct_chg REAL, amplitude REAL, turnover REAL,
+                fetched_at TEXT NOT NULL,
+                PRIMARY KEY (code, klt, trade_date)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_kline_cache ON kline_cache(code, klt)")
 
         # ---- 聚合表（此前无 DDL，仅在既有库中存在；此处补齐以自洽）----
         c.execute("""
@@ -627,6 +643,101 @@ def get_daily_bar(code: str, start: Optional[str] = None, end: Optional[str] = N
             params,
         )
         return [dict(r) for r in c.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# 写：K 线缓存（仪表盘多周期 K 线本地持久化，规避 push2his 限流）
+# 与 daily_bar 的区别：daily_bar 仅日线（fq_type=1，供盘后回补/回测），
+# kline_cache 按 (code, klt) 存所有周期（101 日/102 周/103 月/104 季/105 年），
+# 每次刷新以同一 fetched_at 标记整批，供 TTL 判定。
+# ---------------------------------------------------------------------------
+def upsert_kline_cache(rows: List[Dict[str, Any]], klt: int) -> int:
+    """rows: {code, trade_date, open, high, low, close, volume, amount,
+              pct_chg, amplitude, turnover}（部分字段可缺省，与 upsert_daily_bar 同风格）"""
+    if not rows:
+        return 0
+    db = get_db_manager()
+    fetched_at = now_bj().strftime("%Y-%m-%d %H:%M:%S")
+    data = [
+        (r["code"], int(klt), r["trade_date"], r.get("open", 0.0), r.get("high", 0.0),
+         r.get("low", 0.0), r.get("close", 0.0), int(r.get("volume", 0) or 0),
+         r.get("amount", 0.0), r.get("pct_chg", 0.0), r.get("amplitude", 0.0),
+         r.get("turnover", 0.0), fetched_at)
+        for r in rows
+    ]
+    with db.get_db() as c:
+        c.executemany(
+            """INSERT INTO kline_cache (code, klt, trade_date, open, high, low, close,
+                   volume, amount, pct_chg, amplitude, turnover, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(code, klt, trade_date) DO UPDATE SET
+                   open=excluded.open, high=excluded.high, low=excluded.low,
+                   close=excluded.close, volume=excluded.volume, amount=excluded.amount,
+                   pct_chg=excluded.pct_chg, amplitude=excluded.amplitude,
+                   turnover=excluded.turnover, fetched_at=excluded.fetched_at
+            """,
+            data,
+        )
+        return len(data)
+
+
+def get_cached_kline(
+    code: str,
+    klt: int,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """读取 K 线缓存；limit 取最近 N 根（仍按 trade_date 升序返回）。"""
+    db = get_db_manager()
+    cond = ["code = ?", "klt = ?"]
+    params: List[Any] = [code, int(klt)]
+    if start:
+        cond.append("trade_date >= ?")
+        params.append(start)
+    if end:
+        cond.append("trade_date <= ?")
+        params.append(end)
+    where = " AND ".join(cond)
+    with db.get_db() as c:
+        if limit:
+            c.execute(
+                f"SELECT * FROM kline_cache WHERE {where} ORDER BY trade_date DESC LIMIT ?",
+                params + [int(limit)],
+            )
+            rows = [dict(r) for r in c.fetchall()]
+            rows.reverse()
+            return rows
+        c.execute(
+            f"SELECT * FROM kline_cache WHERE {where} ORDER BY trade_date",
+            params,
+        )
+        return [dict(r) for r in c.fetchall()]
+
+
+def get_kline_cache_state(code: str, klt: int) -> Optional[Dict[str, Any]]:
+    """返回 {fetched_at, count, first_date, last_date}；无数据返回 None。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT COUNT(*) AS count FROM kline_cache WHERE code = ? AND klt = ?",
+            (code, int(klt)),
+        )
+        count = c.fetchone()["count"]
+        if not count:
+            return None
+        c.execute(
+            "SELECT MIN(trade_date) AS first_date, MAX(trade_date) AS last_date, "
+            "MAX(fetched_at) AS fetched_at FROM kline_cache WHERE code = ? AND klt = ?",
+            (code, int(klt)),
+        )
+        row = c.fetchone()
+        return {
+            "fetched_at": row["fetched_at"],
+            "count": count,
+            "first_date": row["first_date"],
+            "last_date": row["last_date"],
+        }
 
 
 # ---------------------------------------------------------------------------

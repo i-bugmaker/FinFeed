@@ -687,55 +687,117 @@ def _market_action(q: Dict[str, List[str]]):
 
 
 # ---------------------------------------------------------------------------
-# 指数 K 线 / 分时：实时拉取 + 内存 TTL 缓存
-# 仪表盘仅两个指数，内存缓存足够，且规避东财 push2his 限流；
-# 不改动 daily_bar 表结构（该表仅存日线）。
+# 指数 K 线 / 分时
+# 分时（trends）：内存 TTL 缓存（300s），日内瞬态数据不入库。
+# K 线（101 日 / 102 周 / 103 月 / 104 季 / 105 年）：本地 SQLite kline_cache
+#   优先 + TTL 定期刷新。每个 (code, klt) 在 TTL 窗口内至多触发一次东财
+#   push2his 请求，其余请求全部命中本地库，规避 600s 冷却限流。
 # ---------------------------------------------------------------------------
 _KLINE_CACHE: Dict[tuple, tuple] = {}
 _KLINE_CACHE_TTL = 300.0
+# K 线周期 -> 缓存 TTL（秒）：日K 30min / 周K 1h / 月K 3h / 季K 6h / 年K 12h
+_KLINE_TTL = {101: 1800, 102: 3600, 103: 10800, 104: 21600, 105: 43200}
+# K 线周期 -> 单次拉取窗口（根数，与前端「全部」lmt 对齐）
+_KLINE_WINDOW = {101: 1500, 102: 520, 103: 240, 104: 80, 105: 30}
+
+
+def _strip_fetched(rows_list):
+    """去掉内部字段 fetched_at，仅返回前端需要的行情字段。"""
+    return [{k: v for k, v in r.items() if k != "fetched_at"} for r in rows_list]
+
+
+def _ok(rows_list):
+    return {"rows": rows_list or [], "reason": "ok" if rows_list else "empty"}
+
+
+def _last_n(rows_list, limit):
+    """取最近 limit 根（保持升序）；limit 为空则原样返回。"""
+    if not rows_list or not limit:
+        return rows_list or []
+    return rows_list[-int(limit):]
 
 
 async def _get_chart_data(code, chart_type, klt, ndays, lmt, start, end):
     """返回 {rows: [...], reason: 'ok'|'empty'|'rate_limited'|'error', error?: str}。
 
-    仅缓存 reason='ok' 的成功结果；限流/错误不缓存，便于前端稍后自动重试。
+    分时走内存 TTL 缓存；K 线走本地 SQLite kline_cache：
+    - TTL 内新鲜 → 直接读库返回（不触网）；
+    - 过期/无缓存 → 若处于限流冷却则不触网，回退旧缓存；
+    - 否则发一次东财请求（取「全部」窗口）写入缓存后返回。
     """
     from finfeed.market import kline as _mk_kline
     from finfeed.market import store as _mk_store
-    from finfeed.market.client import RateLimited
+    from finfeed.market.client import RateLimited, cooldown_remaining
 
     now = time.time()
-    key = (code, chart_type, klt, ndays, lmt, start, end)
-    cached = _KLINE_CACHE.get(key)
-    if cached and (now - cached[0]) < _KLINE_CACHE_TTL:
-        return cached[1]
 
-    def finish(result):
-        # 仅缓存成功结果；限流/错误不缓存，便于前端稍后重试
+    # ---- 分时：内存 TTL 缓存（与旧行为一致）----
+    if chart_type == "trends":
+        key = (code, chart_type, klt, ndays, lmt, start, end)
+        cached = _KLINE_CACHE.get(key)
+        if cached and (now - cached[0]) < _KLINE_CACHE_TTL:
+            return cached[1]
+        try:
+            result = _ok(await _mk_kline.fetch_trends(code, ndays=ndays))
+        except RateLimited:
+            logger.warning("分时获取被限流：%s", code)
+            return {"rows": [], "reason": "rate_limited"}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("分时获取失败 %s: %s", code, e)
+            return {"rows": [], "reason": "error", "error": str(e)[:200]}
         if result["reason"] == "ok":
             _KLINE_CACHE[key] = (now, result)
         return result
 
-    def ok(rows_list):
-        return {"rows": rows_list or [], "reason": "ok" if rows_list else "empty"}
+    # ---- K 线：本地优先 + TTL 刷新 ----
+    # 日线且有起止区间时优先读 daily_bar（盘后快照已入库的标的）
+    if klt == 101 and start and end:
+        db_rows = _mk_store.get_daily_bar(code, start, end)
+        if db_rows:
+            return _ok(db_rows)
+
+    cached_rows = _mk_store.get_cached_kline(code, klt, start, end)
+    if cached_rows:
+        newest_fetched = max(r["fetched_at"] for r in cached_rows)
+        try:
+            fetched_dt = datetime.strptime(newest_fetched, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            fetched_dt = None
+        ttl = _KLINE_TTL.get(klt, 1800)
+        if fetched_dt is not None and (now_bj() - fetched_dt).total_seconds() < ttl:
+            return _ok(_strip_fetched(_last_n(cached_rows, lmt)))
+
+    # 过期 / 无缓存：限流冷却期内不触网，回退旧缓存（旧数据优于空/限流提示）
+    if cooldown_remaining("em_push2his") > 0:
+        if cached_rows:
+            return _ok(_strip_fetched(_last_n(cached_rows, lmt)))
+        return {"rows": [], "reason": "rate_limited"}
 
     try:
-        if chart_type == "trends":
-            return finish(ok(await _mk_kline.fetch_trends(code, ndays=ndays)))
-        # 日线且有起止区间时优先读本地库（盘后快照已入库的标的）
-        if klt == 101 and start and end:
-            db_rows = _mk_store.get_daily_bar(code, start, end)
-            if db_rows:
-                return finish(ok(db_rows))
-        return finish(ok(await _mk_kline.fetch_daily_bar(
-            code, end_date=end, limit=lmt, beg=start, klt=klt
-        )))
+        first_date = cached_rows[0]["trade_date"] if cached_rows else None
+        if start and first_date and start < first_date:
+            # 自定义历史区间早于缓存最早日期：区间模式补拉并合并进缓存
+            bars = await _mk_kline.fetch_daily_bar(
+                code, end_date=end or "20500101", beg=start, klt=klt
+            )
+        else:
+            # 常规刷新：一次取「全部」窗口，覆盖所有快捷区间
+            bars = await _mk_kline.fetch_daily_bar(
+                code, end_date=end, limit=_KLINE_WINDOW.get(klt, 1500), klt=klt
+            )
+        if bars:
+            _mk_store.upsert_kline_cache([dict(b, code=code) for b in bars], klt)
+        rows = _mk_store.get_cached_kline(code, klt, start, end)
+        return _ok(_strip_fetched(_last_n(rows, lmt)))
     except RateLimited:
-        logger.warning("K线/分时获取被限流：%s", code)
+        logger.warning("K线获取被限流：%s", code)
+        if cached_rows:
+            return _ok(_strip_fetched(_last_n(cached_rows, lmt)))
         return {"rows": [], "reason": "rate_limited"}
     except Exception as e:  # noqa: BLE001
-        logger.warning("K线/分时获取失败 %s: %s", code, e)
-        return {"rows": [], "reason": "error", "error": str(e)[:200]}
+        logger.warning("K线获取失败 %s: %s", code, e)
+        rows = _last_n(cached_rows, lmt) if cached_rows else []
+        return {"rows": _strip_fetched(rows), "reason": "error", "error": str(e)[:200]}
 
 
 @app.api_route("/api/market/{rest:path}", methods=["GET", "POST"])
