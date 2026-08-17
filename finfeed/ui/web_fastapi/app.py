@@ -17,6 +17,7 @@ import csv
 import io
 import json
 import logging
+import os
 import queue as _queue
 import threading as _threading
 import time
@@ -279,6 +280,45 @@ def api_stats():
         logger.error(f"获取数据源状态失败: {e}")
     stats["source_health"] = source_list
     return stats
+
+
+# 离线告警阈值：连续 N 秒无任何数据源成功抓取，即判定系统处于离线/卡死状态。
+# 可通过环境变量 FINFEED_OFFLINE_ALERT_SEC 覆盖（默认 15 分钟）。
+OFFLINE_ALERT_SECONDS = int(os.environ.get("FINFEED_OFFLINE_ALERT_SEC", "900"))
+
+
+@app.get("/api/monitor/status")
+def api_monitor_status():
+    """轻量全局运行态：最近一次成功抓取时间 + 离线告警判定。
+
+    前端状态栏高频轮询使用，独立于 /api/stats 的重查询。
+    last_success_ts 取自各源健康度记录中的最大「最近成功时间」，
+    进程崩溃/卡死时该值冻结，offline_seconds 持续增大并触发告警。
+    web-only（监控器未运行）模式下所有源 last_success_ts 为 0，
+    此时 offline_seconds=-1 且不会误报。
+    """
+    health_monitor = get_health_monitor()
+    all_health = health_monitor.get_all_health()
+    now_ts = int(time.time())
+    last_success_ts = 0
+    ok_count = 0
+    for h in all_health.values():
+        if h.last_success_ts > last_success_ts:
+            last_success_ts = h.last_success_ts
+        if h.total_requests > 0 and h.consecutive_failures == 0 and not h.is_circuit_open:
+            ok_count += 1
+    offline_seconds = (now_ts - last_success_ts) if last_success_ts > 0 else -1
+    offline_alert = offline_seconds >= OFFLINE_ALERT_SECONDS
+    return {
+        "server_ts": now_ts,
+        "last_success_ts": last_success_ts,
+        "last_success_str": bj_str_from_ts(last_success_ts) if last_success_ts > 0 else "",
+        "offline_seconds": offline_seconds,
+        "offline_alert": offline_alert,
+        "alert_threshold": OFFLINE_ALERT_SECONDS,
+        "source_total": len(all_health),
+        "source_ok": ok_count,
+    }
 
 
 # ----------------------------------------------------------------------

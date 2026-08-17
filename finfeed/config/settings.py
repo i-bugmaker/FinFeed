@@ -265,10 +265,15 @@ CATCH_UP_CYCLE_INTERVAL: int = 3
 OFFLINE_GAP_THRESHOLD: int = 60
 CATCH_UP_MAX_DAYS: int = 7
 
-CATCH_UP_CONCURRENCY: int = 2
+# 补抓并发：独立于正常运行时的并发，避免历史回补拖慢实时抓取。
+# 上调至 10，配合「每轮全量覆盖」可在一轮内回补全部 53 个源。
+CATCH_UP_CONCURRENCY: int = 10
 CATCH_UP_BATCH_SIZE: int = 50
 CATCH_UP_MIN_INTERVAL: int = 3
-CATCH_UP_SOURCES_PER_CYCLE: int = 3
+# 每轮补抓覆盖的源数量。
+# 0 = 每轮覆盖全部启用源（推荐，确保长离线时不漏源）。
+# 若改为 >0，monitor.run_catch_up 会自动上调轮次以保证覆盖全部源至少一次。
+CATCH_UP_SOURCES_PER_CYCLE: int = 0
 
 # ============================================================
 # 断路器配置

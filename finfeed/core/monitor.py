@@ -16,6 +16,7 @@ from typing import Callable, Optional
 
 
 from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE
+from finfeed.config.sources import get_enabled_sources
 from .fetcher import get_fetcher, fetch_all_news
 from .pipeline import process_and_store
 from finfeed.storage.database import (
@@ -120,6 +121,20 @@ class NewsMonitor:
         if max_cycles <= 0:
             logger.info(f"离线时长 {offline_seconds}s，无需补抓")
             return 0
+
+        # 全源覆盖保护：切片模式下（CATCH_UP_SOURCES_PER_CYCLE > 0）需保证
+        # 轮次足够覆盖全部启用源至少一次，避免长离线时只回补了部分源。
+        # CATCH_UP_SOURCES_PER_CYCLE == 0 时每轮全量，一轮即覆盖，无需上调。
+        from finfeed.config.settings import CATCH_UP_SOURCES_PER_CYCLE
+        if CATCH_UP_SOURCES_PER_CYCLE > 0:
+            total = len(get_enabled_sources())
+            needed = (total + CATCH_UP_SOURCES_PER_CYCLE - 1) // CATCH_UP_SOURCES_PER_CYCLE
+            if needed > max_cycles:
+                logger.info(
+                    f"补抓轮次上调至 {needed}（保证覆盖全部 {total} 个源，"
+                    f"每轮 {CATCH_UP_SOURCES_PER_CYCLE} 个）"
+                )
+                max_cycles = needed
 
         logger.info(f"开始离线补抓：离线 {offline_seconds/3600:.1f} 小时，计划 {max_cycles} 轮")
         total_catchup = 0

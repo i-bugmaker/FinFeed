@@ -259,8 +259,15 @@ class BaseForumParser(BaseParser):
         pass
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
-        """离线补抓 — 默认不支持，子类可覆写"""
-        return []
+        """离线补抓 — 论坛类 UGC 源。
+
+        论坛数据以实时快照/讨论流为主，分页回补意义有限；采用单页回补：
+        按源配置请求地址并调用 parse（含浏览器兜底），由 parse 内部按
+        last_ts 过滤，仅保留离线期间新增的帖子/热榜。
+        """
+        return await self._catch_up_single_request(
+            http_client, self.source.url, self.source.params
+        )
 
 
 class BaseHtmlForumParser(BaseForumParser):

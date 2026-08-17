@@ -33,6 +33,8 @@ httpLlm.interceptors.response.use(
 export const api = {
   health: () => http.get('/health').then((r) => r.data),
   stats: () => http.get('/stats').then((r) => r.data),
+  // 轻量全局运行态：最近成功抓取时间 + 离线告警，供状态栏高频轮询
+  monitorStatus: () => http.get('/monitor/status').then((r) => r.data),
   // 原「新闻流」(news) 已拆分为快讯(flash)与财经文章(articles)两个独立模块
   flash: (params) => http.get('/flash', { params }).then((r) => r.data),
   articles: (params) => http.get('/articles', { params }).then((r) => r.data),
