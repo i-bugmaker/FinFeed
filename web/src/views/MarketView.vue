@@ -12,6 +12,7 @@ import AppSwitch from '../ui/AppSwitch.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 import ThsHotList from '../components/ThsHotList.vue'
+import ThsLimitUp from '../components/ThsLimitUp.vue'
 
 const tabs = [
   { value: 'overview', label: '总览' },
@@ -26,6 +27,7 @@ const tabs = [
   { value: 'ipo', label: '新股' },
   { value: 'sectors', label: '板块' },
   { value: 'hotrank', label: '热榜' },
+  { value: 'thslimitup', label: '涨停聚焦' },
   { value: 'search', label: '股票搜索' },
 ]
 const active = ref('overview')
@@ -146,8 +148,8 @@ async function toggleAuto(v) {
 }
 
 async function load() {
-  // 热榜由 ThsHotList 组件自行拉取，避免与通用行情快照流程冲突
-  if (active.value === 'hotrank') return
+  // 热榜 / 涨停聚焦由独立组件自行拉取，避免与通用行情快照流程冲突
+  if (active.value === 'hotrank' || active.value === 'thslimitup') return
   loading.value = true
   err.value = ''
   rows.value = []
@@ -426,6 +428,9 @@ onBeforeUnmount(() => {
 
         <!-- 同花顺热榜：独立组件，自管数据与布局 -->
         <ThsHotList v-if="active === 'hotrank'" />
+
+        <!-- 同花顺涨停聚焦：四模块独立组件，自管数据与布局 -->
+        <ThsLimitUp v-if="active === 'thslimitup'" />
 
         <template v-else>
           <div v-if="summary" class="ff-market-view__summary">
