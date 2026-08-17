@@ -21,7 +21,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from . import board, client, kline, quote, reference, snapshot, store, ths_hotrank, universe
+from . import board, client, kline, quote, reference, snapshot, store, ths_hotrank, ths_limitup, universe
 from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import now_bj
 
@@ -94,6 +94,11 @@ async def run_daily_snapshot(trade_date: Optional[str] = None,
 async def collect_hotrank(trade_date: Optional[str] = None) -> Dict[str, Any]:
     """同花顺热榜自动采集：落库为某交易日的多子榜快照。"""
     return await ths_hotrank.collect_all(trade_date)
+
+
+async def collect_limitup_focus(trade_date: Optional[str] = None) -> Dict[str, Any]:
+    """同花顺涨停聚焦自动采集：涨停强度 / 连板天梯 / 最强风口 / 市场情绪 四模块落库。"""
+    return await ths_limitup.collect_all(trade_date)
 
 
 async def collect_bars_for_date(trade_date: Optional[str] = None,
@@ -170,6 +175,10 @@ def collect_bars_sync(trade_date: Optional[str] = None,
 
 def collect_hotrank_sync(trade_date: Optional[str] = None) -> Dict[str, Any]:
     return asyncio.run(collect_hotrank(trade_date))
+
+
+def collect_limitup_focus_sync(trade_date: Optional[str] = None) -> Dict[str, Any]:
+    return asyncio.run(collect_limitup_focus(trade_date))
 
 
 def backfill_bars_sync(beg: str, end: Optional[str] = None,

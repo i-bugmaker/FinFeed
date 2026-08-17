@@ -285,11 +285,103 @@ def ensure_market_tables() -> None:
                 concept_tags TEXT DEFAULT '[]',
                 topic TEXT DEFAULT '',
                 collected_at TEXT DEFAULT '',
+                category TEXT DEFAULT 'stock',
+                extra_json TEXT DEFAULT '[]',
                 PRIMARY KEY (trade_date, list_type, period, code)
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_thr_date ON ths_hotrank(trade_date)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_thr_lp ON ths_hotrank(list_type, period)")
+        # 兼容已存在的库：补充新列（幂等，必须在建索引前执行）
+        _add_column(c, "ths_hotrank", "category", "TEXT DEFAULT 'stock'")
+        _add_column(c, "ths_hotrank", "extra_json", "TEXT DEFAULT '[]'")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_thr_cat ON ths_hotrank(category)")
+
+        # ---- 同花顺「涨停聚焦」四模块快照（按交易日自动采集，支撑历史回看）----
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ths_limitup_pool (
+                trade_date TEXT,
+                pool_type TEXT,
+                rank INTEGER DEFAULT 0,
+                code TEXT,
+                name TEXT DEFAULT '',
+                price REAL DEFAULT 0.0,
+                change_pct REAL DEFAULT 0.0,
+                amplitude REAL DEFAULT 0.0,
+                reason TEXT DEFAULT '',
+                board TEXT DEFAULT '',
+                continue_day_cnt INTEGER DEFAULT 0,
+                limit_up_time TEXT DEFAULT '',
+                main_net_amount REAL DEFAULT 0.0,
+                effective_circulation REAL DEFAULT 0.0,
+                turnover_ratio REAL DEFAULT 0.0,
+                is_st INTEGER DEFAULT 0,
+                is_new INTEGER DEFAULT 0,
+                market_code TEXT DEFAULT '',
+                detail_json TEXT DEFAULT '{}',
+                PRIMARY KEY (trade_date, pool_type, code)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tlp_date ON ths_limitup_pool(trade_date)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tlp_dp ON ths_limitup_pool(trade_date, pool_type)")
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ths_limitup_ladder (
+                trade_date TEXT,
+                height INTEGER,
+                number INTEGER DEFAULT 0,
+                code TEXT,
+                name TEXT DEFAULT '',
+                market_id TEXT DEFAULT '',
+                continue_num INTEGER DEFAULT 0,
+                PRIMARY KEY (trade_date, height, code)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tll_date ON ths_limitup_ladder(trade_date)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tll_dh ON ths_limitup_ladder(trade_date, height)")
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ths_limitup_wind (
+                trade_date TEXT,
+                tab_name TEXT,
+                average_change REAL DEFAULT 0.0,
+                stock_num INTEGER DEFAULT 0,
+                stock_code TEXT,
+                stock_name TEXT DEFAULT '',
+                reason TEXT DEFAULT '',
+                price REAL DEFAULT 0.0,
+                change REAL DEFAULT 0.0,
+                five_rise REAL DEFAULT 0.0,
+                tags TEXT DEFAULT '',
+                rank INTEGER DEFAULT 0,
+                PRIMARY KEY (trade_date, tab_name, stock_code)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tlw_date ON ths_limitup_wind(trade_date)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tlw_tab ON ths_limitup_wind(trade_date, tab_name)")
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ths_limitup_sentiment (
+                trade_date TEXT PRIMARY KEY,
+                turnover_pre REAL DEFAULT 0.0,
+                turnover_now REAL DEFAULT 0.0,
+                turnover_flag TEXT DEFAULT '',
+                north_flow TEXT DEFAULT '',
+                limit_up_pre INTEGER DEFAULT 0,
+                limit_up_now INTEGER DEFAULT 0,
+                limit_up_flag TEXT DEFAULT '',
+                rise INTEGER DEFAULT 0,
+                fall INTEGER DEFAULT 0,
+                deuce INTEGER DEFAULT 0,
+                rise_limit INTEGER DEFAULT 0,
+                rise_down INTEGER DEFAULT 0,
+                hgt_market_status TEXT DEFAULT '',
+                config_start_date TEXT DEFAULT '',
+                trade_status TEXT DEFAULT '',
+                trade_status_ts TEXT DEFAULT '',
+                collected_at TEXT DEFAULT ''
+            )
+        """)
 
 
 def _add_column(c, table: str, col: str, definition: str) -> None:
@@ -906,34 +998,36 @@ def get_ipo_calendar(start: Optional[str] = None, end: Optional[str] = None,
 def upsert_ths_hotrank(rows: List[Dict[str, Any]]) -> int:
     """批量写入热榜快照（幂等 upsert）。
 
-    rows: {trade_date, list_type, period, rank, code, name, market, heat,
-           change_pct, rank_chg, popularity_tag, concept_tags(JSON 字符串),
-           topic, collected_at}
+    rows: {trade_date, list_type, period, category, rank, code, name, market,
+           heat, change_pct, rank_chg, popularity_tag, concept_tags(JSON 字符串),
+           topic, extra_json(JSON 字符串), collected_at}
     """
     if not rows:
         return 0
     db = get_db_manager()
     data = [
-        (r["trade_date"], r["list_type"], r["period"], int(r.get("rank", 0) or 0),
+        (r["trade_date"], r["list_type"], r["period"], r.get("category", "stock"),
+         int(r.get("rank", 0) or 0),
          r["code"], r.get("name", "") or "", r.get("market", "") or "",
          float(r.get("heat", 0) or 0), float(r.get("change_pct", 0) or 0),
          int(r.get("rank_chg", 0) or 0), (r.get("popularity_tag") or "")[:64],
          r.get("concept_tags", "[]"), (r.get("topic") or "")[:256],
-         r.get("collected_at", ""))
+         r.get("extra_json", "[]"), r.get("collected_at", ""))
         for r in rows
     ]
     with db.get_db() as c:
         c.executemany(
-            """INSERT INTO ths_hotrank (trade_date, list_type, period, rank, code,
-                   name, market, heat, change_pct, rank_chg, popularity_tag,
-                   concept_tags, topic, collected_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO ths_hotrank (trade_date, list_type, period, category,
+                   rank, code, name, market, heat, change_pct, rank_chg,
+                   popularity_tag, concept_tags, topic, extra_json, collected_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(trade_date, list_type, period, code) DO UPDATE SET
-                   rank=excluded.rank, name=excluded.name, market=excluded.market,
+                   category=excluded.category, rank=excluded.rank,
+                   name=excluded.name, market=excluded.market,
                    heat=excluded.heat, change_pct=excluded.change_pct,
                    rank_chg=excluded.rank_chg, popularity_tag=excluded.popularity_tag,
                    concept_tags=excluded.concept_tags, topic=excluded.topic,
-                   collected_at=excluded.collected_at
+                   extra_json=excluded.extra_json, collected_at=excluded.collected_at
             """,
             data,
         )
@@ -941,28 +1035,46 @@ def upsert_ths_hotrank(rows: List[Dict[str, Any]]) -> int:
 
 
 def get_ths_hotrank(trade_date: str, list_type: str, period: str,
-                    limit: int = 200) -> List[Dict[str, Any]]:
-    """读取指定交易日 + 子榜单 + 时间维度的热榜快照（按排名升序）。"""
+                    limit: int = 200, category: Optional[str] = None) -> List[Dict[str, Any]]:
+    """读取指定交易日 + 子榜单 + 时间维度的热榜快照（按排名升序）。
+
+    category 为 None 时不限类目（向后兼容）；传入时按类目过滤。
+    """
     db = get_db_manager()
     with db.get_db() as c:
-        c.execute(
-            "SELECT * FROM ths_hotrank WHERE trade_date = ? AND list_type = ? "
-            "AND period = ? ORDER BY rank ASC LIMIT ?",
-            (trade_date, list_type, period, int(limit)),
-        )
+        if category:
+            c.execute(
+                "SELECT * FROM ths_hotrank WHERE trade_date = ? AND list_type = ? "
+                "AND period = ? AND category = ? ORDER BY rank ASC LIMIT ?",
+                (trade_date, list_type, period, category, int(limit)),
+            )
+        else:
+            c.execute(
+                "SELECT * FROM ths_hotrank WHERE trade_date = ? AND list_type = ? "
+                "AND period = ? ORDER BY rank ASC LIMIT ?",
+                (trade_date, list_type, period, int(limit)),
+            )
         return [dict(r) for r in c.fetchall()]
 
 
-def get_latest_ths_hotrank_date(list_type: str, period: str) -> Optional[str]:
+def get_latest_ths_hotrank_date(list_type: str, period: str,
+                                category: Optional[str] = None) -> Optional[str]:
     """返回某子榜单最近一次有采集数据的交易日（用于实时获取失败时的回退）。"""
     db = get_db_manager()
     try:
         with db.get_db() as c:
-            c.execute(
-                "SELECT MAX(trade_date) AS d FROM ths_hotrank "
-                "WHERE list_type = ? AND period = ?",
-                (list_type, period),
-            )
+            if category:
+                c.execute(
+                    "SELECT MAX(trade_date) AS d FROM ths_hotrank "
+                    "WHERE list_type = ? AND period = ? AND category = ?",
+                    (list_type, period, category),
+                )
+            else:
+                c.execute(
+                    "SELECT MAX(trade_date) AS d FROM ths_hotrank "
+                    "WHERE list_type = ? AND period = ?",
+                    (list_type, period),
+                )
             row = c.fetchone()
             return row["d"] if row and row["d"] else None
     except Exception:  # noqa: BLE001
@@ -976,6 +1088,244 @@ def get_ths_hotrank_dates() -> Dict[str, Any]:
         try:
             c.execute(
                 "SELECT DISTINCT trade_date FROM ths_hotrank ORDER BY trade_date DESC"
+            )
+            dates = [r["trade_date"] for r in c.fetchall()]
+        except Exception:  # noqa: BLE001
+            dates = []
+        latest = dates[0] if dates else None
+        return {"dates": dates, "latest": latest, "count": len(dates)}
+
+
+# ---------------------------------------------------------------------------
+# 同花顺「涨停聚焦」四模块快照（按交易日自动采集，供历史日期回看）
+# ---------------------------------------------------------------------------
+def upsert_ths_limitup_pool(rows: List[Dict[str, Any]]) -> int:
+    """批量写入涨停 / 炸板 / 跌停池个股（幂等 upsert）。
+
+    rows: {trade_date, pool_type, rank, code, name, price, change_pct, amplitude,
+           reason, board, continue_day_cnt, limit_up_time, main_net_amount,
+           effective_circulation, turnover_ratio, is_st, is_new, market_code, detail_json}
+    """
+    if not rows:
+        return 0
+    db = get_db_manager()
+    data = [
+        (r["trade_date"], r.get("pool_type", "up"),
+         int(r.get("rank", 0) or 0), r["code"], (r.get("name") or "")[:32],
+         float(r.get("price", 0) or 0), float(r.get("change_pct", 0) or 0),
+         float(r.get("amplitude", 0) or 0), (r.get("reason") or "")[:256],
+         (r.get("board") or "")[:16], int(r.get("continue_day_cnt", 0) or 0),
+         (r.get("limit_up_time") or "")[:16], float(r.get("main_net_amount", 0) or 0),
+         float(r.get("effective_circulation", 0) or 0), float(r.get("turnover_ratio", 0) or 0),
+         int(r.get("is_st", 0) or 0), int(r.get("is_new", 0) or 0),
+         (r.get("market_code") or "")[:8], r.get("detail_json", "{}"))
+        for r in rows
+    ]
+    with db.get_db() as c:
+        c.executemany(
+            """INSERT INTO ths_limitup_pool (trade_date, pool_type, rank, code, name,
+                   price, change_pct, amplitude, reason, board, continue_day_cnt,
+                   limit_up_time, main_net_amount, effective_circulation, turnover_ratio,
+                   is_st, is_new, market_code, detail_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date, pool_type, code) DO UPDATE SET
+                   rank=excluded.rank, name=excluded.name, price=excluded.price,
+                   change_pct=excluded.change_pct, amplitude=excluded.amplitude,
+                   reason=excluded.reason, board=excluded.board,
+                   continue_day_cnt=excluded.continue_day_cnt,
+                   limit_up_time=excluded.limit_up_time,
+                   main_net_amount=excluded.main_net_amount,
+                   effective_circulation=excluded.effective_circulation,
+                   turnover_ratio=excluded.turnover_ratio, is_st=excluded.is_st,
+                   is_new=excluded.is_new, market_code=excluded.market_code,
+                   detail_json=excluded.detail_json
+            """,
+            data,
+        )
+        return len(data)
+
+
+def upsert_ths_limitup_ladder(rows: List[Dict[str, Any]]) -> int:
+    """批量写入连板天梯（幂等 upsert）。
+
+    rows: {trade_date, height, number, code, name, market_id, continue_num}
+    """
+    if not rows:
+        return 0
+    db = get_db_manager()
+    data = [
+        (r["trade_date"], int(r.get("height", 0) or 0), int(r.get("number", 0) or 0),
+         r["code"], (r.get("name") or "")[:32], (r.get("market_id") or "")[:8],
+         int(r.get("continue_num", 0) or 0))
+        for r in rows
+    ]
+    with db.get_db() as c:
+        c.executemany(
+            """INSERT INTO ths_limitup_ladder (trade_date, height, number, code,
+                   name, market_id, continue_num)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date, height, code) DO UPDATE SET
+                   number=excluded.number, name=excluded.name,
+                   market_id=excluded.market_id, continue_num=excluded.continue_num
+            """,
+            data,
+        )
+        return len(data)
+
+
+def upsert_ths_limitup_wind(rows: List[Dict[str, Any]]) -> int:
+    """批量写入风向标股 / 最强风口（幂等 upsert）。
+
+    rows: {trade_date, tab_name, average_change, stock_num, stock_code, stock_name,
+           reason, price, change, five_rise, tags, rank}
+    """
+    if not rows:
+        return 0
+    db = get_db_manager()
+    data = [
+        (r["trade_date"], (r.get("tab_name") or "")[:32],
+         float(r.get("average_change", 0) or 0), int(r.get("stock_num", 0) or 0),
+         r["stock_code"], (r.get("stock_name") or "")[:32],
+         (r.get("reason") or "")[:256], float(r.get("price", 0) or 0),
+         float(r.get("change", 0) or 0), float(r.get("five_rise", 0) or 0),
+         (r.get("tags") or "")[:256], int(r.get("rank", 0) or 0))
+        for r in rows
+    ]
+    with db.get_db() as c:
+        c.executemany(
+            """INSERT INTO ths_limitup_wind (trade_date, tab_name, average_change,
+                   stock_num, stock_code, stock_name, reason, price, change,
+                   five_rise, tags, rank)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date, tab_name, stock_code) DO UPDATE SET
+                   average_change=excluded.average_change, stock_num=excluded.stock_num,
+                   stock_name=excluded.stock_name, reason=excluded.reason,
+                   price=excluded.price, change=excluded.change, five_rise=excluded.five_rise,
+                   tags=excluded.tags, rank=excluded.rank
+            """,
+            data,
+        )
+        return len(data)
+
+
+def upsert_ths_limitup_sentiment(row: Dict[str, Any]) -> int:
+    """写入某交易日市场情绪总览（幂等 upsert，单日一行）。"""
+    if not row:
+        return 0
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            """INSERT INTO ths_limitup_sentiment (trade_date, turnover_pre, turnover_now,
+                   turnover_flag, north_flow, limit_up_pre, limit_up_now, limit_up_flag,
+                   rise, fall, deuce, rise_limit, rise_down, hgt_market_status,
+                   config_start_date, trade_status, trade_status_ts, collected_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date) DO UPDATE SET
+                   turnover_pre=excluded.turnover_pre, turnover_now=excluded.turnover_now,
+                   turnover_flag=excluded.turnover_flag, north_flow=excluded.north_flow,
+                   limit_up_pre=excluded.limit_up_pre, limit_up_now=excluded.limit_up_now,
+                   limit_up_flag=excluded.limit_up_flag, rise=excluded.rise,
+                   fall=excluded.fall, deuce=excluded.deuce, rise_limit=excluded.rise_limit,
+                   rise_down=excluded.rise_down, hgt_market_status=excluded.hgt_market_status,
+                   config_start_date=excluded.config_start_date,
+                   trade_status=excluded.trade_status, trade_status_ts=excluded.trade_status_ts,
+                   collected_at=excluded.collected_at
+            """,
+            (row["trade_date"], float(row.get("turnover_pre", 0) or 0),
+             float(row.get("turnover_now", 0) or 0), (row.get("turnover_flag") or "")[:8],
+             (row.get("north_flow") or ""), int(row.get("limit_up_pre", 0) or 0),
+             int(row.get("limit_up_now", 0) or 0), (row.get("limit_up_flag") or "")[:8],
+             int(row.get("rise", 0) or 0), int(row.get("fall", 0) or 0),
+             int(row.get("deuce", 0) or 0), int(row.get("rise_limit", 0) or 0),
+             int(row.get("rise_down", 0) or 0), (row.get("hgt_market_status") or "")[:32],
+             (row.get("config_start_date") or "")[:16], (row.get("trade_status") or "")[:16],
+             (row.get("trade_status_ts") or "")[:32], (row.get("collected_at") or "")),
+        )
+        return 1
+
+
+def get_ths_limitup_pool(trade_date: str, pool_type: str = "up",
+                         limit: int = 500) -> List[Dict[str, Any]]:
+    """读取某交易日指定池（up/open/lower）个股列表（按排名升序）。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT * FROM ths_limitup_pool WHERE trade_date = ? AND pool_type = ? "
+            "ORDER BY rank ASC LIMIT ?",
+            (trade_date, pool_type, int(limit)),
+        )
+        return [dict(r) for r in c.fetchall()]
+
+
+def get_ths_limitup_ladder(trade_date: str) -> List[Dict[str, Any]]:
+    """读取某交易日连板天梯（按高度降序）。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT * FROM ths_limitup_ladder WHERE trade_date = ? "
+            "ORDER BY height DESC, code ASC",
+            (trade_date,),
+        )
+        return [dict(r) for r in c.fetchall()]
+
+
+def get_ths_limitup_wind(trade_date: str,
+                         tab_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    """读取某交易日风向标股 / 最强风口（按类目 + 排名升序）。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        if tab_name:
+            c.execute(
+                "SELECT * FROM ths_limitup_wind WHERE trade_date = ? AND tab_name = ? "
+                "ORDER BY rank ASC",
+                (trade_date, tab_name),
+            )
+        else:
+            c.execute(
+                "SELECT * FROM ths_limitup_wind WHERE trade_date = ? "
+                "ORDER BY tab_name, rank ASC",
+                (trade_date,),
+            )
+        return [dict(r) for r in c.fetchall()]
+
+
+def get_ths_limitup_sentiment(trade_date: str) -> Optional[Dict[str, Any]]:
+    """读取某交易日市场情绪总览（单行）。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT * FROM ths_limitup_sentiment WHERE trade_date = ?",
+            (trade_date,),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def get_latest_ths_limitup_date() -> Optional[str]:
+    """返回四表并集里最近一次有采集数据的交易日（实时失败时的回退锚点）。"""
+    db = get_db_manager()
+    try:
+        with db.get_db() as c:
+            c.execute(
+                "SELECT MAX(trade_date) AS d FROM ("
+                " SELECT MAX(trade_date) AS trade_date FROM ths_limitup_pool UNION ALL"
+                " SELECT MAX(trade_date) FROM ths_limitup_ladder UNION ALL"
+                " SELECT MAX(trade_date) FROM ths_limitup_wind UNION ALL"
+                " SELECT MAX(trade_date) FROM ths_limitup_sentiment)"
+            )
+            row = c.fetchone()
+            return row["d"] if row and row["d"] else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def get_ths_limitup_dates() -> Dict[str, Any]:
+    """返回所有已采集涨停聚焦的交易日列表（倒序）与最新日期。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        try:
+            c.execute(
+                "SELECT DISTINCT trade_date FROM ths_limitup_pool ORDER BY trade_date DESC"
             )
             dates = [r["trade_date"] for r in c.fetchall()]
         except Exception:  # noqa: BLE001

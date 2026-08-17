@@ -42,6 +42,21 @@ const SUB_LISTS = {
   value: { title: '价值投资派', periods: ['day'] },
   trend: { title: '趋势投资派', periods: ['day'] },
 }
+// 板块（plate）子榜单（与后端 ths_hotrank.PLATE_TYPES 对齐）
+const PLATE_SUB_LISTS = {
+  concept: { title: '概念', periods: [] },
+  industry: { title: '行业', periods: [] },
+}
+// 其余类目子榜（与后端 ths_hotrank.CAT_SUB_TYPES 对齐）
+const CAT_SUB_TYPES = {
+  etf:    { day: { title: 'ETF热门', periods: ['day', 'hour'] } },
+  hot:    { day: { title: '热门话题', periods: ['day', 'hour'] } },
+  bond:   { day: { title: '可转债', periods: ['day', 'hour'] } },
+  future: { day: { title: '期货', periods: ['day', 'hour'] } },
+  hkus:   { hk: { title: '港股', periods: ['day'] }, us: { title: '美股', periods: ['day'] } },
+  fund:   { day: { title: '人气榜', periods: ['day'] } },
+  insurance: {},
+}
 
 const category = ref('stock')
 const subList = ref('normal')
@@ -56,15 +71,46 @@ const availableDates = ref([])
 const latestCollected = ref('')
 const noDataForDate = ref('')
 
-const subTabs = computed(() =>
-  Object.entries(SUB_LISTS).map(([value, m]) => ({ value, label: m.title })),
+// 当前类目可用的子榜单集合（统一映射 stock/plate/其余类目）
+const allSubs = computed(() => {
+  const c = category.value
+  if (c === 'stock') return SUB_LISTS
+  if (c === 'plate') return PLATE_SUB_LISTS
+  return CAT_SUB_TYPES[c] || {}
+})
+const activeSubTabs = computed(() =>
+  Object.entries(allSubs.value).map(([value, m]) => ({ value, label: m.title })),
 )
+const currentSub = computed(() => allSubs.value[subList.value] || {})
+// 仅具备时间维度的类目显示 hour/day 切换
+const showPeriod = computed(() => (currentSub.value?.periods?.length || 0) > 0)
 const periodOptions = computed(() =>
-  (SUB_LISTS[subList.value]?.periods || ['day']).map((p) => ({
+  (currentSub.value?.periods || ['day']).map((p) => ({
     value: p,
     label: p === 'hour' ? '1小时' : '24小时',
   })),
 )
+// 渲染模式：stock(个股/基金型) / topic(话题)
+const renderMode = computed(() => {
+  if (category.value === 'hot') return 'topic'
+  return 'stock'
+})
+// 东方财富替代源模式：美股（港美-美股）/ 保险 由东方财富实时行情提供，非同花顺原榜
+const eastmoneyMode = computed(
+  () => category.value === 'insurance' || (category.value === 'hkus' && subList.value === 'us'),
+)
+// 数据来源标识（动态）
+const providerLabel = computed(() =>
+  eastmoneyMode.value ? '数据来源：东方财富（实时行情）' : '数据来源：同花顺',
+)
+// 东方财富替代源无历史快照，隐藏日期选择器
+const showDatePicker = computed(() => !eastmoneyMode.value)
+// 个股列标题：保险/美股时为「保险股」/「美股」
+const stockColLabel = computed(() => {
+  if (category.value === 'insurance') return '保险股'
+  if (category.value === 'hkus' && subList.value === 'us') return '美股'
+  return category.value === 'fund' ? '基金' : '股票'
+})
 const updatedText = computed(() => {
   const ts = data.value?.updated_at
   if (!ts) return ''
@@ -85,6 +131,11 @@ function fmtHeat(v) {
 function fmtChg(v) {
   if (v == null) return '—'
   return (v > 0 ? '+' : '') + v.toFixed(2) + '%'
+}
+function fmtFund(v) {
+  if (v == null) return ''
+  const yi = v / 1e8
+  return (yi > 0 ? '+' : '') + yi.toFixed(2) + '亿'
 }
 function chgClass(v) {
   if (v == null) return 'is-flat'
@@ -121,14 +172,17 @@ const sourceLabel = computed(() => {
 })
 
 async function load() {
-  if (category.value !== 'stock') return
   loading.value = true
   err.value = ''
   unsupported.value = false
   noDataForDate.value = ''
   data.value = null
   try {
-    const params = { list: subList.value, period: period.value }
+    const params = {
+      category: category.value,
+      list: subList.value,
+      period: period.value,
+    }
     // 选择历史日期时按日期只读快照；留空则为实时/当日
     if (selectedDate.value) params.date = selectedDate.value
     const r = await api.market('hotrank', params)
@@ -161,13 +215,16 @@ async function loadDates() {
 }
 
 watch(subList, (v) => {
-  const periods = SUB_LISTS[v]?.periods || ['day']
-  if (!periods.includes(period.value)) period.value = periods[0]
+  const periods = currentSub.value?.periods || ['day']
+  if (!periods.includes(period.value)) period.value = periods[0] || 'day'
   load()
 })
 watch(period, load)
 watch(category, (v) => {
-  if (v === 'stock') load()
+  // 切换类目时重置到该类的第一个子榜单；若子榜未变则手动加载
+  const first = Object.keys(allSubs.value)[0] || 'day'
+  if (subList.value !== first) subList.value = first
+  else load()
 })
 watch(selectedDate, load)
 
@@ -184,7 +241,7 @@ onMounted(async () => {
         <AppIcon name="flame" size="lg" />
         <span>同花顺热榜</span>
       </div>
-      <p class="ths__hero-sub">同花顺用户都关注的股票 · 数据来源：同花顺</p>
+      <p class="ths__hero-sub">同花顺用户都关注的标的 · {{ providerLabel }}</p>
     </header>
 
     <nav class="ths__cats" aria-label="热榜类目">
@@ -200,110 +257,137 @@ onMounted(async () => {
       </button>
     </nav>
 
-    <template v-if="category === 'stock'">
-      <div class="ths__controls">
-        <AppTabs :items="subTabs" v-model="subList" type="pill" class="ths__subtabs" />
-        <div class="ths__controls-right">
-          <AppDatePicker
-            v-model="selectedDate"
-            clearable
-            size="sm"
-            class="ths__datepicker"
-            placeholder="实时（留空）"
-            :min="dateMin"
-            :max="dateMax"
-            hint=""
-          />
-          <AppSegmented :options="periodOptions" v-model="period" size="sm" />
-          <AppButton variant="tonal" size="sm" icon="refresh" :loading="loading" @click="load">
-            刷新
-          </AppButton>
-        </div>
+    <div class="ths__controls">
+      <AppTabs v-if="activeSubTabs.length" :items="activeSubTabs" v-model="subList" type="pill" class="ths__subtabs" />
+      <div class="ths__controls-right">
+        <AppDatePicker
+          v-if="showDatePicker"
+          v-model="selectedDate"
+          clearable
+          size="sm"
+          class="ths__datepicker"
+          placeholder="实时（留空）"
+          :min="dateMin"
+          :max="dateMax"
+          hint=""
+        />
+        <AppSegmented v-if="showPeriod" :options="periodOptions" v-model="period" size="sm" />
+        <AppButton variant="tonal" size="sm" icon="refresh" :loading="loading" @click="load">
+          刷新
+        </AppButton>
       </div>
+    </div>
 
+    <div
+      v-if="data && (data.source === 'db' || data.source === 'cache')"
+      class="ths__banner"
+      :class="data.source === 'cache' ? 'ths__banner--warn' : 'ths__banner--hist'"
+    >
+      <AppIcon :name="data.source === 'cache' ? 'alert-triangle' : 'history'" size="sm" />
+      <span>{{ sourceLabel }}</span>
+    </div>
+
+    <div v-if="eastmoneyMode && data && data.note" class="ths__banner ths__banner--em">
+      <AppIcon name="info" size="sm" />
+      <span>{{ data.note }}</span>
+    </div>
+
+    <div v-if="loading" class="ths__loading">
+      <AppSkeleton variant="text" :lines="10" />
+    </div>
+
+    <div v-else-if="unsupported" class="ths__notice">
+      <AppIcon name="info" size="md" />
+      <span>{{ catTitle(category) }}榜单数据源需同花顺账号登录后查看，其余榜单正常可用。</span>
+    </div>
+
+    <div v-else-if="err" class="ff-alert ff-alert--danger">
+      <AppIcon name="alert-circle" size="md" /> {{ err }}
+    </div>
+
+    <div v-else-if="noDataForDate" class="ths__notice">
+      <AppIcon name="calendar" size="md" />
+      <span>{{ noDataForDate }}。请选择其它日期，或清除日期查看实时热榜。</span>
+    </div>
+
+    <!-- 个股 / 基金型榜单（热股 / 板块 / ETF / 可转债 / 期货 / 港美 / 热基 / 美股 / 保险） -->
+    <div
+      v-else-if="renderMode === 'stock' && data && data.rows && data.rows.length"
+      class="ths__list"
+      :class="[category === 'fund' && 'ths__list--fund', eastmoneyMode && 'ths__list--em']"
+    >
+      <div class="ths__list-head">
+        <span class="ths__col-rank">排名</span>
+        <span class="ths__col-stock">{{ stockColLabel }}</span>
+        <span class="ths__col-heat">热度</span>
+        <span class="ths__col-chg ths__chg-align">涨幅</span>
+      </div>
       <div
-        v-if="data && (data.source === 'db' || data.source === 'cache')"
-        class="ths__banner"
-        :class="data.source === 'cache' ? 'ths__banner--warn' : 'ths__banner--hist'"
+        v-for="row in data.rows"
+        :key="(row.code || '') + '-' + row.rank"
+        class="ths__row"
       >
-        <AppIcon :name="data.source === 'cache' ? 'alert-triangle' : 'history'" size="sm" />
-        <span>{{ sourceLabel }}</span>
-      </div>
-
-      <div v-if="loading" class="ths__loading">
-        <AppSkeleton variant="text" :lines="10" />
-      </div>
-
-      <div v-else-if="unsupported" class="ths__notice">
-        <AppIcon name="info" size="md" />
-        <span>新股热度榜数据源需同花顺鉴权，暂未接入；其余榜单正常可用。</span>
-      </div>
-
-      <div v-else-if="err" class="ff-alert ff-alert--danger">
-        <AppIcon name="alert-circle" size="md" /> {{ err }}
-      </div>
-
-      <div v-else-if="noDataForDate" class="ths__notice">
-        <AppIcon name="calendar" size="md" />
-        <span>{{ noDataForDate }}。请选择其它日期，或清除日期查看实时热榜。</span>
-      </div>
-
-      <div v-else-if="data && data.rows.length" class="ths__list">
-        <div class="ths__list-head">
-          <span class="ths__col-rank">排名</span>
-          <span class="ths__col-stock">股票</span>
-          <span class="ths__col-heat">热度</span>
-          <span class="ths__col-chg ths__chg-align">涨幅</span>
+        <div class="ths__col-rank">
+          <span class="ths__rank" :class="rankClass(row.rank)">{{ row.rank }}</span>
+          <span
+            v-if="rankChgText(row.rank_chg)"
+            class="ths__rank-chg"
+            :class="row.rank_chg > 0 ? 'is-up' : 'is-down'"
+          >{{ rankChgText(row.rank_chg) }}</span>
         </div>
-        <div
-          v-for="row in data.rows"
-          :key="(row.code || '') + '-' + row.rank"
-          class="ths__row"
-        >
-          <div class="ths__col-rank">
-            <span class="ths__rank" :class="rankClass(row.rank)">{{ row.rank }}</span>
-            <span
-              v-if="rankChgText(row.rank_chg)"
-              class="ths__rank-chg"
-              :class="row.rank_chg > 0 ? 'is-up' : 'is-down'"
-            >{{ rankChgText(row.rank_chg) }}</span>
-          </div>
 
-          <div class="ths__col-stock">
-            <div class="ths__stock-main">
-              <span class="ths__name">{{ row.name }}</span>
-              <span class="ths__code">{{ row.code }}</span>
-            </div>
-            <div v-if="row.popularity_tag || (row.concept_tags && row.concept_tags.length)" class="ths__tags">
-              <span v-if="row.popularity_tag" class="ths__tag ths__tag--pop">{{ row.popularity_tag }}</span>
-              <span v-for="t in row.concept_tags" :key="t" class="ths__tag">{{ t }}</span>
-            </div>
+        <div class="ths__col-stock">
+          <div class="ths__stock-main">
+            <span class="ths__name">{{ row.name }}</span>
+            <span class="ths__code">{{ row.code }}</span>
           </div>
-
-          <div class="ths__col-heat">
-            <div class="ths__heat-bar">
-              <div class="ths__heat-fill" :style="{ width: heatPct(row) + '%' }"></div>
-            </div>
-            <span class="ths__heat-val ff-num">{{ fmtHeat(row.heat) }}</span>
-          </div>
-
-          <div class="ths__col-chg ths__chg-align">
-            <span class="ths__chg ff-num" :class="chgClass(row.change_pct)">{{ fmtChg(row.change_pct) }}</span>
+          <div
+            v-if="row.popularity_tag || (row.concept_tags && row.concept_tags.length) || row.etf_name || row.fund_type || row.nav != null || row.funds != null || (row.rel_stocks && row.rel_stocks.length) || row.amount != null || row.main_inflow != null"
+            class="ths__tags"
+          >
+            <span v-if="row.popularity_tag" class="ths__tag ths__tag--pop">{{ row.popularity_tag }}</span>
+            <span v-for="t in row.concept_tags" :key="t" class="ths__tag">{{ t }}</span>
+            <span v-if="row.etf_name" class="ths__tag ths__tag--etf">ETF {{ row.etf_name }}<template v-if="row.etf_rise_and_fall != null"> {{ fmtChg(row.etf_rise_and_fall) }}</template></span>
+            <span v-if="row.fund_type" class="ths__tag ths__tag--fund">{{ row.fund_type }}</span>
+            <span v-if="row.nav != null" class="ths__tag ths__tag--nav">净值 {{ row.nav }}</span>
+            <span v-if="row.funds != null" class="ths__tag ths__tag--fund">资金 {{ fmtFund(row.funds) }}</span>
+            <span v-if="row.rel_stocks && row.rel_stocks.length" class="ths__tag ths__tag--rel">关联{{ row.rel_stocks.length }}股</span>
+            <span v-if="row.amount != null" class="ths__tag ths__tag--amt">成交额 {{ fmtFund(row.amount) }}</span>
+            <span v-if="row.main_inflow != null" class="ths__tag ths__tag--inflow" :class="row.main_inflow > 0 ? 'is-up' : 'is-down'">主力 {{ fmtFund(row.main_inflow) }}</span>
           </div>
         </div>
 
-        <p v-if="updatedText" class="ths__updated">{{ updatedText }} · 共 {{ data.count }} 只</p>
+        <div class="ths__col-heat">
+          <div class="ths__heat-bar">
+            <div class="ths__heat-fill" :style="{ width: heatPct(row) + '%' }"></div>
+          </div>
+          <span class="ths__heat-val ff-num">{{ fmtHeat(row.heat) }}</span>
+        </div>
+
+        <div class="ths__col-chg ths__chg-align">
+          <span class="ths__chg ff-num" :class="chgClass(row.change_pct)">{{ fmtChg(row.change_pct) }}</span>
+        </div>
       </div>
 
-      <AppEmpty v-else icon="flame" title="暂无热榜数据" />
-    </template>
+      <p v-if="updatedText" class="ths__updated">{{ updatedText }} · 共 {{ data.count }} 只</p>
+    </div>
 
-    <AppEmpty
-      v-else
-      icon="layers"
-      :title="`「${catTitle(category)}」榜单接入中`"
-      description="当前已开放「热股」热榜，其余类目数据源正在接入。"
-    />
+    <!-- 话题型榜单（热门） -->
+    <div
+      v-else-if="renderMode === 'topic' && data && data.rows && data.rows.length"
+      class="ths__list ths__list--topic"
+    >
+      <div v-for="row in data.rows" :key="row.code || row.rank" class="ths__topic">
+        <div class="ths__topic-head">
+          <span class="ths__rank ths__rank--sm" :class="rankClass(row.rank)">{{ row.rank }}</span>
+          <span class="ths__topic-title">{{ row.name }}</span>
+        </div>
+        <p class="ths__topic-desc">{{ row.topic }}</p>
+      </div>
+      <p v-if="updatedText" class="ths__updated">{{ updatedText }} · 共 {{ data.count }} 条</p>
+    </div>
+
+    <AppEmpty v-else icon="flame" title="暂无热榜数据" />
   </div>
 </template>
 
@@ -551,6 +635,64 @@ onMounted(async () => {
   background: color-mix(in srgb, #ff6a3d 16%, transparent);
   color: #d9431f;
   font-weight: var(--ff-fw-medium);
+}
+.ths__tag--etf {
+  background: color-mix(in srgb, #2f7df6 14%, transparent);
+  color: #1f5fcf;
+  font-weight: var(--ff-fw-medium);
+}
+.ths__tag--fund {
+  background: color-mix(in srgb, #7b5cff 14%, transparent);
+  color: #5b3fd6;
+  font-weight: var(--ff-fw-medium);
+}
+.ths__tag--nav {
+  background: color-mix(in srgb, #2f7df6 12%, transparent);
+  color: #1f5fcf;
+}
+.ths__tag--rel {
+  background: var(--ff-bg-hover);
+  color: var(--ff-text-secondary);
+}
+
+/* 话题型榜单 */
+.ths__list--topic {
+  padding: var(--ff-space-2) var(--ff-space-5);
+}
+.ths__topic {
+  padding: var(--ff-space-3) 0;
+  border-bottom: 1px solid var(--ff-border-subtle);
+}
+.ths__topic-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+}
+.ths__rank--sm {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.ths__topic-title {
+  font-size: var(--ff-fs-body);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+}
+.ths__topic-desc {
+  margin: var(--ff-space-1) 0 0;
+  padding-left: 28px;
+  font-size: var(--ff-fs-body-sm);
+  color: var(--ff-text-secondary);
+  line-height: 1.6;
+}
+
+/* 保险专区 */
+.ths__insurance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-4) var(--ff-space-5);
 }
 
 .ths__col-heat {

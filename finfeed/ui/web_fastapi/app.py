@@ -822,13 +822,35 @@ async def api_market(rest: str, request: Request):
             }
         elif sub == "hotrank":
             from finfeed.market.ths_hotrank import fetch_hotrank
+            category = (q.get("category", ["stock"])[0] or "stock").strip()
             list_type = (q.get("list", ["normal"])[0] or "normal").strip()
             period = (q.get("period", ["hour"])[0] or "hour").strip()
             date = (q.get("date", [None])[0]) or None
-            data = await fetch_hotrank(list_type, period, _int("limit", 100, 200), date)
+            data = await fetch_hotrank(
+                list_type, period, _int("limit", 100, 200), date, category=category
+            )
         elif sub == "hotrank_dates":
             from finfeed.market import store as mk_store
             data = mk_store.get_ths_hotrank_dates()
+        elif sub == "thslimitup":
+            from finfeed.market import ths_limitup
+            section = (q.get("section", ["all"])[0] or "all").strip()
+            date = (q.get("date", [None])[0]) or None
+            if section == "all":
+                data = await ths_limitup.fetch_limitup_focus(date, sections="all")
+            elif section == "intensity":
+                data = await ths_limitup.fetch_limit_up_intensity(date)
+            elif section == "ladder":
+                data = await ths_limitup.fetch_board_ladder(date)
+            elif section == "wind":
+                data = await ths_limitup.fetch_strong_wind(date)
+            elif section == "sentiment":
+                data = await ths_limitup.fetch_market_sentiment(date)
+            else:
+                data = {"error": f"unknown limitup section: {section}"}
+        elif sub == "thslimitup_dates":
+            from finfeed.market import store as mk_store
+            data = mk_store.get_ths_limitup_dates()
         elif sub == "overview":
             data = mk_store.get_fact_overview()
         elif sub == "kline":

@@ -26,6 +26,7 @@ SLOTS = {
     "universe": {"h": 8, "m": 40, "default_on": True},
     "snapshot": {"h": 16, "m": 10, "default_on": True},
     "hotrank": {"h": 16, "m": 15, "default_on": True},
+    "limitup": {"h": 16, "m": 20, "default_on": True},
     "bars": {"h": 16, "m": 40, "default_on": False},
 }
 
@@ -98,6 +99,8 @@ def _empty_check(action: str):
             return not res.get("trade_date")
         if action == "hotrank":
             return not res.get("saved")
+        if action == "limitup":
+            return not res.get("saved")
         if action == "bars":
             saved = res.get("saved", res.get("total"))
             try:
@@ -144,6 +147,13 @@ def _run_action(action: str, today: str):
                 is_empty=_empty_check(action),
             )
             msg = f"完成（采集 {res.get('saved', 0)} 条 / {res.get('trade_date', today)}）"
+        elif action == "limitup":
+            res = mk_alerting.with_retry(
+                task, lambda: svc.collect_limitup_focus_sync(),
+                max_retries=3, backoff_base=2.0, timeout=300,
+                is_empty=_empty_check(action),
+            )
+            msg = f"完成（采集 {res.get('saved', 0)} 条 / {res.get('trade_date', today)}）"
         elif action == "bars":
             res = mk_alerting.with_retry(
                 task, lambda: svc.collect_bars_sync(bars=5),
@@ -178,7 +188,7 @@ def _worker(action: str, today: str):
 
 def _loop():
     logger.info(
-        "行情自动采集调度器已启动（universe 08:40 / snapshot 16:10 / bars 16:40，交易日内各一次）"
+        "行情自动采集调度器已启动（universe 08:40 / snapshot 16:10 / hotrank 16:15 / limitup 16:20 / bars 16:40，交易日内各一次）"
     )
     while _state["enabled"]:
         try:
