@@ -137,6 +137,18 @@ function fmtFund(v) {
   const yi = v / 1e8
   return (yi > 0 ? '+' : '') + yi.toFixed(2) + '亿'
 }
+// 成交额 / 主力净流入：美股为美元计价，A股保险为人民币，单位需区分
+function _amtUnit() {
+  return eastmoneyMode.value && category.value === 'hkus' && subList.value === 'us' ? '亿美元' : '亿'
+}
+function fmtAmount(row) {
+  if (row.amount == null) return ''
+  return fmtFund(row.amount).replace('亿', _amtUnit())
+}
+function fmtInflow(row) {
+  if (row.main_inflow == null) return ''
+  return fmtFund(row.main_inflow).replace('亿', _amtUnit())
+}
 function chgClass(v) {
   if (v == null) return 'is-flat'
   return v > 0 ? 'is-up' : v < 0 ? 'is-down' : 'is-flat'
@@ -352,8 +364,8 @@ onMounted(async () => {
             <span v-if="row.nav != null" class="ths__tag ths__tag--nav">净值 {{ row.nav }}</span>
             <span v-if="row.funds != null" class="ths__tag ths__tag--fund">资金 {{ fmtFund(row.funds) }}</span>
             <span v-if="row.rel_stocks && row.rel_stocks.length" class="ths__tag ths__tag--rel">关联{{ row.rel_stocks.length }}股</span>
-            <span v-if="row.amount != null" class="ths__tag ths__tag--amt">成交额 {{ fmtFund(row.amount) }}</span>
-            <span v-if="row.main_inflow != null" class="ths__tag ths__tag--inflow" :class="row.main_inflow > 0 ? 'is-up' : 'is-down'">主力 {{ fmtFund(row.main_inflow) }}</span>
+            <span v-if="row.amount != null" class="ths__tag ths__tag--amt">成交额 {{ fmtAmount(row) }}</span>
+            <span v-if="row.main_inflow != null" class="ths__tag ths__tag--inflow" :class="row.main_inflow > 0 ? 'is-up' : 'is-down'">主力 {{ fmtInflow(row) }}</span>
           </div>
         </div>
 
@@ -687,12 +699,32 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
-/* 保险专区 */
-.ths__insurance {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ff-space-3);
-  padding: var(--ff-space-4) var(--ff-space-5);
+/* 东方财富替代源（美股 / 保险）：隐藏热度列，改展示成交额 / 主力净流入 */
+.ths__list--em .ths__col-heat {
+  display: none;
+}
+.ths__list--em .ths__list-head,
+.ths__list--em .ths__row {
+  grid-template-columns: 60px 1fr 88px;
+}
+.ths__tag--amt {
+  background: color-mix(in srgb, #2f7df6 12%, transparent);
+  color: #1f5fcf;
+}
+.ths__tag--inflow.is-up {
+  background: color-mix(in srgb, var(--ff-text-up) 14%, transparent);
+  color: var(--ff-text-up);
+}
+.ths__tag--inflow.is-down {
+  background: color-mix(in srgb, var(--ff-down-text) 14%, transparent);
+  color: var(--ff-down-text);
+}
+.ths__banner--em {
+  background: color-mix(in srgb, #2f7df6 8%, transparent);
+  color: #1f5fcf;
+}
+.ths__banner--em :deep(.ff-icon) {
+  color: #2f7df6;
 }
 
 .ths__col-heat {
@@ -747,6 +779,10 @@ onMounted(async () => {
     grid-template-columns: 48px 1fr 120px 72px;
     gap: var(--ff-space-2);
     padding: var(--ff-space-2-5) var(--ff-space-3);
+  }
+  .ths__list--em .ths__list-head,
+  .ths__list--em .ths__row {
+    grid-template-columns: 44px 1fr 72px;
   }
   .ths__controls {
     padding: var(--ff-space-3);

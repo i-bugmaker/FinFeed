@@ -1099,6 +1099,16 @@ def get_ths_hotrank_dates() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # 同花顺「涨停聚焦」四模块快照（按交易日自动采集，供历史日期回看）
 # ---------------------------------------------------------------------------
+def _norm_json_str(v: Any) -> str:
+    """把可能为 list/dict 的标签字段序列化为字符串，便于 SQLite TEXT 存储。"""
+    if isinstance(v, (list, dict)):
+        try:
+            return json.dumps(v, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(v)
+    return v or ""
+
+
 def upsert_ths_limitup_pool(rows: List[Dict[str, Any]]) -> int:
     """批量写入涨停 / 炸板 / 跌停池个股（幂等 upsert）。
 
@@ -1110,8 +1120,8 @@ def upsert_ths_limitup_pool(rows: List[Dict[str, Any]]) -> int:
         return 0
     db = get_db_manager()
     data = [
-        (r["trade_date"], r.get("pool_type", "up"),
-         int(r.get("rank", 0) or 0), r["code"], (r.get("name") or "")[:32],
+        (str(r.get("trade_date") or ""), r.get("pool_type", "up"),
+         int(r.get("rank", 0) or 0), str(r.get("code") or ""), (r.get("name") or "")[:32],
          float(r.get("price", 0) or 0), float(r.get("change_pct", 0) or 0),
          float(r.get("amplitude", 0) or 0), (r.get("reason") or "")[:256],
          (r.get("board") or "")[:16], int(r.get("continue_day_cnt", 0) or 0),
@@ -1154,8 +1164,8 @@ def upsert_ths_limitup_ladder(rows: List[Dict[str, Any]]) -> int:
         return 0
     db = get_db_manager()
     data = [
-        (r["trade_date"], int(r.get("height", 0) or 0), int(r.get("number", 0) or 0),
-         r["code"], (r.get("name") or "")[:32], (r.get("market_id") or "")[:8],
+        (str(r.get("trade_date") or ""), int(r.get("height", 0) or 0), int(r.get("number", 0) or 0),
+         str(r.get("code") or ""), (r.get("name") or "")[:32], str(r.get("market_id") or "")[:8],
          int(r.get("continue_num", 0) or 0))
         for r in rows
     ]
@@ -1183,12 +1193,12 @@ def upsert_ths_limitup_wind(rows: List[Dict[str, Any]]) -> int:
         return 0
     db = get_db_manager()
     data = [
-        (r["trade_date"], (r.get("tab_name") or "")[:32],
+        (str(r.get("trade_date") or ""), (r.get("tab_name") or "")[:32],
          float(r.get("average_change", 0) or 0), int(r.get("stock_num", 0) or 0),
-         r["stock_code"], (r.get("stock_name") or "")[:32],
+         str(r.get("stock_code") or ""), (r.get("stock_name") or "")[:32],
          (r.get("reason") or "")[:256], float(r.get("price", 0) or 0),
          float(r.get("change", 0) or 0), float(r.get("five_rise", 0) or 0),
-         (r.get("tags") or "")[:256], int(r.get("rank", 0) or 0))
+         _norm_json_str(r.get("tags")), int(r.get("rank", 0) or 0))
         for r in rows
     ]
     with db.get_db() as c:
@@ -1320,12 +1330,21 @@ def get_latest_ths_limitup_date() -> Optional[str]:
 
 
 def get_ths_limitup_dates() -> Dict[str, Any]:
-    """返回所有已采集涨停聚焦的交易日列表（倒序）与最新日期。"""
+    """返回所有已采集涨停聚焦的交易日列表（倒序）与最新日期。
+
+    跨四张表 UNION，任一模块有快照即可回看（涨停池在盘前可能为空，
+    但连板天梯 / 最强风口 / 市场情绪通常已有数据）。
+    """
     db = get_db_manager()
     with db.get_db() as c:
         try:
             c.execute(
-                "SELECT DISTINCT trade_date FROM ths_limitup_pool ORDER BY trade_date DESC"
+                "SELECT DISTINCT trade_date FROM ("
+                "  SELECT trade_date FROM ths_limitup_pool"
+                "  UNION SELECT trade_date FROM ths_limitup_ladder"
+                "  UNION SELECT trade_date FROM ths_limitup_wind"
+                "  UNION SELECT trade_date FROM ths_limitup_sentiment"
+                ") ORDER BY trade_date DESC"
             )
             dates = [r["trade_date"] for r in c.fetchall()]
         except Exception:  # noqa: BLE001

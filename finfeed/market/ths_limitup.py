@@ -193,20 +193,33 @@ async def _cached_get(key: tuple, coro_factory) -> Any:
 # 原始接口拉取（带缓存）
 # ---------------------------------------------------------------------------
 async def _get_dataapi_pool(kind: str, td: str) -> Dict[str, Any]:
-    """dataapi 涨停/炸板/跌停池。返回 {total, list}。"""
-    params = {
-        "page": 1, "limit": 500, "field": _POOL_FIELDS,
-        "filter": "HS,GEM2STAR", "order_field": "330324", "order_type": 0,
-        "_": int(time.time() * 1000),
-    }
-    data = _data_of(await _request(f"/limit_up/{kind}", params, mobile=False))
-    if isinstance(data, dict):
-        total = data.get("total") or data.get("count") or 0
-        lst = data.get("list") or data.get("data") or []
-    else:
-        total = 0
-        lst = data if isinstance(data, list) else []
-    return {"total": int(total) if total else len(lst), "list": lst}
+    """dataapi 涨停/炸板/跌停池。返回 {total, list}。
+
+    dataapi 限制 limit<=200，故单页上限 200，必要时分页拉取（上限 5 页 / 1000 只）。
+    """
+    out: List[Dict[str, Any]] = []
+    total = 0
+    page = 1
+    while page <= 5:
+        params = {
+            "page": page, "limit": 200, "field": _POOL_FIELDS,
+            "filter": "HS,GEM2STAR", "order_field": "330324", "order_type": 0,
+            "_": int(time.time() * 1000),
+        }
+        data = _data_of(await _request(f"/limit_up/{kind}", params, mobile=False))
+        if isinstance(data, dict):
+            page_total = data.get("total") or data.get("count") or 0
+            lst = data.get("list") or data.get("data") or []
+        else:
+            page_total = 0
+            lst = data if isinstance(data, list) else []
+        if page == 1:
+            total = int(page_total) if page_total else 0
+        out.extend(lst)
+        if len(lst) < 200:
+            break
+        page += 1
+    return {"total": total or len(out), "list": out}
 
 
 async def _get_limit_up_stocks(cate: str, td: str) -> List[Dict[str, Any]]:

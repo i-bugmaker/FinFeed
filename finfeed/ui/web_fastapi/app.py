@@ -958,6 +958,13 @@ async def _sse_poll_loop() -> None:
 
 @app.on_event("startup")
 async def _startup():
+    # 确保行情相关表（含涨停聚焦四模块）存在，支撑历史快照回看
+    try:
+        from finfeed.market import store as _mk_store
+        _mk_store.ensure_market_tables()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"行情数据表初始化失败（可忽略）: {e}")
+
     legacy.init_broadcast_watermark()
     # 创建 tick 哨兵文件并置为当前时间，使 _sse_poll_loop 的 last_tick 基准有效；
     # 之后主进程每次抓取完成都会更新其 mtime 以「唤醒」本进程的即时推送。

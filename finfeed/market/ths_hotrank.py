@@ -398,20 +398,20 @@ def _em_market(code: str) -> str:
     return ""
 
 
-async def _em_get(url: str, params: Dict, headers: Dict, tries: int = 5) -> Dict:
-    """东方财富行情接口 GET，带重试。
+async def _em_get(url: str, params: Dict, headers: Dict, tries: int = 8) -> Dict:
+    """东方财富行情接口 GET，带重试与抖动。
 
     该接口在本环境偶发「服务端未响应即断开」(RemoteDisconnected)，重试可显著提升成功率。
     """
     last_exc: Optional[Exception] = None
-    for _ in range(tries):
+    for i in range(tries):
         try:
             async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
                 resp = await client.get(url, params=params)
                 return resp.json()
         except Exception as e:  # noqa: BLE001
             last_exc = e
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(0.8 + i * 0.4)
     raise last_exc if last_exc else RuntimeError("东方财富请求失败")
 
 
@@ -459,6 +459,7 @@ async def _fetch_eastmoney_us(limit: int) -> Dict:
 
     同花顺美股热榜需登录，此处以东方财富实时行情替代，透明标注来源。
     """
+    limit = min(limit, 50)
     params = {
         "pn": "1", "pz": str(min(limit * 3, 300)), "po": "1", "np": "1",
         "fltt": "2", "invt": "2", "fid": "f6",
@@ -468,7 +469,18 @@ async def _fetch_eastmoney_us(limit: int) -> Dict:
         "User-Agent": THS_UA, "Referer": EASTMONEY_REFERER,
         "Accept": "*/*", "Connection": "keep-alive",
     }
-    data = await _em_get(EASTMONEY_CLIST, params, headers)
+    try:
+        data = await _em_get(EASTMONEY_CLIST, params, headers)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("东方财富美股行情获取失败: %s", e)
+        return {
+            "category": "hkus", "list_type": "us", "title": "美股活跃榜",
+            "period": "day", "max_heat": 0, "count": 0,
+            "updated_at": int(time.time()), "rows": [],
+            "source": "eastmoney", "provider": "东方财富",
+            "error": "东方财富行情暂时获取失败，请稍后刷新重试",
+            "note": "美股数据由东方财富实时行情提供（同花顺美股热榜需登录）。按成交额排序，已剔除权证/单位。",
+        }
     diff = ((data.get("data") or {}).get("diff") or [])
     rows: List[Dict] = []
     for it in diff:
@@ -494,6 +506,7 @@ async def _fetch_eastmoney_insurance(limit: int) -> Dict:
     同花顺保险热榜需登录，此处以东方财富实时行情替代，透明标注来源。
     排序：优先按涨跌幅（直观），无行情个股自动剔除。
     """
+    limit = min(limit, 20)
     params = {
         "fltt": "2", "invt": "2", "fid": "f3",
         "secids": ",".join(EM_INSURANCE_SECIDS),
@@ -503,7 +516,18 @@ async def _fetch_eastmoney_insurance(limit: int) -> Dict:
         "User-Agent": THS_UA, "Referer": EASTMONEY_REFERER,
         "Accept": "*/*", "Connection": "keep-alive",
     }
-    data = await _em_get(EASTMONEY_ULIST, params, headers)
+    try:
+        data = await _em_get(EASTMONEY_ULIST, params, headers)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("东方财富保险行情获取失败: %s", e)
+        return {
+            "category": "insurance", "list_type": "day", "title": "保险板块",
+            "period": "day", "max_heat": 0, "count": 0,
+            "updated_at": int(time.time()), "rows": [],
+            "source": "eastmoney", "provider": "东方财富",
+            "error": "东方财富行情暂时获取失败，请稍后刷新重试",
+            "note": "保险板块行情由东方财富实时提供（同花顺保险热榜需登录）。含 A 股保险及保险系金控。",
+        }
     diff = ((data.get("data") or {}).get("diff") or [])
     rows = [_normalize_em_row(it, "东方财富") for it in diff]
     rows = [r for r in rows if r.get("change_pct") is not None or r.get("amount") is not None]
