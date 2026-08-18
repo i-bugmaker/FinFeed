@@ -377,6 +377,25 @@ def ensure_market_tables() -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_tlw_tab ON ths_limitup_wind(trade_date, tab_name)")
 
         c.execute("""
+            CREATE TABLE IF NOT EXISTS ths_limitup_block_top (
+                trade_date TEXT,
+                rank INTEGER DEFAULT 0,
+                topic_code TEXT DEFAULT '',
+                topic_name TEXT DEFAULT '',
+                change REAL DEFAULT 0.0,
+                limit_up_num INTEGER DEFAULT 0,
+                continuous_plate_num INTEGER DEFAULT 0,
+                high TEXT DEFAULT '',
+                high_num INTEGER DEFAULT 0,
+                days INTEGER DEFAULT 0,
+                detail_json TEXT DEFAULT '[]',
+                PRIMARY KEY (trade_date, topic_code)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tlbt_date ON ths_limitup_block_top(trade_date)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tlbt_num ON ths_limitup_block_top(trade_date, limit_up_num)")
+
+        c.execute("""
             CREATE TABLE IF NOT EXISTS ths_limitup_sentiment (
                 trade_date TEXT PRIMARY KEY,
                 turnover_pre REAL DEFAULT 0.0,
@@ -1392,7 +1411,7 @@ def get_ths_limitup_ladder(trade_date: str) -> List[Dict[str, Any]]:
 
 def get_ths_limitup_wind(trade_date: str,
                          tab_name: Optional[str] = None) -> List[Dict[str, Any]]:
-    """读取某交易日风向标股 / 最强风口（按类目 + 排名升序）。"""
+    """读取某交易日风向标股（原最强风口误用，现归属市场情绪）。按类目 + 排名升序。"""
     db = get_db_manager()
     with db.get_db() as c:
         if tab_name:
@@ -1407,6 +1426,55 @@ def get_ths_limitup_wind(trade_date: str,
                 "ORDER BY tab_name, rank ASC",
                 (trade_date,),
             )
+        return [dict(r) for r in c.fetchall()]
+
+
+def upsert_ths_limitup_block_top(rows: List[Dict[str, Any]]) -> int:
+    """批量写入最强风口「涨停简图」题材板块榜（幂等 upsert）。
+
+    rows: {trade_date, rank, topic_code, topic_name, change, limit_up_num,
+           continuous_plate_num, high, high_num, days, detail_json}
+    detail_json 为该题材下涨停个股列表（含涨停原因、连板、最新价等）。
+    """
+    if not rows:
+        return 0
+    db = get_db_manager()
+    data = [
+        (str(r.get("trade_date") or ""), int(r.get("rank", 0) or 0),
+         str(r.get("topic_code") or ""), (r.get("topic_name") or "")[:64],
+         float(r.get("change", 0) or 0), int(r.get("limit_up_num", 0) or 0),
+         int(r.get("continuous_plate_num", 0) or 0), (r.get("high") or "")[:32],
+         int(r.get("high_num", 0) or 0), int(r.get("days", 0) or 0),
+         (r.get("detail_json") or "[]"))
+        for r in rows
+    ]
+    with db.get_db() as c:
+        c.executemany(
+            """INSERT INTO ths_limitup_block_top (trade_date, rank, topic_code,
+                   topic_name, change, limit_up_num, continuous_plate_num, high,
+                   high_num, days, detail_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(trade_date, topic_code) DO UPDATE SET
+                   rank=excluded.rank, topic_name=excluded.topic_name,
+                   change=excluded.change, limit_up_num=excluded.limit_up_num,
+                   continuous_plate_num=excluded.continuous_plate_num,
+                   high=excluded.high, high_num=excluded.high_num, days=excluded.days,
+                   detail_json=excluded.detail_json
+            """,
+            data,
+        )
+        return len(data)
+
+
+def get_ths_limitup_block_top(trade_date: str) -> List[Dict[str, Any]]:
+    """读取某交易日最强风口「涨停简图」题材板块榜（按涨停数降序）。"""
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT * FROM ths_limitup_block_top WHERE trade_date = ? "
+            "ORDER BY limit_up_num DESC, rank ASC",
+            (trade_date,),
+        )
         return [dict(r) for r in c.fetchall()]
 
 
@@ -1432,6 +1500,7 @@ def get_latest_ths_limitup_date() -> Optional[str]:
                 " SELECT MAX(trade_date) AS trade_date FROM ths_limitup_pool UNION ALL"
                 " SELECT MAX(trade_date) FROM ths_limitup_ladder UNION ALL"
                 " SELECT MAX(trade_date) FROM ths_limitup_wind UNION ALL"
+                " SELECT MAX(trade_date) FROM ths_limitup_block_top UNION ALL"
                 " SELECT MAX(trade_date) FROM ths_limitup_sentiment)"
             )
             row = c.fetchone()
@@ -1454,6 +1523,7 @@ def get_ths_limitup_dates() -> Dict[str, Any]:
                 "  SELECT trade_date FROM ths_limitup_pool"
                 "  UNION SELECT trade_date FROM ths_limitup_ladder"
                 "  UNION SELECT trade_date FROM ths_limitup_wind"
+                "  UNION SELECT trade_date FROM ths_limitup_block_top"
                 "  UNION SELECT trade_date FROM ths_limitup_sentiment"
                 ") ORDER BY trade_date DESC"
             )

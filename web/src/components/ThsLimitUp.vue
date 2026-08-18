@@ -8,8 +8,8 @@
  * 四模块：
  *   - 涨停强度 intensity：涨停 / 炸板 / 跌停池 + 炸板率 / 封板率
  *   - 连板天梯 ladder：连板高度梯队（强势股）
- *   - 最强风口 wind：风向标股（按题材类目分组）
- *   - 市场情绪 sentiment：涨停/跌停/涨跌家数/成交额/北向/交易状态
+ *   - 最强风口 wind：涨停简图（题材板块榜：题材名 / 涨停数 / 连板高度 / 涨停个股）
+ *   - 市场情绪 sentiment：情绪总览 + 风向标股（高位股/板块龙头/异动股）
  *
  * 数据经 FinFeed 后端同源代理，规避浏览器跨域。红涨绿跌（--ff-text-up / --ff-down-text）。
  */
@@ -125,26 +125,42 @@ const ladderTiers = computed(() => {
   return d.ladder || []
 })
 
-// ---------------- 最强风口 ----------------
-const windTabs = computed(() => {
+// ---------------- 最强风口（涨停简图 · 题材板块榜） ----------------
+const windBlocks = computed(() => {
   const d = data.value
   if (!d || section.value !== 'wind') return []
-  return d.tabs || []
+  return d.blocks || []
 })
-const windTab = ref('')
-const activeWindTab = computed(() => {
-  const tabs = windTabs.value
-  if (!tabs.length) return null
-  if (!windTab.value || !tabs.find((t) => t.tab_name === windTab.value)) {
-    return tabs[0]
+const windSummary = computed(() => {
+  const blocks = windBlocks.value
+  if (!blocks.length) return null
+  let total = 0
+  let maxPlate = 0
+  let maxHigh = ''
+  for (const b of blocks) {
+    total += b.limit_up_num || 0
+    if ((b.limit_up_num || 0) > maxPlate) {
+      maxPlate = b.limit_up_num
+      maxHigh = b.high || ''
+    }
   }
-  return tabs.find((t) => t.tab_name === windTab.value)
+  return { topics: blocks.length, total, maxPlate, maxHigh }
 })
-watch(windTabs, (t) => {
-  if (t && t.length && !t.find((x) => x.tab_name === windTab.value)) {
-    windTab.value = t[0].tab_name
-  }
+const selectedTopic = ref('')
+const selectedBlock = computed(() => {
+  const blocks = windBlocks.value
+  if (!blocks.length) return null
+  const hit = blocks.find((b) => b.code === selectedTopic.value)
+  return hit || blocks[0]
 })
+const windMaxNum = computed(() =>
+  windBlocks.value.reduce((m, b) => Math.max(m, b.limit_up_num || 0), 1)
+)
+function tileFlex(b) {
+  const n = b.limit_up_num || 0
+  const ratio = windMaxNum.value ? n / windMaxNum.value : 0
+  return (0.62 + 0.38 * ratio).toFixed(3)
+}
 
 // ---------------- 市场情绪 ----------------
 const sentimentCards = computed(() => {
@@ -180,6 +196,27 @@ const tradeStatusText = computed(() => {
   return [stat, hgt].filter(Boolean).join(' · ')
 })
 
+// ---------------- 市场情绪 · 风向标股 ----------------
+const windVaneTabs = computed(() => {
+  const d = data.value
+  if (!d || section.value !== 'sentiment') return []
+  return (d.wind_vane && d.wind_vane.tabs) || []
+})
+const windVaneTab = ref('')
+const activeWindVane = computed(() => {
+  const tabs = windVaneTabs.value
+  if (!tabs.length) return null
+  if (!windVaneTab.value || !tabs.find((t) => t.tab_name === windVaneTab.value)) {
+    return tabs[0]
+  }
+  return tabs.find((t) => t.tab_name === windVaneTab.value)
+})
+watch(windVaneTabs, (t) => {
+  if (t && t.length && !t.find((x) => x.tab_name === windVaneTab.value)) {
+    windVaneTab.value = t[0].tab_name
+  }
+})
+
 // ---------------- 加载 ----------------
 async function load() {
   loading.value = true
@@ -198,8 +235,8 @@ async function load() {
       return
     }
     data.value = d
-    if (section.value === 'wind' && windTabs.value.length) {
-      windTab.value = windTabs.value[0].tab_name
+    if (section.value === 'wind' && windBlocks.value.length) {
+      selectedTopic.value = windBlocks.value[0].code
     }
   } catch (e) {
     err.value = e.message || String(e)
@@ -364,52 +401,75 @@ onMounted(async () => {
       <AppEmpty v-else icon="layers" title="暂无连板天梯数据" />
     </template>
 
-    <!-- ============ 最强风口 ============ -->
+    <!-- ============ 最强风口（涨停简图） ============ -->
     <template v-else-if="section === 'wind' && data">
-      <div v-if="windTabs.length" class="lu__wind">
-        <div class="lu__subtabs">
-          <AppTabs
-            :items="windTabs.map(t => ({ value: t.tab_name, label: t.tab_name }))"
-            v-model="windTab"
-            type="pill"
-            size="sm"
-          />
-        </div>
-        <div v-if="activeWindTab" class="lu__wind-head">
-          <span class="lu__wind-name">{{ activeWindTab.tab_name }}</span>
-          <span class="lu__wind-avg" :class="chgClass(activeWindTab.average_change)">
-            平均 {{ fmtChg(activeWindTab.average_change) }}
-          </span>
-          <span class="lu__wind-num">{{ activeWindTab.stock_num }}只</span>
-        </div>
-        <div v-if="activeWindTab && activeWindTab.stocks.length" class="lu__list">
-          <div class="lu__list-head">
-            <span class="lu__col-rank">#</span>
-            <span class="lu__col-stock">名称 / 代码</span>
-            <span class="lu__col-reason">逻辑</span>
-            <span class="lu__col-chg">涨幅</span>
-            <span class="lu__col-money">5日涨</span>
+      <div v-if="windBlocks.length" class="lu__wind">
+        <!-- 概览指标 -->
+        <div class="lu__wind-summary" v-if="windSummary">
+          <div class="lu__ws">
+            <span class="lu__ws-val ff-num">{{ windSummary.topics }}</span>
+            <span class="lu__ws-label">题材数</span>
           </div>
-          <div
-            v-for="(s, i) in activeWindTab.stocks"
-            :key="(s.stock_code || '') + '-' + i"
-            class="lu__row"
+          <div class="lu__ws">
+            <span class="lu__ws-val ff-num is-up">{{ windSummary.total }}</span>
+            <span class="lu__ws-label">涨停合计</span>
+          </div>
+          <div class="lu__ws">
+            <span class="lu__ws-val ff-num is-up">{{ windSummary.maxPlate }}</span>
+            <span class="lu__ws-label">最多涨停题材</span>
+          </div>
+          <div class="lu__ws">
+            <span class="lu__ws-val">{{ windSummary.maxHigh || '—' }}</span>
+            <span class="lu__ws-label">最高板</span>
+          </div>
+        </div>
+
+        <!-- 涨停简图：题材板块榜（tile 尺寸按涨停数比例） -->
+        <div class="lu__board">
+          <button
+            v-for="b in windBlocks"
+            :key="b.code"
+            class="lu__tile"
+            :class="{ 'is-active': selectedBlock && selectedBlock.code === b.code }"
+            :style="{ flex: tileFlex(b) }"
+            @click="selectedTopic = b.code"
           >
-            <span class="lu__col-rank ff-num">{{ i + 1 }}</span>
-            <div class="lu__col-stock">
-              <div class="lu__stock-main">
-                <span class="lu__name">{{ s.stock_name }}</span>
-                <span class="lu__code">{{ s.stock_code }}</span>
+            <span class="lu__tile-name">{{ b.name }}</span>
+            <span class="lu__tile-num ff-num is-up">{{ b.limit_up_num }}<i>板</i></span>
+            <span class="lu__tile-high">{{ b.high }}</span>
+            <span class="lu__tile-chg ff-num" :class="chgClass(b.change)">{{ fmtChg(b.change) }}</span>
+          </button>
+        </div>
+
+        <!-- 选中题材的涨停个股 -->
+        <div v-if="selectedBlock" class="lu__topic">
+          <div class="lu__topic-head">
+            <span class="lu__topic-name">{{ selectedBlock.name }}</span>
+            <span class="lu__topic-num is-up">{{ selectedBlock.limit_up_num }}只涨停</span>
+            <span class="lu__topic-high">连板高度 {{ selectedBlock.high || '—' }}</span>
+          </div>
+          <div v-if="selectedBlock.stocks.length" class="lu__chips">
+            <div
+              v-for="(s, i) in selectedBlock.stocks"
+              :key="(s.code || '') + '-' + i"
+              class="lu__sc"
+              :class="{ 'is-st': s.is_st }"
+            >
+              <div class="lu__sc-row">
+                <span class="lu__sc-name">{{ s.name }}</span>
+                <span class="lu__sc-code">{{ s.code }}</span>
+                <span class="lu__sc-chg ff-num" :class="chgClass(s.change_rate)">{{ fmtChg(s.change_rate) }}</span>
+              </div>
+              <div class="lu__sc-sub">
+                <span class="lu__sc-plate" v-if="s.high">{{ s.high }}</span>
+                <span class="lu__sc-reason">{{ s.reason_type || '—' }}</span>
               </div>
             </div>
-            <span class="lu__col-reason">{{ s.reason || s.tags || '—' }}</span>
-            <span class="lu__col-chg ff-num" :class="chgClass(s.change)">{{ fmtChg(s.change) }}</span>
-            <span class="lu__col-money ff-num" :class="chgClass(s.five_rise)">{{ fmtChg(s.five_rise) }}</span>
           </div>
+          <AppEmpty v-else icon="wind" title="该题材暂无涨停个股" />
         </div>
-        <AppEmpty v-else icon="wind" title="该风口暂无成分股" />
       </div>
-      <AppEmpty v-else icon="wind" title="暂无最强风口数据" />
+      <AppEmpty v-else icon="wind" title="暂无涨停简图数据" />
     </template>
 
     <!-- ============ 市场情绪 ============ -->
@@ -425,7 +485,67 @@ onMounted(async () => {
           <span v-if="c.sub" class="lu__sent-sub">{{ c.sub }}</span>
         </div>
       </div>
-      <AppEmpty v-else icon="activity" title="暂无市场情绪数据" />
+
+      <!-- 风向标股：高位股 / 板块龙头 / 异动股 / 前期高位 -->
+      <div v-if="windVaneTabs.length" class="lu__vane">
+        <div class="lu__vane-head">
+          <AppIcon name="compass" size="sm" />
+          <span class="lu__vane-title">风向标股</span>
+          <span class="lu__vane-hint">市场核心情绪标杆</span>
+        </div>
+        <div class="lu__vane-tabs">
+          <AppTabs
+            :items="windVaneTabs.map(t => ({ value: t.tab_name, label: t.tab_name }))"
+            v-model="windVaneTab"
+            type="pill"
+            size="sm"
+          />
+        </div>
+        <div v-if="activeWindVane" class="lu__vane-body">
+          <div class="lu__vane-sub">
+            <span class="lu__vane-sub-name">{{ activeWindVane.tab_name }}</span>
+            <span class="lu__vane-sub-num ff-num">{{ activeWindVane.stock_num }}只</span>
+            <span class="lu__vane-sub-chg ff-num" :class="chgClass(activeWindVane.average_change)">
+              均值 {{ fmtChg(activeWindVane.average_change) }}
+            </span>
+          </div>
+          <div v-if="activeWindVane.stocks.length" class="lu__vane-list">
+            <div
+              v-for="(s, i) in activeWindVane.stocks"
+              :key="(s.stock_code || '') + '-' + i"
+              class="lu__vane-item"
+            >
+              <span class="lu__vane-rank ff-num">{{ i + 1 }}</span>
+              <div class="lu__vane-stock">
+                <div class="lu__vane-stock-row">
+                  <span class="lu__vane-name">{{ s.stock_name }}</span>
+                  <span class="lu__vane-code">{{ s.stock_code }}</span>
+                  <span class="lu__vane-chg ff-num" :class="chgClass(s.change)">{{ fmtChg(s.change) }}</span>
+                </div>
+                <div
+                  v-if="s.tags || s.reason || (s.five_rise != null && s.five_rise !== '')"
+                  class="lu__vane-stock-sub"
+                >
+                  <span v-if="s.tags" class="lu__vane-tags">{{ s.tags }}</span>
+                  <span v-if="s.reason" class="lu__vane-reason">{{ s.reason }}</span>
+                  <span
+                    v-if="s.five_rise != null && s.five_rise !== ''"
+                    class="lu__vane-5rise ff-num"
+                    :class="chgClass(s.five_rise)"
+                  >5日 {{ fmtChg(s.five_rise) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <AppEmpty v-else icon="compass" title="该分类暂无风向标股" />
+        </div>
+      </div>
+
+      <AppEmpty
+        v-if="!sentimentCards.length && !windVaneTabs.length"
+        icon="activity"
+        title="暂无市场情绪数据"
+      />
     </template>
 
     <AppEmpty v-else icon="flame" title="暂无涨停聚焦数据" />
@@ -756,29 +876,310 @@ onMounted(async () => {
   white-space: normal;
 }
 
-/* ---------- 最强风口 ---------- */
+/* ---------- 最强风口（涨停简图） ---------- */
 .lu__wind {
   display: flex;
   flex-direction: column;
+  gap: var(--ff-space-4);
+  padding: var(--ff-space-4) 0;
 }
-.lu__wind-head {
+
+/* 概览指标 */
+.lu__wind-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--ff-space-3);
+  padding: 0 var(--ff-space-5);
+}
+.lu__ws {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--ff-space-3);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border-subtle);
+}
+.lu__ws-val {
+  font-size: var(--ff-fs-h3);
+  font-weight: var(--ff-fw-bold);
+  color: var(--ff-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.lu__ws-label {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+
+/* 涨停简图：题材板块榜 tile */
+.lu__board {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ff-space-2);
+  padding: 0 var(--ff-space-5);
+  align-items: stretch;
+}
+.lu__tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 96px;
+  padding: var(--ff-space-2-5) var(--ff-space-3);
+  border-radius: var(--ff-radius-md);
+  background: color-mix(in srgb, #ff6a3d 10%, transparent);
+  border: 1px solid color-mix(in srgb, #ff6a3d 28%, transparent);
+  color: var(--ff-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow var(--ff-dur-fast) var(--ff-ease-standard),
+    transform var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.lu__tile:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--ff-shadow-sm);
+}
+.lu__tile.is-active {
+  background: color-mix(in srgb, #ff6a3d 18%, transparent);
+  border-color: #ff6a3d;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ff6a3d 22%, transparent);
+}
+.lu__tile-name {
+  font-size: var(--ff-fs-body-sm);
+  font-weight: var(--ff-fw-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lu__tile-num {
+  font-size: var(--ff-fs-h3);
+  font-weight: var(--ff-fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.lu__tile-num i {
+  font-size: var(--ff-fs-caption);
+  font-style: normal;
+  font-weight: var(--ff-fw-medium);
+  margin-left: 1px;
+}
+.lu__tile-high {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+}
+.lu__tile-chg {
+  font-size: var(--ff-fs-caption);
+  font-weight: var(--ff-fw-semibold);
+}
+
+/* 选中题材的涨停个股 */
+.lu__topic {
+  margin: 0 var(--ff-space-5);
+  padding: var(--ff-space-4);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border-subtle);
+}
+.lu__topic-head {
   display: flex;
   align-items: baseline;
   gap: var(--ff-space-3);
-  padding: var(--ff-space-3) var(--ff-space-5) 0;
+  flex-wrap: wrap;
+  padding-bottom: var(--ff-space-3);
+  border-bottom: 1px solid var(--ff-border-subtle);
+  margin-bottom: var(--ff-space-3);
 }
-.lu__wind-name {
+.lu__topic-name {
   font-size: var(--ff-fs-h3);
   font-weight: var(--ff-fw-semibold);
   color: var(--ff-text-primary);
 }
-.lu__wind-avg {
+.lu__topic-num {
   font-size: var(--ff-fs-body);
   font-weight: var(--ff-fw-semibold);
 }
-.lu__wind-num {
+.lu__topic-high {
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
+}
+.lu__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ff-space-2);
+}
+.lu__sc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  padding: 4px 10px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-hover);
+  border: 1px solid var(--ff-border-subtle);
+}
+.lu__sc.is-st {
+  border-color: color-mix(in srgb, #ff4d4f 45%, transparent);
+  background: color-mix(in srgb, #ff4d4f 8%, transparent);
+}
+.lu__sc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.lu__sc-name {
+  font-size: var(--ff-fs-body-sm);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+  white-space: nowrap;
+}
+.lu__sc-code {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+.lu__sc-chg {
+  font-size: var(--ff-fs-caption);
+  font-weight: var(--ff-fw-semibold);
+}
+.lu__sc-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ff-text-secondary);
+}
+.lu__sc-plate {
+  flex: 0 0 auto;
+  color: var(--ff-text-tertiary);
+}
+.lu__sc-reason {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 市场情绪 · 风向标股 ---------- */
+.lu__vane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+  margin-top: var(--ff-space-3);
+  padding: 0 var(--ff-space-5);
+}
+.lu__vane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding-top: var(--ff-space-2);
+  border-top: 1px solid var(--ff-border-subtle);
+}
+.lu__vane-head :deep(.ff-icon) {
+  color: var(--ff-brand-text);
+}
+.lu__vane-title {
+  font-size: var(--ff-fs-h3);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+}
+.lu__vane-hint {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.lu__vane-tabs {
+  overflow-x: auto;
+}
+.lu__vane-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-2);
+}
+.lu__vane-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+}
+.lu__vane-sub-name {
+  font-size: var(--ff-fs-body);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+}
+.lu__vane-sub-num {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.lu__vane-sub-chg {
+  font-size: var(--ff-fs-caption);
+  font-weight: var(--ff-fw-semibold);
+}
+.lu__vane-list {
+  display: flex;
+  flex-direction: column;
+}
+.lu__vane-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-2-5) 0;
+  border-bottom: 1px solid var(--ff-border-subtle);
+}
+.lu__vane-item:last-child {
+  border-bottom: none;
+}
+.lu__vane-rank {
+  flex: 0 0 auto;
+  width: 28px;
+  text-align: center;
+  color: var(--ff-text-tertiary);
+  font-weight: var(--ff-fw-semibold);
+}
+.lu__vane-stock {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lu__vane-stock-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ff-space-2);
+}
+.lu__vane-name {
+  font-size: var(--ff-fs-body);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+}
+.lu__vane-code {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.lu__vane-chg {
+  font-size: var(--ff-fs-body-sm);
+  font-weight: var(--ff-fw-semibold);
+}
+.lu__vane-stock-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ff-text-secondary);
+}
+.lu__vane-tags {
+  padding: 0 6px;
+  border-radius: var(--ff-radius-sm);
+  background: color-mix(in srgb, var(--ff-brand) 12%, transparent);
+  color: var(--ff-brand-text);
+}
+.lu__vane-reason {
+  line-height: 1.4;
+  word-break: break-all;
+}
+.lu__vane-5rise {
+  flex: 0 0 auto;
+  font-weight: var(--ff-fw-semibold);
 }
 
 /* ---------- 市场情绪 ---------- */

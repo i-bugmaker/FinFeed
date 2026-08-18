@@ -12,9 +12,11 @@
                  的命名字段做富化，连板数 / 封板时间 / 主力净额等）
     强势股      dataapi continuous_limit_up（连板天梯）
                 + mobileapi stock_pool get_limit_up_stocks（连板分层全量）
-    最强风口    mobileapi market_state get_wind_vane_stock（风向标股）
+    最强风口    dataapi limit_up block_top（涨停简图 · 题材板块榜：
+                题材名 / 涨停数 / 连板高度 / 涨停个股及原因）
     市场情绪    mobileapi market_state overview（情绪总览）
-                + dataapi limit_up trade_status（交易状态）
+                + mobileapi market_state get_wind_vane_stock（风向标股，
+                  原误配给最强风口，已纠正回市场情绪）
 
 与 ths_hotrank 同构的设计：
     - 持久 httpx.AsyncClient（同事件循环复用，cookie jar 跨请求保持）
@@ -249,13 +251,28 @@ async def _get_continuous_ladder(td: str) -> List[Dict[str, Any]]:
 
 
 async def _get_wind(td: str) -> List[Dict[str, Any]]:
-    """mobileapi 风向标股 / 最强风口。返回 tab_list。"""
+    """mobileapi 风向标股（market_state）。返回 tab_list。
+
+    注：该接口真实归属「市场情绪」模块（同花顺前端 fetchWindStocks 调用），
+    此前被误配给「最强风口」，现已纠正回市场情绪。
+    """
     params = {"date": _ymd(td)}
     data = _data_of(await _request(
         "/market_state/v1/get_wind_vane_stock", params, mobile=True))
     if isinstance(data, dict):
         return data.get("tab_list") or []
     return []
+
+
+async def _get_block_top(td: str) -> List[Dict[str, Any]]:
+    """dataapi 涨停简图（最强风口）。返回题材板块榜 list。
+
+    端点：dataapi/limit_up/block_top?date=YYYYMMDD&filter=HS,GEM2STAR
+    每个板块：题材名 / 涨停数 / 连板高度 / 涨停个股（含涨停原因、连板、最新价）。
+    """
+    params = {"date": _ymd(td), "filter": "HS,GEM2STAR"}
+    data = _data_of(await _request("/limit_up/block_top", params, mobile=False))
+    return data if isinstance(data, list) else []
 
 
 async def _get_overview(td: str) -> Dict[str, Any]:
@@ -358,7 +375,7 @@ def _norm_open_lower(it: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _norm_wind_tabs(tabs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """风向标股 tab_list 规整为前端友好结构。"""
+    """风向标股 tab_list 规整为前端友好结构（现归属市场情绪）。"""
     out: List[Dict[str, Any]] = []
     for t in tabs:
         stocks: List[Dict[str, Any]] = []
@@ -379,6 +396,58 @@ def _norm_wind_tabs(tabs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "stocks": stocks,
         })
     return out
+
+
+def _norm_block_top_stock(s: Dict[str, Any]) -> Dict[str, Any]:
+    """涨停简图单只涨停股规整。"""
+    return {
+        "code": s.get("code"),
+        "name": s.get("name"),
+        "market_type": s.get("market_type") or "",
+        "latest": _num(s.get("latest")),
+        "change_rate": _num(s.get("change_rate")),
+        "high": s.get("high") or "",
+        "continue_num": _int(s.get("continue_num")),
+        "reason_type": s.get("reason_type") or "",
+        "reason_info": s.get("reason_info") or "",
+        "is_st": _int(s.get("is_st")),
+        "is_new": _int(s.get("is_new")),
+        "first_limit_up_time": s.get("first_limit_up_time") or "",
+        "last_limit_up_time": s.get("last_limit_up_time") or "",
+    }
+
+
+def _norm_block_top(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """涨停简图题材板块榜规整，按涨停数降序。"""
+    out: List[Dict[str, Any]] = []
+    for b in blocks:
+        stocks = [_norm_block_top_stock(s) for s in (b.get("stock_list") or [])]
+        out.append({
+            "code": b.get("code"),
+            "name": b.get("name"),
+            "change": _num(b.get("change")),
+            "limit_up_num": _int(b.get("limit_up_num")),
+            "continuous_plate_num": _int(b.get("continuous_plate_num")),
+            "high": b.get("high") or "",
+            "high_num": _int(b.get("high_num")),
+            "days": _int(b.get("days")),
+            "stocks": stocks,
+        })
+    out.sort(key=lambda x: -x["limit_up_num"])
+    return out
+
+
+def _block_top_persist_rows(td: str, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """涨停简图板块榜 → 持久化行（个股明细存 detail_json）。"""
+    normed = _norm_block_top(blocks)
+    return [{
+        "trade_date": td, "rank": i + 1,
+        "topic_code": b.get("code"), "topic_name": b.get("name"),
+        "change": b.get("change"), "limit_up_num": b.get("limit_up_num"),
+        "continuous_plate_num": b.get("continuous_plate_num"),
+        "high": b.get("high"), "high_num": b.get("high_num"), "days": b.get("days"),
+        "detail_json": json.dumps(b.get("stocks") or [], ensure_ascii=False),
+    } for i, b in enumerate(normed)]
 
 
 def _intensity_metrics(up: int, op: int, lo: int) -> Dict[str, Any]:
@@ -552,6 +621,26 @@ def _build_wind_from_db(td: str) -> Optional[Dict[str, Any]]:
     return {"date": td, "tabs": list(tabs.values()), "source": "db"}
 
 
+def _build_block_top_from_db(td: str) -> Optional[Dict[str, Any]]:
+    from finfeed.market import store
+    rows = store.get_ths_limitup_block_top(td)
+    if not rows:
+        return None
+    blocks: List[Dict[str, Any]] = []
+    for r in rows:
+        stocks = _json_load(r["detail_json"])
+        if not isinstance(stocks, list):
+            stocks = []
+        blocks.append({
+            "code": r["topic_code"], "name": r["topic_name"],
+            "change": r["change"], "limit_up_num": r["limit_up_num"],
+            "continuous_plate_num": r["continuous_plate_num"],
+            "high": r["high"], "high_num": r["high_num"], "days": r["days"],
+            "stocks": stocks,
+        })
+    return {"date": td, "blocks": blocks, "source": "db"}
+
+
 def _build_sentiment_from_db(td: str) -> Optional[Dict[str, Any]]:
     from finfeed.market import store
     r = store.get_ths_limitup_sentiment(td)
@@ -573,6 +662,7 @@ def _build_sentiment_from_db(td: str) -> Optional[Dict[str, Any]]:
         "hgt_market_status": r["hgt_market_status"],
         "config_start_date": r["config_start_date"],
         "trade_status": {"stat": r["trade_status"], "timestamp": r["trade_status_ts"]},
+        "wind_vane": {"tabs": (_build_wind_from_db(td) or {}).get("tabs", [])},
         "source": "db",
     }
 
@@ -702,30 +792,31 @@ async def fetch_board_ladder(trade_date: Optional[str] = None) -> Dict[str, Any]
 
 
 async def fetch_strong_wind(trade_date: Optional[str] = None) -> Dict[str, Any]:
-    """最强风口：风向标股（按类目分组）。"""
+    """最强风口：涨停简图（题材板块榜）。"""
     from finfeed.market import store
     td = trade_date or now_bj().strftime("%Y-%m-%d")
     today = now_bj().strftime("%Y-%m-%d")
 
     if td != today:
-        d = _build_wind_from_db(td)
+        d = _build_block_top_from_db(td)
         if not d:
             return {"error": f"{td} 暂无最强风口采集数据", "section": "wind", "date": td}
         return d
 
     try:
-        tabs = await _cached_get(("wind", td), lambda: _get_wind(td))
-        result = {"date": td, "tabs": _norm_wind_tabs(tabs), "source": "live"}
+        blocks = await _cached_get(("block_top", td), lambda: _get_block_top(td))
+        result = {"date": td, "blocks": _norm_block_top(blocks), "source": "live"}
         try:
-            result["persisted"] = store.upsert_ths_limitup_wind(_wind_persist_rows(td, tabs))
+            result["persisted"] = store.upsert_ths_limitup_block_top(
+                _block_top_persist_rows(td, blocks))
         except Exception as e:  # noqa: BLE001
-            logger.warning("最强风口快照持久化失败: %s", e)
+            logger.warning("最强风口（涨停简图）快照持久化失败: %s", e)
         return result
     except Exception as e:  # noqa: BLE001
         logger.warning("最强风口实时获取失败，尝试历史快照: %s", e)
         cached = store.get_latest_ths_limitup_date()
         if cached and cached != today:
-            d = _build_wind_from_db(cached)
+            d = _build_block_top_from_db(cached)
             if d:
                 d["cached_date"] = cached
                 return d
@@ -748,6 +839,7 @@ async def fetch_market_sentiment(trade_date: Optional[str] = None) -> Dict[str, 
     try:
         ov = await _cached_get(("overview", td), lambda: _get_overview(td))
         ts = await _cached_get(("tstatus", td), lambda: _get_trade_status())
+        wind_tabs = await _cached_get(("wind_vane", td), lambda: _get_wind(td))
         ov = ov if isinstance(ov, dict) else {}
         ts = ts if isinstance(ts, dict) else {"stat": str(ts)}
         result = {
@@ -759,11 +851,14 @@ async def fetch_market_sentiment(trade_date: Optional[str] = None) -> Dict[str, 
             "hgt_market_status": ov.get("hgt_market_status"),
             "config_start_date": ov.get("config_start_date"),
             "trade_status": ts,
+            "wind_vane": {"tabs": _norm_wind_tabs(wind_tabs)},
             "source": "live",
         }
         try:
-            result["persisted"] = store.upsert_ths_limitup_sentiment(
-                _sentiment_persist_row(td, result))
+            result["persisted"] = (
+                store.upsert_ths_limitup_sentiment(_sentiment_persist_row(td, result))
+                + store.upsert_ths_limitup_wind(_wind_persist_rows(td, wind_tabs))
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("市场情绪快照持久化失败: %s", e)
         return result
