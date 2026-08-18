@@ -351,10 +351,12 @@ onMounted(async () => {
           </div>
           <div class="lu__tier-stocks">
             <div v-for="s in tier.stocks" :key="(s.code || '') + '-' + s.name" class="lu__chip">
-              <span class="lu__chip-name">{{ s.name }}</span>
-              <span class="lu__chip-code">{{ s.code }}</span>
-              <span class="lu__chip-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
-              <span v-if="s.reason" class="lu__chip-reason">{{ s.reason }}</span>
+              <div class="lu__chip-row">
+                <span class="lu__chip-name">{{ s.name }}</span>
+                <span class="lu__chip-code">{{ s.code }}</span>
+                <span class="lu__chip-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
+              </div>
+              <span v-if="s.reason" class="lu__chip-reason" :title="s.reason">{{ s.reason }}</span>
             </div>
           </div>
         </div>
@@ -634,15 +636,14 @@ onMounted(async () => {
   display: inline-block;
   margin-top: 4px;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 11px;
   line-height: 1.6;
   padding: 0 6px;
   border-radius: var(--ff-radius-sm);
   background: color-mix(in srgb, #ff6a3d 14%, transparent);
   color: #d9431f;
+  white-space: normal;
+  word-break: break-all;
 }
 .lu__col-board,
 .lu__col-time,
@@ -651,9 +652,9 @@ onMounted(async () => {
   color: var(--ff-text-secondary);
 }
 .lu__col-reason {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  word-break: break-all;
+  white-space: normal;
 }
 .lu__col-mid,
 .lu__col-chg,
@@ -714,14 +715,21 @@ onMounted(async () => {
   flex: 1 1 auto;
 }
 .lu__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   max-width: 100%;
   padding: 4px 10px;
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-hover);
   border: 1px solid var(--ff-border-subtle);
+}
+.lu__chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .lu__chip-name {
   font-size: var(--ff-fs-body-sm);
@@ -739,12 +747,13 @@ onMounted(async () => {
   font-weight: var(--ff-fw-semibold);
 }
 .lu__chip-reason {
+  display: block;
+  width: 100%;
   font-size: 11px;
   color: var(--ff-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
+  line-height: 1.4;
+  word-break: break-all;
+  white-space: normal;
 }
 
 /* ---------- 最强风口 ---------- */

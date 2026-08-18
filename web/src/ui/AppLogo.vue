@@ -31,7 +31,7 @@ const wordColor = computed(() => {
   return isDark.value ? '#f4f6f9' : '#0f172a'
 })
 
-const brandColor = '#2563eb'
+const brandColor = '#2f7d5b'
 const wordSize = computed(() => Math.round(markSize.value * 0.48))
 const wordGap = computed(() => Math.round(markSize.value * 0.28))
 </script>
@@ -51,9 +51,9 @@ const wordGap = computed(() => Math.round(markSize.value * 0.28))
       <title>FinFeed</title>
       <defs v-if="isColor">
         <linearGradient id="ffLogoGrad" x1="4" y1="2" x2="44" y2="46" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stop-color="#4f8dff" />
-          <stop offset="0.55" stop-color="#2563eb" />
-          <stop offset="1" stop-color="#1b3fb8" />
+          <stop offset="0" stop-color="#4f9e76" />
+          <stop offset="0.55" stop-color="#2f7d5b" />
+          <stop offset="1" stop-color="#1d4e39" />
         </linearGradient>
         <linearGradient id="ffLogoGloss" x1="24" y1="0" x2="24" y2="30" gradientUnits="userSpaceOnUse">
           <stop offset="0" stop-color="#ffffff" stop-opacity="0.22" />

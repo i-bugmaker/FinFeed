@@ -14,18 +14,18 @@
      1. 原始色板 (Primitive Palette) — 不直接在组件中使用
      ══════════════════════════════════════════════════════════════ */
 
-  /* Brand · Cobalt */
-  --p-brand-50: #eff6ff;
-  --p-brand-100: #dbeafe;
-  --p-brand-200: #bfdbfe;
-  --p-brand-300: #93c5fd;
-  --p-brand-400: #60a5fa;
-  --p-brand-500: #3b82f6;
-  --p-brand-600: #2563eb;
-  --p-brand-700: #1d4ed8;
-  --p-brand-800: #1e40af;
-  --p-brand-900: #1e3a8a;
-  --p-brand-950: #172554;
+  /* Brand · Forest（清新自然方案 · 主色 #2f7d5b） */
+  --p-brand-50: #eef6f1;
+  --p-brand-100: #d7ebdf;
+  --p-brand-200: #aed8c2;
+  --p-brand-300: #7cbf9c;
+  --p-brand-400: #4f9e76;
+  --p-brand-500: #3a8a62;
+  --p-brand-600: #2f7d5b;
+  --p-brand-700: #256449;
+  --p-brand-800: #1d4e39;
+  --p-brand-900: #163b2b;
+  --p-brand-950: #0e271c;
 
   /* Neutral · Cool Graphite */
   --p-gray-0: #ffffff;
@@ -203,10 +203,10 @@
      ══════════════════════════════════════════════════════════════ */
   --ff-radius-xs: 4px;
   --ff-radius-sm: 6px;
-  --ff-radius-md: 8px;
-  --ff-radius-lg: 12px;
-  --ff-radius-xl: 16px;
-  --ff-radius-2xl: 20px;
+  --ff-radius-md: 10px;
+  --ff-radius-lg: 16px;
+  --ff-radius-xl: 20px;
+  --ff-radius-2xl: 24px;
   --ff-radius-pill: 999px;
   --ff-radius-circle: 50%;
 
@@ -277,30 +277,30 @@
   --ff-ls-body: -0.006em;
 
   /* 表面层级 */
-  --ff-bg-canvas: #f4f6f9;
+  --ff-bg-canvas: #fbfaf7;
   --ff-bg-surface: var(--p-gray-0);
   --ff-bg-surface-raised: var(--p-gray-0);
-  --ff-bg-subtle: var(--p-gray-50);
-  --ff-bg-muted: var(--p-gray-100);
-  --ff-bg-hover: rgba(18, 25, 38, 0.04);
-  --ff-bg-active: rgba(18, 25, 38, 0.07);
+  --ff-bg-subtle: #f7f4ee;
+  --ff-bg-muted: #f1ede5;
+  --ff-bg-hover: rgba(35, 51, 43, 0.045);
+  --ff-bg-active: rgba(35, 51, 43, 0.08);
   --ff-bg-selected: var(--p-brand-50);
   --ff-bg-inverse: var(--p-gray-900);
   --ff-bg-overlay: rgba(11, 18, 30, 0.44);
-  --ff-bg-scrim: rgba(255, 255, 255, 0.72);
+  --ff-bg-scrim: rgba(255, 255, 255, 0.74);
 
   /* 边框 */
-  --ff-border-subtle: #e9edf3;
-  --ff-border: var(--p-gray-200);
-  --ff-border-strong: var(--p-gray-300);
+  --ff-border-subtle: #efeae0;
+  --ff-border: #e7e2d8;
+  --ff-border-strong: #d8d1c2;
   --ff-border-inverse: var(--p-gray-700);
 
   /* 文本 */
-  --ff-text-primary: var(--p-gray-900);
-  --ff-text-secondary: var(--p-gray-600);
-  --ff-text-tertiary: var(--p-gray-500);
-  --ff-text-disabled: var(--p-gray-400);
-  --ff-text-placeholder: var(--p-gray-400);
+  --ff-text-primary: #23332b;
+  --ff-text-secondary: #5c6b60;
+  --ff-text-tertiary: #968d7c;
+  --ff-text-disabled: #b3a99a;
+  --ff-text-placeholder: #b3a99a;
   --ff-text-inverse: var(--p-gray-0);
   --ff-text-link: var(--p-brand-600);
 
@@ -320,7 +320,7 @@
   --ff-icon-brand: var(--ff-brand);
   --ff-text-brand: var(--ff-brand-text);
   --ff-border-brand: var(--ff-brand-border);
-  --ff-border-hover: var(--p-gray-300);
+  --ff-border-hover: #d8d1c2;
   --ff-border-focus: var(--ff-brand);
   --ff-border-up: var(--ff-up-border);
   --ff-border-down: var(--ff-down-border);
@@ -386,21 +386,21 @@
   --ff-chart-up: #e5484d;
   --ff-chart-down: #12a150;
   --ff-chart-neutral: #697586;
-  --ff-chart-primary: #2563eb;
+  --ff-chart-primary: #2f7d5b;
   --ff-chart-primary-2: #0ea5a5;
   --ff-chart-primary-3: #875bf7;
-  --ff-chart-axis: #cdd5e0;
+  --ff-chart-axis: #e7e2d8;
 
   /* 阴影 */
   --ff-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --ff-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.05);
-  --ff-shadow-md: 0 2px 4px -2px rgba(16, 24, 40, 0.06), 0 4px 10px -2px rgba(16, 24, 40, 0.08);
-  --ff-shadow-lg: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 22px -4px rgba(16, 24, 40, 0.1);
-  --ff-shadow-xl: 0 8px 10px -6px rgba(16, 24, 40, 0.05), 0 22px 42px -8px rgba(16, 24, 40, 0.14);
+  --ff-shadow-sm: 0 1px 2px rgba(35, 51, 43, 0.04), 0 1px 3px rgba(35, 51, 43, 0.04);
+  --ff-shadow-md: 0 2px 4px -2px rgba(35, 51, 43, 0.05), 0 6px 16px -3px rgba(35, 51, 43, 0.08);
+  --ff-shadow-lg: 0 4px 8px -2px rgba(35, 51, 43, 0.04), 0 14px 30px -5px rgba(35, 51, 43, 0.10);
+  --ff-shadow-xl: 0 10px 14px -6px rgba(35, 51, 43, 0.05), 0 26px 50px -8px rgba(35, 51, 43, 0.14);
   --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 
   /* 焦点环（无障碍） */
-  --ff-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.22);
+  --ff-focus-ring: 0 0 0 3px rgba(47, 125, 91, 0.22);
   --ff-focus-ring-danger: 0 0 0 3px rgba(208, 43, 49, 0.2);
 
   /* 滚动条 */
@@ -426,38 +426,38 @@
   --ff-font-synthesis: none;
   --ff-ls-body: 0;
 
-  --ff-bg-canvas: #0b121e;
-  --ff-bg-surface: #121a27;
-  --ff-bg-surface-raised: #18212f;
-  --ff-bg-subtle: #161f2c;
-  --ff-bg-muted: #1d2736;
+  --ff-bg-canvas: #0f1c16;
+  --ff-bg-surface: #16271f;
+  --ff-bg-surface-raised: #1c2f25;
+  --ff-bg-subtle: #1a2b22;
+  --ff-bg-muted: #203329;
   --ff-bg-hover: rgba(255, 255, 255, 0.05);
   --ff-bg-active: rgba(255, 255, 255, 0.09);
-  --ff-bg-selected: rgba(59, 130, 246, 0.14);
+  --ff-bg-selected: rgba(63, 138, 98, 0.16);
   --ff-bg-inverse: var(--p-gray-100);
-  --ff-bg-overlay: rgba(3, 7, 14, 0.66);
-  --ff-bg-scrim: rgba(11, 18, 30, 0.72);
+  --ff-bg-overlay: rgba(5, 12, 8, 0.66);
+  --ff-bg-scrim: rgba(15, 28, 22, 0.72);
 
-  --ff-border-subtle: #1d2735;
-  --ff-border: #263346;
-  --ff-border-strong: #35455c;
+  --ff-border-subtle: #203329;
+  --ff-border: #2a4034;
+  --ff-border-strong: #354a3c;
   --ff-border-inverse: var(--p-gray-300);
 
-  --ff-text-primary: #e8edf5;
-  --ff-text-secondary: #a5b1c2;
-  --ff-text-tertiary: #7d8a9c;
-  --ff-text-disabled: #5a6779;
-  --ff-text-placeholder: #647285;
+  --ff-text-primary: #eaf1ea;
+  --ff-text-secondary: #a9b8ad;
+  --ff-text-tertiary: #7e8e82;
+  --ff-text-disabled: #5f6e62;
+  --ff-text-placeholder: #6a786c;
   --ff-text-inverse: var(--p-gray-900);
   --ff-text-link: var(--p-brand-400);
 
   --ff-brand: var(--p-brand-500);
   --ff-brand-hover: var(--p-brand-400);
   --ff-brand-active: var(--p-brand-300);
-  --ff-brand-fg: #08121f;
-  --ff-brand-subtle: rgba(59, 130, 246, 0.14);
-  --ff-brand-subtle-hover: rgba(59, 130, 246, 0.22);
-  --ff-brand-border: rgba(96, 165, 250, 0.36);
+  --ff-brand-fg: #07140d;
+  --ff-brand-subtle: rgba(63, 138, 98, 0.16);
+  --ff-brand-subtle-hover: rgba(63, 138, 98, 0.24);
+  --ff-brand-border: rgba(127, 191, 156, 0.34);
   --ff-brand-text: var(--p-brand-300);
 
   /* ---- 兼容别名（暗色，映射到现行 token；勿删） ---- */
@@ -509,7 +509,7 @@
   --ff-danger-text: #f6a2a5;
 
   --ff-info: var(--p-brand-400);
-  --ff-info-subtle: rgba(96, 165, 250, 0.14);
+  --ff-info-subtle: rgba(63, 138, 98, 0.16);
   --ff-info-text: var(--p-brand-300);
   --ff-neutral-subtle: rgba(255, 255, 255, 0.07);
   --ff-neutral-text: #a5b1c2;
@@ -524,10 +524,10 @@
   --ff-chart-up: #f0575c;
   --ff-chart-down: #2bb763;
   --ff-chart-neutral: #7d8a9c;
-  --ff-chart-primary: #60a5fa;
+  --ff-chart-primary: #4f9e76;
   --ff-chart-primary-2: #2ec4c4;
   --ff-chart-primary-3: #a48afb;
-  --ff-chart-axis: #263346;
+  --ff-chart-axis: #2a4034;
 
   --ff-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --ff-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -536,15 +536,15 @@
   --ff-shadow-xl: 0 10px 14px -6px rgba(0, 0, 0, 0.5), 0 26px 48px -8px rgba(0, 0, 0, 0.7);
   --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 
-  --ff-focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.3);
+  --ff-focus-ring: 0 0 0 3px rgba(127, 191, 156, 0.3);
   --ff-focus-ring-danger: 0 0 0 3px rgba(240, 87, 92, 0.28);
 
-  --ff-scroll-thumb: rgba(165, 177, 194, 0.24);
-  --ff-scroll-thumb-hover: rgba(165, 177, 194, 0.42);
+  --ff-scroll-thumb: rgba(169, 184, 173, 0.24);
+  --ff-scroll-thumb-hover: rgba(169, 184, 173, 0.42);
   --ff-scroll-track: transparent;
 
-  --ff-skeleton-base: #1d2736;
-  --ff-skeleton-shine: rgba(255, 255, 255, 0.06);
+  --ff-skeleton-base: #203329;
+  --ff-skeleton-shine: rgba(255, 255, 255, 0.05);
 }
 
 /* ============================================================================
