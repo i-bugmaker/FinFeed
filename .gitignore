@@ -260,3 +260,6 @@ _pre_cleanup_backup_*/
 
 # 误生成的空设备名残留文件
 nul
+
+# easy-tdx 运行时产物（公告/财报下载等）
+finfeed/integrations/easytdx/output/

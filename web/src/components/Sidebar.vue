@@ -21,6 +21,7 @@ const nav = [
   { to: '/favorites', label: '收藏', icon: 'star' },
   { to: '/dashboard', label: '仪表盘', icon: 'dashboard' },
   { to: '/ai', label: 'AI 分析', icon: 'sparkles' },
+  { to: '/easytdx', label: 'easy-tdx', icon: 'cpu' },
 ]
 
 const activeIndex = computed(() => nav.findIndex(item => route.path === item.to || route.path.startsWith(item.to + '/')))

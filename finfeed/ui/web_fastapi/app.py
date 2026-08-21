@@ -62,6 +62,9 @@ from finfeed.storage.database import (
 from finfeed.ui.web import server as legacy
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
+# easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
+from finfeed.integrations.easytdx.router import router as easytdx_router
+
 logger = logging.getLogger("news_monitor")
 
 SSE_CLIENT_QUEUE_MAXSIZE = legacy.SSE_CLIENT_QUEUE_MAXSIZE
@@ -84,6 +87,9 @@ app = FastAPI(
     version="2.1.0",
     description="FinFeed 实时财经新闻监控 — FastAPI 后端（双轨并行，兼容旧 SSE 通道）",
 )
+
+# 注册 easy-tdx 集成路由（/api/easytdx/*）
+app.include_router(easytdx_router)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
