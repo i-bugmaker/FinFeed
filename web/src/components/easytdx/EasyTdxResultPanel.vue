@@ -33,6 +33,13 @@ function num(v) {
   return Number.isFinite(n) ? n : 0
 }
 
+// 读取主题色（ECharts canvas 无法解析 CSS var 字符串，需取实际颜色值）
+// A 股惯例：涨=红(--ff-up)，跌=绿(--ff-down)
+function themeColor(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return v || fallback
+}
+
 function buildCandle(t) {
   const cols = t.columns
   const dateIdx = cols.findIndex((c) => /date|datetime|time/i.test(c))
@@ -43,6 +50,9 @@ function buildCandle(t) {
   if ([dateIdx, oi, hi, lo, ci].some((i) => i < 0)) return null
   const x = t.rows.map((r) => r[dateIdx])
   const data = t.rows.map((r) => [num(r[oi]), num(r[ci]), num(r[lo]), num(r[hi])])
+  // 红涨绿跌：阳线(close>=open)=红，阴线=绿
+  const up = themeColor('--ff-up', '#f0575c')
+  const down = themeColor('--ff-down', '#2bb763')
   return {
     tooltip: {
       trigger: 'axis',
@@ -63,10 +73,10 @@ function buildCandle(t) {
         type: 'candlestick',
         data,
         itemStyle: {
-          color: 'var(--ff-up-text)',
-          color0: 'var(--ff-down-text)',
-          borderColor: 'var(--ff-up-text)',
-          borderColor0: 'var(--ff-down-text)',
+          color: up, // 阳线（涨）红
+          color0: down, // 阴线（跌）绿
+          borderColor: up,
+          borderColor0: down,
         },
       },
     ],
