@@ -18,6 +18,12 @@ const statusMeta = computed(() => {
 
 const logs = computed(() => props.task?.logs || [])
 
+// 日志级别 → 中文
+const LEVEL_LABELS = { DEBUG: '调试', INFO: '信息', WARNING: '警告', ERROR: '错误', CRITICAL: '致命' }
+function levelLabel(level) {
+  return LEVEL_LABELS[level] || '信息'
+}
+
 watch(
   () => logs.value.length,
   async () => {
@@ -54,7 +60,7 @@ watch(
         class="etdx-status__log"
         :class="'lvl-' + (l.level || 'INFO').toLowerCase()"
       >
-        <span class="etdx-status__log-level">{{ l.level || 'INFO' }}</span>
+        <span class="etdx-status__log-level">{{ levelLabel(l.level) }}</span>
         <span class="etdx-status__log-msg">{{ l.msg }}</span>
       </div>
     </div>

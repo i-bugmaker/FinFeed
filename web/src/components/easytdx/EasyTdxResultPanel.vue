@@ -93,7 +93,7 @@ function buildLine(t) {
     .filter(({ c, i }) => i !== xi && /open|high|low|close|vol|amount|price|pct|value|ratio|net/i.test(c))
     .slice(0, 6)
   const series = numeric.map(({ c, i }) => ({
-    name: c,
+    name: columnLabel(c),
     type: 'line',
     showSymbol: false,
     smooth: true,

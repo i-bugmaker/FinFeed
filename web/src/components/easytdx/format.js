@@ -45,6 +45,38 @@ const COLUMN_LABELS = {
   result: '结果', status: '状态', message: '消息', reason: '原因',
   rows: '行数', columns: '列数', filename: '文件名', size: '大小',
   start: '起始', end: '结束', category_name: '分类',
+  // 逐笔 / 分时补充
+  time: '时间', num: '笔数', buyorsell: '买卖方向', avg_price: '均价',
+  // 财务补充
+  report_date: '报告期', bvps: '每股净资产', roe: '净资产收益率',
+  net_profit: '净利润', gross_margin: '毛利率', net_assets_ps: '每股净资产',
+  // 除权除息补充
+  plan_explain: '方案说明', progress: '进度', equity_reg_date: '股权登记日',
+  ex_dividend_date: '除权除息日', cash_dividend: '现金分红',
+  dividend_ratio: '送转比例', bonus_ratio: '送股比例',
+  // 服务器 / 统计补充
+  servername: '服务器', serverip: '服务器IP', security_count: '证券数量',
+  market_count: '市场数量', instrument_count: '品种数量',
+  // 汇总 / 排名补充
+  avg_price_now: '现均价', avg_price_close: '收盘均价', rise_count: '上涨数',
+  fall_count: '下跌数', flat_count: '平盘数', total_count: '总数',
+}
+
+// 客户端 → 中文
+export const CLIENT_LABELS = {
+  tdx: '通达信',
+  mac: 'Mac',
+  ex: '扩展行情',
+  cninfo: '巨潮资讯',
+  chanlun: '缠论',
+  backtest: '回测',
+  ping: '主机探测',
+  host: '主机配置',
+}
+
+export function clientLabel(c) {
+  if (c == null) return ''
+  return CLIENT_LABELS[String(c).toLowerCase()] || String(c)
 }
 
 export function columnLabel(col) {

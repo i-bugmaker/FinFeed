@@ -13,6 +13,7 @@ import EasyTdxStockPicker from '../components/easytdx/EasyTdxStockPicker.vue'
 import EasyTdxQuickTasks from '../components/easytdx/EasyTdxQuickTasks.vue'
 import easytdxApi from '../api/easytdx'
 import { loadStockNames } from '../components/easytdx/stockNames'
+import { clientLabel } from '../components/easytdx/format'
 
 const loading = ref(false)
 const meta = ref(null)
@@ -290,8 +291,8 @@ onBeforeUnmount(stopPolling)
             <div>
               <div class="etdx-view__func-title">
                 {{ selectedFunc.label }}
-                <AppBadge variant="muted">{{ selectedFunc.group }}</AppBadge>
-                <AppBadge variant="brand">{{ selectedFunc.client }}</AppBadge>
+                <AppBadge variant="muted">{{ GROUP_LABELS[selectedFunc.group] || selectedFunc.group }}</AppBadge>
+                <AppBadge variant="brand">{{ clientLabel(selectedFunc.client) }}</AppBadge>
               </div>
               <p v-if="selectedFunc.help" class="etdx-view__func-help">{{ selectedFunc.help }}</p>
             </div>
