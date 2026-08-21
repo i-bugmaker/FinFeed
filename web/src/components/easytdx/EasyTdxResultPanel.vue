@@ -9,6 +9,7 @@ const props = defineProps({
   result: { type: Object, default: null },
   func: { type: Object, default: null },
   loading: { type: Boolean, default: false },
+  stockNames: { type: Object, default: () => ({}) }, // { code: name }
 })
 
 const hasResult = computed(() => !!props.result)
@@ -168,6 +169,16 @@ function fmt(v, col = '') {
   return cellText(v, col)
 }
 
+// 单元格展示：code 列自动带出股票名称（贵州茅台 (600519)）
+function fmtCell(v, col) {
+  const c = String(col || '').toLowerCase()
+  if (c === 'code' && typeof v === 'string' && /^\d{6}$/.test(v)) {
+    const name = props.stockNames[v]
+    if (name) return `${name} (${v})`
+  }
+  return cellText(v, col)
+}
+
 // 纯标量字典（如 performance）→ 展开为子行展示
 function isPlainDict(v) {
   return (
@@ -236,7 +247,7 @@ function isPlainDict(v) {
                       rel="noopener"
                       class="etdx-result__link"
                     >打开链接</a>
-                    <span v-else :title="fullText(row[col])">{{ cellText(row[col], col) }}</span>
+                    <span v-else :title="fullText(row[col])">{{ fmtCell(row[col], col) }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -313,7 +324,7 @@ function isPlainDict(v) {
                     rel="noopener"
                     class="etdx-result__link"
                   >打开链接</a>
-                  <span v-else :title="fullText(cell)">{{ cellText(cell, result.columns[ci]) }}</span>
+                  <span v-else :title="fullText(cell)">{{ fmtCell(cell, result.columns[ci]) }}</span>
                 </td>
               </tr>
             </tbody>

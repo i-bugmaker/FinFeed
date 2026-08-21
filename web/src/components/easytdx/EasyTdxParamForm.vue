@@ -9,11 +9,35 @@ const props = defineProps({
   func: { type: Object, required: true },
   model: { type: Object, required: true }, // 参数键值（响应式）
   strategies: { type: Array, default: () => [] }, // 回测策略 [{name,label,params}]
+  stock: { type: Object, default: null }, // 当前标的 { market, code, name }
 })
+const emit = defineEmits(['change-stock'])
 
 // 枚举选项 → AppSelect 期望的 { label, value }
 function enumOptions(param) {
   return (param.options || []).map((o) => ({ label: o.label, value: o.value }))
+}
+
+// 标的徽章模式：功能含 market/code 参数且与当前标的匹配时，
+// 用「股票名称 + 代码」徽章替代裸的市场/代码输入框
+const hasCodeParam = computed(() => props.func.params?.some((p) => p.key === 'code'))
+const hasMarketParam = computed(() => props.func.params?.some((p) => p.key === 'market'))
+
+const badgeMode = computed(() => {
+  if (!props.stock) return false
+  if (!hasCodeParam.value) return false
+  const code = props.model.code
+  const codeMatched = code === '' || code === props.stock.code
+  const marketMatched = !hasMarketParam.value || props.model.market === props.stock.market
+  return codeMatched && marketMatched
+})
+
+function isStockParam(param) {
+  return badgeMode.value && (param.key === 'market' || param.key === 'code')
+}
+
+function changeStock() {
+  emit('change-stock')
 }
 
 // 回测：当前选中策略的 schema，用于动态渲染子参数
@@ -46,6 +70,18 @@ function onStrategyChange(name) {
     </p>
 
     <div v-for="param in func.params" :key="param.key" class="etdx-form__row">
+      <!-- 标的徽章（替代 market/code 裸输入） -->
+      <div v-if="isStockParam(param) && param.key === 'code'" class="etdx-form__stock">
+        <label class="ff-field__label">标的</label>
+        <div class="etdx-form__stock-badge">
+          <span class="etdx-form__stock-name">{{ stock.name }}</span>
+          <span class="etdx-form__stock-code">{{ stock.code }}.{{ stock.market }}</span>
+          <button type="button" class="etdx-form__stock-swap" @click="changeStock">
+            更换
+          </button>
+        </div>
+      </div>
+      <template v-else-if="!isStockParam(param)">
       <!-- 枚举 -->
       <AppSelect
         v-if="param.type === 'enum'"
@@ -110,6 +146,7 @@ function onStrategyChange(name) {
         :placeholder="param.placeholder"
         :hint="param.help"
       />
+      </template>
     </div>
 
     <!-- 回测策略的专属参数 -->
@@ -145,6 +182,46 @@ function onStrategyChange(name) {
   margin: 0;
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-sm);
+}
+.etdx-form__stock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.etdx-form__stock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: 7px 8px 7px 12px;
+  background: var(--ff-bg-brand-subtle);
+  border: 1px solid var(--ff-border-brand-subtle);
+  border-radius: var(--ff-radius-md);
+  font-size: var(--ff-fs-body-sm);
+  width: fit-content;
+  max-width: 100%;
+}
+.etdx-form__stock-name {
+  font-weight: 600;
+  color: var(--ff-text-brand);
+}
+.etdx-form__stock-code {
+  color: var(--ff-text-secondary);
+  font-family: var(--ff-font-mono, monospace);
+  font-size: var(--ff-fs-caption);
+}
+.etdx-form__stock-swap {
+  margin-left: var(--ff-space-2);
+  padding: 2px 8px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption);
+  cursor: pointer;
+}
+.etdx-form__stock-swap:hover {
+  color: var(--ff-text-brand);
+  border-color: var(--ff-border-brand);
 }
 .etdx-form__bool {
   display: flex;

@@ -53,7 +53,8 @@ const total = computed(() => props.groups.reduce((n, g) => n + g.items.length, 0
             :class="activeId === f.id && 'etdx-nav__item--active'"
             @click="emit('select', f.id)"
           >
-            {{ f.label }}
+            <span class="etdx-nav__item-label">{{ f.label }}</span>
+            <span v-if="f.tag" class="etdx-nav__item-tag">{{ f.tag }}</span>
           </button>
         </li>
       </ul>
@@ -138,6 +139,9 @@ const total = computed(() => props.groups.reduce((n, g) => n + g.items.length, 0
 }
 .etdx-nav__item {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
   text-align: left;
   padding: 8px var(--ff-space-3);
   border: 1px solid transparent;
@@ -157,6 +161,21 @@ const total = computed(() => props.groups.reduce((n, g) => n + g.items.length, 0
   color: var(--ff-text-brand);
   font-weight: 600;
   border-color: var(--ff-border-brand-subtle);
+}
+.etdx-nav__item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.etdx-nav__item-tag {
+  flex-shrink: 0;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  background: var(--ff-bg-subtle);
+  border-radius: var(--ff-radius-pill);
+  padding: 0 6px;
 }
 .etdx-nav__empty {
   color: var(--ff-text-tertiary);
