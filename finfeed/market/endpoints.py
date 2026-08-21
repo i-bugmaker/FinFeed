@@ -34,6 +34,7 @@ HOST_REFERER: Dict[str, str] = {
     "np-anotice-stock.eastmoney.com": "https://data.eastmoney.com/notices/",
     "np-listapi.eastmoney.com": "https://kuaixun.eastmoney.com/",
     "reportapi.eastmoney.com": "https://data.eastmoney.com/report/",
+    "data.10jqka.com.cn": "https://data.10jqka.com.cn/mobile/limitup/v2/index.html",
 }
 
 DEFAULT_UA = (
@@ -55,6 +56,7 @@ GROUP_MIN_INTERVAL: Dict[str, float] = {
     "em_reportapi": 1.0,
     "em_nplist": 1.0,
     "em_clist": 10.0,       # 已被拉黑，仅降级备用
+    "ths": 0.8,             # 同花顺涨停聚焦：单客户端全局串行约 1.25 req/s，留足余量
 }
 
 # 端点组 -> 熔断注册名（写入 source_health 表）
@@ -68,6 +70,7 @@ GROUP_COOLDOWN_THRESHOLD: Dict[str, int] = {
     "em_push2delay": 4,
     "em_push2ex": 5,
     "em_datacenter": 8,
+    "ths": 3,                # 同花顺：连续 3 次网络失败即冷却，避免被持续限流/断连
 }
 GROUP_COOLDOWN_SECONDS: Dict[str, float] = {
     "em_push2": 600.0,
@@ -75,6 +78,7 @@ GROUP_COOLDOWN_SECONDS: Dict[str, float] = {
     "em_push2delay": 300.0,
     "em_push2ex": 120.0,
     "em_datacenter": 60.0,
+    "ths": 300.0,            # 同花顺冷却 5 分钟：限流是滑动窗口，惩罚期继续探测会续期
 }
 DEFAULT_COOLDOWN_THRESHOLD = 5
 DEFAULT_COOLDOWN_SECONDS = 120.0

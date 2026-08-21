@@ -151,6 +151,7 @@ async def get_json(
     params: Optional[dict] = None,
     group: str = "em_push2",
     timeout: float = 25.0,
+    extra_headers: Optional[Dict[str, str]] = None,
 ) -> dict:
     """GET 并解析 JSON，内置限速 / 冷却 / 重试 / 熔断。
 
@@ -185,6 +186,8 @@ async def get_json(
                 "Referer": _referer_for(url),
                 "Accept": "*/*",
             }
+            if extra_headers:
+                headers.update(extra_headers)
             resp = await client.get(url, params=params, headers=headers, timeout=timeout)
             resp.raise_for_status()
             data = resp.json()
@@ -215,6 +218,29 @@ async def get_json(
             if attempt < attempts - 1:
                 await asyncio.sleep(_BACKOFF[attempt])
     raise RuntimeError(f"{source} 请求失败: {last_err}") from last_err
+
+
+# ---------------------------------------------------------------------------
+# 会话预热（建立目标站 Cookie，避免首请求被拒）
+# ---------------------------------------------------------------------------
+async def warm(url: str, referer: str, group: str = "ths", timeout: float = 15.0) -> Optional[int]:
+    """对目标域做一次轻量 GET 以写入会话 Cookie（不解析 JSON）。
+
+    同花顺移动版接口要求预先访问根域建立 Cookie，否则 dataapi/mobileapi
+    可能直接拒绝。返回 HTTP 状态码；冷却期或失败时返回 None（不影响主链路）。
+    """
+    remaining = cooldown_remaining(group)
+    if remaining > 0:
+        return None
+    client = _get_client()
+    try:
+        resp = await client.get(
+            url, headers={"User-Agent": DEFAULT_UA, "Referer": referer}, timeout=timeout
+        )
+        return resp.status_code
+    except Exception as e:  # noqa: BLE001
+        logger.debug("warm %s 失败（不影响主链路）: %s", url, e)
+        return None
 
 
 # ---------------------------------------------------------------------------

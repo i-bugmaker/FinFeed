@@ -18,12 +18,18 @@
                 + mobileapi market_state get_wind_vane_stock（风向标股，
                   原误配给最强风口，已纠正回市场情绪）
 
-与 ths_hotrank 同构的设计：
-    - 持久 httpx.AsyncClient（同事件循环复用，cookie jar 跨请求保持）
+稳定性设计（详见 docs/ths-limitup-strategy.md）：
+    - 复用 finfeed.market.client 共享限流客户端（group="ths"）：令牌桶限速
+      + 组级冷却熔断 + 指数退避重试，规避此前无限速导致的 [WinError 10054]
     - 首次请求前 GET 根域名预热会话 Cookie（同花顺移动版接口前置要求）
-    - 60s 内存 TTL 缓存（去抖 + 避免频繁请求）
-    - 每个模块：当天实时拉取 → 失败回退最近一次 DB 快照
-    - 实时成功即幂等落库，支撑历史交易日回看
+    - 60s 内存 TTL 缓存（去抖 + 削减重复请求）
+    - 两层容错：
+        L1 子请求级 —— 单接口失败仅降级该字段/子榜（degraded 标签），
+                       用当日 DB 快照或空值补位，其余子接口照常呈现
+        L2 模块级   —— 关键子接口全灭或实时全空（盘前/非交易日）时，
+                       依次回退 当日 DB → 最近交易日 DB → error
+    - 实时全量成功即幂等落库 + prune 对齐（裁剪炸板/跌榜等残留行），
+      支撑盘中增量采集与历史交易日回看
 
 合规底线：仅限个人学习与技术研究，遵守 robots 与频率限制，勿商用分发原始数据。
 """
@@ -34,8 +40,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-import httpx
-
+from finfeed.market.client import get_json, warm, RateLimited
 from finfeed.storage.database import now_bj
 
 logger = logging.getLogger("news_monitor")
@@ -64,71 +69,53 @@ _POOL_FIELD_MAP = {
 _TTL = 60.0
 _CACHE: Dict[tuple, tuple] = {}  # key -> (ts, result)
 
-_client: Optional[httpx.AsyncClient] = None
-_client_loop: Any = None
-_warm_lock: Optional[asyncio.Lock] = None
-_warmed = False
-
-
 # ---------------------------------------------------------------------------
-# 客户端与会话预热
+# 客户端：复用 finfeed.market.client 的限流基础设施（group=ths）
+# 令牌桶限速 + 组级冷却熔断 + 退避重试，规避此前无限速导致的 [WinError 10054] 断连与限流。
 # ---------------------------------------------------------------------------
-def _get_client() -> httpx.AsyncClient:
-    """按事件循环创建/复用持久客户端（cookie jar 跨请求保持会话）。"""
-    global _client, _client_loop
-    loop = asyncio.get_running_loop()
-    if _client is None or _client.is_closed or _client_loop is not loop:
-        _client = httpx.AsyncClient(
-            timeout=25.0, follow_redirects=True,
-            headers={"User-Agent": _UA},
-            limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
-        )
-        _client_loop = loop
-    return _client
+_MOBILE_HEADERS = {"Source-id": _SOURCE_ID, "PlatForm": _PLATFORM}
+
+_ths_warm_lock: Optional[asyncio.Lock] = None
+_ths_warmed = False
 
 
-async def _ensure_session() -> None:
-    """建会话 Cookie：首次请求前 GET 根域名，使后续 dataapi/mobileapi 请求带会话。"""
-    global _warmed, _warm_lock
-    if _warmed:
+async def _ensure_ths_session() -> None:
+    """首次请求前 GET 根域建立会话 Cookie（best-effort，失败不阻断主链路）。"""
+    global _ths_warmed, _ths_warm_lock
+    if _ths_warmed:
         return
-    if _warm_lock is None:
-        _warm_lock = asyncio.Lock()
-    async with _warm_lock:
-        if _warmed:
+    if _ths_warm_lock is None:
+        _ths_warm_lock = asyncio.Lock()
+    async with _ths_warm_lock:
+        if _ths_warmed:
             return
         try:
-            client = _get_client()
-            await client.get(_ROOT, headers={"User-Agent": _UA, "Referer": _REFERER})
-            _warmed = True
+            await warm(_ROOT, _REFERER, group="ths")
         except Exception as e:  # noqa: BLE001
-            logger.warning("同花顺会话预热失败（Cookie 未建立，部分接口可能拒绝）: %s", e)
+            logger.warning("同花顺会话预热失败（部分接口可能拒绝）: %s", e)
+        finally:
+            # 无论成败都置位，避免冷却期/失败时的重复预热风暴
+            _ths_warmed = True
 
 
 async def _request(path: str, params: Optional[dict] = None,
                    mobile: bool = False, timeout: float = 25.0) -> dict:
-    """GET 并解析 JSON，内置会话预热与业务级拒绝判定。
+    """GET 并解析 JSON，走共享限流客户端（group=ths）。
 
     mobile=True 时附加 Source-id / PlatForm 头（mobileapi 强制要求）。
-    返回完整响应 dict；业务级拒绝（status_code!=0）抛 RuntimeError 由调用方降级。
+    业务级拒绝（status_code!=0）抛 RuntimeError 由调用方降级；
+    冷却期 / 重试耗尽同样抛 RuntimeError。
     """
-    await _ensure_session()
-    client = _get_client()
+    await _ensure_ths_session()
     url = (_MOBILE if mobile else _DATA) + path
-    headers = {
-        "User-Agent": _UA,
-        "Referer": _REFERER,
-        "Accept": "application/json, text/plain, */*",
-    }
-    if mobile:
-        headers["Source-id"] = _SOURCE_ID
-        headers["PlatForm"] = _PLATFORM
     try:
-        resp = await client.get(url, params=params, headers=headers, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:  # noqa: BLE001
-        raise RuntimeError(f"同花顺请求失败 {path}: {e}") from e
+        data = await get_json(
+            url, params=params, group="ths",
+            extra_headers=(_MOBILE_HEADERS if mobile else None),
+            timeout=timeout,
+        )
+    except RateLimited as e:
+        raise RuntimeError(f"同花顺限流冷却中: {e}") from e
     if isinstance(data, dict) and data.get("status_code", 0) != 0:
         raise RuntimeError(
             f"同花顺业务拒绝 {path}: status_code={data.get('status_code')} "
@@ -668,7 +655,82 @@ def _build_sentiment_from_db(td: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# 对外：四大模块 fetch（实时 + DB 回退 + 落库）
+# 容错：子请求级降级 + 模块级多级回退
+#
+# 旧实现是「整模块 try/except」：任一子接口失败即丢弃整个模块，返回 error。
+# 同花顺一个模块要打 2~4 个子接口，单点抖动就会让整块数据消失。
+# 新实现分两层：
+#   L1 子请求级 —— _try_req 捕获单接口异常，记入 degraded 标签，
+#                  由调用方用「当日 DB 快照 / 空值」补位，其余子接口照常呈现。
+#   L2 模块级   —— 关键子接口全灭（或实时返回全空，如盘前/非交易日）时，
+#                  _db_fallback 依次尝试 当日 DB → 最近交易日 DB → error。
+# ---------------------------------------------------------------------------
+async def _try_req(label: str, key: tuple, factory, default: Any,
+                   degraded: List[str]) -> tuple:
+    """单子接口容错取数。返回 (value, ok)；失败不抛出，仅记 degraded 标签。"""
+    try:
+        return await _cached_get(key, factory), True
+    except Exception as e:  # noqa: BLE001
+        degraded.append(label)
+        logger.warning("同花顺子接口失败（局部降级 %s）: %s", label, e)
+        return default, False
+
+
+def _db_fallback(section: str, td: str, builder, degraded: List[str],
+                 err_msg: str, reason: str = "live_failed") -> Dict[str, Any]:
+    """模块级多级回退：当日 DB 快照 → 最近交易日快照 → error。
+
+    builder(date) 返回 dict 或 None（None 表示该日无快照）。
+    reason 区分回退动因：live_failed（实时失败）/ empty_live（实时成功但空）。
+    """
+    from finfeed.market import store
+    d = builder(td)
+    if d:
+        d["degraded"] = degraded
+        d["fallback"] = f"{reason}->db_today"
+        return d
+    try:
+        cached = store.get_latest_ths_limitup_date()
+    except Exception:  # noqa: BLE001
+        cached = None
+    if cached and cached != td:
+        d = builder(cached)
+        if d:
+            d["cached_date"] = cached
+            d["degraded"] = degraded
+            d["fallback"] = f"{reason}->db_latest"
+            return d
+    return {"error": err_msg, "section": section, "date": td, "degraded": degraded}
+
+
+def _build_intensity_from_db_or_none(td: str) -> Optional[Dict[str, Any]]:
+    """涨停强度 DB 快照；三池全空返回 None（供 _db_fallback 继续下探）。"""
+    from finfeed.market import store
+    if not (store.get_ths_limitup_pool(td, "up")
+            or store.get_ths_limitup_pool(td, "open")
+            or store.get_ths_limitup_pool(td, "lower")):
+        return None
+    return _build_intensity_from_db(td)
+
+
+def _pool_from_db(td: str, pool_type: str) -> tuple:
+    """单池 DB 补位（子请求失败时）。返回 (items, total)。"""
+    from finfeed.market import store
+    try:
+        rows = store.get_ths_limitup_pool(td, pool_type)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("涨停池 DB 补位失败 %s/%s: %s", td, pool_type, e)
+        rows = []
+    return [_row_to_pool_item(r) for r in rows], len(rows)
+
+
+def _source_tag(degraded: List[str]) -> str:
+    """实时数据源标签：全成功 live，部分子接口降级 live_partial。"""
+    return "live_partial" if degraded else "live"
+
+
+# ---------------------------------------------------------------------------
+# 对外：四大模块 fetch（实时 + 子请求降级 + DB 多级回退 + 落库）
 # ---------------------------------------------------------------------------
 async def fetch_limit_up_intensity(trade_date: Optional[str] = None) -> Dict[str, Any]:
     """涨停强度：涨停 / 炸板 / 跌停池 + 衍生指标。"""
@@ -677,55 +739,72 @@ async def fetch_limit_up_intensity(trade_date: Optional[str] = None) -> Dict[str
     today = now_bj().strftime("%Y-%m-%d")
 
     if td != today:
-        if not (store.get_ths_limitup_pool(td, "up")
-                or store.get_ths_limitup_pool(td, "open")
-                or store.get_ths_limitup_pool(td, "lower")):
+        d = _build_intensity_from_db_or_none(td)
+        if not d:
             return {"error": f"{td} 暂无涨停聚焦采集数据", "section": "intensity", "date": td}
-        return _build_intensity_from_db(td)
+        return d
 
-    try:
-        up_basic = await _cached_get(
-            ("pool", "limit_up_pool", td), lambda: _get_dataapi_pool("limit_up_pool", td))
-        op_basic = await _cached_get(
-            ("pool", "open_limit_pool", td), lambda: _get_dataapi_pool("open_limit_pool", td))
-        lo_basic = await _cached_get(
-            ("pool", "lower_limit_pool", td), lambda: _get_dataapi_pool("lower_limit_pool", td))
-        up_rich = await _cached_get(
-            ("lus", "limit_up_all", td), lambda: _get_limit_up_stocks("limit_up_all", td))
+    degraded: List[str] = []
+    _empty = {"total": 0, "list": []}
+    # 三池各自独立降级；富化源（连板数/封板时间/主力净额）失败只丢字段不丢主榜
+    up_basic, ok_up = await _try_req(
+        "limit_up_pool", ("pool", "limit_up_pool", td),
+        lambda: _get_dataapi_pool("limit_up_pool", td), _empty, degraded)
+    op_basic, ok_op = await _try_req(
+        "open_limit_pool", ("pool", "open_limit_pool", td),
+        lambda: _get_dataapi_pool("open_limit_pool", td), _empty, degraded)
+    lo_basic, ok_lo = await _try_req(
+        "lower_limit_pool", ("pool", "lower_limit_pool", td),
+        lambda: _get_dataapi_pool("lower_limit_pool", td), _empty, degraded)
+    up_rich, _ok_rich = await _try_req(
+        "get_limit_up_stocks", ("lus", "limit_up_all", td),
+        lambda: _get_limit_up_stocks("limit_up_all", td), [], degraded)
 
-        up = _merge_up_pool(up_basic["list"], up_rich)
-        op = [_norm_open_lower(it) for it in op_basic["list"]]
-        lo = [_norm_open_lower(it) for it in lo_basic["list"]]
-        up_total, open_total, lower_total = (
-            up_basic["total"], op_basic["total"], lo_basic["total"])
-        result = {
-            "date": td, "up_total": up_total, "open_total": open_total,
-            "lower_total": lower_total,
-            "metrics": _intensity_metrics(up_total, open_total, lower_total),
-            "up": up, "open": op, "lower": lo, "source": "live",
-        }
+    if not (ok_up or ok_op or ok_lo):
+        return _db_fallback("intensity", td, _build_intensity_from_db_or_none, degraded,
+                            "涨停强度实时获取失败，且无可用历史快照")
+
+    up = _merge_up_pool(up_basic["list"], up_rich)
+    op = [_norm_open_lower(it) for it in op_basic["list"]]
+    lo = [_norm_open_lower(it) for it in lo_basic["list"]]
+    up_total, open_total, lower_total = (
+        up_basic["total"], op_basic["total"], lo_basic["total"])
+
+    # L1 补位：失败的池改用当日 DB 快照（盘中增量采集已落库），避免显示为 0
+    if not ok_up:
+        up, up_total = _pool_from_db(td, "up")
+    if not ok_op:
+        op, open_total = _pool_from_db(td, "open")
+    if not ok_lo:
+        lo, lower_total = _pool_from_db(td, "lower")
+
+    # L2 回退：实时成功但全空（盘前 / 非交易日）→ 最近交易日快照
+    if not (up or op or lo):
+        return _db_fallback("intensity", td, _build_intensity_from_db_or_none, degraded,
+                            f"{td} 暂无涨停聚焦数据", reason="empty_live")
+
+    result = {
+        "date": td, "up_total": up_total, "open_total": open_total,
+        "lower_total": lower_total,
+        "metrics": _intensity_metrics(up_total, open_total, lower_total),
+        "up": up, "open": op, "lower": lo,
+        "source": _source_tag(degraded), "degraded": degraded,
+    }
+    # 落库：仅对本次实时成功的池写入 + 全量对齐（裁剪已炸板等残留行）
+    saved = 0
+    for pool_type, items, ok in (("up", up, ok_up), ("open", op, ok_op),
+                                 ("lower", lo, ok_lo)):
+        if not ok:
+            continue
         try:
-            saved = (
-                store.upsert_ths_limitup_pool(_pool_persist_rows(td, "up", up))
-                + store.upsert_ths_limitup_pool(_pool_persist_rows(td, "open", op))
-                + store.upsert_ths_limitup_pool(_pool_persist_rows(td, "lower", lo))
-            )
-            result["persisted"] = saved
+            saved += store.upsert_ths_limitup_pool(
+                _pool_persist_rows(td, pool_type, items))
+            store.prune_ths_limitup_pool(
+                td, pool_type, [it.get("code") for it in items])
         except Exception as e:  # noqa: BLE001
-            logger.warning("涨停强度快照持久化失败: %s", e)
-        return result
-    except Exception as e:  # noqa: BLE001
-        logger.warning("涨停强度实时获取失败，尝试历史快照: %s", e)
-        cached = store.get_latest_ths_limitup_date()
-        if cached and cached != today:
-            if (store.get_ths_limitup_pool(cached, "up")
-                    or store.get_ths_limitup_pool(cached, "open")
-                    or store.get_ths_limitup_pool(cached, "lower")):
-                d = _build_intensity_from_db(cached)
-                d["cached_date"] = cached
-                return d
-        return {"error": "涨停强度实时获取失败，且无可用历史快照",
-                "section": "intensity", "date": td}
+            logger.warning("涨停强度快照持久化失败 %s: %s", pool_type, e)
+    result["persisted"] = saved
+    return result
 
 
 async def fetch_board_ladder(trade_date: Optional[str] = None) -> Dict[str, Any]:
@@ -740,55 +819,61 @@ async def fetch_board_ladder(trade_date: Optional[str] = None) -> Dict[str, Any]
             return {"error": f"{td} 暂无连板天梯采集数据", "section": "ladder", "date": td}
         return d
 
+    degraded: List[str] = []
+    # 天梯骨架为关键子接口；富化源失败仅退化为「无价格/原因」的裸天梯
+    ladder_raw, ok_ladder = await _try_req(
+        "continuous_limit_up", ("ladder", td),
+        lambda: _get_continuous_ladder(td), [], degraded)
+    up_rich, _ok_rich = await _try_req(
+        "get_limit_up_stocks", ("lus", "limit_up_all", td),
+        lambda: _get_limit_up_stocks("limit_up_all", td), [], degraded)
+
+    if not ok_ladder:
+        return _db_fallback("ladder", td, _build_ladder_from_db, degraded,
+                            "连板天梯实时获取失败，且无可用历史快照")
+
+    rich_map = {s.get("code"): s for s in up_rich}
+    ladder: List[Dict[str, Any]] = []
+    max_height = 0
+    for item in ladder_raw:
+        h = _int(item.get("height"))
+        max_height = max(max_height, h)
+        stocks: List[Dict[str, Any]] = []
+        for c in (item.get("code_list") or []):
+            code = c.get("code")
+            rch = rich_map.get(code) or {}
+            stocks.append({
+                "code": code, "name": c.get("name"),
+                "market_id": c.get("market_id"),
+                "continue_num": _int(c.get("continue_num")),
+                "price": rch.get("price", 0),
+                "change_pct": rch.get("change_pct", 0),
+                "reason": rch.get("reason", ""),
+                "board": rch.get("board", ""),
+                "limit_up_time": rch.get("limit_up_time", ""),
+                "main_net_amount": rch.get("main_net_amount", 0),
+                "effective_circulation": rch.get("effective_circulation", 0),
+                "turnover_ratio": rch.get("turnover_ratio", 0),
+            })
+        ladder.append({"height": h, "number": _int(item.get("number")), "stocks": stocks})
+    ladder.sort(key=lambda x: -x["height"])
+
+    if not ladder:
+        return _db_fallback("ladder", td, _build_ladder_from_db, degraded,
+                            f"{td} 暂无连板天梯数据", reason="empty_live")
+
+    result = {
+        "date": td, "ladder": ladder, "max_height": max_height,
+        "source": _source_tag(degraded), "degraded": degraded,
+    }
     try:
-        ladder_raw = await _cached_get(
-            ("ladder", td), lambda: _get_continuous_ladder(td))
-        up_rich = await _cached_get(
-            ("lus", "limit_up_all", td), lambda: _get_limit_up_stocks("limit_up_all", td))
-        rich_map = {s.get("code"): s for s in up_rich}
-
-        ladder: List[Dict[str, Any]] = []
-        max_height = 0
-        for item in ladder_raw:
-            h = _int(item.get("height"))
-            max_height = max(max_height, h)
-            stocks: List[Dict[str, Any]] = []
-            for c in (item.get("code_list") or []):
-                code = c.get("code")
-                rch = rich_map.get(code) or {}
-                stocks.append({
-                    "code": code, "name": c.get("name"),
-                    "market_id": c.get("market_id"),
-                    "continue_num": _int(c.get("continue_num")),
-                    "price": rch.get("price", 0),
-                    "change_pct": rch.get("change_pct", 0),
-                    "reason": rch.get("reason", ""),
-                    "board": rch.get("board", ""),
-                    "limit_up_time": rch.get("limit_up_time", ""),
-                    "main_net_amount": rch.get("main_net_amount", 0),
-                    "effective_circulation": rch.get("effective_circulation", 0),
-                    "turnover_ratio": rch.get("turnover_ratio", 0),
-                })
-            ladder.append({"height": h, "number": _int(item.get("number")), "stocks": stocks})
-        ladder.sort(key=lambda x: -x["height"])
-
-        result = {"date": td, "ladder": ladder, "max_height": max_height, "source": "live"}
-        try:
-            result["persisted"] = store.upsert_ths_limitup_ladder(
-                _ladder_persist_rows(td, ladder_raw))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("连板天梯快照持久化失败: %s", e)
-        return result
+        rows = _ladder_persist_rows(td, ladder_raw)
+        result["persisted"] = store.upsert_ths_limitup_ladder(rows)
+        store.prune_ths_limitup_ladder(
+            td, [(r["height"], r["code"]) for r in rows])
     except Exception as e:  # noqa: BLE001
-        logger.warning("连板天梯实时获取失败，尝试历史快照: %s", e)
-        cached = store.get_latest_ths_limitup_date()
-        if cached and cached != today:
-            d = _build_ladder_from_db(cached)
-            if d:
-                d["cached_date"] = cached
-                return d
-        return {"error": "连板天梯实时获取失败，且无可用历史快照",
-                "section": "ladder", "date": td}
+        logger.warning("连板天梯快照持久化失败: %s", e)
+    return result
 
 
 async def fetch_strong_wind(trade_date: Optional[str] = None) -> Dict[str, Any]:
@@ -803,25 +888,29 @@ async def fetch_strong_wind(trade_date: Optional[str] = None) -> Dict[str, Any]:
             return {"error": f"{td} 暂无最强风口采集数据", "section": "wind", "date": td}
         return d
 
+    degraded: List[str] = []
+    blocks_raw, ok = await _try_req(
+        "block_top", ("block_top", td), lambda: _get_block_top(td), [], degraded)
+    if not ok:
+        return _db_fallback("wind", td, _build_block_top_from_db, degraded,
+                            "最强风口实时获取失败，且无可用历史快照")
+
+    blocks = _norm_block_top(blocks_raw)
+    if not blocks:
+        return _db_fallback("wind", td, _build_block_top_from_db, degraded,
+                            f"{td} 暂无最强风口数据", reason="empty_live")
+
+    result = {
+        "date": td, "blocks": blocks,
+        "source": _source_tag(degraded), "degraded": degraded,
+    }
     try:
-        blocks = await _cached_get(("block_top", td), lambda: _get_block_top(td))
-        result = {"date": td, "blocks": _norm_block_top(blocks), "source": "live"}
-        try:
-            result["persisted"] = store.upsert_ths_limitup_block_top(
-                _block_top_persist_rows(td, blocks))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("最强风口（涨停简图）快照持久化失败: %s", e)
-        return result
+        rows = _block_top_persist_rows(td, blocks_raw)
+        result["persisted"] = store.upsert_ths_limitup_block_top(rows)
+        store.prune_ths_limitup_block_top(td, [r["topic_code"] for r in rows])
     except Exception as e:  # noqa: BLE001
-        logger.warning("最强风口实时获取失败，尝试历史快照: %s", e)
-        cached = store.get_latest_ths_limitup_date()
-        if cached and cached != today:
-            d = _build_block_top_from_db(cached)
-            if d:
-                d["cached_date"] = cached
-                return d
-        return {"error": "最强风口实时获取失败，且无可用历史快照",
-                "section": "wind", "date": td}
+        logger.warning("最强风口（涨停简图）快照持久化失败: %s", e)
+    return result
 
 
 async def fetch_market_sentiment(trade_date: Optional[str] = None) -> Dict[str, Any]:
@@ -836,42 +925,68 @@ async def fetch_market_sentiment(trade_date: Optional[str] = None) -> Dict[str, 
             return {"error": f"{td} 暂无市场情绪采集数据", "section": "sentiment", "date": td}
         return d
 
-    try:
-        ov = await _cached_get(("overview", td), lambda: _get_overview(td))
-        ts = await _cached_get(("tstatus", td), lambda: _get_trade_status())
-        wind_tabs = await _cached_get(("wind_vane", td), lambda: _get_wind(td))
-        ov = ov if isinstance(ov, dict) else {}
-        ts = ts if isinstance(ts, dict) else {"stat": str(ts)}
-        result = {
-            "date": td,
-            "turnover": ov.get("turnover") or {},
-            "north_flow": ov.get("north_flow"),
-            "limit_up": ov.get("limit_up") or {},
-            "rise_fall": ov.get("rise_fall") or {},
-            "hgt_market_status": ov.get("hgt_market_status"),
-            "config_start_date": ov.get("config_start_date"),
-            "trade_status": ts,
-            "wind_vane": {"tabs": _norm_wind_tabs(wind_tabs)},
-            "source": "live",
-        }
+    degraded: List[str] = []
+    # 总览与风向标股相互独立：任一成功即可呈现半屏；交易状态为纯装饰位
+    ov, ok_ov = await _try_req(
+        "overview", ("overview", td), lambda: _get_overview(td), {}, degraded)
+    ts, _ok_ts = await _try_req(
+        "trade_status", ("tstatus", td), lambda: _get_trade_status(), {}, degraded)
+    wind_tabs, ok_wind = await _try_req(
+        "get_wind_vane_stock", ("wind_vane", td), lambda: _get_wind(td), [], degraded)
+
+    if not (ok_ov or ok_wind):
+        return _db_fallback("sentiment", td, _build_sentiment_from_db, degraded,
+                            "市场情绪实时获取失败，且无可用历史快照")
+
+    ov = ov if isinstance(ov, dict) else {}
+    ts = ts if isinstance(ts, dict) else {"stat": str(ts)}
+    db_snap: Optional[Dict[str, Any]] = None
+    if not ok_ov or not ov:
+        db_snap = _build_sentiment_from_db(td)  # 总览失败 → 当日 DB 补位
+
+    def _ov(field: str, default: Any) -> Any:
+        v = ov.get(field)
+        if v:
+            return v
+        if db_snap:
+            return db_snap.get(field) or default
+        return default
+
+    tabs = (_norm_wind_tabs(wind_tabs) if ok_wind
+            else (_build_wind_from_db(td) or {}).get("tabs", []))
+
+    if not (ov or tabs or db_snap):
+        return _db_fallback("sentiment", td, _build_sentiment_from_db, degraded,
+                            f"{td} 暂无市场情绪数据", reason="empty_live")
+
+    result = {
+        "date": td,
+        "turnover": _ov("turnover", {}),
+        "north_flow": _ov("north_flow", None),
+        "limit_up": _ov("limit_up", {}),
+        "rise_fall": _ov("rise_fall", {}),
+        "hgt_market_status": _ov("hgt_market_status", None),
+        "config_start_date": _ov("config_start_date", None),
+        "trade_status": ts or (db_snap or {}).get("trade_status") or {},
+        "wind_vane": {"tabs": tabs},
+        "source": _source_tag(degraded), "degraded": degraded,
+    }
+    saved = 0
+    if ok_ov and ov:  # 仅实时总览成功才覆写当日情绪行，避免用 DB 补位值回写
         try:
-            result["persisted"] = (
-                store.upsert_ths_limitup_sentiment(_sentiment_persist_row(td, result))
-                + store.upsert_ths_limitup_wind(_wind_persist_rows(td, wind_tabs))
-            )
+            saved += store.upsert_ths_limitup_sentiment(_sentiment_persist_row(td, result))
         except Exception as e:  # noqa: BLE001
-            logger.warning("市场情绪快照持久化失败: %s", e)
-        return result
-    except Exception as e:  # noqa: BLE001
-        logger.warning("市场情绪实时获取失败，尝试历史快照: %s", e)
-        cached = store.get_latest_ths_limitup_date()
-        if cached and cached != today:
-            d = _build_sentiment_from_db(cached)
-            if d:
-                d["cached_date"] = cached
-                return d
-        return {"error": "市场情绪实时获取失败，且无可用历史快照",
-                "section": "sentiment", "date": td}
+            logger.warning("市场情绪总览快照持久化失败: %s", e)
+    if ok_wind and wind_tabs:
+        try:
+            rows = _wind_persist_rows(td, wind_tabs)
+            saved += store.upsert_ths_limitup_wind(rows)
+            store.prune_ths_limitup_wind(
+                td, [(r["tab_name"], r["stock_code"]) for r in rows])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("风向标股快照持久化失败: %s", e)
+    result["persisted"] = saved
+    return result
 
 
 async def fetch_limitup_focus(trade_date: Optional[str] = None,

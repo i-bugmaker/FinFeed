@@ -153,14 +153,94 @@ const selectedBlock = computed(() => {
   const hit = blocks.find((b) => b.code === selectedTopic.value)
   return hit || blocks[0]
 })
-const windMaxNum = computed(() =>
-  windBlocks.value.reduce((m, b) => Math.max(m, b.limit_up_num || 0), 1)
-)
-function tileFlex(b) {
-  const n = b.limit_up_num || 0
-  const ratio = windMaxNum.value ? n / windMaxNum.value : 0
-  return (0.62 + 0.38 * ratio).toFixed(3)
+// squarified treemap（面积 ∝ 涨停数），坐标空间取容器宽高比，输出百分比矩形
+const TREE_W = 100
+const TREE_H = 62
+function squarify(values, W, H) {
+  // values: [{ key, area }] 按 area 降序；返回 [{ key, x, y, w, h }]
+  const result = []
+  let x = 0, y = 0, w = W, h = H
+  let row = []
+  let i = 0
+  const areas = values.map((v) => ({ key: v.key, area: v.area * ((W * H) / (values.reduce((s, a) => s + a.area, 0) || 1)) }))
+  const worst = (r, side) => {
+    const s = r.reduce((a, b) => a + b.area, 0)
+    const t = s / side
+    let mx = 0
+    for (const it of r) {
+      const len = it.area / t
+      const ar = Math.max(len, t) / Math.min(len, t)
+      if (ar > mx) mx = ar
+    }
+    return mx
+  }
+  const layout = (r) => {
+    const s = r.reduce((a, b) => a + b.area, 0)
+    if (w >= h) {
+      const t = s / h
+      let cx = x
+      for (const it of r) {
+        const cw = it.area / t
+        result.push({ key: it.key, x: cx, y, w: cw, h: t })
+        cx += cw
+      }
+      y += t; h -= t
+    } else {
+      const t = s / w
+      let cy = y
+      for (const it of r) {
+        const ch = it.area / t
+        result.push({ key: it.key, x, y: cy, w: t, h: ch })
+        cy += ch
+      }
+      x += t; w -= t
+    }
+  }
+  while (i < areas.length) {
+    const side = Math.min(w, h)
+    if (!row.length) {
+      row.push(areas[i]); i++
+    } else if (worst(row.concat([areas[i]]), side) <= worst(row, side)) {
+      row.push(areas[i]); i++
+    } else {
+      layout(row)
+      row = []
+    }
+  }
+  if (row.length) layout(row)
+  return result
 }
+function tileColor(b) {
+  const c = Number(b.change) || 0
+  const a = Math.min(0.5, 0.16 + (Math.abs(c) / 0.1) * 0.34).toFixed(3)
+  return c >= 0 ? `rgba(230, 60, 60, ${a})` : `rgba(22, 160, 90, ${a})`
+}
+const windTree = computed(() => {
+  const blocks = windBlocks.value
+  if (section.value !== 'wind' || !blocks.length) return []
+  const values = blocks
+    .map((b) => ({ key: b.code, area: b.limit_up_num || 0 }))
+    .sort((a, b) => b.area - a.area)
+  const rects = squarify(values, TREE_W, TREE_H)
+  const map = Object.fromEntries(rects.map((r) => [r.key, r]))
+  return blocks.map((b) => {
+    const r = map[b.code]
+    const left = Math.max(0, (r.x / TREE_W) * 100)
+    const top = Math.max(0, (r.y / TREE_H) * 100)
+    return {
+      code: b.code,
+      name: b.name,
+      limit_up_num: b.limit_up_num,
+      change: b.change,
+      high: b.high,
+      left,
+      top,
+      width: Math.min(100 - left, (r.w / TREE_W) * 100),
+      height: Math.min(62 - top, (r.h / TREE_H) * 100),
+      color: tileColor(b),
+    }
+  })
+})
 
 // ---------------- 市场情绪 ----------------
 const sentimentCards = computed(() => {
@@ -424,20 +504,26 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- 涨停简图：题材板块榜（tile 尺寸按涨停数比例） -->
-        <div class="lu__board">
+        <!-- 涨停简图：squarified treemap，矩形面积 ∝ 涨停数，色深 ∝ 题材涨幅 -->
+        <div class="lu__tree">
           <button
-            v-for="b in windBlocks"
-            :key="b.code"
-            class="lu__tile"
-            :class="{ 'is-active': selectedBlock && selectedBlock.code === b.code }"
-            :style="{ flex: tileFlex(b) }"
-            @click="selectedTopic = b.code"
+            v-for="cell in windTree"
+            :key="cell.code"
+            class="lu__cell"
+            :class="{ 'is-active': selectedBlock && selectedBlock.code === cell.code }"
+            :style="{
+              left: cell.left + '%',
+              top: cell.top + '%',
+              width: cell.width + '%',
+              height: cell.height + '%',
+              background: cell.color,
+            }"
+            @click="selectedTopic = cell.code"
           >
-            <span class="lu__tile-name">{{ b.name }}</span>
-            <span class="lu__tile-num ff-num is-up">{{ b.limit_up_num }}<i>板</i></span>
-            <span class="lu__tile-high">{{ b.high }}</span>
-            <span class="lu__tile-chg ff-num" :class="chgClass(b.change)">{{ fmtChg(b.change) }}</span>
+            <span class="lu__cell-name">{{ cell.name }}</span>
+            <span class="lu__cell-num ff-num">{{ cell.limit_up_num }}<i>板</i></span>
+            <span v-if="cell.height > 15" class="lu__cell-high">{{ cell.high }}</span>
+            <span v-if="cell.width > 15" class="lu__cell-chg ff-num" :class="chgClass(cell.change)">{{ fmtChg(cell.change) }}</span>
           </button>
         </div>
 
@@ -912,63 +998,75 @@ onMounted(async () => {
   color: var(--ff-text-tertiary);
 }
 
-/* 涨停简图：题材板块榜 tile */
-.lu__board {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ff-space-2);
-  padding: 0 var(--ff-space-5);
-  align-items: stretch;
+/* 涨停简图：squarified treemap */
+.lu__tree {
+  position: relative;
+  aspect-ratio: 100 / 62;
+  margin: 0 var(--ff-space-5);
+  border-radius: var(--ff-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--ff-border-subtle);
+  background: var(--ff-bg-hover);
 }
-.lu__tile {
+.lu__cell {
+  position: absolute;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 2px;
-  min-width: 96px;
-  padding: var(--ff-space-2-5) var(--ff-space-3);
-  border-radius: var(--ff-radius-md);
-  background: color-mix(in srgb, #ff6a3d 10%, transparent);
-  border: 1px solid color-mix(in srgb, #ff6a3d 28%, transparent);
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--ff-text-primary) 12%, transparent);
+  border-radius: 3px;
   color: var(--ff-text-primary);
   cursor: pointer;
-  text-align: left;
+  text-align: center;
+  overflow: hidden;
   transition: box-shadow var(--ff-dur-fast) var(--ff-ease-standard),
     transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.lu__tile:hover {
-  transform: translateY(-1px);
+.lu__cell:hover {
+  transform: scale(1.015);
+  z-index: 2;
   box-shadow: var(--ff-shadow-sm);
 }
-.lu__tile.is-active {
-  background: color-mix(in srgb, #ff6a3d 18%, transparent);
+.lu__cell.is-active {
+  z-index: 3;
   border-color: #ff6a3d;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #ff6a3d 22%, transparent);
+  box-shadow: 0 0 0 2px #ff6a3d;
 }
-.lu__tile-name {
-  font-size: var(--ff-fs-body-sm);
+.lu__cell-name {
+  font-size: var(--ff-fs-caption);
   font-weight: var(--ff-fw-semibold);
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
-.lu__tile-num {
-  font-size: var(--ff-fs-h3);
+.lu__cell-num {
+  font-size: var(--ff-fs-body);
   font-weight: var(--ff-fw-bold);
   font-variant-numeric: tabular-nums;
+  color: var(--ff-text-up);
 }
-.lu__tile-num i {
-  font-size: var(--ff-fs-caption);
+.lu__cell-num i {
+  font-size: 10px;
   font-style: normal;
   font-weight: var(--ff-fw-medium);
   margin-left: 1px;
 }
-.lu__tile-high {
-  font-size: var(--ff-fs-caption);
+.lu__cell-high {
+  font-size: 10px;
+  line-height: 1.1;
   color: var(--ff-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
-.lu__tile-chg {
-  font-size: var(--ff-fs-caption);
+.lu__cell-chg {
+  font-size: 10px;
   font-weight: var(--ff-fw-semibold);
 }
 

@@ -1384,6 +1384,85 @@ def upsert_ths_limitup_sentiment(row: Dict[str, Any]) -> int:
         return 1
 
 
+# ---------------------------------------------------------------------------
+# 全量快照对齐（prune）
+#
+# 四张涨停聚焦表均为「幂等 upsert」语义：只新增/更新，不移除。盘中增量采集下
+# 会留下过期残留行 —— 例如 10:00 涨停、14:00 炸板的个股仍留在 up 池，
+# 前期入榜后又跌出榜的题材仍留在 block_top。因此每次**实时全量拉取成功**后，
+# 需用本次快照的主键集合裁剪掉不在集合内的历史残留行。
+#
+# 约定：仅在实时拉取成功（完整快照）时调用；降级/DB 回退路径绝不调用，
+# 以免用空集合把当日已有快照清空。
+# ---------------------------------------------------------------------------
+def prune_ths_limitup_pool(trade_date: str, pool_type: str,
+                           keep_codes: List[str]) -> int:
+    """裁剪该日该池中不在本次全量快照内的残留个股。返回删除行数。"""
+    codes = [str(c or "") for c in (keep_codes or []) if c]
+    if not codes:
+        return 0  # 空集合视为无效快照，不做任何删除（防误清）
+    db = get_db_manager()
+    with db.get_db() as c:
+        ph = ",".join("?" * len(codes))
+        c.execute(
+            f"DELETE FROM ths_limitup_pool WHERE trade_date = ? AND pool_type = ? "
+            f"AND code NOT IN ({ph})",
+            (trade_date, pool_type, *codes),
+        )
+        return max(c.rowcount or 0, 0)
+
+
+def prune_ths_limitup_ladder(trade_date: str,
+                             keep_keys: List[Any]) -> int:
+    """裁剪连板天梯残留行。keep_keys: [(height, code), ...]。返回删除行数。"""
+    keys = [f"{int(h)}:{str(code or '')}" for h, code in (keep_keys or []) if code]
+    if not keys:
+        return 0
+    db = get_db_manager()
+    with db.get_db() as c:
+        ph = ",".join("?" * len(keys))
+        c.execute(
+            f"DELETE FROM ths_limitup_ladder WHERE trade_date = ? "
+            f"AND (CAST(height AS TEXT) || ':' || code) NOT IN ({ph})",
+            (trade_date, *keys),
+        )
+        return max(c.rowcount or 0, 0)
+
+
+def prune_ths_limitup_wind(trade_date: str, keep_keys: List[Any]) -> int:
+    """裁剪风向标股残留行。keep_keys: [(tab_name, stock_code), ...]。"""
+    keys = [f"{str(t or '')[:32]}:{str(code or '')}"
+            for t, code in (keep_keys or []) if code]
+    if not keys:
+        return 0
+    db = get_db_manager()
+    with db.get_db() as c:
+        ph = ",".join("?" * len(keys))
+        c.execute(
+            f"DELETE FROM ths_limitup_wind WHERE trade_date = ? "
+            f"AND (tab_name || ':' || stock_code) NOT IN ({ph})",
+            (trade_date, *keys),
+        )
+        return max(c.rowcount or 0, 0)
+
+
+def prune_ths_limitup_block_top(trade_date: str,
+                                keep_topic_codes: List[str]) -> int:
+    """裁剪最强风口题材榜残留行（跌出榜的题材）。"""
+    codes = [str(c or "") for c in (keep_topic_codes or []) if c]
+    if not codes:
+        return 0
+    db = get_db_manager()
+    with db.get_db() as c:
+        ph = ",".join("?" * len(codes))
+        c.execute(
+            f"DELETE FROM ths_limitup_block_top WHERE trade_date = ? "
+            f"AND topic_code NOT IN ({ph})",
+            (trade_date, *codes),
+        )
+        return max(c.rowcount or 0, 0)
+
+
 def get_ths_limitup_pool(trade_date: str, pool_type: str = "up",
                          limit: int = 500) -> List[Dict[str, Any]]:
     """读取某交易日指定池（up/open/lower）个股列表（按排名升序）。"""
