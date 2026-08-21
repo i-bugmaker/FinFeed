@@ -228,15 +228,6 @@ onBeforeUnmount(stopPolling)
         </p>
       </div>
 
-      <!-- 股票选择器 -->
-      <EasyTdxStockPicker
-        ref="pickerRef"
-        :stock="stock"
-        class="etdx-view__picker"
-        @select="selectStock"
-        @clear="clearStock"
-      />
-
       <!-- 视图切换 -->
       <AppTabs v-model="mode" type="line" :items="modes" class="etdx-view__tabs" />
     </header>
@@ -244,6 +235,28 @@ onBeforeUnmount(stopPolling)
     <div v-if="errMsg" class="ff-alert ff-alert--danger etdx-view__err">
       <AppIcon name="alert-circle" size="md" /> {{ errMsg }}
     </div>
+
+    <!-- 标的选择条：输入名称/代码，个股类功能自动带入 -->
+    <AppCard class="etdx-view__banner" :no-padding="true">
+      <div class="etdx-view__banner-body">
+        <EasyTdxStockPicker
+          ref="pickerRef"
+          :stock="stock"
+          class="etdx-view__picker"
+          @select="selectStock"
+          @clear="clearStock"
+        />
+        <div class="etdx-view__banner-text">
+          <strong v-if="stock">{{ stock.name }} ({{ stock.code }}.{{ stock.market }})</strong>
+          <strong v-else>输入股票名称 / 代码开始查询</strong>
+          <span v-if="stock">个股类任务（K线 / 报价 / 公告 / 缠论 / 回测…）将自动作用于该标的</span>
+          <span v-else>支持名称或代码模糊搜索，如「茅台」「600519」「平安」</span>
+        </div>
+        <span v-if="meta" class="etdx-view__banner-count">
+          {{ navGroups.reduce((n, g) => n + g.items.length, 0) }} 项功能可用
+        </span>
+      </div>
+    </AppCard>
 
     <div class="etdx-view__body">
       <!-- 全部功能：左侧场景化导航 -->
@@ -257,21 +270,8 @@ onBeforeUnmount(stopPolling)
       </AppCard>
 
       <div class="etdx-view__main">
-        <!-- 工作台：标的提示 + 快捷任务 -->
+        <!-- 工作台：快捷任务 -->
         <template v-if="mode === 'workbench'">
-          <AppCard class="etdx-view__banner" :no-padding="true">
-            <div class="etdx-view__banner-body">
-              <AppIcon :name="stock ? 'check-circle' : 'info'" size="md" :tone="stock ? 'up' : ''" />
-              <div class="etdx-view__banner-text">
-                <strong>{{ stock ? `当前标的：${stock.name} (${stock.code}.${stock.market})` : '尚未选择标的' }}</strong>
-                <span>{{ stock ? '下方个股类任务将自动作用于该标的' : '输入股票名称或代码（如「茅台」），即可一键执行个股类任务' }}</span>
-              </div>
-              <span v-if="meta" class="etdx-view__banner-count">
-                {{ navGroups.reduce((n, g) => n + g.items.length, 0) }} 项功能可用
-              </span>
-            </div>
-          </AppCard>
-
           <AppCard class="etdx-view__tasks" :no-padding="true">
             <div class="etdx-view__tasks-head">
               <AppIcon name="zap" size="sm" />
@@ -392,18 +392,27 @@ onBeforeUnmount(stopPolling)
   gap: var(--ff-space-4);
   min-width: 0;
 }
-/* 工作台：标的提示条 */
+/* 标的选择条 */
+.etdx-view__banner {
+  margin-bottom: var(--ff-space-4);
+}
 .etdx-view__banner-body {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-3);
+  gap: var(--ff-space-4);
   padding: var(--ff-space-3) var(--ff-space-4);
+  flex-wrap: wrap;
+}
+.etdx-view__picker {
+  flex-shrink: 0;
+  width: 300px;
 }
 .etdx-view__banner-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  min-width: 220px;
 }
 .etdx-view__banner-text strong {
   font-size: var(--ff-fs-body);

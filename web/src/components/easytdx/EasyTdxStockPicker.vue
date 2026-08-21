@@ -1,7 +1,7 @@
 <script setup>
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import AppIcon from '../../ui/AppIcon.vue'
-import { searchStocks, stockLabel } from './stockNames'
+import { searchStocks } from './stockNames'
 
 const props = defineProps({
   stock: { type: Object, default: null }, // { market, code, name }
@@ -15,6 +15,8 @@ const open = ref(false)
 const loading = ref(false)
 const focused = ref(false)
 const inputRef = ref(null)
+const triggerRef = ref(null)
+const menuRef = ref(null)
 let debounceTimer = null
 
 defineExpose({ focus: () => inputRef.value?.focus() })
@@ -31,7 +33,33 @@ watch(q, (val) => {
     results.value = await searchStocks(val.trim(), 8)
     loading.value = false
     open.value = true
+    nextTick(positionMenu)
   }, 120)
+})
+
+// 下拉菜单定位：跟随输入框，避免 Teleport 后落在视口默认位置
+function positionMenu() {
+  if (!triggerRef.value || !menuRef.value) return
+  const rect = triggerRef.value.getBoundingClientRect()
+  const menu = menuRef.value
+  const vw = document.documentElement.clientWidth
+  const margin = 8
+  const menuW = Math.min(rect.width, vw - margin * 2)
+  menu.style.width = `${menuW}px`
+  menu.style.top = `${rect.bottom + 6}px`
+  const left = Math.min(Math.max(margin, rect.left), vw - margin - menuW)
+  menu.style.left = `${left}px`
+}
+
+watch(open, (v) => {
+  if (v) {
+    nextTick(positionMenu)
+    window.addEventListener('resize', positionMenu)
+    window.addEventListener('scroll', positionMenu, true)
+  } else {
+    window.removeEventListener('resize', positionMenu)
+    window.removeEventListener('scroll', positionMenu, true)
+  }
 })
 
 function select(s) {
@@ -55,6 +83,8 @@ function onBlur() {
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer)
+  window.removeEventListener('resize', positionMenu)
+  window.removeEventListener('scroll', positionMenu, true)
 })
 </script>
 
@@ -70,7 +100,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 搜索框 -->
-    <div v-else class="etdx-picker__input">
+    <div ref="triggerRef" v-else class="etdx-picker__input">
       <AppIcon name="search" size="sm" class="etdx-picker__icon" />
       <input
         ref="inputRef"
@@ -94,7 +124,7 @@ onBeforeUnmount(() => {
     <!-- 下拉 -->
     <Teleport to="body">
       <Transition name="ff-pop">
-        <ul v-if="open && results.length" class="etdx-picker__menu" role="listbox">
+        <ul v-if="open && results.length" ref="menuRef" class="etdx-picker__menu" role="listbox">
           <li
             v-for="s in results"
             :key="s.code + s.market"
