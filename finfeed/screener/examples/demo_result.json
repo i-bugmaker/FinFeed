@@ -1,0 +1,239 @@
+{
+  "generated_at": "2026-08-22 22:48:57",
+  "data_source": "内置离线样例(demo)",
+  "snapshot_time": "",
+  "universe_size": 12,
+  "screened_size": 6,
+  "scored_size": 6,
+  "technical_enabled": true,
+  "config_summary": {
+    "weights": {
+      "capital": 0.3,
+      "momentum": 0.25,
+      "valuation": 0.2,
+      "liquidity": 0.15,
+      "quality": 0.1
+    },
+    "tiers": {
+      "strong": 72.0,
+      "watch": 62.0,
+      "observe": 50.0,
+      "guardrails": {
+        "capital_min": 50.0,
+        "momentum_min": 45.0,
+        "valuation_min": 40.0,
+        "quality_min": 35.0,
+        "max_abs_chg_today": 9.5
+      }
+    },
+    "filters": {
+      "exclude_st": true,
+      "exclude_suspended": true,
+      "exclude_bj": true,
+      "min_price": 3.0,
+      "max_price": 300.0,
+      "exclude_loss": true,
+      "pe_min": 0.0,
+      "pe_max": 100.0,
+      "min_circ_cap": 3000000000.0,
+      "min_turnover": 0.3,
+      "min_listing_days": 0
+    }
+  },
+  "scores": [
+    {
+      "code": "600001",
+      "name": "齐鲁优选",
+      "market": 1,
+      "price": 25.0,
+      "change_pct": 2.0408163265306123,
+      "pe_ttm": 16.0,
+      "amplitude": 4.489795918367339,
+      "amount": 8000000000.0,
+      "capital_score": 61.892015638141736,
+      "momentum_score": 56.103109569914466,
+      "valuation_score": 98.77302162356105,
+      "liquidity_score": 96.92797637391769,
+      "quality_score": 98.58590716975931,
+      "total_score": 76.74577358169694,
+      "tier": "strong",
+      "eligible": true,
+      "rationale": "主力净比+3.00%；5日主力净流入占流通+1.50%；20日动量+28.0%；60日动量+40.0%；PE=16.0合理；量价活跃(成交80.0亿/换手3.2%)；年化波动35%适中",
+      "highlights": [
+        "主力净比+3.00%",
+        "5日主力净流入占流通+1.50%",
+        "20日动量+28.0%",
+        "60日动量+40.0%",
+        "PE=16.0合理",
+        "量价活跃(成交80.0亿/换手3.2%)",
+        "年化波动35%适中"
+      ],
+      "guardrail_failures": [],
+      "realized_vol_ann": 35.0,
+      "ma_align": true,
+      "drawdown_from_high": -8.0
+    },
+    {
+      "code": "600012",
+      "name": "涨停追高",
+      "market": 1,
+      "price": 22.0,
+      "change_pct": 10.0,
+      "pe_ttm": 18.3,
+      "amplitude": 8.499999999999996,
+      "amount": 8800000000.0,
+      "capital_score": 61.86029064231547,
+      "momentum_score": 61.174100504100345,
+      "valuation_score": 99.97222607988971,
+      "liquidity_score": 87.30717656975169,
+      "quality_score": 96.43674846245403,
+      "total_score": 76.58580886640581,
+      "tier": "watch",
+      "eligible": true,
+      "rationale": "主力净比+5.00%；5日主力净流入占流通+0.45%；20日动量+35.0%；60日动量+50.0%；PE=18.3合理；量价活跃(成交88.0亿/换手4.5%)；年化波动48%适中 ｜【降级】当日接近涨跌停",
+      "highlights": [
+        "主力净比+5.00%",
+        "5日主力净流入占流通+0.45%",
+        "20日动量+35.0%",
+        "60日动量+50.0%",
+        "PE=18.3合理",
+        "量价活跃(成交88.0亿/换手4.5%)",
+        "年化波动48%适中"
+      ],
+      "guardrail_failures": [
+        "当日接近涨跌停"
+      ],
+      "realized_vol_ann": 48.0,
+      "ma_align": true,
+      "drawdown_from_high": -2.0
+    },
+    {
+      "code": "600004",
+      "name": "滨海能源",
+      "market": 1,
+      "price": 9.95,
+      "change_pct": 1.5306122448979447,
+      "pe_ttm": 11.7,
+      "amplitude": 3.0612244897959253,
+      "amount": 2500000000.0,
+      "capital_score": 56.16456128241168,
+      "momentum_score": 43.002991289167674,
+      "valuation_score": 88.47059049434836,
+      "liquidity_score": 67.17616949978795,
+      "quality_score": 83.73182370184807,
+      "total_score": 63.7438421010381,
+      "tier": "watch",
+      "eligible": true,
+      "rationale": "主力净比+2.40%；5日主力净流入占流通+1.08%；20日动量+12.0%；60日动量+18.0%；PE=11.7合理；量价活跃(成交25.0亿/换手1.2%)；年化波动22%适中 ｜【降级】动量不足",
+      "highlights": [
+        "主力净比+2.40%",
+        "5日主力净流入占流通+1.08%",
+        "20日动量+12.0%",
+        "60日动量+18.0%",
+        "PE=11.7合理",
+        "量价活跃(成交25.0亿/换手1.2%)",
+        "年化波动22%适中"
+      ],
+      "guardrail_failures": [
+        "动量不足"
+      ],
+      "realized_vol_ann": 22.0,
+      "ma_align": true,
+      "drawdown_from_high": -15.0
+    },
+    {
+      "code": "000003",
+      "name": "华夏制造",
+      "market": 0,
+      "price": 12.2,
+      "change_pct": 1.6666666666666607,
+      "pe_ttm": 20.3,
+      "amplitude": 4.166666666666666,
+      "amount": 1800000000.0,
+      "capital_score": 42.56511879852171,
+      "momentum_score": 39.54706501744362,
+      "valuation_score": 98.38054051370602,
+      "liquidity_score": 60.15526957159497,
+      "quality_score": 94.51273131084073,
+      "total_score": 60.80697356348194,
+      "tier": "observe",
+      "eligible": true,
+      "rationale": "20日动量+8.0%；PE=20.3合理；量价活跃(成交18.0亿/换手1.0%)；年化波动30%适中 ｜【降级】资金面不足、动量不足",
+      "highlights": [
+        "20日动量+8.0%",
+        "PE=20.3合理",
+        "量价活跃(成交18.0亿/换手1.0%)",
+        "年化波动30%适中"
+      ],
+      "guardrail_failures": [
+        "资金面不足",
+        "动量不足"
+      ],
+      "realized_vol_ann": 30.0,
+      "ma_align": true,
+      "drawdown_from_high": -12.0
+    },
+    {
+      "code": "600002",
+      "name": "长江科技",
+      "market": 1,
+      "price": 59.0,
+      "change_pct": 1.7241379310344827,
+      "pe_ttm": 55.0,
+      "amplitude": 4.310344827586207,
+      "amount": 12000000000.0,
+      "capital_score": 66.0418277161412,
+      "momentum_score": 58.078926485977945,
+      "valuation_score": 1.4620821413931984,
+      "liquidity_score": 98.63022385581742,
+      "quality_score": 88.25452504832109,
+      "total_score": 58.2446824478202,
+      "tier": "observe",
+      "eligible": true,
+      "rationale": "主力净比+4.00%；5日主力净流入占流通+1.51%；20日动量+30.0%；60日动量+45.0%；量价活跃(成交120.0亿/换手3.5%)；年化波动55%适中 ｜【降级】估值偏高",
+      "highlights": [
+        "主力净比+4.00%",
+        "5日主力净流入占流通+1.51%",
+        "20日动量+30.0%",
+        "60日动量+45.0%",
+        "量价活跃(成交120.0亿/换手3.5%)",
+        "年化波动55%适中"
+      ],
+      "guardrail_failures": [
+        "估值偏高"
+      ],
+      "realized_vol_ann": 55.0,
+      "ma_align": true,
+      "drawdown_from_high": -5.0
+    },
+    {
+      "code": "600013",
+      "name": "稳健银行",
+      "market": 1,
+      "price": 7.05,
+      "change_pct": 0.7142857142857117,
+      "pe_ttm": 6.4,
+      "amplitude": 2.1428571428571352,
+      "amount": 3500000000.0,
+      "capital_score": 36.09415249653954,
+      "momentum_score": 34.811774805527506,
+      "valuation_score": 66.0136503425099,
+      "liquidity_score": 60.18233622314124,
+      "quality_score": 77.15279099264225,
+      "total_score": 49.47654905158113,
+      "tier": "none",
+      "eligible": true,
+      "rationale": "日振幅2.1%平稳 ｜【降级】资金面不足、动量不足",
+      "highlights": [
+        "日振幅2.1%平稳"
+      ],
+      "guardrail_failures": [
+        "资金面不足",
+        "动量不足"
+      ],
+      "realized_vol_ann": 18.0,
+      "ma_align": false,
+      "drawdown_from_high": -20.0
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import CalendarView from '../views/CalendarView.vue'
 import MarketView from '../views/MarketView.vue'
 import StyleGuideView from '../views/StyleGuideView.vue'
 import EasyTdxView from '../views/EasyTdxView.vue'
+import ScreenerView from '../views/ScreenerView.vue'
 
 // 原「新闻流」已拆分为「快讯」与「财经」两个独立模块：
 //   - /flash    ：快讯（7×24 实时短消息）
@@ -24,6 +25,7 @@ const routes = [
   { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { title: '仪表盘' } },
   { path: '/ai', name: 'ai', component: AiView, meta: { title: 'AI 分析' } },
   { path: '/easytdx', name: 'easytdx', component: EasyTdxView, meta: { title: 'easy-tdx' } },
+  { path: '/screener', name: 'screener', component: ScreenerView, meta: { title: '智能选股' } },
   { path: '/styleguide', name: 'styleguide', component: StyleGuideView, meta: { title: '设计规范' } },
 ]
 

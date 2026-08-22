@@ -420,6 +420,12 @@ def _run_market_action(args):
         print(f"未知事实层指令: {action}")
 
 
+def _run_screener_action(args):
+    """选股模块 CLI 调度。"""
+    from finfeed.screener import cli as screener_cli
+    return screener_cli.cmd_screener(args)
+
+
 def main():
     _setup_logging()
 
@@ -462,12 +468,20 @@ def main():
         help="仅启动 Web 服务（不运行监控器）。无浏览器环境下可稳定预览新界面；Ctrl+C 停止。无实时推送，但可浏览已有数据。",
     )
 
+    # 选股模块（finfeed.screener）参数
+    from finfeed.screener import cli as screener_cli
+    screener_cli.add_arguments(parser)
+
     args = parser.parse_args()
 
     init_db()
 
     if args.market:
         _run_market_action(args)
+        return
+
+    if args.screener:
+        _run_screener_action(args)
         return
 
     if args.export:

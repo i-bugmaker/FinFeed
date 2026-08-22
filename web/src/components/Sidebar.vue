@@ -21,6 +21,7 @@ const nav = [
   { to: '/favorites', label: '收藏', icon: 'star' },
   { to: '/dashboard', label: '仪表盘', icon: 'dashboard' },
   { to: '/ai', label: 'AI 分析', icon: 'sparkles' },
+  { to: '/screener', label: '智能选股', icon: 'filter' },
   { to: '/easytdx', label: 'easy-tdx', icon: 'cpu' },
   { href: '/capital', label: '资金流大屏', icon: 'bar-chart', external: true },
 ]

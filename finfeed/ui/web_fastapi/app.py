@@ -65,6 +65,9 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 # easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
 from finfeed.integrations.easytdx.router import router as easytdx_router
 
+# 智能选股模块（五维加权评分）
+from finfeed.integrations.screener.router import router as screener_router
+
 logger = logging.getLogger("news_monitor")
 
 SSE_CLIENT_QUEUE_MAXSIZE = legacy.SSE_CLIENT_QUEUE_MAXSIZE
@@ -90,6 +93,9 @@ app = FastAPI(
 
 # 注册 easy-tdx 集成路由（/api/easytdx/*）
 app.include_router(easytdx_router)
+
+# 注册智能选股路由（/api/screener/*）
+app.include_router(screener_router)
 
 # ----------------------------------------------------------------------
 # 全市场资金流与板块轮动监控大屏集成（可选，依赖 easy-tdx）
