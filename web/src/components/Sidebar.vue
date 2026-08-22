@@ -22,9 +22,10 @@ const nav = [
   { to: '/dashboard', label: '仪表盘', icon: 'dashboard' },
   { to: '/ai', label: 'AI 分析', icon: 'sparkles' },
   { to: '/easytdx', label: 'easy-tdx', icon: 'cpu' },
+  { href: '/capital', label: '资金流大屏', icon: 'bar-chart', external: true },
 ]
 
-const activeIndex = computed(() => nav.findIndex(item => route.path === item.to || route.path.startsWith(item.to + '/')))
+const activeIndex = computed(() => nav.findIndex(item => !item.external && (route.path === item.to || route.path.startsWith(item.to + '/'))))
 </script>
 
 <template>
@@ -34,22 +35,40 @@ const activeIndex = computed(() => nav.findIndex(item => route.path === item.to 
     </div>
 
     <nav class="ff-sidebar__nav" aria-label="主导航">
-      <router-link
-        v-for="(item, idx) in nav"
-        :key="item.to"
-        :to="item.to"
-        class="ff-sidebar__item"
-        :class="activeIndex === idx && 'ff-sidebar__item--active'"
-        @click="mobile && emit('close')"
-      >
-        <AppIcon
-          :name="item.icon"
-          :tone="activeIndex === idx ? 'brand' : 'muted'"
-          size="md"
-          class="ff-sidebar__icon"
-        />
-        <span class="ff-sidebar__label">{{ item.label }}</span>
-      </router-link>
+      <template v-for="(item, idx) in nav" :key="item.to || item.href">
+        <a
+          v-if="item.external"
+          :href="item.href"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="ff-sidebar__item"
+          :title="`${item.label}（在新标签页打开）`"
+          @click="mobile && emit('close')"
+        >
+          <AppIcon
+            :name="item.icon"
+            tone="muted"
+            size="md"
+            class="ff-sidebar__icon"
+          />
+          <span class="ff-sidebar__label">{{ item.label }}</span>
+        </a>
+        <router-link
+          v-else
+          :to="item.to"
+          class="ff-sidebar__item"
+          :class="activeIndex === idx && 'ff-sidebar__item--active'"
+          @click="mobile && emit('close')"
+        >
+          <AppIcon
+            :name="item.icon"
+            :tone="activeIndex === idx ? 'brand' : 'muted'"
+            size="md"
+            class="ff-sidebar__icon"
+          />
+          <span class="ff-sidebar__label">{{ item.label }}</span>
+        </router-link>
+      </template>
     </nav>
   </aside>
 </template>

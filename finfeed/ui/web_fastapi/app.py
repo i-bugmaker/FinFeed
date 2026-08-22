@@ -30,7 +30,7 @@ import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -90,6 +90,37 @@ app = FastAPI(
 
 # 注册 easy-tdx 集成路由（/api/easytdx/*）
 app.include_router(easytdx_router)
+
+# ----------------------------------------------------------------------
+# 全市场资金流与板块轮动监控大屏集成（可选，依赖 easy-tdx）
+#  - API 前缀：/api/capital/*
+#  - 大屏页面：/capital
+#  - 独立运行：python -m finfeed.capital_dashboard（端口 8090）
+# 依赖缺失或导入失败时优雅降级，不影响 FinFeed 主服务。
+# ----------------------------------------------------------------------
+try:
+    from finfeed.capital_dashboard.server import (
+        create_router as _cap_create_router,
+        start_refresh_worker as _cap_start_worker,
+        stop_refresh_worker as _cap_stop_worker,
+    )
+    from finfeed.capital_dashboard import config as _cap_config
+
+    app.include_router(_cap_create_router("/api/capital"))
+
+    @app.get("/capital", include_in_schema=False)
+    async def capital_dashboard_page():
+        """资金流大屏页面（注入 /api/capital 前缀供前端消费）。"""
+        idx = Path(_cap_config.__file__).resolve().parent / "web" / "index.html"
+        html = idx.read_text(encoding="utf-8")
+        inject = '<script>window.CAPITAL_API_BASE="/api/capital";</script>'
+        html = html.replace("</head>", inject + "</head>", 1)
+        return HTMLResponse(html)
+
+    logger.info("已集成全市场资金流大屏模块（/capital, /api/capital/*）")
+except Exception as _cap_exc:  # noqa: BLE001
+    logger.warning("全市场资金流大屏模块未加载（可忽略；安装依赖后重启生效）: %s", _cap_exc)
+
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
@@ -1033,6 +1064,12 @@ async def _startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"行情数据表初始化失败（可忽略）: {e}")
 
+    # 资金流大屏后台刷新线程（若模块已集成则启动；TDX 连接失败不阻断主服务）
+    try:
+        _cap_start_worker()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"资金流大屏刷新线程启动失败（可忽略）: {e}")
+
     legacy.init_broadcast_watermark()
     # 创建 tick 哨兵文件并置为当前时间，使 _sse_poll_loop 的 last_tick 基准有效；
     # 之后主进程每次抓取完成都会更新其 mtime 以「唤醒」本进程的即时推送。
@@ -1077,6 +1114,11 @@ async def _shutdown():
     # 关闭行情自动采集调度器
     try:
         market_scheduler.stop()
+    except Exception:  # noqa: BLE001
+        pass
+    # 停止资金流大屏刷新线程并断开 TDX 连接
+    try:
+        _cap_stop_worker()
     except Exception:  # noqa: BLE001
         pass
 

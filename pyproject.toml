@@ -25,6 +25,8 @@ lxml = ">=4.9.0"
 rich = ">=13.0.0"
 playwright = ">=1.40.0"
 openpyxl = ">=3.1.0"
+# --- 通达信行情（easy-tdx 集成 + 资金流大屏模块） ---
+easy-tdx = ">=1.20"
 # --- 方案 D 新 Web 后端（双轨并行） ---
 fastapi = ">=0.110"
 uvicorn = ">=0.27"
