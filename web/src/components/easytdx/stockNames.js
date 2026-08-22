@@ -49,6 +49,16 @@ export async function searchStocks(q, limit = 8) {
     hits.push({ market, code, name: String(name), score: rank(query, code, nameU, isCode) })
     if (hits.length >= 200) break
   }
+
+  // 兜底：纯代码输入时，即使名称库缺失（后端未启动 / 接口失败）也能直选标的
+  // 6 位代码 → 按规则推断市场，name 暂用代码占位
+  if (isCode && query.length >= 4) {
+    const exact = hits.find((h) => h.code === query)
+    if (!exact) {
+      hits.push({ market: inferMarket(query), code: query, name: String(query), score: 0.5, fallback: true })
+    }
+  }
+
   hits.sort((a, b) => a.score - b.score || a.code.localeCompare(b.code))
   return hits.slice(0, limit)
 }

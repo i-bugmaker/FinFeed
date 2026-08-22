@@ -1,520 +1,1180 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import AppCard from '../ui/AppCard.vue'
-import AppButton from '../ui/AppButton.vue'
+// easy-tdx 投研工作台（全新 UI）
+// 布局：顶部命令条 → 左栏（自选股 + 场景导航）→ 中栏（标的名片 + 快捷任务 + 视图）→ 右栏（参数）→ 底部任务中心
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppBadge from '../ui/AppBadge.vue'
-import AppTabs from '../ui/AppTabs.vue'
+import AppButton from '../ui/AppButton.vue'
+import EasyTdxWatchlist from '../components/easytdx/EasyTdxWatchlist.vue'
 import EasyTdxNav from '../components/easytdx/EasyTdxNav.vue'
+import EasyTdxQuickTasks from '../components/easytdx/EasyTdxQuickTasks.vue'
 import EasyTdxParamForm from '../components/easytdx/EasyTdxParamForm.vue'
 import EasyTdxResultPanel from '../components/easytdx/EasyTdxResultPanel.vue'
-import EasyTdxTaskStatus from '../components/easytdx/EasyTdxTaskStatus.vue'
 import EasyTdxStockPicker from '../components/easytdx/EasyTdxStockPicker.vue'
-import EasyTdxQuickTasks from '../components/easytdx/EasyTdxQuickTasks.vue'
-import easytdxApi from '../api/easytdx'
-import { loadStockNames } from '../components/easytdx/stockNames'
-import { clientLabel } from '../components/easytdx/format'
+import { useEasytdxStore } from '../store/easytdx'
 
-const loading = ref(false)
-const meta = ref(null)
-const strategies = ref([])
-const navGroups = ref([])
-const selectedFuncId = ref('')
-const params = reactive({})
-const task = ref(null)
-const running = ref(false)
-const recent = ref([])
-const query = ref('')
-const errMsg = ref('')
-const pickerRef = ref(null)
+const store = useEasytdxStore()
 
-const mode = ref('workbench') // workbench | functions
-const modes = [
-  { value: 'workbench', label: '工作台' },
-  { value: 'functions', label: '全部功能' },
+// ---------------- 视图与场景 ----------------
+// 视图 Tab（中栏）
+const VIEWS = [
+  { id: 'overview', label: '总览', icon: 'dashboard' },
+  { id: 'kline', label: 'K线', icon: 'candles' },
+  { id: 'tick', label: '分时', icon: 'activity' },
+  { id: 'fund', label: '资金', icon: 'coins' },
+  { id: 'chanlun', label: '缠论', icon: 'activity' },
+  { id: 'backtest', label: '回测', icon: 'cpu' },
+  { id: 'board', label: '板块榜', icon: 'bar-chart' },
 ]
 
-// ---------------- 股票标的 ----------------
-const stock = ref(null) // { market, code, name }
-const stockNames = ref({})
-
-async function loadNames() {
-  stockNames.value = await loadStockNames()
+// 视图 → 默认执行功能（overview 为面板视图）
+const VIEW_FUNC = {
+  overview: '',
+  kline: 'mac_stock_kline',
+  tick: 'mac_tick_chart',
+  fund: 'mac_capital_flow',
+  chanlun: 'chanlun_analyze',
+  backtest: 'backtest_run',
+  board: 'mac_board_ranking',
 }
 
-function selectStock(s) {
-  stock.value = s
-  errMsg.value = ''
-  // 已选功能若接受个股参数，立即带入
-  injectStockToFunc()
-}
-
-function clearStock() {
-  stock.value = null
-}
-
-function changeStock() {
-  stock.value = null
-  pickerRef.value?.focus()
-}
-
-// 把当前标的注入到功能参数（market/code 或 stocklist）
-function injectStockToFunc() {
-  if (!stock.value || !selectedFunc.value) return
-  const func = selectedFunc.value
-  const hasCode = func.params?.some((p) => p.key === 'code')
-  const hasStocks = func.params?.some((p) => p.key === 'stocks')
-  if (hasCode) {
-    params.code = stock.value.code
-    if (func.params.some((p) => p.key === 'market')) params.market = stock.value.market
-  } else if (hasStocks) {
-    params.stocks = `${stock.value.market} ${stock.value.code}`
-  }
-}
-
-// ---------------- 场景化分组 ----------------
+// 六大场景（左栏导航），场景 → 视图 + 功能集合
 const SCENES = [
-  { id: 'quote', label: '行情数据', icon: 'trending-up', groups: ['kline', 'minute', 'transaction', 'macquote', 'mackline', 'mactick', 'ex'] },
-  { id: 'stock', label: '个股资料', icon: 'file-text', groups: ['finance', 'cninfo', 'block'] },
-  { id: 'market', label: '市场扫描', icon: 'activity', groups: ['market', 'fundflow', 'macboard', 'maccapital', 'macmonitor'] },
-  { id: 'tools', label: '高级工具', icon: 'candles', groups: ['chanlun', 'backtest', 'file'] },
-  { id: 'conn', label: '系统连接', icon: 'database', groups: ['conn'] },
+  { id: 'overview', label: '总览工作台', icon: 'dashboard', funcIds: ['mac_stock_quotes', 'mac_stock_kline', 'mac_tick_chart', 'mac_capital_flow', 'finance_info', 'xdxr_info', 'cninfo_announcements', 'chanlun_analyze', 'backtest_run', 'mac_board_ranking', 'mac_unusual', 'mac_transactions'] },
+  { id: 'kline', label: 'K线 / 行情', icon: 'candles', funcIds: ['mac_stock_kline', 'mac_stock_kline_indicators', 'security_bars', 'index_bars', 'minute_time_data', 'history_minute_time_data', 'security_quotes', 'mac_transactions'] },
+  { id: 'fund', label: '资金流向', icon: 'coins', funcIds: ['mac_capital_flow', 'fund_flow', 'history_fund_flow'] },
+  { id: 'chanlun', label: '缠论分析', icon: 'activity', funcIds: ['chanlun_analyze'] },
+  { id: 'backtest', label: '策略回测', icon: 'cpu', funcIds: ['backtest_run'] },
+  { id: 'board', label: '市场扫描', icon: 'bar-chart', funcIds: ['mac_board_ranking', 'mac_board_change_ranking', 'mac_unusual', 'mac_auction', 'market_stat', 'mac_stock_quotes_list', 'price_limits'] },
 ]
-const GROUP_LABELS = {}
 
-function buildNav(groups, functions) {
-  for (const g of groups) GROUP_LABELS[g.id] = g.label
-  return SCENES.map((scene) => {
-    const items = functions
-      .filter((f) => scene.groups.includes(f.group))
-      .map((f) => ({ id: f.id, label: f.label, tag: GROUP_LABELS[f.group] }))
-    return { id: scene.id, label: scene.label, icon: scene.icon, items }
-  }).filter((s) => s.items.length)
+const currentView = ref('overview')
+const query = ref('')
+const paramsCollapsed = ref(false)
+
+const funcs = computed(() => store.meta?.functions || [])
+const selectedFunc = computed(() => store.selectedFunc)
+const running = computed(() => store.running)
+const errMsg = computed(() => store.errMsg)
+
+// 功能是否需要标的
+function funcNeedsStock(func) {
+  return !!func?.params?.some((p) => p.key === 'code' || p.key === 'stocks')
 }
 
-// ---------------- 功能选择 / 参数 ----------------
-const selectedFunc = computed(
-  () => meta.value?.functions.find((f) => f.id === selectedFuncId.value) || null,
-)
+// 当前视图是否需要标的
+const currentNeedsStock = computed(() => {
+  const fid = VIEW_FUNC[currentView.value]
+  const func = funcs.value.find((f) => f.id === fid)
+  return funcNeedsStock(func)
+})
 
-function resetParams(func) {
-  for (const k of Object.keys(params)) delete params[k]
-  for (const p of func.params || []) {
-    params[p.key] = p.default ?? (p.type === 'bool' ? false : '')
-  }
-}
-
-function selectFunc(id, { autoInject = true } = {}) {
-  errMsg.value = ''
-  selectedFuncId.value = id
-  const func = meta.value.functions.find((f) => f.id === id)
-  if (func) {
-    resetParams(func)
-    if (autoInject) injectStockToFunc()
-  }
-  task.value = null
-}
-
-// ---------------- 快捷任务 ----------------
-async function runTask(t) {
-  if (t.needsStock && !stock.value) {
-    errMsg.value = '请先选择股票标的（输入名称或代码），再执行「' + t.label + '」'
-    pickerRef.value?.focus()
+// ---------------- 视图切换 ----------------
+function activateView(view) {
+  currentView.value = view
+  const fid = VIEW_FUNC[view]
+  if (!fid) return
+  const func = funcs.value.find((f) => f.id === fid)
+  if (!func) return
+  store.selectFunc(fid) // 重置参数并注入标的
+  if (funcNeedsStock(func) && !store.stock) {
+    // 未选标的：给出明确指引，避免「点了没反应」
+    store.errMsg = '请先在顶部搜索框选择股票标的（如「茅台」），再执行「' + func.label + '」'
     return
-  }
-  selectFunc(t.func, { autoInject: false })
-  const func = selectedFunc.value
-  if (func) {
-    resetParams(func)
-    Object.assign(params, t.params || {})
-    // 注入股票：个股类任务自动带入当前标的
-    if (t.needsStock && stock.value) {
-      const hasCode = func.params?.some((p) => p.key === 'code')
-      const hasStocks = func.params?.some((p) => p.key === 'stocks')
-      if (hasCode) {
-        params.code = stock.value.code
-        if (func.params.some((p) => p.key === 'market')) params.market = stock.value.market
-      } else if (hasStocks) {
-        params.stocks = `${stock.value.market} ${stock.value.code}`
-      }
-    }
   }
   run()
 }
 
-// ---------------- 执行 / 轮询 ----------------
-let pollTimer = null
+function onSceneView(view) {
+  activateView(view)
+}
 
+function onNavSelect(funcId) {
+  const func = funcs.value.find((f) => f.id === funcId)
+  if (!func) return
+  // 定位到功能所属场景（视图）
+  const scene = SCENES.find((s) => s.funcIds.includes(funcId))
+  if (scene) currentView.value = scene.id
+  store.selectFunc(funcId)
+  if (funcNeedsStock(func) && !store.stock) {
+    store.errMsg = '请先在顶部搜索框选择股票标的，再执行「' + func.label + '」'
+    return
+  }
+  run()
+}
+
+// ---------------- 标的 ----------------
+function selectStock(s) {
+  store.selectStock(s)
+  if (currentNeedsStock.value) run()
+}
+
+function clearStock() {
+  store.clearStock()
+}
+
+function changeStock() {
+  store.clearStock()
+  pickerRef.value?.focus()
+}
+
+const pickerRef = ref(null)
+
+// ---------------- 执行 ----------------
 async function run() {
-  if (!selectedFunc.value) return
-  errMsg.value = ''
-  task.value = null
-  running.value = true
+  if (!store.selectedFunc) return
+  // 结果可见性保证：若当前停留在总览视图（无结果面板），
+  // 自动定位到该功能所属的视图，确保执行结果立即可见
+  if (currentView.value === 'overview') {
+    const view = locateViewForFunc(store.selectedFuncId)
+    if (view) currentView.value = view
+  }
   try {
-    const r = await easytdxApi.run(selectedFuncId.value, { ...params })
-    startPolling(r.task_id)
+    await store.run()
   } catch (e) {
-    running.value = false
-    errMsg.value = '提交失败：' + (e.message || e)
+    store.errMsg = '提交失败：' + (e.message || e)
   }
 }
 
-function startPolling(taskId) {
-  if (pollTimer) clearInterval(pollTimer)
-  pollTimer = setInterval(() => pollTask(taskId), 800)
-  pollTask(taskId)
+// 功能 → 所属场景（视图）
+function locateViewForFunc(funcId) {
+  return SCENES.find((s) => s.funcIds.includes(funcId))?.id || null
 }
 
-async function pollTask(taskId) {
-  try {
-    const t = await easytdxApi.task(taskId)
-    task.value = t
-    if (t.status === 'success' || t.status === 'error') {
-      stopPolling()
-      running.value = false
-      loadRecent()
-    }
-  } catch (e) {
-    /* 单次轮询失败不打断 */
+// 快捷任务：先定位到功能所属视图（结果面板可见），再执行
+async function runTask(t) {
+  const view = locateViewForFunc(t.func)
+  if (view && view !== currentView.value) currentView.value = view
+  await store.runTask(t)
+}
+
+// 最近任务：回看结果 —— 定位视图并挂载对应功能（不重置参数）
+function loadTask(id) {
+  const t = store.recent.find((x) => x.task_id === id)
+  if (t) {
+    const view = locateViewForFunc(t.func_id)
+    if (view) currentView.value = view
+    if (t.func_id) store.selectedFuncId = t.func_id
   }
+  store.loadTask(id)
 }
 
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
+function taskLabel(t) {
+  return t.func_label || t.label || t.function || t.func_id || t.task_id
 }
 
-async function loadMeta() {
-  loading.value = true
-  try {
-    const [m, s] = await Promise.all([easytdxApi.meta(), easytdxApi.strategies()])
-    meta.value = m
-    strategies.value = s.strategies || []
-    navGroups.value = buildNav(m.group_meta, m.functions)
-    if (m.functions.length) selectFunc(m.functions[0].id, { autoInject: false })
-  } catch (e) {
-    errMsg.value = '加载功能清单失败：' + (e.message || e)
-  } finally {
-    loading.value = false
-  }
-}
+// 任务完成 → 刷新最近
+watch(
+  () => store.task?.status,
+  (s) => {
+    if (s === 'success' || s === 'error') store.loadRecent()
+  },
+)
 
-async function loadRecent() {
-  try {
-    const r = await easytdxApi.tasks(8)
-    recent.value = r.tasks || []
-  } catch (e) {
-    /* 静默降级 */
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([loadMeta(), loadNames()])
-  await loadRecent()
+// ---------------- Hero 报价提取（执行报价类任务后更新） ----------------
+const heroQuote = computed(() => {
+  const t = store.task
+  const r = t?.status === 'success' ? t.result : null
+  if (!r || r.type !== 'table') return null
+  const cols = (r.columns || []).map((c) => String(c).toLowerCase())
+  const priceIdx = cols.findIndex((c) => /price|last|now|^close$/.test(c))
+  const pctIdx = cols.findIndex((c) => /change_pct|pct_chg/.test(c))
+  const chgIdx = cols.findIndex((c) => /^change$/.test(c))
+  if (priceIdx < 0) return null
+  const row = r.rows?.[0]
+  if (!row) return null
+  const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v))
+  const price = num(row[priceIdx])
+  const pct = pctIdx >= 0 ? num(row[pctIdx]) : null
+  const chg = chgIdx >= 0 ? num(row[chgIdx]) : null
+  return { price, pct, chg }
 })
-onBeforeUnmount(stopPolling)
+
+function fmtNum(v, digits = 2) {
+  if (v === null || !Number.isFinite(v)) return '—'
+  return v.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+}
+
+// ---------------- 参数面板 ----------------
+function toggleParams() {
+  paramsCollapsed.value = !paramsCollapsed.value
+}
+
+function toggleFav() {
+  if (!store.selectedFunc) return
+  store.toggleFav(store.selectedFuncId)
+}
+
+// ---------------- 初始化 ----------------
+onMounted(async () => {
+  await store.init()
+  await store.loadNames()
+  await store.loadRecent()
+})
+onBeforeUnmount(() => store.stopPolling())
 </script>
 
 <template>
-  <div class="ff-page etdx-view">
-    <header class="etdx-view__header">
-      <div class="etdx-view__title">
-        <h1 class="ff-page__title">
-          <AppIcon name="cpu" size="lg" /> easy-tdx 数据源
-        </h1>
-        <p class="ff-page__subtitle">
-          通达信 / Mac / 扩展行情 / 巨潮 / 缠论 / 回测 —— 输入股票名称即可快速查询
-        </p>
+  <div class="etdx-shell">
+    <!-- ══════ 顶部命令条 ══════ -->
+    <header class="etdx-top">
+      <div class="etdx-top__title">
+        <span class="etdx-top__mark"><AppIcon name="cpu" size="sm" /></span>
+        <div>
+          <h1 class="etdx-top__name">easy-tdx 投研工作台</h1>
+          <p class="etdx-top__sub">通达信行情 · 缠论 · 回测 —— 选标的即查</p>
+        </div>
       </div>
 
-      <!-- 视图切换 -->
-      <AppTabs v-model="mode" type="line" :items="modes" class="etdx-view__tabs" />
-    </header>
-
-    <div v-if="errMsg" class="ff-alert ff-alert--danger etdx-view__err">
-      <AppIcon name="alert-circle" size="md" /> {{ errMsg }}
-    </div>
-
-    <!-- 标的选择条：输入名称/代码，个股类功能自动带入 -->
-    <AppCard class="etdx-view__banner" :no-padding="true">
-      <div class="etdx-view__banner-body">
+      <div class="etdx-top__search">
         <EasyTdxStockPicker
           ref="pickerRef"
-          :stock="stock"
-          class="etdx-view__picker"
+          :stock="store.stock"
           @select="selectStock"
           @clear="clearStock"
         />
-        <div class="etdx-view__banner-text">
-          <strong v-if="stock">{{ stock.name }} ({{ stock.code }}.{{ stock.market }})</strong>
-          <strong v-else>输入股票名称 / 代码开始查询</strong>
-          <span v-if="stock">个股类任务（K线 / 报价 / 公告 / 缠论 / 回测…）将自动作用于该标的</span>
-          <span v-else>支持名称或代码模糊搜索，如「茅台」「600519」「平安」</span>
-        </div>
-        <span v-if="meta" class="etdx-view__banner-count">
-          {{ navGroups.reduce((n, g) => n + g.items.length, 0) }} 项功能可用
-        </span>
       </div>
-    </AppCard>
 
-    <div class="etdx-view__body">
-      <!-- 全部功能：左侧场景化导航 -->
-      <AppCard v-if="mode === 'functions'" class="etdx-view__nav" :no-padding="true">
-        <EasyTdxNav
-          :groups="navGroups"
-          :active-id="selectedFuncId"
-          v-model:query="query"
-          @select="(id) => selectFunc(id)"
-        />
-      </AppCard>
+      <div class="etdx-top__meta">
+        <span class="etdx-top__host" title="自动探测最低延迟主机">
+          <span class="etdx-top__dot"></span>
+          行情在线
+        </span>
+        <span class="etdx-top__count">{{ store.funcCount }} 项功能</span>
+      </div>
+    </header>
 
-      <div class="etdx-view__main">
-        <!-- 工作台：快捷任务 -->
-        <template v-if="mode === 'workbench'">
-          <AppCard class="etdx-view__tasks" :no-padding="true">
-            <div class="etdx-view__tasks-head">
-              <AppIcon name="zap" size="sm" />
-              <span>快捷任务</span>
-              <span class="etdx-view__tasks-hint">点击即执行，参数可在下方调整后重跑</span>
-            </div>
-            <div class="etdx-view__tasks-body">
-              <EasyTdxQuickTasks :has-stock="!!stock" @run="runTask" />
-            </div>
-          </AppCard>
-        </template>
+    <!-- ══════ 主体三栏 ══════ -->
+    <div class="etdx-body">
+      <!-- 左栏：自选股 + 场景导航 -->
+      <aside class="etdx-rail">
+        <div class="etdx-rail__watch">
+          <EasyTdxWatchlist :stock="store.stock" @select="selectStock" />
+        </div>
+        <div class="etdx-rail__divider"></div>
+        <div class="etdx-rail__nav">
+          <EasyTdxNav
+            :scenes="SCENES"
+            :functions="funcs"
+            :active-view="currentView"
+            :active-func-id="store.selectedFuncId"
+            v-model:query="query"
+            @view="onSceneView"
+            @select="onNavSelect"
+          />
+        </div>
+      </aside>
 
-        <!-- 执行区：参数 + 结果 -->
-        <AppCard v-if="selectedFunc" class="etdx-view__panel">
-          <div class="etdx-view__func-head">
-            <div>
-              <div class="etdx-view__func-title">
-                {{ selectedFunc.label }}
-                <AppBadge variant="muted">{{ GROUP_LABELS[selectedFunc.group] || selectedFunc.group }}</AppBadge>
-                <AppBadge variant="brand">{{ clientLabel(selectedFunc.client) }}</AppBadge>
+      <!-- 中栏：Hero + 快捷任务 + 视图 -->
+      <section class="etdx-center">
+        <!-- 标的名片 -->
+        <div class="etdx-hero">
+          <div class="etdx-hero__name">
+            <h2>
+              {{ store.stock?.name || '未选择标的' }}
+              <span v-if="store.stock" class="etdx-hero__mk">{{ store.stock.market }}</span>
+            </h2>
+            <p v-if="store.stock" class="etdx-hero__code">{{ store.stock.code }} · 输入名称 / 代码即可切换</p>
+            <p v-else class="etdx-hero__code">在上方搜索股票名称或代码开始查询，如「茅台」「600519」</p>
+          </div>
+
+          <div v-if="heroQuote" class="etdx-hero__quote">
+            <span
+              class="etdx-hero__px"
+              :class="(heroQuote.pct ?? 0) > 0 ? 'is-up' : (heroQuote.pct ?? 0) < 0 ? 'is-down' : ''"
+            >{{ fmtNum(heroQuote.price) }}</span>
+            <span
+              v-if="heroQuote.pct !== null"
+              class="etdx-hero__chg"
+              :class="heroQuote.pct > 0 ? 'is-up' : heroQuote.pct < 0 ? 'is-down' : ''"
+            >{{ heroQuote.pct > 0 ? '+' : '' }}{{ fmtNum(heroQuote.pct) }}%</span>
+            <span
+              v-if="heroQuote.chg !== null"
+              class="etdx-hero__chg"
+              :class="heroQuote.chg > 0 ? 'is-up' : heroQuote.chg < 0 ? 'is-down' : ''"
+            >{{ heroQuote.chg > 0 ? '+' : '' }}{{ fmtNum(heroQuote.chg) }}</span>
+          </div>
+          <div v-else class="etdx-hero__quote">
+            <span class="etdx-hero__px is-idle">—</span>
+            <span class="etdx-hero__hint">执行「实时报价」后显示行情</span>
+          </div>
+
+          <div class="etdx-hero__actions">
+            <span class="etdx-hero__act-hint" v-if="!store.stock">↑ 先在上方选择标的</span>
+            <span v-else class="etdx-hero__act-hint">执行入口在右侧「参数设置」面板</span>
+          </div>
+        </div>
+
+        <!-- 视图 Tab -->
+        <div class="etdx-tabs">
+          <button
+            v-for="v in VIEWS"
+            :key="v.id"
+            type="button"
+            class="etdx-tabs__item"
+            :class="currentView === v.id && 'is-active'"
+            @click="activateView(v.id)"
+          >
+            <AppIcon :name="v.icon" size="sm" />
+            {{ v.label }}
+          </button>
+        </div>
+
+        <!-- 视图内容 -->
+        <div class="etdx-viewport">
+          <!-- ══ 总览：执行结果 + 最近任务 + 快捷任务 ══ -->
+          <div v-if="currentView === 'overview'" class="etdx-overview">
+            <div class="etdx-overview__grid">
+              <!-- 执行结果（常驻：执行成功后结果统一显示在此，失败显示错误原因） -->
+              <div class="etdx-card">
+                <div class="etdx-card__head">
+                  <AppIcon name="play" size="sm" />
+                  <span>{{ store.task ? '执行结果 · ' + taskLabel(store.task) : '执行结果' }}</span>
+                  <span class="etdx-card__sp"></span>
+                  <span
+                    v-if="store.task && store.task.status !== 'running'"
+                    class="etdx-task-chip"
+                    :class="'etdx-task-chip--' + store.task.status"
+                  >
+                    <AppIcon
+                      :name="store.task.status === 'success' ? 'check-circle' : 'alert-circle'"
+                      size="xs"
+                    />
+                    {{ store.task.status === 'success' ? '已完成' : '失败' }}
+                  </span>
+                  <span
+                    v-else-if="store.task && store.task.status === 'running'"
+                    class="etdx-task-chip etdx-task-chip--running"
+                  >
+                    <AppIcon name="refresh" size="xs" spin />
+                    执行中 {{ store.task.progress || 0 }}%
+                  </span>
+                </div>
+                <div class="etdx-card__body">
+                  <template v-if="store.task && store.task.status !== 'running'">
+                    <EasyTdxResultPanel
+                      :result="store.task.status === 'success' ? store.task.result : null"
+                      :error="store.task.status === 'error' ? store.task.error : ''"
+                      :func="selectedFunc"
+                      :loading="false"
+                      :stock-names="store.stockNames"
+                    />
+                  </template>
+                  <div v-else class="etdx-empty">
+                    <AppIcon name="play" size="lg" />
+                    <p>选择功能并点击「执行」，结果将显示在这里</p>
+                  </div>
+                </div>
               </div>
-              <p v-if="selectedFunc.help" class="etdx-view__func-help">{{ selectedFunc.help }}</p>
+
+              <!-- 最近任务 -->
+              <div class="etdx-card">
+                <div class="etdx-card__head">
+                  <AppIcon name="zap" size="sm" />
+                  <span>最近任务</span>
+                  <span class="etdx-card__hint">点击查看结果</span>
+                </div>
+                <div class="etdx-card__body">
+                  <div v-if="store.recent.length" class="etdx-recent">
+                    <button
+                      v-for="t in store.recent"
+                      :key="t.task_id"
+                      type="button"
+                      class="etdx-recent__item"
+                      @click="loadTask(t.task_id)"
+                    >
+                      <span
+                        class="etdx-recent__dot"
+                        :class="t.status === 'success' ? 'is-ok' : t.status === 'error' ? 'is-err' : ''"
+                      ></span>
+                      <span class="etdx-recent__label">{{ taskLabel(t) }}</span>
+                      <span class="etdx-recent__time">{{ t.started_at ? new Date(t.started_at * 1000).toLocaleTimeString('zh-CN', { hour12: false }) : '' }}</span>
+                    </button>
+                  </div>
+                  <div v-else class="etdx-empty">
+                    <AppIcon name="clock" size="lg" />
+                    <p>暂无任务记录，点击下方快捷任务开始</p>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <!-- 快速任务网格（复用快捷任务卡片） -->
+            <div class="etdx-card">
+              <div class="etdx-card__head">
+                <AppIcon name="sparkles" size="sm" />
+                <span>快捷任务</span>
+                <span class="etdx-card__hint">预置参数 · 点击即执行</span>
+              </div>
+              <div class="etdx-card__body">
+                <EasyTdxQuickTasks :has-stock="!!store.stock" @run="runTask" />
+              </div>
+            </div>
+          </div>
+
+          <!-- ══ 执行视图（K线 / 分时 / 资金 / 缠论 / 回测 / 板块榜） ══ -->
+          <template v-else-if="selectedFunc">
+            <!-- 错误提示 -->
+            <div v-if="errMsg" class="etdx-alert etdx-alert--danger">
+              <AppIcon name="alert-circle" size="sm" /> {{ errMsg }}
+            </div>
+
+            <div class="etdx-card">
+              <div class="etdx-card__head">
+                <AppIcon :name="VIEWS.find((v) => v.id === currentView)?.icon" size="sm" />
+                <span>{{ selectedFunc.label }}</span>
+                <AppBadge variant="muted">{{ selectedFunc.group }}</AppBadge>
+                <AppBadge variant="brand">{{ selectedFunc.client }}</AppBadge>
+                <span v-if="!store.stock && funcNeedsStock(selectedFunc)" class="etdx-card__need">
+                  <AppIcon name="alert-triangle" size="xs" /> 需先选择标的
+                </span>
+                <span class="etdx-card__sp"></span>
+                <span
+                  v-if="store.task"
+                  class="etdx-task-chip"
+                  :class="'etdx-task-chip--' + store.task.status"
+                >
+                  <AppIcon
+                    :name="store.task.status === 'success' ? 'check-circle' : store.task.status === 'error' ? 'alert-circle' : 'refresh'"
+                    size="xs"
+                    :spin="store.task.status === 'running'"
+                  />
+                  {{ store.task.status === 'success' ? '已完成' : store.task.status === 'error' ? '失败' : '执行中 ' + (store.task.progress || 0) + '%' }}
+                </span>
+              </div>
+              <div class="etdx-card__body">
+                <EasyTdxResultPanel
+                  :result="store.task && store.task.status !== 'running' ? store.task.result : null"
+                  :error="store.task && store.task.status === 'error' ? store.task.error : ''"
+                  :func="selectedFunc"
+                  :loading="running"
+                  :stock-names="store.stockNames"
+                />
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <!-- 右栏：参数面板 -->
+      <aside class="etdx-params" :class="{ 'is-collapsed': paramsCollapsed }">
+        <div class="etdx-params__head">
+          <template v-if="!paramsCollapsed">
+            <AppIcon name="sliders" size="sm" />
+            <span>参数设置</span>
+          </template>
+          <button type="button" class="etdx-params__toggle" :title="paramsCollapsed ? '展开' : '收起'" @click="toggleParams">
+            <AppIcon :name="paramsCollapsed ? 'chevrons-right' : 'chevrons-left'" size="sm" />
+          </button>
+        </div>
+
+        <div v-if="!paramsCollapsed" class="etdx-params__body">
+          <template v-if="selectedFunc">
+            <p v-if="selectedFunc.help" class="etdx-params__help">{{ selectedFunc.help }}</p>
+            <EasyTdxParamForm
+              :func="selectedFunc"
+              :model="store.params"
+              :strategies="store.strategies"
+              :stock="store.stock"
+              @change-stock="changeStock"
+            />
             <AppButton
               variant="primary"
               icon="play"
               :loading="running"
               :disabled="running"
+              block
+              class="etdx-params__apply"
               @click="run"
             >
               {{ running ? '执行中…' : '执行' }}
             </AppButton>
+            <p class="etdx-params__tip">调整参数后点击「执行」重新拉取数据。</p>
+          </template>
+          <div v-else class="etdx-params__empty">
+            <AppIcon name="sliders" size="lg" />
+            <p>在左侧选择一个功能后，在此调整参数</p>
           </div>
+        </div>
 
-          <div class="etdx-view__content">
-            <!-- 参数表单 -->
-            <div class="etdx-view__form">
-              <h3 class="ff-h3">参数</h3>
-              <EasyTdxParamForm
-                :func="selectedFunc"
-                :model="params"
-                :strategies="strategies"
-                :stock="stock"
-                @change-stock="changeStock"
-              />
-            </div>
-
-            <!-- 结果 -->
-            <div class="etdx-view__result">
-              <h3 class="ff-h3">结果</h3>
-              <EasyTdxResultPanel
-                :result="task && task.status !== 'running' ? task.result : null"
-                :func="selectedFunc"
-                :loading="running"
-                :stock-names="stockNames"
-              />
-            </div>
-          </div>
-        </AppCard>
-
-        <!-- 执行状态 / 日志 -->
-        <AppCard class="etdx-view__status" :no-padding="true">
-          <div class="etdx-view__status-head">
-            <AppIcon name="list" size="sm" />
-            <span>执行状态与日志</span>
-            <button v-if="recent.length" type="button" class="etdx-view__recent" title="最近任务">
-              最近 {{ recent.length }} 条
-            </button>
-          </div>
-          <div class="etdx-view__status-body">
-            <EasyTdxTaskStatus :task="task" />
-          </div>
-        </AppCard>
-      </div>
+        <!-- 折叠态：唯一执行入口 -->
+        <button
+          v-if="paramsCollapsed && selectedFunc"
+          type="button"
+          class="etdx-params__mini-run"
+          title="执行当前功能"
+          :disabled="running"
+          @click="run"
+        >
+          <AppIcon name="play" size="sm" :spin="running" />
+        </button>
+      </aside>
     </div>
+
+    <!-- ══════ 底部任务中心 ══════ -->
+    <footer class="etdx-taskbar">
+      <!-- 运行状态 -->
+      <div v-if="store.task" class="etdx-taskbar__state">
+        <template v-if="store.task.status === 'running'">
+          <AppIcon name="refresh" size="sm" spin />
+          <span class="etdx-taskbar__title">执行中</span>
+          <span class="etdx-taskbar__pct">{{ store.task.progress || 0 }}%</span>
+          <div class="etdx-taskbar__bar">
+            <div class="etdx-taskbar__bar-fill" :style="{ width: (store.task.progress || 0) + '%' }" />
+          </div>
+        </template>
+        <template v-else-if="store.task.status === 'success'">
+          <AppIcon name="check-circle" size="sm" />
+          <span class="etdx-taskbar__title">已完成</span>
+          <span class="etdx-taskbar__log">{{ store.task.logs?.slice(-1)[0]?.msg || '' }}</span>
+        </template>
+        <template v-else-if="store.task.status === 'error'">
+          <AppIcon name="alert-circle" size="sm" />
+          <span class="etdx-taskbar__title">执行失败</span>
+          <span class="etdx-taskbar__log etdx-taskbar__log--err">{{ store.task.error || '' }}</span>
+        </template>
+      </div>
+      <div v-else class="etdx-taskbar__state" :class="errMsg ? 'is-err' : 'etdx-taskbar__state--idle'">
+        <AppIcon :name="errMsg ? 'alert-circle' : 'dot'" size="sm" />
+        <span class="etdx-taskbar__title">{{ errMsg ? '提示' : '空闲' }}</span>
+        <span class="etdx-taskbar__log" :class="errMsg && 'etdx-taskbar__log--err'">{{ errMsg || '选择一个视图或快捷任务开始查询' }}</span>
+      </div>
+
+      <div class="etdx-taskbar__sp"></div>
+
+      <!-- 最近任务 -->
+      <div v-if="store.recent.length" class="etdx-taskbar__recent">
+        <button
+          v-for="t in store.recent.slice(0, 5)"
+          :key="'c' + t.task_id"
+          type="button"
+          class="etdx-taskbar__chip"
+          :title="taskLabel(t)"
+          @click="loadTask(t.task_id)"
+        >
+          <span class="etdx-taskbar__chip-dot" :class="t.status === 'success' ? 'is-ok' : t.status === 'error' ? 'is-err' : ''"></span>
+          {{ taskLabel(t) }}
+        </button>
+      </div>
+    </footer>
   </div>
 </template>
 
 <style scoped>
-.etdx-view {
-  max-width: var(--ff-container-max);
-  margin: 0 auto;
-}
-.etdx-view__header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--ff-space-4);
-  flex-wrap: wrap;
-  margin-bottom: var(--ff-space-4);
-}
-.etdx-view__title {
-  min-width: 260px;
-}
-.etdx-view__tabs {
-  margin: 0;
-}
-.etdx-view__err {
-  margin-bottom: var(--ff-space-4);
-}
-.etdx-view__body {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: var(--ff-space-4);
-  align-items: start;
-}
-.etdx-view__body:has(> :first-child:only-child) {
-  grid-template-columns: 1fr;
-}
-.etdx-view__nav {
-  position: sticky;
-  top: var(--ff-space-4);
-  max-height: calc(100vh - 140px);
-}
-.etdx-view__main {
+/* ═══════════ 外壳：占满内容区 ═══════════ */
+.etdx-shell {
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 0;
+}
+
+/* ═══════════ 顶部命令条 ═══════════ */
+.etdx-top {
+  flex: none;
+  display: flex;
+  align-items: center;
   gap: var(--ff-space-4);
+  padding: 0 var(--ff-space-4);
+  height: 58px;
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  box-shadow: var(--ff-shadow-sm, none);
+  margin-bottom: var(--ff-space-3);
+}
+.etdx-top__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  min-width: 240px;
+}
+.etdx-top__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--ff-bg-brand);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(47, 125, 91, 0.3);
+}
+.etdx-top__name {
+  font-size: var(--ff-fs-h3);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.etdx-top__sub {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.etdx-top__search {
+  flex: 1;
+  max-width: 420px;
+}
+.etdx-top__meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+}
+.etdx-top__host {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-pill);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  background: var(--ff-bg-surface);
+}
+.etdx-top__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ff-down);
+  box-shadow: 0 0 0 3px rgba(18, 161, 80, 0.15);
+  animation: etdx-pulse 2s infinite;
+}
+@keyframes etdx-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.etdx-top__count {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  white-space: nowrap;
+}
+
+/* ═══════════ 主体三栏 ═══════════ */
+.etdx-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--ff-space-3);
+}
+
+/* —— 左栏 —— */
+.etdx-rail {
+  width: 252px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  overflow: hidden;
+}
+.etdx-rail__watch {
+  flex: none;
+  max-height: 34%;
+  overflow-y: auto;
+  padding: var(--ff-space-3);
+}
+.etdx-rail__divider {
+  flex: none;
+  height: 1px;
+  background: var(--ff-border-subtle);
+  margin: 0 var(--ff-space-3);
+}
+.etdx-rail__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ff-space-3);
+}
+
+/* —— 中栏 —— */
+.etdx-center {
+  flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
 }
-/* 标的选择条 */
-.etdx-view__banner {
-  margin-bottom: var(--ff-space-4);
-}
-.etdx-view__banner-body {
+
+/* Hero 标的名片 */
+.etdx-hero {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--ff-space-4);
   padding: var(--ff-space-3) var(--ff-space-4);
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  box-shadow: var(--ff-shadow-sm, none);
   flex-wrap: wrap;
 }
-.etdx-view__picker {
-  flex-shrink: 0;
-  width: 300px;
+.etdx-hero__name {
+  min-width: 180px;
 }
-.etdx-view__banner-text {
+.etdx-hero__name h2 {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 220px;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--ff-fs-h3);
+  font-weight: 700;
 }
-.etdx-view__banner-text strong {
+.etdx-hero__mk {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ff-bg-brand);
+  border-radius: 4px;
+  padding: 2px 6px;
+  letter-spacing: 0.05em;
+}
+.etdx-hero__code {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  margin-top: 2px;
+}
+.etdx-hero__quote {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 150px;
+}
+.etdx-hero__px {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--ff-font-mono, monospace);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.etdx-hero__px.is-up { color: var(--ff-up-text, #d02b31); }
+.etdx-hero__px.is-down { color: var(--ff-down-text, #0d8a43); }
+.etdx-hero__px.is-idle { color: var(--ff-text-tertiary); }
+.etdx-hero__chg {
   font-size: var(--ff-fs-body);
+  font-weight: 600;
+  font-family: var(--ff-font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.etdx-hero__chg.is-up { color: var(--ff-up-text, #d02b31); }
+.etdx-hero__chg.is-down { color: var(--ff-down-text, #0d8a43); }
+.etdx-hero__hint {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.etdx-hero__actions {
+  margin-left: auto;
+}
+.etdx-hero__act-hint {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+
+/* 视图 Tab */
+.etdx-tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--ff-border);
+  overflow-x: auto;
+}
+.etdx-tabs__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-bottom: 2px solid transparent;
+  font-size: var(--ff-fs-body-sm);
+  font-weight: 500;
+  color: var(--ff-text-secondary);
+  white-space: nowrap;
+  transition: color var(--ff-dur-fast), border-color var(--ff-dur-fast);
+}
+.etdx-tabs__item:hover {
   color: var(--ff-text-primary);
 }
-.etdx-view__banner-text span {
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
+.etdx-tabs__item.is-active {
+  color: var(--ff-text-brand);
+  font-weight: 600;
+  border-bottom-color: var(--ff-brand);
 }
-.etdx-view__banner-count {
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
-  background: var(--ff-bg-subtle);
-  border-radius: var(--ff-radius-pill);
-  padding: 2px 10px;
+
+/* 视图内容滚动区 */
+.etdx-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--ff-space-2);
 }
-/* 工作台：快捷任务 */
-.etdx-view__tasks-head {
+
+/* —— 通用卡片 —— */
+.etdx-card {
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  box-shadow: var(--ff-shadow-sm, none);
+  margin-bottom: var(--ff-space-3);
+  overflow: hidden;
+}
+.etdx-card__head {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-2);
-  padding: var(--ff-space-3) var(--ff-space-4);
+  gap: 8px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--ff-border-subtle);
   font-size: var(--ff-fs-body-sm);
   font-weight: 600;
   color: var(--ff-text-secondary);
 }
-.etdx-view__tasks-hint {
+.etdx-card__head > svg {
+  color: var(--ff-text-brand);
+}
+.etdx-card__hint {
   font-weight: 400;
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-caption);
+  margin-left: auto;
 }
-.etdx-view__tasks-body {
-  padding: var(--ff-space-4);
+.etdx-card__sp {
+  margin-left: auto;
 }
-/* 执行区 */
-.etdx-view__func-head {
+.etdx-card__need {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ff-fs-caption);
+  font-weight: 500;
+  color: var(--ff-text-warning, #b7791f);
+  background: var(--ff-bg-warning-subtle, #fffaeb);
+  border-radius: var(--ff-radius-pill);
+  padding: 2px 8px;
+}
+/* 任务状态徽章（卡片头部） */
+.etdx-task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: var(--ff-radius-pill);
+  font-size: var(--ff-fs-caption);
+  font-weight: 600;
+  flex: none;
+}
+.etdx-task-chip--running {
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-text-brand);
+}
+.etdx-task-chip--success {
+  background: var(--ff-bg-up-subtle, #e6f4ea);
+  color: var(--ff-up-text, #1a7f37);
+}
+.etdx-task-chip--error {
+  background: var(--ff-bg-down-subtle, #fdecea);
+  color: var(--ff-down-text, #c0392b);
+}
+.etdx-card__body {
+  padding: var(--ff-space-3) var(--ff-space-4);
+}
+
+/* 总览 */
+.etdx-overview__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ff-space-3);
+}
+.etdx-recent {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ff-space-4);
-  margin-bottom: var(--ff-space-4);
+  flex-direction: column;
+  gap: 4px;
 }
-.etdx-view__func-title {
+.etdx-recent__item {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-2);
-  font-size: var(--ff-fs-title-sm);
-  font-weight: 700;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--ff-radius-sm);
+  text-align: left;
+  font-size: var(--ff-fs-body-sm);
+  transition: background var(--ff-dur-fast);
+}
+.etdx-recent__item:hover {
+  background: var(--ff-bg-hover);
+}
+.etdx-recent__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ff-icon-muted);
+}
+.etdx-recent__dot.is-ok { background: var(--ff-down); }
+.etdx-recent__dot.is-err { background: var(--ff-up); }
+.etdx-recent__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ff-text-primary);
 }
-.etdx-view__func-help {
-  margin: 6px 0 0;
-  font-size: var(--ff-fs-body-sm);
+.etdx-recent__time {
+  font-size: var(--ff-fs-caption);
+  font-family: var(--ff-font-mono, monospace);
   color: var(--ff-text-tertiary);
+  flex: none;
 }
-.etdx-view__content {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: var(--ff-space-5);
-  align-items: start;
+.etdx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px;
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-body-sm);
+  text-align: center;
 }
-.etdx-view__form,
-.etdx-view__result {
-  min-width: 0;
-}
-.etdx-view__status-head {
+
+/* 错误提示 */
+.etdx-alert {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-2);
-  padding: var(--ff-space-3) var(--ff-space-4);
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--ff-radius-md);
+  font-size: var(--ff-fs-body-sm);
+  margin-bottom: var(--ff-space-3);
+}
+.etdx-alert--danger {
+  background: var(--ff-bg-down-subtle, #fdecea);
+  color: var(--ff-down-text, #c0392b);
+}
+
+/* —— 右栏参数面板 —— */
+.etdx-params {
+  width: 288px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  overflow: hidden;
+  transition: width var(--ff-dur-normal);
+}
+.etdx-params.is-collapsed {
+  width: 44px;
+}
+.etdx-params__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--ff-border-subtle);
   font-size: var(--ff-fs-body-sm);
   font-weight: 600;
   color: var(--ff-text-secondary);
 }
-.etdx-view__recent {
+.etdx-params__head > svg {
+  color: var(--ff-text-brand);
+}
+.etdx-params__toggle {
   margin-left: auto;
-  border: none;
-  background: transparent;
-  color: var(--ff-text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--ff-radius-sm);
+  color: var(--ff-icon-muted);
+  transition: background var(--ff-dur-fast);
+}
+.etdx-params__toggle:hover {
+  background: var(--ff-bg-hover);
+  color: var(--ff-text-primary);
+}
+.etdx-params.is-collapsed .etdx-params__toggle {
+  margin-left: 0;
+}
+.etdx-params__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ff-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+.etdx-params__help {
   font-size: var(--ff-fs-caption);
-  cursor: default;
+  color: var(--ff-text-tertiary);
+  line-height: 1.6;
+  background: var(--ff-bg-subtle);
+  border-radius: var(--ff-radius-md);
+  padding: 8px 10px;
 }
-.etdx-view__status-body {
-  height: 240px;
+.etdx-params__apply {
+  margin-top: 2px;
 }
-.etdx-view__nav :deep(.etdx-nav) {
-  height: calc(100vh - 140px);
+.etdx-params__tip {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  line-height: 1.6;
+  border: 1px dashed var(--ff-border);
+  border-radius: var(--ff-radius-md);
+  padding: 8px 10px;
+}
+.etdx-params__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 12px;
+  color: var(--ff-text-tertiary);
+  text-align: center;
+  font-size: var(--ff-fs-body-sm);
+}
+/* 折叠态：唯一执行入口（竖排按钮） */
+.etdx-params__mini-run {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 12px auto;
+  width: 30px;
+  padding: 10px 0;
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-brand);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(47, 125, 91, 0.3);
+  transition: background var(--ff-dur-fast), transform var(--ff-dur-fast);
+}
+.etdx-params__mini-run:hover {
+  background: var(--ff-brand-hover);
+  transform: translateY(-1px);
+}
+.etdx-params__mini-run:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-@media (max-width: 1100px) {
-  .etdx-view__body {
-    grid-template-columns: 1fr;
-  }
-  .etdx-view__nav {
-    position: static;
-    max-height: 320px;
-  }
-  .etdx-view__content {
-    grid-template-columns: 1fr;
-  }
+/* ═══════════ 底部任务中心 ═══════════ */
+.etdx-taskbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  padding: 0 var(--ff-space-4);
+  height: 44px;
+  background: var(--ff-bg-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  margin-top: var(--ff-space-3);
+  font-size: var(--ff-fs-caption);
+}
+.etdx-taskbar__state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ff-text-secondary);
+}
+.etdx-taskbar__state > svg {
+  color: var(--ff-text-brand);
+  flex: none;
+}
+.etdx-taskbar__state--idle > svg {
+  color: var(--ff-icon-muted);
+}
+.etdx-taskbar__state.is-err > svg {
+  color: var(--ff-up-text, #c0392b);
+}
+.etdx-taskbar__title {
+  font-weight: 600;
+  color: var(--ff-text-primary);
+  flex: none;
+}
+.etdx-taskbar__pct {
+  font-family: var(--ff-font-mono, monospace);
+  font-weight: 600;
+  color: var(--ff-text-secondary);
+  flex: none;
+}
+.etdx-taskbar__bar {
+  width: 140px;
+  height: 5px;
+  flex: none;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-subtle);
+  overflow: hidden;
+}
+.etdx-taskbar__bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ff-brand), var(--ff-brand-hover));
+  border-radius: var(--ff-radius-pill);
+  transition: width 0.4s var(--ff-ease-standard);
+}
+.etdx-taskbar__log {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+  color: var(--ff-text-tertiary);
+  font-family: var(--ff-font-mono, monospace);
+  font-size: 11.5px;
+}
+.etdx-taskbar__log--err {
+  color: var(--ff-up-text, #c0392b);
+}
+.etdx-taskbar__sp {
+  flex: 1;
+}
+.etdx-taskbar__recent {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  max-width: 46%;
+}
+.etdx-taskbar__chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-subtle);
+  font-size: 11.5px;
+  color: var(--ff-text-secondary);
+  transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
+}
+.etdx-taskbar__chip:hover {
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-text-brand);
+}
+.etdx-taskbar__chip-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ff-icon-muted);
+}
+.etdx-taskbar__chip-dot.is-ok { background: var(--ff-down); }
+.etdx-taskbar__chip-dot.is-err { background: var(--ff-up); }
+
+/* ═══════════ 响应式 ═══════════ */
+@media (max-width: 1180px) {
+  .etdx-rail { width: 216px; }
+  .etdx-params { width: 252px; }
+  .etdx-overview__grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 980px) {
+  .etdx-rail { display: none; }
+  .etdx-params { display: none; }
+  .etdx-top__meta { display: none; }
 }
 </style>

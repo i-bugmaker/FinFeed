@@ -10,6 +10,7 @@ const props = defineProps({
   func: { type: Object, default: null },
   loading: { type: Boolean, default: false },
   stockNames: { type: Object, default: () => ({}) }, // { code: name }
+  error: { type: String, default: '' }, // 任务失败信息（status=error 时展示）
 })
 
 const hasResult = computed(() => !!props.result)
@@ -25,6 +26,7 @@ const chartOption = computed(() => {
   const t = props.result
   if (props.func.chart === 'candle') return buildCandle(t)
   if (props.func.chart === 'line') return buildLine(t)
+  if (props.func.chart === 'fund') return buildFund(t)
   return null
 })
 
@@ -53,6 +55,39 @@ function buildCandle(t) {
   // 红涨绿跌：阳线(close>=open)=红，阴线=绿
   const up = themeColor('--ff-up', '#f0575c')
   const down = themeColor('--ff-down', '#2bb763')
+  // 成交量副图（存在 vol/volume 列时）
+  const volIdx = cols.findIndex((c) => /^vol(ume)?$/i.test(c))
+  const closes = t.rows.map((r) => num(r[ci]))
+  const ma = (n) => closes.map((_, i) =>
+    i < n - 1 ? '-' : +(closes.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n).toFixed(2))
+  const grid = volIdx >= 0
+    ? [{ left: 56, right: 16, top: 16, height: '58%' }, { left: 56, right: 16, top: '72%', height: '16%' }]
+    : [{ left: 56, right: 16, top: 16, bottom: 30 }]
+  const series = [
+    {
+      type: 'candlestick',
+      data,
+      itemStyle: {
+        color: up, // 阳线（涨）红
+        color0: down, // 阴线（跌）绿
+        borderColor: up,
+        borderColor0: down,
+      },
+    },
+    { name: 'MA5', type: 'line', data: ma(5), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#f59e0b' } },
+    { name: 'MA10', type: 'line', data: ma(10), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#875bf7' } },
+    { name: 'MA20', type: 'line', data: ma(20), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#0ea5a5' } },
+  ]
+  if (volIdx >= 0) {
+    series.push({
+      name: '成交量',
+      type: 'bar',
+      xAxisIndex: 1,
+      yAxisIndex: 1,
+      data: t.rows.map((r) => num(r[volIdx])),
+      itemStyle: { color: (p) => (p.dataIndex > 0 && closes[p.dataIndex] >= closes[p.dataIndex - 1] ? up : down), opacity: 0.85 },
+    })
+  }
   return {
     tooltip: {
       trigger: 'axis',
@@ -60,24 +95,60 @@ function buildCandle(t) {
       formatter(params) {
         const p = Array.isArray(params) ? params[0] : params
         const d = p.data
-        const f = (n) => Number(n).toFixed(2)
-        return `${p.axisValue}<br/>开 ${f(d[0])}　收 ${f(d[1])}<br/>低 ${f(d[2])}　高 ${f(d[3])}`
+        if (Array.isArray(d) && d.length >= 4) {
+          const f = (n) => Number(n).toFixed(2)
+          return `${p.axisValue}<br/>开 ${f(d[0])}　收 ${f(d[1])}<br/>低 ${f(d[2])}　高 ${f(d[3])}`
+        }
+        return p.axisValue
       },
     },
-    grid: { left: 50, right: 16, top: 16, bottom: 30 },
-    xAxis: { type: 'category', data: x, boundaryGap: true },
-    yAxis: { scale: true, axisLabel: { formatter: (v) => Number(v).toFixed(2) } },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 16 }],
+    legend: { data: ['MA5', 'MA10', 'MA20'], top: 0, right: 10, textStyle: { color: '#9aa4b2', fontSize: 11 } },
+    grid,
+    xAxis: [
+      { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: '#e3e8ef' } }, axisLabel: { color: '#9aa4b2', fontSize: 10.5 } },
+      ...(volIdx >= 0 ? [{ type: 'category', gridIndex: 1, data: x, axisLabel: { show: false } }] : []),
+    ],
+    yAxis: [
+      { scale: true, splitLine: { lineStyle: { color: '#f0f3f7' } }, axisLabel: { formatter: (v) => Number(v).toFixed(2) } },
+      ...(volIdx >= 0 ? [{ gridIndex: 1, splitLine: { show: false }, axisLabel: { color: '#9aa4b2', fontSize: 10 } }] : []),
+    ],
+    dataZoom: [{ type: 'inside', xAxisIndex: volIdx >= 0 ? [0, 1] : 0 }, { type: 'slider', height: 16, xAxisIndex: volIdx >= 0 ? [0, 1] : 0 }],
+    series,
+  }
+}
+
+// 资金流向图：主力/超大/大/中/小 净流入红绿柱（或按日期）
+function buildFund(t) {
+  const cols = t.columns
+  const netIdx = cols.findIndex((c) => /main_net|net_inflow|net$|^net_/.test(c))
+  const dateIdx = cols.findIndex((c) => /date|datetime|time/i.test(c))
+  const volIdx = cols.findIndex((c) => /^vol(ume)?$/i.test(c))
+  if (netIdx < 0 && volIdx < 0) return null
+  const dataCol = netIdx >= 0 ? netIdx : volIdx
+  const x = dateIdx >= 0 ? t.rows.map((r) => r[dateIdx]) : t.rows.map((_, i) => i + 1)
+  const values = t.rows.map((r) => num(r[dataCol]))
+  const up = themeColor('--ff-up', '#f0575c')
+  const down = themeColor('--ff-down', '#2bb763')
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter(params) {
+        const p = Array.isArray(params) ? params[0] : params
+        const v = Number(p.value)
+        const f = Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(2) + '亿' : Math.abs(v) >= 1e4 ? (v / 1e4).toFixed(2) + '万' : Number(v).toFixed(2)
+        return `${p.axisValue}<br/>${v >= 0 ? '+' : ''}${f}`
+      },
+    },
+    grid: { left: 70, right: 16, top: 24, bottom: 30 },
+    xAxis: { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: '#e3e8ef' } }, axisLabel: { color: '#9aa4b2', fontSize: 10.5 } },
+    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f7' } }, axisLabel: { color: '#9aa4b2', fontSize: 10, formatter: (v) => (Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : Math.abs(v) >= 1e4 ? (v / 1e4).toFixed(0) + '万' : v) } },
     series: [
       {
-        type: 'candlestick',
-        data,
-        itemStyle: {
-          color: up, // 阳线（涨）红
-          color0: down, // 阴线（跌）绿
-          borderColor: up,
-          borderColor0: down,
-        },
+        name: columnLabel(cols[dataCol]),
+        type: 'bar',
+        data: values,
+        barWidth: '55%',
+        itemStyle: { color: (p) => (p.value >= 0 ? up : down), opacity: 0.88 },
       },
     ],
   }
@@ -189,6 +260,20 @@ function fmtCell(v, col) {
   return cellText(v, col)
 }
 
+// 涨跌着色：pct / change / net / amount / pnl / return 类数值列 红涨绿跌（A 股惯例）
+const TREND_RE = /(pct|change|ratio|net|amount|pnl|yield|return|drawdown|speed|profit)/i
+function cellColorClass(v, col) {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v === 0) return ''
+  if (TREND_RE.test(String(col || ''))) return v > 0 ? 'is-up' : 'is-down'
+  return ''
+}
+
+// 方向列 → 买卖徽章
+function isDirectionCell(v, col) {
+  const c = String(col || '').toLowerCase()
+  return /direction|buyorsell|bsflag/.test(c) && (v === 'buy' || v === 'sell')
+}
+
 // 纯标量字典（如 performance）→ 展开为子行展示
 function isPlainDict(v) {
   return (
@@ -203,6 +288,15 @@ function isPlainDict(v) {
 <template>
   <div class="etdx-result">
     <AppIcon v-if="loading" name="refresh" size="lg" spin class="etdx-result__spin" />
+
+    <!-- 执行失败：明确展示错误信息，而非空白占位 -->
+    <div v-else-if="error" class="etdx-result__error">
+      <span class="etdx-result__error-ico"><AppIcon name="alert-circle" size="lg" /></span>
+      <div class="etdx-result__error-body">
+        <b>执行失败</b>
+        <p>{{ error }}</p>
+      </div>
+    </div>
 
     <template v-else-if="hasResult">
       <!-- 文件下载 -->
@@ -249,7 +343,12 @@ function isPlainDict(v) {
               </thead>
               <tbody>
                 <tr v-for="(row, ri) in tradesRows" :key="ri" class="ff-table__row">
-                  <td v-for="col in tradesCols" :key="col" class="ff-table__cell">
+                  <td
+                    v-for="col in tradesCols"
+                    :key="col"
+                    class="ff-table__cell"
+                    :class="cellColorClass(row[col], col)"
+                  >
                     <a
                       v-if="isLink(row[col], col)"
                       :href="row[col]"
@@ -257,6 +356,11 @@ function isPlainDict(v) {
                       rel="noopener"
                       class="etdx-result__link"
                     >打开链接</a>
+                    <span
+                      v-else-if="isDirectionCell(row[col], col)"
+                      class="etdx-dir"
+                      :class="row[col] === 'buy' ? 'etdx-dir--buy' : 'etdx-dir--sell'"
+                    >{{ row[col] === 'buy' ? '买入' : '卖出' }}</span>
                     <span v-else :title="fullText(row[col])">{{ fmtCell(row[col], col) }}</span>
                   </td>
                 </tr>
@@ -326,6 +430,7 @@ function isPlainDict(v) {
                   v-for="(cell, ci) in row"
                   :key="ci"
                   class="ff-table__cell"
+                  :class="cellColorClass(cell, result.columns[ci])"
                 >
                   <a
                     v-if="isLink(cell, result.columns[ci])"
@@ -334,6 +439,11 @@ function isPlainDict(v) {
                     rel="noopener"
                     class="etdx-result__link"
                   >打开链接</a>
+                  <span
+                    v-else-if="isDirectionCell(cell, result.columns[ci])"
+                    class="etdx-dir"
+                    :class="cell === 'buy' ? 'etdx-dir--buy' : 'etdx-dir--sell'"
+                  >{{ cell === 'buy' ? '买入' : '卖出' }}</span>
                   <span v-else :title="fullText(cell)">{{ fmtCell(cell, result.columns[ci]) }}</span>
                 </td>
               </tr>
@@ -369,6 +479,34 @@ function isPlainDict(v) {
   min-height: 240px;
   color: var(--ff-text-tertiary);
   text-align: center;
+}
+/* 执行失败卡片 */
+.etdx-result__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-4);
+  background: var(--ff-bg-down-subtle, #fdecea);
+  border: 1px solid var(--ff-border-down, #fbcdcf);
+  border-radius: var(--ff-radius-md);
+}
+.etdx-result__error-ico {
+  display: inline-flex;
+  flex: none;
+  color: var(--ff-down-text, #c0392b);
+}
+.etdx-result__error-body b {
+  display: block;
+  font-size: var(--ff-fs-body);
+  color: var(--ff-down-text, #c0392b);
+  margin-bottom: 4px;
+}
+.etdx-result__error-body p {
+  margin: 0;
+  font-size: var(--ff-fs-body-sm);
+  color: var(--ff-text-secondary);
+  line-height: 1.6;
+  word-break: break-all;
 }
 .etdx-result__message {
   display: flex;
@@ -474,5 +612,38 @@ function isPlainDict(v) {
   overflow-x: auto;
   border: 1px solid var(--ff-border-subtle);
   border-radius: var(--ff-radius-md);
+}
+/* 涨跌着色（红涨绿跌） */
+.etdx-result :deep(.ff-table__cell.is-up) {
+  color: var(--ff-up-text, #d02b31);
+  font-weight: 500;
+}
+.etdx-result :deep(.ff-table__cell.is-down) {
+  color: var(--ff-down-text, #0d8a43);
+  font-weight: 500;
+}
+/* 买卖方向徽章 */
+.etdx-dir {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--ff-radius-pill);
+  font-size: var(--ff-fs-caption);
+  font-weight: 600;
+}
+.etdx-dir--buy {
+  background: var(--ff-bg-up-subtle, #fde4e5);
+  color: var(--ff-up-text, #d02b31);
+}
+.etdx-dir--sell {
+  background: var(--ff-bg-down-subtle, #d1fadf);
+  color: var(--ff-down-text, #0d8a43);
+}
+/* 文件结果图标配色 */
+.etdx-result__file {
+  border: 1px dashed var(--ff-border);
+}
+.etdx-result__file .etdx-result__file-icon {
+  color: var(--ff-text-brand);
 }
 </style>

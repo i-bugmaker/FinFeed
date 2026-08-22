@@ -1,8 +1,11 @@
 import axios from 'axios'
 
-// 开发态由 vite proxy 转发；生产态由 FastAPI 同源托管，base 为空即可。
+// 开发态直连后端（绕开 vite proxy 在 Windows 下 http-proxy 的并发 ECONNRESET bug，
+// 后端已开放 CORS allow_origins=*）；生产态由 FastAPI 同源托管，base 为空即可。
+const API_BASE = import.meta.env.DEV ? 'http://127.0.0.1:8866/api' : '/api'
+
 const http = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   timeout: 20000,
 })
 
@@ -18,7 +21,7 @@ http.interceptors.response.use(
 // LLM 推理（chat / analyze / report / provider test）经常超过 20s，
 // 单独走长超时实例，避免「timeout of 20000ms exceeded」误导为服务端故障。
 const httpLlm = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   timeout: 120000,
 })
 httpLlm.interceptors.response.use(
