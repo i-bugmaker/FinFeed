@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>easy-tdx 模块全面重构方案</title>
+<style>
+  :root{
+    --canvas:#fbfaf7; --surface:#ffffff; --subtle:#f7f4ee; --muted:#f1ede5;
+    --border:#e7e2d8; --border-subtle:#efeae0; --border-strong:#d8d1c2;
+    --text:#23332b; --text-2:#5c6b60; --text-3:#968d7c;
+    --brand:#2f7d5b; --brand-text:#1e6a4a; --brand-subtle:#e7f2ec;
+    --up:#e5484d; --up-subtle:#fdebec; --down:#12a150; --down-subtle:#e6f6ec;
+    --warn:#b7791f; --warn-subtle:#fdf3e3;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    --shadow-sm:0 1px 2px rgba(35,51,43,.04),0 1px 3px rgba(35,51,43,.04);
+    --shadow-md:0 2px 4px -2px rgba(35,51,43,.05),0 6px 16px -3px rgba(35,51,43,.08);
+    --shadow-lg:0 4px 8px -2px rgba(35,51,43,.04),0 14px 30px -5px rgba(35,51,43,.10);
+    --ease:cubic-bezier(.2,0,0,1); --ease-spring:cubic-bezier(.34,1.4,.64,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--canvas);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.7;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px 120px}
+
+  /* 顶栏 */
+  .topbar{position:sticky;top:0;z-index:50;background:rgba(251,250,247,.88);backdrop-filter:blur(8px);border-bottom:1px solid var(--border-subtle)}
+  .topbar-in{max-width:1080px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:12px}
+  .topbar .doc-badge{font-size:11px;font-weight:700;color:#fff;background:var(--brand);border-radius:999px;padding:2px 10px;letter-spacing:.04em}
+  .topbar h1{font-size:15px;font-weight:700}
+  .topbar .ver{margin-left:auto;font-size:12px;color:var(--text-3)}
+  nav.toc{display:flex;gap:4px;overflow-x:auto;padding:8px 0;flex-wrap:nowrap}
+  nav.toc a{white-space:nowrap;font-size:12.5px;color:var(--text-2);text-decoration:none;padding:4px 10px;border-radius:999px;border:1px solid transparent}
+  nav.toc a:hover{color:var(--brand-text);background:var(--brand-subtle)}
+
+  /* 章节 */
+  section{margin-top:56px}
+  h2{font-size:22px;font-weight:800;display:flex;align-items:center;gap:10px;margin-bottom:8px;scroll-margin-top:96px}
+  h2 .no{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:800;flex-shrink:0}
+  h2 .sub{font-size:13px;font-weight:500;color:var(--text-3);margin-left:auto}
+  .lead{color:var(--text-2);font-size:14.5px;margin-bottom:20px;max-width:76ch}
+  h3{font-size:16px;font-weight:700;margin:28px 0 10px;display:flex;align-items:center;gap:8px}
+  h3 .tag{font-size:10.5px;font-weight:700;color:var(--brand-text);background:var(--brand-subtle);border-radius:6px;padding:1px 7px;letter-spacing:.03em}
+  h4{font-size:14px;font-weight:700;margin:18px 0 8px}
+
+  /* 卡片 */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin:14px 0;box-shadow:var(--shadow-sm)}
+  .card.warn{border-left:3px solid var(--warn);background:var(--warn-subtle)}
+  .card.blueprint{background:linear-gradient(180deg,#fff 0%,#fbfaf7 100%)}
+  .card .c-title{font-weight:700;font-size:13.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0}
+  th{background:var(--subtle);text-align:left;font-weight:700;font-size:12px;color:var(--text-2);padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:8px 10px;border-bottom:1px solid var(--border-subtle);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td code, .mono{font-family:var(--mono);font-size:12px;background:var(--subtle);border-radius:4px;padding:1px 5px;color:#1e6a4a}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+  .tbl-wrap table{margin:0}
+
+  /* 徽章 */
+  .badge{display:inline-flex;align-items:center;font-size:11px;font-weight:700;border-radius:999px;padding:1px 9px;line-height:1.6}
+  .b-green{background:var(--brand-subtle);color:var(--brand-text)}
+  .b-red{background:var(--up-subtle);color:var(--up)}
+  .b-gray{background:var(--muted);color:var(--text-2)}
+  .b-amber{background:var(--warn-subtle);color:var(--warn)}
+
+  /* 清单 */
+  ul.clean{list-style:none;padding:0}
+  ul.clean>li{padding-left:22px;position:relative;margin:5px 0}
+  ul.clean>li::before{content:"";position:absolute;left:4px;top:10px;width:6px;height:6px;border-radius:2px;background:var(--brand)}
+  ul.clean>li.li-red::before{background:var(--up)}
+  ul.clean>li.li-amber::before{background:var(--warn)}
+  ul.clean>li.li-gray::before{background:var(--text-3)}
+  ol.steps{list-style:none;counter-reset:s;padding:0}
+  ol.steps>li{counter-increment:s;padding:10px 0 10px 40px;position:relative;border-bottom:1px dashed var(--border-subtle)}
+  ol.steps>li:last-child{border-bottom:none}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:12px;width:26px;height:26px;border-radius:8px;background:var(--brand);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+
+  /* 文件树 */
+  .filetree{font-family:var(--mono);font-size:12.5px;line-height:1.85;background:#16271f;color:#c5d0db;border-radius:10px;padding:16px 20px;overflow-x:auto;white-space:pre}
+  .filetree .cm{color:#6b7785}
+  .filetree .nv{color:#7fb3ff}
+  .filetree .mk{color:#2bb763;font-weight:700}
+  .filetree .rm{color:#ff6b6b;text-decoration:line-through;text-decoration-color:#ff6b6b66}
+
+  /* 线框图 */
+  .wf{font-family:var(--mono);font-size:11px;line-height:1.45;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;overflow-x:auto;white-space:pre;box-shadow:var(--shadow-sm)}
+  .wf b{color:var(--brand-text);font-weight:700}
+  .wf .up{color:var(--up)} .wf .dn{color:var(--down)} .wf .dim{color:var(--text-3)}
+
+  /* 状态色点 */
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .d-green{background:var(--brand)} .d-red{background:var(--up)} .d-gray{background:var(--text-3)} .d-amber{background:var(--warn)} .d-teal{background:#0ea5a5}
+
+  .pill{font-size:11px;color:var(--text-2);background:var(--subtle);border-radius:999px;padding:2px 10px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:860px){.grid-2,.grid-3{grid-template-columns:1fr}}
+  .footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--border);color:var(--text-3);font-size:12.5px;display:flex;gap:16px;flex-wrap:wrap}
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;font-family:var(--mono);color:var(--text-2);margin:6px 0}
+  .flow .step{background:var(--brand-subtle);color:var(--brand-text);border-radius:6px;padding:2px 8px;font-weight:600}
+  .flow .arr{color:var(--text-3)}
+  blockquote{border-left:3px solid var(--border-strong);padding:4px 0 4px 14px;color:var(--text-2);font-size:13.5px;margin:10px 0}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-in">
+    <span class="doc-badge">RFP</span>
+    <h1>easy-tdx 模块全面重构方案</h1>
+    <span class="ver">v1.1 · 2026-08-22 · 修订：纯鼠标交互</span>
+  </div>
+  <div class="topbar-in" style="padding-top:0">
+    <nav class="toc">
+      <a href="#s0">现状诊断</a>
+      <a href="#s1">布局重构</a>
+      <a href="#s2">职责拆分</a>
+      <a href="#s3">交互升级</a>
+      <a href="#s4">展示优化</a>
+      <a href="#s5">样式与动效</a>
+      <a href="#s6">实施步骤</a>
+      <a href="#s7">风险与验收</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section id="s0">
+<h2><span class="no">0</span>现状诊断<span class="sub">现状梳理 → 问题清单 → 重构目标</span></h2>
+<p class="lead">easy-tdx 是 FinFeed 的「通达信 / Mac / 扩展行情 / 巨潮 / 缠论 / 回测」统一数据查询工作台。当前实现为 Vue 3.4 单体视图 + 7 个子组件 + FastAPI 异步任务后端，功能完整但交互与展示停留在「可用」层级，与项目 2.1.0 的现代 SaaS 设计语言（warm minimal、4pt grid、红涨绿跌）存在明显落差。</p>
+
+<div class="card blueprint">
+<div class="c-title">📐 当前架构（as-is）</div>
+<div class="flow">
+  <span class="step">EasyTdxView.vue</span><span class="arr">→</span>
+  <span class="step">StockPicker</span><span class="arr">→</span>
+  <span class="step">QuickTasks</span><span class="arr">→</span>
+  <span class="step">ParamForm</span><span class="arr">→</span>
+  <span class="step">ResultPanel</span><span class="arr">→</span>
+  <span class="step">TaskStatus</span>
+</div>
+<div class="flow">
+  <span class="step">api/easytdx.js</span><span class="arr">→</span>
+  <span class="step">/api/easytdx/*</span><span class="arr">（meta / run / task / tasks / download）</span>
+</div>
+<ul class="clean" style="margin-top:10px">
+  <li><b>模式切换</b>：workbench / functions 两个页面级模式，互斥显示，导航与快捷任务不可共存。</li>
+  <li><b>结果渲染</b>：file / message / json / table 四类；table 纯平铺，json 走 KV 卡片。</li>
+  <li><b>任务执行</b>：800ms 轮询，状态 + 进度条 + 日志，固定 240px 常驻底部。</li>
+</ul>
+</div>
+
+<h3>问题清单（含文件定位）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:34px">#</th><th style="width:170px">问题</th><th>具体表现</th><th style="width:230px">定位</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><b>视图单体过重</b></td><td>编排逻辑（选股/注入/轮询/最近任务）全部内联在页面，script+template+style 共 520+ 行，难以测试与复用。</td><td><code>EasyTdxView.vue</code></td></tr>
+<tr><td>2</td><td><b>双模式割裂</b></td><td>工作台无导航、全部功能无快捷入口；模式切换是整页跳变，破坏探索连续性。</td><td><code>EasyTdxView.vue:31-35</code></td></tr>
+<tr><td>3</td><td><b>布局无弹性</b></td><td>参数区固定 320px、结果 1fr，宽表被挤压；仅 1100px 一个断点，tablet/mobile 无细化方案。</td><td><code>EasyTdxView.vue:473-519</code></td></tr>
+<tr><td>4</td><td><b>任务区常驻占位</b></td><td>状态卡固定 240px 常驻，空闲时纯浪费；日志仅在 running 时有意义。</td><td><code>EasyTdxView.vue:337-348</code></td></tr>
+<tr><td>5</td><td><b>表格零交互</b></td><td>无排序 / 过滤 / 固定列 / 行详情 / 导出；大结果集被后端截断，前端无感知提示。</td><td><code>EasyTdxResultPanel.vue:300-343</code></td></tr>
+<tr><td>6</td><td><b>快捷任务硬编码</b></td><td>12 条任务写死，不可收藏、不可增删、无「最近使用」记忆。</td><td><code>EasyTdxQuickTasks.vue:10-23</code></td></tr>
+<tr><td>7</td><td><b>交互反馈弱</b></td><td>无骨架屏 / toast / 命令面板；StockPicker 下拉无 hover 高亮与点击即选优化，反馈缺失。</td><td><code>EasyTdxStockPicker.vue</code></td></tr>
+<tr><td>8</td><td><b>无记忆</b></td><td>收藏、最近使用的功能 / 标的均不持久化，每次进入重新导航。</td><td><code>EasyTdxView.vue:204-211</code></td></tr>
+<tr><td>9</td><td><b>展示无语义</b></td><td>涨跌幅列无红涨绿跌着色（format.js 只做文本格式化）；回测绩效无 KPI 卡片呈现。</td><td><code>format.js:122-187</code></td></tr>
+<tr><td>10</td><td><b>无障碍缺失</b></td><td>无 aria-live / aria-current；导航按钮无可聚焦态；reduced-motion 未处理。</td><td>各组件</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>重构目标</h3>
+<div class="grid-3">
+  <div class="card"><div class="c-title"><span class="dot d-green"></span>可探索</div>导航、搜索、收藏、最近记忆融为一体，任意位置直达目标功能，消除模式割裂。</div>
+  <div class="card"><div class="c-title"><span class="dot d-teal"></span>可交互</div>表格可排序 / 过滤 / 固定列 / 导出 / 行详情；拖拽分栏；纯鼠标直达。</div>
+  <div class="card"><div class="c-title"><span class="dot d-red"></span>有语义</div>红涨绿跌贯穿表格与 KPI；结果按类型选择最优可视化；状态反馈及时。</div>
+</div>
+<div class="card warn"><div class="c-title">⚠ 边界约束</div>后端 API 契约（<code>meta / strategies / run / task / tasks / download</code>）保持兼容，本次为纯前端重构，后端仅做可选扩展（列级展示配置，见 §4.4）。</div>
+</section>
+
+<section id="s1">
+<h2><span class="no">1</span>布局重构<span class="sub">信息架构 · 四区模型 · 响应式断点</span></h2>
+<p class="lead">核心思路：<b>把「模式切换」改为「常驻三区 + 可折叠面板」</b>。导航永远可见，参数面板按需展开，结果区始终主导，任务坞智能伸缩。消除页面级跳变，建立稳定的视觉框架。</p>
+
+<h3>1.1 页面信息架构：四区模型</h3>
+<div class="wf">┌──────────────────────────────────────────────────────────────────┐
+│ <b>A · CommandBar</b>　标的选择(紧凑)　·　连接状态●　·　<u>36 项功能</u>　·　聚焦模式 ⛶  <span class="dim">// 固定顶部，粘性</span>
+├──────────────────────────────────────────────────────────────────┤
+│  <b>B · Rail</b>  │  <b>C · Workspace</b>（可拖拽分栏）                                    │
+│  ┌───────────┐  │  ┌────────────────┬────────────────────────────┐ │
+│  │全部/收藏/ │  │  │ <b>ParamPanel</b>      │ <b>ResultPanel</b>（主导区）        │ │
+│  │最近　🔍   │  │  │ 300px 可折叠      │ 剩余宽度                    │ │
+│  │▸ 行情数据 │  │  │ ───────────────  │ ────────────────────────── │ │
+│  │  K线★    │  │  │ 参数表单…        │ 结果工具条[复制|CSV|全屏]   │ │
+│  │  报价    │  │  │ [▶ 执行]       │ K线图 / 表格 / KPI 卡        │ │
+│  │  …       │  │  └────────────────┴────────────────────────────┘ │
+│  │▸ 高级工具 │  │  <b>D · ActivityDock</b>（可折叠）                              │ │
+│  │  …       │  │  ┌──────────────────────────────────────────────┐ │
+│  └───────────┘  │  │ ● 执行中 45%  ▓▓▓▓░░░░░░　日志自动滚动⏸     │ │
+│  <span class="dim">280px ⇄ 64px</span>   │  └──────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘</div>
+<ul class="clean">
+  <li><b>Zone A · CommandBar</b>（<code>EasyTdxCommandBar.vue</code>）：标的选择器、连接状态点、功能计数、聚焦模式开关。标的上下文全局唯一，选股即注入所有个股类功能。</li>
+  <li><b>Zone B · FunctionRail</b>（<code>EasyTdxRail.vue</code>）：常驻左侧，可在 280px 全宽 ⇄ 64px 图标条之间折叠。顶部 Tab：全部 / 收藏 / 最近；含搜索框与分组列表（虚拟滚动）。</li>
+  <li><b>Zone C · Workspace</b>（<code>EasyTdxWorkspace.vue</code>）：水平分栏容器，左参数右结果，分隔条可拖拽（§3.3），参数面板可整体收起，结果区获得全部宽度。</li>
+  <li><b>Zone D · ActivityDock</b>（<code>EasyTdxActivityDock.vue</code>）：底部任务坞，空闲时收起为 48px 状态条；提交任务自动展开，成功后可自动收回，日志可手动查看。</li>
+</ul>
+
+<h3>1.2 组件排布与信息优先级</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>区域</th><th>优先级</th><th>排布规则</th><th>默认可见性</th></tr></thead>
+<tbody>
+<tr><td>CommandBar</td><td><span class="badge b-red">P0</span></td><td>始终固定顶部，粘性定位；标的选择器为首要操作</td><td>常驻</td></tr>
+<tr><td>ResultPanel 主体</td><td><span class="badge b-red">P0</span></td><td>占据工作区剩余宽度的主导区；图表优先于表格（§4.2）</td><td>常驻</td></tr>
+<tr><td>Rail 导航</td><td><span class="badge b-green">P1</span></td><td>左侧 280px，可折叠为 64px 图标条</td><td>常驻（可折叠）</td></tr>
+<tr><td>ParamPanel</td><td><span class="badge b-green">P1</span></td><td>300px，左参数右结果的并列布局；可整体收起</td><td>选中功能后展开</td></tr>
+<tr><td>ActivityDock</td><td><span class="badge b-amber">P2</span></td><td>底部折叠坞，运行中展开、空闲收起</td><td>空闲收起</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>1.3 响应式断点方案</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>断点</th><th>形态</th><th>Rail</th><th>ParamPanel</th><th>ActivityDock</th><th>触控目标</th></tr></thead>
+<tbody>
+<tr><td><code>≥1440px</code></td><td><span class="badge b-gray">XL 桌面</span></td><td>280px 展开</td><td>320px 并列</td><td>底部坞</td><td>≥36px</td></tr>
+<tr><td><code>1280–1439px</code></td><td><span class="badge b-gray">桌面</span></td><td>280px 展开</td><td>300px 并列</td><td>底部坞</td><td>≥36px</td></tr>
+<tr><td><code>1024–1279px</code></td><td><span class="badge b-gray">窄桌面</span></td><td>默认收为 64px 图标条，hover/点击展开浮层</td><td>改为<b>右侧抽屉</b>（240px 滑入）</td><td>底部坞</td><td>≥40px</td></tr>
+<tr><td><code>768–1023px</code></td><td><span class="badge b-amber">平板</span></td><td>转为<b>左侧抽屉</b>（汉堡按钮唤起，遮罩层）</td><td>堆叠在结果上方，≤40vh 内滚动</td><td>固定底部条</td><td>≥44px</td></tr>
+<tr><td><code>&lt;768px</code></td><td><span class="badge b-amber">移动</span></td><td>抽屉（底部弹层或汉堡抽屉）</td><td>「参数 / 结果」Tab 切换，单列布局</td><td>底部弹层</td><td>≥44px</td></tr>
+</tbody>
+</table>
+</div>
+<div class="grid-2">
+<div>
+<h4>平板 / 窄桌面形态</h4>
+<div class="wf">┌──────────────────────────┐
+│ CommandBar（粘性）       │
+├──────┬───────────────────┤
+│ ☰    │ ParamPanel        │
+│ (抽屉)│ ──────────────── │
+│ 触发  │ 参数表单…         │
+│      ├───────────────────┤
+│      │ ResultPanel       │
+│      │ （占满剩余）       │
+├──────┴───────────────────┤
+│ ⏵ ActivityDock 48px      │
+└──────────────────────────┘</div>
+</div>
+<div>
+<h4>移动端形态</h4>
+<div class="wf">┌──────────────────────────┐
+│ CommandBar：☰ · 标的 · ⛶ │
+├──────────────────────────┤
+│ [ 参数 ] [ 结果 ] ← Tab   │
+├──────────────────────────┤
+│ 参数表单 / 结果区         │
+│ （单列，全宽）            │
+├──────────────────────────┤
+│ ⏵ 任务状态（底部弹层）    │
+└──────────────────────────┘</div>
+</div>
+</div>
+
+<div class="card"><div class="c-title">💡 新增「聚焦模式」（Focus Mode）</div>CommandBar 右侧提供 ⛶ 按钮，一键隐藏 Rail + ParamPanel，结果区全宽最大化（ActivityDock 保留）；再次点击 ⛶ 恢复。适用于盯盘 / 回测结果长图阅读场景。模式状态入 Pinia，刷新不丢失。</div>
+</section>
+
+<section id="s2">
+<h2><span class="no">2</span>模块职责拆分<span class="sub">目标组件树 · 状态管理 · 职责表</span></h2>
+<p class="lead">重构后组件按「壳 / 导航 / 工作区 / 结果渲染 / 任务坞 / 复用逻辑」六组拆分。视图层只做组装，业务逻辑下沉到 Pinia store 与 composable。</p>
+
+<h3>2.1 目标组件树</h3>
+<div class="filetree"><span class="cm">// ── 状态层：全局唯一数据源 ─────────────────────────────</span>
+<span class="nv">stores/easytdx.js</span>                      <span class="cm">// Pinia：标的 / 选中功能 / 收藏 / 最近 / 任务 / UI</span>
+
+<span class="cm">// ── 壳层：仅组装与路由 ──────────────────────────────────</span>
+<span class="nv">views/EasyTdxView.vue</span>                  <span class="cm">// 四区容器，大幅瘦身（目标 &lt;150 行）</span>
+
+<span class="cm">// ── A / B / D 区 ────────────────────────────────────────</span>
+<span class="nv">easytdx/EasyTdxCommandBar.vue</span>          <span class="mk">＋新建</span> <span class="cm">// 标的 + 连接状态 + 聚焦模式</span>
+<span class="nv">easytdx/EasyTdxRail.vue</span>               <span class="mk">＋改造</span> <span class="cm">// 全部/收藏/最近 Tab + 搜索 + 虚拟滚动</span>
+<span class="nv">easytdx/EasyTdxRailItem.vue</span>           <span class="mk">＋新建</span> <span class="cm">// 单行：icon/label/tag/★ / tooltip 预览</span>
+<span class="nv">easytdx/EasyTdxActivityDock.vue</span>       <span class="mk">＋新建</span> <span class="cm">// 折叠坞：状态条 ⇄ 日志展开</span>
+<span class="nv">easytdx/EasyTdxLogViewer.vue</span>          <span class="mk">＋新建</span> <span class="cm">// 流式日志 + 自动滚动暂停</span>
+<span class="nv">easytdx/EasyTdxTaskStatus.vue</span>         <span class="mk">＋改造</span> <span class="cm">// 进度环 + 阶段徽章</span>
+
+<span class="cm">// ── C 区：工作区分栏 ────────────────────────────────────</span>
+<span class="nv">easytdx/EasyTdxWorkspace.vue</span>           <span class="mk">＋新建</span> <span class="cm">// 拖拽分栏容器（resize + snap）</span>
+<span class="nv">easytdx/EasyTdxParamPanel.vue</span>         <span class="mk">＋改造</span> <span class="cm">// 原 ParamForm：分组渲染 + 校验</span>
+<span class="nv">easytdx/EasyTdxParamField.vue</span>         <span class="mk">＋新建</span> <span class="cm">// 7 种参数类型分支 + 标的徽章</span>
+<span class="nv">easytdx/EasyTdxRunBar.vue</span>             <span class="mk">＋新建</span> <span class="cm">// 执行按钮 + 校验提示 + 中止按钮</span>
+
+<span class="cm">// ── C 区：结果渲染（type 分发）──────────────────────────</span>
+<span class="nv">easytdx/EasyTdxResultPanel.vue</span>         <span class="mk">＋改造</span> <span class="cm">// 保留分发骨架，各渲染器拆出</span>
+<span class="nv">easytdx/EasyTdxResultToolbar.vue</span>      <span class="mk">＋新建</span> <span class="cm">// 复制 / CSV / JSON / 全屏 / 刷新 / 截断提示</span>
+<span class="nv">easytdx/EasyTdxDataTable.vue</span>          <span class="mk">＋新建</span> <span class="cm">// 排序/过滤/固定列/虚拟滚动/行详情/导出</span>
+<span class="nv">easytdx/EasyTdxMetricCards.vue</span>        <span class="mk">＋新建</span> <span class="cm">// KPI 卡（回测绩效/资金流/排行）</span>
+<span class="nv">easytdx/EasyTdxChartView.vue</span>          <span class="mk">＋改造</span> <span class="cm">// 原内联 ECharts：K线/折线/资金曲线</span>
+<span class="nv">easytdx/EasyTdxKvView.vue</span>            <span class="mk">＋改造</span> <span class="cm">// 原 JSON KV 卡片，长文本折叠</span>
+<span class="nv">easytdx/EasyTdxListView.vue</span>          <span class="mk">＋新建</span> <span class="cm">// 股票列表卡片网格（代码/名称/涨跌着色）</span>
+<span class="nv">easytdx/EasyTdxFileView.vue</span> / <span class="nv">EasyTdxMessageView.vue</span> <span class="mk">＋拆出</span>
+
+<span class="cm">// ── 复用逻辑（composables / utils）─────────────────────</span>
+<span class="nv">composables/useTaskRunner.js</span>           <span class="mk">＋新建</span> <span class="cm">// 提交/轮询/中止/超时（从视图抽出）</span>
+<span class="nv">composables/useRecentFunctions.js</span>     <span class="mk">＋新建</span> <span class="cm">// localStorage 记忆：收藏/最近/标的</span>
+<span class="nv">easytdx/format.js</span>                     <span class="mk">＋扩展</span> <span class="cm">// cellColor() 红涨绿跌语义 + KPI 提取</span>
+<span class="nv">easytdx/resultTypes.js</span>                <span class="mk">＋新建</span> <span class="cm">// type+chart → 渲染器注册表</span>
+<span class="nv">easytdx/EasyTdxStockPicker.vue</span>        <span class="mk">＋改造</span> <span class="cm">// 悬停高亮/最近标的/aria</span>
+<span class="nv">easytdx/EasyTdxQuickTasks.vue</span>        <span class="mk">＋改造</span> <span class="cm">// 分组 + 收藏 + 最近使用</span></div>
+
+<h3>2.2 状态管理（Pinia：<code>stores/easytdx.js</code>）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>State</th><th>类型</th><th>说明</th><th>持久化</th></tr></thead>
+<tbody>
+<tr><td><code>stock</code></td><td>{market, code, name} | null</td><td>全局标的上下文，选股即注入个股类功能</td><td>localStorage</td></tr>
+<tr><td><code>selectedFuncId</code></td><td>string</td><td>当前功能</td><td>—</td></tr>
+<tr><td><code>favorites</code></td><td>string[]</td><td>收藏功能 ID（有序，支持拖拽排序）</td><td>localStorage</td></tr>
+<tr><td><code>recentFuncs</code></td><td>{id, ts}[]</td><td>最近使用（上限 8，去重）</td><td>localStorage</td></tr>
+<tr><td><code>recentStocks</code></td><td>{market, code, name}[]</td><td>最近标的（上限 5）</td><td>localStorage</td></tr>
+<tr><td><code>task</code></td><td>Task | null</td><td>当前任务（状态/进度/日志/结果）</td><td>—</td></tr>
+<tr><td><code>ui</code></td><td>{rail, paramPanel, dock, focusMode, paneRatio}</td><td>面板开合与分栏比例</td><td>localStorage</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>持久化统一封装在 <code>useRecentFunctions.js</code>，key 前缀 <code>ff:etdx:</code>，版本化（<code>v1</code>），未来升级可迁移。</blockquote>
+
+<h3>2.3 关键行为下沉</h3>
+<ul class="clean">
+  <li class="li-red"><b>轮询逻辑移出视图</b>：<code>useTaskRunner.js</code> 封装 submit → 800ms 轮询 → success/error 收敛 → 中止/超时（60s 无日志更新判定卡死，提示重试）。视图只消费 <code>store.task</code>。</li>
+  <li><b>参数注入规则集中化</b>：stock → params 的注入逻辑（hasCode / hasStocks 分支）从视图与任务组件中抽出为纯函数，供 <code>selectFunc / runTask / run</code> 三处复用。</li>
+  <li><b>结果渲染注册表</b>：<code>resultTypes.js</code> 以 <code>(type, func.chart)</code> 为键分发渲染器，新增结果类型只需注册，不改面板。</li>
+  <li><b>格式化纯函数化</b>：format.js 保持无副作用；新增 <code>cellColor(value, col)</code> 返回 CSS 类名（涨红跌绿），展示层消费。</li>
+</ul>
+</section>
+
+<section id="s3">
+<h2><span class="no">3</span>交互方式升级<span class="sub">交互模式 · 状态矩阵 · 拖拽 · 反馈（纯鼠标）</span></h2>
+<p class="lead">交互设计原则：<b>鼠标直达、状态可见、操作可撤销</b>。本方案为纯鼠标操作设计——点击、悬停、拖拽、滚轮、右键、双击即可完成全部流程，<b>不依赖任何键盘操作</b>（键盘仅保留无障碍基础，见 §5.3，不作为操作路径）。所有可点击元素具备完整状态环（default → hover → active → selected → disabled），运行类操作一律给 loading 反馈与完成通知。</p>
+
+<h3>3.1 全局交互模式总览</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>交互</th><th>模式</th><th>触发</th><th>视觉反馈</th></tr></thead>
+<tbody>
+<tr><td>功能选择</td><td>点击</td><td>Rail 项、命令面板</td><td>选中项品牌色底 + aria-current；参数面板 200ms 滑入</td></tr>
+<tr><td>收藏 / 取消收藏</td><td>点击 ★</td><td>Rail 项、结果工具条</td><td>★ 填充色 + spring 缩放；toast 提示</td></tr>
+<tr><td>执行任务</td><td>点击「执行」按钮</td><td>RunBar、快捷任务卡</td><td>按钮转 loading + 进度环；Dock 自动展开</td></tr>
+<tr><td>中止任务</td><td>点击 ⏹ 按钮（执行中二次态）</td><td>RunBar</td><td>确认后立即停止轮询，状态回「已中止」</td></tr>
+<tr><td>悬停预览</td><td>hover（200ms 延迟）</td><td>Rail 项、code 单元格</td><td>Tooltip 显示功能 help / 股票名称</td></tr>
+<tr><td>拖拽分栏</td><td>拖拽分隔条 / 双击复位</td><td>Workspace 中缝</td><td>拖动时分隔条加粗高亮，吸附点（300/360/480px）</td></tr>
+<tr><td>列操作</td><td>点击列头 / 拖拽列头</td><td>DataTable</td><td>排序箭头；拖拽固定列到左侧钉区（图钉标记）</td></tr>
+<tr><td>行详情</td><td>点击行</td><td>DataTable</td><td>行高亮 → 右侧抽屉展示该行全字段</td></tr>
+<tr><td>滚动加载</td><td>滚轮 / 拖动滚动条</td><td>大表格 / 导航列表</td><td>&gt;200 行虚拟滚动；Rail 列表虚拟化；日志自动滚底</td></tr>
+<tr><td>命令面板</td><td>点击 CommandBar 搜索框</td><td>全局</td><td>居中浮层，模糊遮罩，输入即过滤，点击候选即执行</td></tr>
+<tr><td>聚焦模式</td><td>点击 ⛶（再次点击退出）</td><td>CommandBar</td><td>Rail + ParamPanel 200ms 折叠，结果全宽</td></tr>
+<tr><td>下拉候选 / 关闭浮层</td><td>点击候选选中 / 点击遮罩或关闭按钮</td><td>StockPicker、命令面板</td><td>候选 hover 高亮，选中后浮层关闭</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.2 鼠标操作路径（全量覆盖）</h3>
+<p style="font-size:13px;color:var(--text-2);margin:0 0 8px">以下每个操作都可通过纯鼠标完成；所有浮层均提供可见的关闭按钮，不依赖 Esc。</p>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:200px">操作</th><th>鼠标路径</th><th>反馈</th></tr></thead>
+<tbody>
+<tr><td>打开命令面板</td><td>点击 CommandBar 上的搜索框</td><td>浮层展开 + 输入框自动聚焦（光标就位）</td></tr>
+<tr><td>执行当前功能</td><td>点击 RunBar「执行」按钮</td><td>按钮转 loading + 进度环；Dock 自动展开</td></tr>
+<tr><td>中止任务</td><td>点击 RunBar 变为的 ⏹ 停止按钮</td><td>确认弹窗 → 确定后停止轮询</td></tr>
+<tr><td>重新执行</td><td>点击结果工具条「重新执行」按钮</td><td>按钮 loading，结果区骨架屏</td></tr>
+<tr><td>选择股票</td><td>点击输入框 → 点击候选（hover 高亮）</td><td>选中后徽章出现，浮层关闭</td></tr>
+<tr><td>清除 / 更换标的</td><td>点击徽章 ✕ / 「更换」按钮</td><td>徽章消失，输入框就位</td></tr>
+<tr><td>收藏功能</td><td>点击 Rail 项 / 工具条上的 ★</td><td>★ 填充 + spring 缩放 + toast（含撤销）</td></tr>
+<tr><td>快捷任务</td><td>点击任务卡片</td><td>卡片按压态 → 自动选功能并执行</td></tr>
+<tr><td>排序 / 过滤</td><td>点击列头（循环升/降/取消）/ 点击漏斗图标</td><td>箭头指示 + 过滤下拉</td></tr>
+<tr><td>固定 / 调整列</td><td>拖拽列头到钉区 / 横向拖动</td><td>插入指示线 + 图钉标记</td></tr>
+<tr><td>行详情</td><td>点击行</td><td>行高亮 → 右侧抽屉</td></tr>
+<tr><td>导出 / 复制</td><td>点击工具条「CSV / JSON / 复制」按钮</td><td>toast 通知完成</td></tr>
+<tr><td>退出聚焦模式</td><td>再次点击 ⛶</td><td>Rail + 参数面板恢复</td></tr>
+<tr><td>关闭浮层 / 抽屉 / Dock</td><td>点击遮罩区域或各浮层右上角 ✕ 按钮</td><td>200ms 淡出</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.3 拖拽与手势规范</h3>
+<div class="grid-2">
+<div class="card"><div class="c-title">拖拽分栏（Workspace）</div>
+<ul class="clean">
+  <li>分隔条 4px 热区，hover 变宽并显示双向箭头光标。</li>
+  <li>拖动过程实时更新 <code>ui.paneRatio</code>，最小参数宽 280px，结果最小 420px。</li>
+  <li>吸附点：参数 320px / 360px / 480px，接近 ±12px 自动吸附，松开后 140ms 缓动归位。</li>
+  <li>双击分隔条复位 320px。</li>
+  <li>窄桌面（&lt;1024px）自动退化为抽屉模式，拖拽能力隐藏。</li>
+</ul></div>
+<div class="card"><div class="c-title">拖拽列（DataTable）</div>
+<ul class="clean">
+  <li>列头拖拽到左侧图钉区（代码/名称列）→ 固定该列（sticky + 底色区分）。</li>
+  <li>拖拽列头横向移动 → 调整列序（表头显示插入指示线）。</li>
+  <li>收藏 Tab 内支持拖拽排序（Rail 项），用 HTML5 DnD 或 pointer 事件实现，含放置位指示。</li>
+</ul></div>
+</div>
+
+<h3>3.4 控件状态矩阵（统一视觉反馈）</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:120px">状态</th><th style="width:220px">视觉表达</th><th>适用控件</th></tr></thead>
+<tbody>
+<tr><td>default</td><td>表面色 + 边框 <code>--ff-border</code></td><td>全部</td></tr>
+<tr><td>hover</td><td><code>--ff-bg-hover</code> 底 + 边框加深；卡片类 <code>translateY(-1px)</code> + <code>--ff-shadow-md</code>，140ms</td><td>Rail 项 / 快捷卡 / 按钮 / 表格行</td></tr>
+<tr><td>active / pressed</td><td><code>--ff-bg-active</code> 底，无位移或 1px 下沉</td><td>按钮 / 导航项</td></tr>
+<tr><td>focus-visible</td><td><code>--ff-focus-ring</code> 3px 环（无障碍辅助，鼠标用户无感，不作为操作依赖）</td><td>全部交互元素</td></tr>
+<tr><td>selected</td><td><code>--ff-brand-subtle</code> 底 + 品牌色文字 + <code>aria-current</code></td><td>Rail 项 / Tab / 下拉项</td></tr>
+<tr><td>disabled</td><td>文字 <code>--ff-text-disabled</code>，无 hover 效果，<code>cursor:not-allowed</code></td><td>执行按钮（运行中）/ 未选标的时的个股任务</td></tr>
+<tr><td>loading</td><td>骨架屏（首载）或按钮内 spinner；运行中 Dock 进度环 + 状态徽章</td><td>执行按钮 / 结果区 / 任务坞</td></tr>
+<tr><td>error</td><td>内联错误横幅（danger 色）+ toast + 「重试」按钮</td><td>提交失败 / 轮询超时 / 网络错误</td></tr>
+<tr><td>empty</td><td>插图式空态（图标 + 引导文案 + 主操作按钮）</td><td>结果区 / 搜索无结果 / 收藏为空</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.5 反馈与通知</h3>
+<ul class="clean">
+  <li><b>Toast</b>：成功（执行完成 / 已收藏 / 已复制）、失败（提交失败 / 中止）、中性（已加入最近）。右上角堆叠，200ms spring 滑入，3.5s 自动消失，支持手动关闭。</li>
+  <li><b>任务状态语义</b>：空闲（灰）/ 排队（蓝）/ 执行中（品牌色 + 进度环 + 阶段文案）/ 成功（绿徽章 + toast）/ 失败（红徽章 + 错误详情 + 重试）/ 已中止（灰）。<code>aria-live="polite"</code> 播报状态变化。</li>
+  <li><b>截断感知</b>：结果超过展示上限时，工具条常驻「已截断 N 行」提示 + 一键导出完整数据（§4.3）。</li>
+  <li><b>撤销</b>：收藏误删可在 toast 内点击「撤销」恢复。</li>
+</ul>
+</section>
+
+<section id="s4">
+<h2><span class="no">4</span>展示形式优化<span class="sub">结果类型→可视化映射 · KPI · 数据层级 · 色值语义</span></h2>
+<p class="lead">核心原则：<b>按数据特征选形态，而不是一律平铺表格</b>。单一「万能表格」让位于五类渲染器：图表优先、KPI 卡、增强表格、KV 卡片、文件/消息。</p>
+
+<h3>4.1 结果类型 → 可视化组件映射</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:130px">结果特征</th><th>判定条件</th><th>渲染方案</th><th style="width:150px">组件</th></tr></thead>
+<tbody>
+<tr><td>K线 / 走势类</td><td><code>type=table</code> 且 <code>func.chart=candle|line</code></td><td><b>图表优先</b>：K线 / 折线上方 380px，下方 Tab「数据表格 / 指标说明」切换</td><td><code>EasyTdxChartView</code></td></tr>
+<tr><td>排行 / 资金流 / 报价</td><td>table 且列含 <code>change_pct|pct_chg|main_net</code></td><td><b>KPI 卡 + 表格</b>：顶部 2-4 张指标卡（如主力净流入、上涨家数），下方增强表格</td><td><code>EasyTdxMetricCards</code> + <code>EasyTdxDataTable</code></td></tr>
+<tr><td>股票列表</td><td>table 且列含 <code>code</code> + <code>name</code></td><td>默认表格；可切换<b>卡片网格</b>（名称 + 代码 + 关键字段着色）</td><td><code>EasyTdxDataTable</code> / <code>EasyTdxListView</code></td></tr>
+<tr><td>回测结果</td><td><code>type=json</code> 且含 <code>performance</code></td><td><b>KPI 卡</b>（总收益率 / 年化 / 回撤 / 夏普，红绿语义）→ 资金曲线图 → 交易明细表 → 原始 JSON 折叠</td><td><code>EasyTdxMetricCards</code> + <code>ChartView</code> + <code>DataTable</code> + <code>KvView</code></td></tr>
+<tr><td>普通键值</td><td><code>type=json</code></td><td>KV 卡片网格（保留），长文本折叠「展开 / 收起」</td><td><code>EasyTdxKvView</code></td></tr>
+<tr><td>消息 / 文件</td><td><code>type=message|file</code></td><td>Callout 提示 / 下载卡片（文件名 + 大小 + 进度）</td><td><code>EasyTdxMessageView</code> / <code>EasyTdxFileView</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.2 增强表格（EasyTdxDataTable）能力清单</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:150px">能力</th><th>实现说明</th><th>默认行为</th></tr></thead>
+<tbody>
+<tr><td>排序</td><td>点击列头切换 升 / 降 / 取消；数字按数值、文本按 localeCompare</td><td>关闭（保持后端顺序）</td></tr>
+<tr><td>列过滤</td><td>表头漏斗图标 → 下拉过滤输入（按列），多列可组合</td><td>关闭</td></tr>
+<tr><td>固定列</td><td>「代码 / 名称」列默认固定左侧（sticky），拖动图钉可增删</td><td>code + name 固定</td></tr>
+<tr><td>虚拟滚动</td><td>&gt;200 行启用，视口内渲染，滚动条原生</td><td>自动</td></tr>
+<tr><td>行详情</td><td>点击行 → 右侧抽屉展示全字段（含被截断字段）</td><td>开启</td></tr>
+<tr><td>导出</td><td>CSV（当前排序过滤结果）/ JSON（原始数据），文件名 <code>功能ID_日期</code></td><td>工具条按钮</td></tr>
+<tr><td>复制</td><td>复制当前表为 TSV / 复制选中单元格</td><td>工具条按钮</td></tr>
+<tr><td>色值语义</td><td>涨跌幅类列按 红涨绿跌 着色（§4.4）</td><td>开启</td></tr>
+<tr><td>截断提示</td><td>后端截断时工具条展示「已截断」+ 导出完整数据入口</td><td>按 <code>result.truncated</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.3 信息层级与优先级</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:80px">层级</th><th>内容</th><th>呈现策略</th></tr></thead>
+<tbody>
+<tr><td><span class="badge b-red">P0</span></td><td>标的、功能名、执行状态、核心结果（图表 / 表格主体 / KPI）</td><td>首屏可见，视觉权重最高（大字号 + 品牌色 + 加粗）</td></tr>
+<tr><td><span class="badge b-green">P1</span></td><td>参数回显、行数统计、更新时间、排序/过滤状态</td><td>结果工具条与参数面板展示，次级字号</td></tr>
+<tr><td><span class="badge b-gray">P2</span></td><td>任务日志、原始 JSON、列定义、调试信息</td><td>默认折叠，ActivityDock / 「原始数据」折叠区可展开</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>4.4 色值语义（红涨绿跌）</h3>
+<div class="card"><div class="c-title">format.js 新增 <code>cellColor(value, col) → css class</code></div>
+<p style="font-size:13px;color:var(--text-2);margin-bottom:8px">命中规则返回 <code>is-up / is-down / is-flat</code> 类，组件绑定到单元格文字色与背景（浅色淡底 + 深色文字，遵循 <code>--ff-up-subtle / --ff-down-subtle</code>）。</p>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>列模式</th><th>匹配</th><th>正</th><th>负</th><th>零 / 空</th></tr></thead>
+<tbody>
+<tr><td>涨跌幅类</td><td><code>change_pct | pct_chg | 涨跌幅</code></td><td style="color:var(--up);font-weight:700">红</td><td style="color:var(--down);font-weight:700">绿</td><td>中性灰</td></tr>
+<tr><td>收益类（回测）</td><td><code>total_return | annual_return | win_rate - 50 基准</code></td><td style="color:var(--up);font-weight:700">红</td><td style="color:var(--down);font-weight:700">绿</td><td>中性灰</td></tr>
+<tr><td>资金流类</td><td><code>main_net | main_net_amount</code></td><td style="color:var(--up);font-weight:700">红（流入）</td><td style="color:var(--down);font-weight:700">绿（流出）</td><td>中性灰</td></tr>
+<tr><td>回撤类</td><td><code>max_drawdown | drawdown_pct</code></td><td colspan="2">绝对值越大越偏 <code>--ff-warn</code> 琥珀色（风险语义，不适用涨跌）</td><td>中性灰</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>KPI 卡同样应用该语义：总收益率 +12.4% 红底红字、-3.1% 绿底绿字，大号 24px tabular-nums 数字。</blockquote>
+</div>
+
+<h3>4.5 后端可选扩展（非阻塞）</h3>
+<ul class="clean">
+  <li><b>列级展示配置</b>：<code>meta</code> 的 function 增加可选 <code>column_config: [{key, label, hide, width, align}]</code>，前端优先消费，缺省回退 format.js 推断。</li>
+  <li><b>KPI 声明</b>：可选 <code>kpis: [{key, label, format, semantic}]</code>，声明后 MetricCards 直接渲染；不声明则前端按列名启发式提取。</li>
+  <li>两个字段均为可选，后端可不改，前端先行启发式兜底，保证纯前端重构可独立落地。</li>
+</ul>
+</section>
+
+<section id="s5">
+<h2><span class="no">5</span>新样式与动效说明<span class="sub">令牌约束 · 动效规格 · 主题适配</span></h2>
+<p class="lead">所有新样式严格消费既有 <code>--ff-*</code> 设计令牌（4pt 网格、10px 圆角基准、warm minimal 色板），不新增全局色值；图表使用 <code>--ff-chart-*</code> 十六进制值（canvas 无法解析 var）。</p>
+
+<h3>5.1 动效规格表</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:200px">场景</th><th>时长</th><th>缓动</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>面板展开 / 折叠（参数、抽屉）</td><td>200ms</td><td><code>--ff-ease-decelerate</code></td><td><code>translateX(12px)→0</code> + opacity，内容区宽度同步</td></tr>
+<tr><td>Rail 全宽 ⇄ 图标条</td><td>200ms</td><td><code>--ff-ease-spring</code></td><td>宽度过渡 + 图标居中，标签淡出</td></tr>
+<tr><td>卡片 hover 抬升</td><td>140ms</td><td><code>--ff-ease-standard</code></td><td><code>translateY(-1px)</code> + <code>--ff-shadow-md</code></td></tr>
+<tr><td>结果内容进入</td><td>200ms</td><td><code>--ff-ease-decelerate</code></td><td>opacity 0→1 + translateY(8px)，结果工具条同步出现</td></tr>
+<tr><td>日志行流式进入</td><td>120ms</td><td>linear</td><td>逐行淡入，自动滚底；「暂停滚动」时禁用</td></tr>
+<tr><td>进度条</td><td>400ms</td><td><code>--ff-ease-standard</code></td><td>宽度过渡；进度未知时 indeterminate 流光（1200ms 循环）</td></tr>
+<tr><td>Toast 滑入 / 出</td><td>200ms</td><td><code>--ff-ease-spring</code></td><td>右上角 <code>translateY(-8px)→0</code></td></tr>
+<tr><td>★ 收藏切换</td><td>160ms</td><td><code>--ff-ease-spring</code></td><td>scale 0.9→1.1→1 弹性</td></tr>
+<tr><td>拖拽吸附回弹</td><td>140ms</td><td><code>--ff-ease-spring</code></td><td>分隔条松手后归位</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>5.2 新增样式要点</h3>
+<ul class="clean">
+  <li><b>骨架屏</b>：首载与功能切换时结果区显示表格骨架（<code>--ff-skeleton-base</code> 底 + 1600ms 流光），替代当前纯 spinner。</li>
+  <li><b>进度环</b>：RunBar 与 Dock 状态徽章使用环形进度（SVG stroke-dasharray），执行中显示百分比。</li>
+  <li><b>粘性工具条</b>：结果工具条与 CommandBar 使用 <code>backdrop-filter: blur(8px)</code> + 半透明表面色。</li>
+  <li><b>表格样式升级</b>：斑马纹（偶数行 <code>--ff-bg-subtle</code> 50% 透明度）、表头加粗 12px、固定列左侧阴影分隔线、行 hover 高亮。</li>
+  <li><b>涨跌色卡片</b>：KPI 卡底色使用 <code>--ff-up-subtle / --ff-down-subtle</code>，数值 24px tabular-nums。</li>
+  <li><b>空态插画</b>：SVG 线性图标 + 主行动按钮，替代纯文字。</li>
+</ul>
+
+<h3>5.3 主题与无障碍</h3>
+<ul class="clean">
+  <li><b>深浅主题</b>：全部走令牌，暗色下自动反转（tokens.css 已定义 <code>[data-theme=dark]</code> 全套）；日志面板固定深底（现状保留，属数据终端惯例）。</li>
+  <li><b>reduced-motion</b>：<code>@media (prefers-reduced-motion: reduce)</code> 关闭位移类动画，保留 opacity 过渡；tokens.css 已有 <code>--ff-dur-fast: 0ms</code> 钩子，追加全局覆盖。</li>
+  <li><b>无障碍辅助（不构成操作依赖）</b>：交互元素保留 <code>:focus-visible</code> 焦点环；Dock 状态区 <code>aria-live="polite"</code>；Rail 选中项 <code>aria-current="true"</code>；下拉 <code>role=listbox + aria-selected</code>。这些仅为读屏 / 无障碍服务，鼠标用户全程无感。</li>
+</ul>
+</section>
+
+<section id="s6">
+<h2><span class="no">6</span>实施步骤<span class="sub">六个阶段 · 涉及文件 · 验收标准</span></h2>
+<p class="lead">按「先地基、后壳层、再交互、末打磨」推进。每阶段保持可运行、可回归；Phase 1 完成即为一次完整可用的布局切换。建议与设计走查并行：<code>design-schemes/</code> 中 01-minimal-pro 与 03-private-wealth 的视觉语言与本方案一致。</p>
+
+<ol class="steps">
+<li>
+<b>Phase 0 · 状态与逻辑下沉</b> <span class="pill">2-3 天</span>
+<p>新建 <code>stores/easytdx.js</code>（stock / selectedFunc / task / ui）、<code>composables/useTaskRunner.js</code>（轮询 / 中止 / 超时）、<code>composables/useRecentFunctions.js</code>（收藏 / 最近 / 持久化）。将视图中的选股注入、轮询、最近任务逻辑迁移；<code>format.js</code> 增加 <code>cellColor</code>。</p>
+<p><b>涉及</b>：＋5 个新文件；改 <code>EasyTdxView.vue</code>（瘦身）、<code>format.js</code>。</p>
+<p><b>验收</b>：store 单测覆盖注入规则；视图 script 减少 ≥60%；页面行为与重构前完全一致。</p>
+</li>
+<li>
+<b>Phase 1 · 四区布局壳</b> <span class="pill">3-4 天</span>
+<p>落地 CommandBar / Rail（含折叠、全部/收藏/最近 Tab、搜索）/ Workspace 分栏 / ActivityDock 折叠坞；删除双模式，导航常驻。响应式断点全部生效。</p>
+<p><b>涉及</b>：＋<code>EasyTdxCommandBar / EasyTdxRail / EasyTdxRailItem / EasyTdxWorkspace / EasyTdxActivityDock</code>；改 <code>EasyTdxView.vue</code> 模板为四区组装、<code>EasyTdxNav.vue</code> 迁移进 Rail。</p>
+<p><b>验收</b>：5 个断点截图对比无溢出；Rail 折叠动画流畅；无模式切换跳变。</p>
+</li>
+<li>
+<b>Phase 2 · 参数面板与执行流</b> <span class="pill">2-3 天</span>
+<p>拆分 <code>EasyTdxParamField</code>（7 种类型）、<code>EasyTdxRunBar</code>（校验 / 中止 / 进度环）；参数面板可折叠、窄屏转抽屉。</p>
+<p><b>涉及</b>：＋2 新文件；改 <code>EasyTdxParamForm.vue</code>、<code>EasyTdxStockPicker.vue</code>（悬停高亮 + 最近标的 + aria）。</p>
+<p><b>验收</b>：无参功能直接显示执行按钮；必填校验有内联错误；点击执行按钮即可运行。</p>
+</li>
+<li>
+<b>Phase 3 · 结果渲染器重构</b> <span class="pill">4-5 天</span>
+<p>按 §4.1 注册表拆出 <code>ChartView / MetricCards / DataTable / KvView / ListView / FileView / MessageView</code> + <code>ResultToolbar</code>；表格实现排序 / 过滤 / 固定列 / 虚拟滚动 / 行详情 / 导出；K线图表优先；回测 KPI 卡。</p>
+<p><b>涉及</b>：＋6 新文件；改 <code>EasyTdxResultPanel.vue</code> 为分发骨架、<code>format.js</code>。</p>
+<p><b>验收</b>：以 <code>mac_stock_kline / backtest_run / mac_capital_flow / cninfo_announcements</code> 四类真实数据回归，均命中预期渲染器；CSV 导出内容与表格一致。</p>
+</li>
+<li>
+<b>Phase 4 · 高级交互</b> <span class="pill">2-3 天</span>
+<p>命令面板（CommandBar 搜索框按钮唤起）、收藏拖拽排序、拖拽分栏、Toast 通知（含撤销）、聚焦模式。</p>
+<p><b>涉及</b>：＋<code>EasyTdxCommandPalette.vue</code>（可选）、Toast 复用全局或模块内实现；改 RunBar / Rail / Workspace。</p>
+<p><b>验收</b>：§3.2 鼠标操作表逐条可操作；拖拽无跳动；刷新后收藏与最近保留。</p>
+</li>
+<li>
+<b>Phase 5 · 打磨与回归</b> <span class="pill">2 天</span>
+<p>骨架屏、空态、错误态统一；reduced-motion、aria 审计；深浅主题走查；性能核对（虚拟滚动、轮询清理）。</p>
+<p><b>涉及</b>：样式与 a11y 收尾；<code>web/src/styles/</code> 如有必要补 1-2 个通用类。</p>
+<p><b>验收</b>：Lighthouse a11y ≥ 95；<code>onBeforeUnmount</code> 无泄漏轮询；暗色主题截图无死色。</p>
+</li>
+</ol>
+
+<h3>实施建议</h3>
+<ul class="clean">
+  <li><b>顺序不可逆</b>：Phase 0 先行，否则后续组件拿不到统一状态源。</li>
+  <li><b>每阶段独立提交</b>：commit message 前缀 <code>refactor(easytdx): phase-N …</code>，便于回滚定位。</li>
+  <li><b>后端零改动</b>：除非启用 §4.5 可选扩展，本次无需触碰 <code>finfeed/integrations/easytdx/</code>。</li>
+  <li><b>真实数据回归</b>：复用 <code>scripts/</code> 中现有数据抓取脚本造数，避免用 mock 验证渲染器。</li>
+</ul>
+</section>
+
+<section id="s7">
+<h2><span class="no">7</span>风险与验收<span class="sub">兼容性 · 风险清单 · 验收矩阵</span></h2>
+
+<h3>7.1 兼容性约束</h3>
+<ul class="clean">
+  <li><b>API 契约冻结</b>：<code>meta / strategies / run / task / tasks / download</code> 响应结构不变，前端解析层只读不改。</li>
+  <li><b>红涨绿跌</b>：所有新增着色遵循 A 股惯例（<code>--ff-up</code> 红 = 涨，<code>--ff-down</code> 绿 = 跌），与现有 K线图、任务状态一致。</li>
+  <li><b>路由与侧栏</b>：<code>/easytdx</code> 路由与 Sidebar 入口不变；<code>web/src/api/easytdx.js</code> 仅按需新增方法，不删除现有导出。</li>
+  <li><b>持久化迁移</b>：收藏/最近 key 带版本号，未来 schema 变更可无损迁移。</li>
+</ul>
+
+<h3>7.2 风险清单</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:180px">风险</th><th style="width:80px">等级</th><th>缓解措施</th></tr></thead>
+<tbody>
+<tr><td>大表虚拟滚动与固定列并存时的滚动性能</td><td><span class="badge b-red">高</span></td><td>虚拟滚动仅启用 &gt;200 行；固定列用 sticky + 独立渲染层；基准 5000 行 60fps 验收</td></tr>
+<tr><td>ECharts 实例泄漏（频繁执行）</td><td><span class="badge b-amber">中</span></td><td>ChartView 统一 <code>onBeforeUnmount dispose</code>；option 变更走 <code>setOption(opt, true)</code></td></tr>
+<tr><td>轮询与组件卸载竞态</td><td><span class="badge b-amber">中</span></td><td>useTaskRunner 内部管理 timer，store 卸载时统一清理；路由切换不残留请求</td></tr>
+<tr><td>后端返回超大 JSON（如成分股全量）</td><td><span class="badge b-amber">中</span></td><td>KV/JSON 视图长文本折叠 + 渲染上限；导出走 download 接口而非前端序列化</td></tr>
+<tr><td>拖拽在触屏设备失效</td><td><span class="badge b-gray">低</span></td><td>pointer 事件统一实现；&lt;1024px 自动退化为抽屉，拖拽能力隐藏</td></tr>
+<tr><td>收藏/最近数据污染</td><td><span class="badge b-gray">低</span></td><td>上限控制 + 去重 + 撤销入口；异常数据静默丢弃</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>7.3 验收矩阵</h3>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:220px">验收项</th><th>方法</th><th style="width:110px">通过标准</th></tr></thead>
+<tbody>
+<tr><td>四区布局正确性</td><td>5 断点（1440/1280/1100/820/390）截图走查</td><td>无溢出、无遮挡、聚焦模式可用</td></tr>
+<tr><td>功能全量可达</td><td>meta 返回的全部功能逐项选择并执行</td><td>100% 可选、参数渲染无缺漏</td></tr>
+<tr><td>结果渲染映射</td><td>四类典型功能回归（§6 Phase 3）</td><td>命中预期渲染器，无原生数据泄漏</td></tr>
+<tr><td>红涨绿跌一致性</td><td>含涨跌幅/资金流/回测结果的功能检查</td><td>着色规则与 §4.4 一致</td></tr>
+<tr><td>纯鼠标可达</td><td>§3.2 操作表逐条用鼠标完成</td><td>全部生效，无键盘依赖</td></tr>
+<tr><td>持久化</td><td>刷新 / 重进页面</td><td>收藏、最近、面板状态保留</td></tr>
+<tr><td>性能</td><td>5000 行表格 + 连续执行 5 次</td><td>滚动 60fps；无内存增长（devtools heap）</td></tr>
+<tr><td>无障碍</td><td>Lighthouse / axe</td><td>a11y ≥ 95，aria-live 生效</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="footer">
+<span>文档：docs/easytdx-refactor-plan.html</span>
+<span>关联代码：web/src/views/EasyTdxView.vue · web/src/components/easytdx/ · web/src/stores/（新建）</span>
+<span>后端：finfeed/integrations/easytdx/（本轮不改）</span>
+</div>
+</section>
+
+</div>
+</body>
+</html>
