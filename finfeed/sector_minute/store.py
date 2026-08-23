@@ -129,6 +129,11 @@ class SectorStore:
             chart.ts = _ts_label()
             self._ticks[sub.key] = chart
 
+    def get_tick(self, key: str) -> Optional[TickChart]:
+        """按缓存 key 取分时（key 形如 board:hy:1:000883 / stock:1:600000）。"""
+        with self._lock:
+            return self._ticks.get(key)
+
     def set_board_list(self, board_type: str, boards: list[BoardMeta]) -> None:
         with self._lock:
             self._board_lists[board_type] = boards

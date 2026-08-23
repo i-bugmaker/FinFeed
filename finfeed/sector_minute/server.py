@@ -190,6 +190,63 @@ def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
             "items": [_chart_dict(t) for t in ticks],
         }
 
+    @router.get("/sparklines")
+    def sparklines(codes: str = Query(""), lazy: int = Query(1)) -> dict[str, Any]:
+        """列表项迷你分时简图：按 key 批量返回分时点序列。
+
+        命中 store 缓存立即返回（不触网）；未命中且 ``lazy=1`` 时按需抓取一次
+        并写回缓存，供后续复用。返回未命中的 key 供前端决定是否继续处理。
+        """
+        from .models import Subscription
+
+        keys = [k.strip() for k in codes.split(",") if k.strip()]
+
+        def to_sub(key: str) -> Optional[Subscription]:
+            parts = key.split(":")
+            if parts[0] == "board" and len(parts) >= 4:
+                try:
+                    return Subscription(kind="board", market=int(parts[2]), code=parts[3], board_type=parts[1])
+                except ValueError:
+                    return None
+            if parts[0] == "stock" and len(parts) >= 3:
+                try:
+                    return Subscription(kind="stock", market=int(parts[1]), code=parts[2])
+                except ValueError:
+                    return None
+            return None
+
+        out: dict[str, Any] = {}
+        missing: list[str] = []
+        for k in keys:
+            ch = store.get_tick(k)
+            if ch is not None and ch.points:
+                out[k] = {
+                    "kind": ch.kind, "market": ch.market, "code": ch.code,
+                    "name": ch.name, "pre_close": ch.pre_close, "change_pct": ch.change_pct,
+                    "points": [{"price": p.price, "avg": p.avg, "vol": p.vol} for p in ch.points],
+                }
+            else:
+                missing.append(k)
+
+        if lazy:
+            for k in missing[: config.MAX_LAZY_SPARKS]:
+                sub = to_sub(k)
+                if sub is None:
+                    continue
+                try:
+                    chart = fetch_tick_chart(sub.market, sub.code)
+                except Exception:  # noqa: BLE001
+                    chart = None
+                store.update_tick(sub, chart)
+                if chart is not None and chart.points:
+                    out[k] = {
+                        "kind": chart.kind, "market": chart.market, "code": chart.code,
+                        "name": chart.name, "pre_close": chart.pre_close, "change_pct": chart.change_pct,
+                        "points": [{"price": p.price, "avg": p.avg, "vol": p.vol} for p in chart.points],
+                    }
+
+        return {"items": out, "missing": [m for m in missing if m not in out]}
+
     @router.get("/stocks")
     def stocks(kw: str = Query("", max_length=32)) -> dict[str, Any]:
         """个股池搜索（按代码/名称模糊匹配，用于个股对比添加）。"""

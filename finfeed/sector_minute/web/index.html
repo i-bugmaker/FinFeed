@@ -121,7 +121,7 @@
 
   /* —— 左面板 —— */
   .panel {
-    width: 276px; flex: none;
+    width: 348px; flex: none;
     display: flex; flex-direction: column; min-height: 0;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -161,9 +161,10 @@
   .check svg { display: none; }
   .item.is-on .check svg { display: block; }
   .item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1); font-weight: 500; }
-  .item-code { font-family: var(--font-num); font-size: 11px; color: var(--text-3); }
+  .item-code { font-family: var(--font-num); font-size: 11px; color: var(--text-3); margin-left: 6px; flex: none; white-space: nowrap; }
   .item-tag { flex: none; padding: 1px 6px; border-radius: 999px; font-size: 11px; color: var(--brand-ink); background: var(--brand-subtle); border: 1px solid #cfe0ff; white-space: nowrap; }
   .item-pct { font-family: var(--font-num); font-size: 12px; font-weight: 600; width: 56px; text-align: right; }
+  .spark { flex: none; width: 46px; height: 22px; display: block; margin-left: 2px; }
   .up { color: var(--up-text); } .down { color: var(--down-text); } .flat { color: var(--flat); }
   .empty { padding: 22px 8px; text-align: center; color: var(--text-3); font-size: 13px; }
 
@@ -219,7 +220,7 @@
   .toast.is-err .t-tag { color: var(--up-text); }
   .toast .t-tag { font-weight: 700; }
 
-  @media (max-width: 1180px) { .panel { width: 248px; } }
+  @media (max-width: 1180px) { .panel { width: 320px; } }
   @media (max-width: 960px) { .panel { display: none; } .cols { flex-direction: column; } }
 </style>
 </head>
@@ -358,6 +359,7 @@ const API = {
   stocks:  (kw) => API_BASE + "/stocks?kw=" + encodeURIComponent(kw),
   subs:    API_BASE + "/subscriptions",
   charts:  API_BASE + "/charts",
+  sparklines: API_BASE + "/sparklines",
 };
 const STORE_KEY = "sectorMinute_selected";
 const BOARD_TYPES = [["hy","行业"],["hy2","二级"],["gn","概念"],["fg","风格"],["dq","地区"]];
@@ -378,12 +380,14 @@ const state = {
   stocks: [],
   selected: [],
   chartsData: [],
+  sparkCache: {},        // key -> {pre_close, change_pct, points}  迷你分时简图缓存（命中不再触网）
   trading: false,
   lastUpdate: "",
 };
 let charts = {};          // ECharts 实例 key 索引
 let hoverSelf = new Set(); // 联动回环保护
 let pollTimer = null, catchUpTimer = null, searchTimer = null, stockSeq = 0;
+let sparkQueue = [], sparkQueued = new Set(), sparkBusy = 0;  // 迷你分时简图懒加载
 let mainSeq = 0;           // 图表 DOM id 全局自增（增量增删时保证 id 唯一）
 
 /* ---------------- 工具 ---------------- */
@@ -631,10 +635,11 @@ function renderBoardList() {
     const tag = kw ? `<span class="item-tag">${BT_NAME[b.board_type] || ""}</span>` : "";
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "board", market: 1, code: b.code, name: b.name, board_type: b.board_type })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-      ${tag}<span class="item-name">${esc(b.name)}</span><span class="item-code">${b.code}</span>
+      ${tag}<span class="item-name">${esc(b.name)}</span><span class="item-code">${b.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
       <span class="item-pct ${numCls(b.rise_pct)}">${fmtPct(b.rise_pct)}</span></button>`;
   }).join("") || '<div class="empty">无匹配板块</div>';
   syncSelAllButtons();
+  observeSparks(el);
 }
 function renderStockList() {
   const el = $("#listStock");
@@ -644,10 +649,11 @@ function renderStockList() {
     const k = "stock:" + s.market + ":" + s.code, on = state.selected.some((x) => keyOf(x) === k);
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "stock", market: s.market, code: s.code, name: s.name })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-      <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span>
+      <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
       <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
   }).join("") || '<div class="empty">无匹配个股</div>';
   syncSelAllButtons();
+  observeSparks(el);
 }
 
 // 全局搜索：同时合并罗列「板块 + 个股」到统一搜索结果面板
@@ -668,7 +674,7 @@ function renderSearchList() {
       const on = state.selected.some((s) => keyOf(s) === k);
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "board", market: 1, code: b.code, name: b.name, board_type: b.board_type })}'>
         <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="item-tag">${BT_NAME[b.board_type] || ""}</span><span class="item-name">${esc(b.name)}</span><span class="item-code">${b.code}</span>
+        <span class="item-tag">${BT_NAME[b.board_type] || ""}</span><span class="item-name">${esc(b.name)}</span><span class="item-code">${b.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
         <span class="item-pct ${numCls(b.rise_pct)}">${fmtPct(b.rise_pct)}</span></button>`;
     }).join("");
   }
@@ -679,11 +685,12 @@ function renderSearchList() {
       const on = state.selected.some((x) => keyOf(x) === k);
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "stock", market: s.market, code: s.code, name: s.name })}'>
         <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span>
+        <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
         <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
     }).join("");
   }
   el.innerHTML = html;
+  observeSparks(el);
 }
 
 // 全选 / 取消全选：作用于当前可见（受搜索/筛选影响）的列表
@@ -721,6 +728,98 @@ function syncStatus() {
   tg.textContent = live ? "交易时段" : "非交易时段";
   tg.className = "tag" + (live ? " is-live" : "");
   $("#lastTime").textContent = state.lastUpdate || "--:--:--";
+}
+
+/* ---------------- 迷你分时简图（列表项内） ---------------- */
+// 命中 store 缓存立即绘制；未命中且进入视口的标的懒加载入队，批量按需抓取。
+// 通过 IntersectionObserver 判断可见性，避免为数千个个股逐一拉取造成性能/风控问题。
+const SPARK = { w: 46, h: 22, pad: 1.5 };
+
+function drawSpark(el, d) {
+  const pts = d && d.points && d.points.length ? d.points : null;
+  el.innerHTML = "";
+  if (!pts || !pts.length) return;
+  const pre = d.pre_close || 0;
+  // 统一按「涨跌幅」归一（与主图默认一致）；无昨收退回 min-max
+  let vals = pts.map((p) => (pre > 0 ? ((p.price - pre) / pre) * 100 : p.price));
+  let lo, hi;
+  if (pre > 0) { const m = Math.max(Math.max(...vals.map(Math.abs)), 0.5); lo = -m; hi = m; }
+  else { lo = Math.min(...vals); hi = Math.max(...vals); if (hi - lo < 1e-9) { hi = lo + 1; lo -= 1; } }
+  const x = (i) => SPARK.pad + (i / Math.max(vals.length - 1, 1)) * (SPARK.w - 2 * SPARK.pad);
+  const y = (v) => SPARK.pad + (1 - (v - lo) / (hi - lo)) * (SPARK.h - 2 * SPARK.pad);
+  const line = vals.map((v, i) => (i ? "L" : "M") + x(i).toFixed(2) + " " + y(v).toFixed(2)).join(" ");
+  const up = (d.change_pct || 0) > 0;
+  const color = up ? "#e5484d" : "#18a058";
+  // 昨收虚线（涨跌幅模式位于中轴）
+  let s = "";
+  if (pre > 0) {
+    const preY = y(0);
+    s += `<line x1="${SPARK.pad}" y1="${preY}" x2="${SPARK.w - SPARK.pad}" y2="${preY}" stroke="#c3ccd8" stroke-width="1" stroke-dasharray="2 2"/>`;
+  }
+  s += `<path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  el.innerHTML = s;
+}
+
+let sparkObserver = null;
+function ensureSparkObserver() {
+  if (sparkObserver || !("IntersectionObserver" in window)) return;
+  sparkObserver = new IntersectionObserver((entries) => {
+    let any = false;
+    entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      sparkObserver.unobserve(en.target);
+      const k = en.target.dataset.key;
+      if (!k) return;
+      if (state.sparkCache[k]) drawSpark(en.target, state.sparkCache[k]);
+      else { enqueueSpark(k); any = true; }
+    });
+    if (any) scheduleFlush();
+  }, { rootMargin: "60px 0px" });
+}
+function observeSparks(rootEl) {
+  if (!rootEl) return;
+  ensureSparkObserver();
+  rootEl.querySelectorAll(".spark[data-key]").forEach((el) => {
+    const k = el.dataset.key;
+    if (state.sparkCache[k]) { drawSpark(el, state.sparkCache[k]); return; }
+    if (el._obs) return;
+    el._obs = true;
+    if (sparkObserver) sparkObserver.observe(el);
+  });
+}
+function enqueueSpark(k) {
+  if (state.sparkCache[k] || sparkQueued.has(k)) return;
+  sparkQueued.add(k);
+  sparkQueue.push(k);
+}
+let sparkTimer = null;
+function scheduleFlush() {
+  clearTimeout(sparkTimer);
+  sparkTimer = setTimeout(flushSparks, 180);
+}
+function flushSparks() {
+  if (sparkBusy || !sparkQueue.length) return;
+  sparkBusy = 1;
+  const batch = sparkQueue.splice(0, 15);
+  fetch(API.sparklines + "?codes=" + encodeURIComponent(batch.join(",")) + "&lazy=1")
+    .then((r) => r.json())
+    .then((res) => {
+      const items = (res && res.items) || {};
+      Object.entries(items).forEach(([k, d]) => { state.sparkCache[k] = d; });
+      if (Object.keys(items).length) {
+        // 回填当前渲染的所有匹配项（含隐藏分区，切页即已就绪）
+        document.querySelectorAll(".spark[data-key]").forEach((svg) => {
+          const d = state.sparkCache[svg.dataset.key];
+          if (d) drawSpark(svg, d);
+        });
+      }
+    })
+    .catch(() => { /* 瞬时失败：从队列移除，下次重渲染时重新入队 */ })
+    .finally(() => {
+      sparkBusy = 0;
+      batch.forEach((k) => sparkQueued.delete(k));
+      if (sparkQueue.length) setTimeout(flushSparks, 150);
+    });
 }
 
 /* ---------------- 主体渲染 ---------------- */
