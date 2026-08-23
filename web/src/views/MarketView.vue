@@ -301,15 +301,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ff-page ff-market-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="trending-up" size="lg" /> 行情
-        </h1>
-        <p class="ff-page__subtitle">A 股全市场数据、涨停跌停、龙虎榜与资金流向</p>
-      </div>
-    </div>
-
     <AppCard class="ff-market-view__toolbar" v-if="active !== 'hotrank'">
       <div class="ff-market-view__row">
         <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />

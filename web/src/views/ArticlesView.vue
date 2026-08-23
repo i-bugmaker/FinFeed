@@ -80,15 +80,6 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-articles-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="newspaper" size="lg" /> 财经
-        </h1>
-        <p class="ff-page__subtitle">深度文章与巨潮公告，把握行业趋势与公司基本面</p>
-      </div>
-    </div>
-
     <FilterBar
       v-model="filters"
       :sources="sources"

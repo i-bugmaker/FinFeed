@@ -303,12 +303,6 @@ onMounted(async () => {
 <template>
   <div class="ff-page ff-dashboard-view">
     <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="dashboard" size="lg" /> 仪表盘
-        </h1>
-        <p class="ff-page__subtitle">核心指标 · 情绪结构 · 系统状态 一屏总览</p>
-      </div>
       <span v-if="updateTime" class="ff-dashboard-view__updated">
         <AppIcon name="refresh" size="xs" /> 更新于 {{ updateTime }}
       </span>
@@ -388,33 +382,33 @@ onMounted(async () => {
 
       <!-- ═══ L3 数据洞察（三图等宽并列）═══ -->
       <div class="ff-dashboard-view__charts">
-        <AppCard title="情绪分布" subtitle="全部新闻舆情倾向">
+        <AppCard title="情绪分布">
           <ChartPanel :option="sentimentOption" height="220px" />
         </AppCard>
-        <AppCard title="来源 TOP10" subtitle="近 7 天各数据源新闻量">
+        <AppCard title="来源 TOP10">
           <ChartPanel :option="sourceOption" height="220px" />
         </AppCard>
-        <AppCard title="近 24h 趋势" subtitle="按小时新闻量">
+        <AppCard title="近 24h 趋势">
           <ChartPanel :option="trendOption" height="220px" />
         </AppCard>
       </div>
 
       <!-- ═══ L4 结构分布（两图并列，补全缺失数据）═══ -->
       <div class="ff-dashboard-view__dist">
-        <AppCard title="重要性分布" subtitle="按新闻重要性分级">
+        <AppCard title="重要性分布">
           <ChartPanel :option="importanceOption" height="220px" />
         </AppCard>
-        <AppCard title="分类分布" subtitle="新闻 / 论坛等来源构成">
+        <AppCard title="分类分布">
           <ChartPanel :option="categoryOption" height="220px" />
         </AppCard>
       </div>
 
       <!-- ═══ L4.5 指数 K 线（上证 / 深证，多周期 + 分时）═══ -->
       <div class="ff-dashboard-view__kline">
-        <AppCard title="上证指数" subtitle="000001 · 蜡烛/分时">
+        <AppCard title="上证指数">
           <IndexKlineCard code="000001" name="上证指数" />
         </AppCard>
-        <AppCard title="深证成指" subtitle="399001 · 蜡烛/分时">
+        <AppCard title="深证成指">
           <IndexKlineCard code="399001" name="深证成指" />
         </AppCard>
       </div>
@@ -426,7 +420,6 @@ onMounted(async () => {
             <h2 class="ff-dashboard-view__live-title">
               <AppIcon name="activity" size="sm" /> 实时行情推送
             </h2>
-            <p class="ff-dashboard-view__live-sub">WebSocket 实时行情快照与采集失败告警 · 断线自动重连</p>
           </div>
           <div class="ff-dashboard-view__live-meta">
             <span class="ff-dashboard-view__live-meta-item">
@@ -445,7 +438,7 @@ onMounted(async () => {
         </div>
 
         <div class="ff-dashboard-view__live-grid">
-          <AppCard title="行情快照" subtitle="每 5 秒推送一次">
+          <AppCard title="行情快照">
             <div v-if="liveMetrics.length" class="ff-dashboard-view__live-metrics">
               <div
                 v-for="m in liveMetrics"
@@ -466,7 +459,7 @@ onMounted(async () => {
             </div>
           </AppCard>
 
-          <AppCard title="采集失败告警" subtitle="实时来自后端告警模块">
+          <AppCard title="采集失败告警">
             <div v-if="liveAlerts.length" class="ff-dashboard-view__live-alerts">
               <div
                 v-for="(a, i) in liveAlerts"

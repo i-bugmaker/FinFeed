@@ -58,15 +58,6 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-favorites-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="star" size="lg" /> 收藏
-        </h1>
-        <p class="ff-page__subtitle">持续关注的重要新闻与舆情</p>
-      </div>
-    </div>
-
     <template v-if="!loading && list.length === 0">
       <AppCard class="ff-favorites-view__empty-card">
         <AppEmpty

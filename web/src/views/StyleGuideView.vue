@@ -50,15 +50,6 @@ const selectOptions = [
 
 <template>
   <div class="ff-page ff-styleguide">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="palette" size="lg" /> 设计规范
-        </h1>
-        <p class="ff-page__subtitle">FinFeed UI 3.0 设计令牌、图标与组件状态总览</p>
-      </div>
-    </div>
-
     <div class="ff-grid">
       <div class="ff-col-12 ff-col-lg-6">
         <AppCard title="色彩令牌">
@@ -85,7 +76,7 @@ const selectOptions = [
       </div>
 
       <div class="ff-col-12 ff-col-lg-6">
-        <AppCard title="字体层级" subtitle="每个文字角色 = 字号 + 字重 + 行高 + 字距 的组合，亮暗主题自动适配">
+        <AppCard title="字体层级">
           <div class="ff-styleguide__type">
             <div class="ff-styleguide__type-row">
               <code class="ff-styleguide__type-tag">display</code>
@@ -136,7 +127,7 @@ const selectOptions = [
       </div>
 
       <div class="ff-col-12 ff-col-lg-6">
-        <AppCard title="数据字体" subtitle="等宽 + 表格数字（tabular-nums），列对齐；红涨绿跌沿用语义色">
+        <AppCard title="数据字体">
           <div class="ff-styleguide__num">
             <div class="ff-styleguide__num-row">
               <span class="ff-styleguide__num-name">最新价</span>
@@ -172,7 +163,7 @@ const selectOptions = [
       </div>
 
       <div class="ff-col-12">
-        <AppCard title="图标库" subtitle="所有图标均为 24×24 描边矢量，支持 tone 与尺寸变体">
+        <AppCard title="图标库">
           <div class="ff-styleguide__icons">
             <button
               v-for="name in iconNames"

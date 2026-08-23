@@ -83,15 +83,6 @@ onMounted(async () => {
 
 <template>
   <div class="ff-page ff-calendar-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="calendar" size="lg" /> 财经日历
-        </h1>
-        <p class="ff-page__subtitle">宏观数据、股市事件、新股申购与全球市场前瞻</p>
-      </div>
-    </div>
-
     <AppCard class="ff-calendar-view__toolbar">
       <div class="ff-calendar-view__row">
         <AppDatePicker v-model="date" class="ff-calendar-view__field" label="日期" @change="markTouched" />
@@ -108,7 +99,7 @@ onMounted(async () => {
       </div>
     </AppCard>
 
-    <AppCard title="事件列表" :subtitle="`共 ${totalEvents} 条`" :no-padding="true">
+    <AppCard title="事件列表" :no-padding="true">
       <div v-if="totalEvents" class="ff-calendar-view__groups">
         <section
           v-for="g in groups"

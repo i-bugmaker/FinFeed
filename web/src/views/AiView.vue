@@ -417,15 +417,6 @@ onMounted(() => {
 
 <template>
   <div class="ff-page ff-ai-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="sparkles" size="lg" /> AI 分析
-        </h1>
-        <p class="ff-page__subtitle">大模型驱动的每日复盘、报告追问与自定义提示词</p>
-      </div>
-    </div>
-
     <!-- 头部状态卡 -->
     <AppCard class="ff-ai-view__status">
       <div class="ff-ai-view__status-main">
@@ -467,7 +458,7 @@ onMounted(() => {
     </Transition>
 
     <!-- 配置面板 -->
-    <AppCard title="分析配置" subtitle="已自动恢复本地保存的模型 / 范围 / 窗口与提示词">
+    <AppCard title="分析配置">
       <template #actions>
         <AppButton variant="primary" icon="save" size="sm" @click="saveConfig">保存配置</AppButton>
       </template>
@@ -492,7 +483,7 @@ onMounted(() => {
     </AppCard>
 
     <!-- 模型管理 -->
-    <AppCard title="模型管理" subtitle="新增 / 编辑 OpenAI 兼容模型，可测试连通性并设为默认">
+    <AppCard title="模型管理">
       <template #actions>
         <AppButton variant="primary" icon="plus" size="sm" @click="openAddProvider">添加模型</AppButton>
       </template>

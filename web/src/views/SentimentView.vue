@@ -71,15 +71,6 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-sentiment-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="chatter" size="lg" /> 舆情
-        </h1>
-        <p class="ff-page__subtitle">股吧 / 论坛舆情聚合，感知市场情绪与热点讨论</p>
-      </div>
-    </div>
-
     <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
 
     <div class="ff-sentiment-view__list">

@@ -142,15 +142,6 @@ onUnmounted(() => {
 
 <template>
   <div class="ff-page ff-flash-view">
-    <div class="ff-page__header">
-      <div>
-        <h1 class="ff-page__title">
-          <AppIcon name="zap" size="lg" /> 快讯
-        </h1>
-        <p class="ff-page__subtitle">7×24 小时实时快讯，捕捉市场最新动态与突发资讯</p>
-      </div>
-    </div>
-
     <FilterBar
       v-model="filters"
       :sources="sources"
