@@ -5,6 +5,18 @@ import screenerApi from '../api/screener'
 const POLL_INTERVAL = 800
 const TASK_IDLE_TIMEOUT = 60_000
 
+// 结构化错误码 -> 可读提示（阶段化定位失败原因）
+const ERROR_MESSAGES = {
+  SOURCE_UNAVAILABLE: '行情数据源不可用：实时行情与回退源均失败，未使用任何占位数据。请检查网络后重试。',
+  TIMEOUT: '数据源请求超时，请稍后重试。',
+  UNKNOWN: '选股任务执行失败，请查看任务日志定位原因。',
+}
+
+function describeError(t) {
+  const code = t?.error_code
+  return ERROR_MESSAGES[code] || (t?.error ? `选股失败：${t.error}` : '')
+}
+
 export const useScreenerStore = defineStore('screener', {
   state: () => ({
     config: null,
@@ -90,6 +102,7 @@ export const useScreenerStore = defineStore('screener', {
         if (t.status === 'success' || t.status === 'error') {
           this.stopPolling()
           this.running = false
+          if (t.status === 'error') this.errMsg = describeError(t)
           this.loadRecent()
         }
       } catch {

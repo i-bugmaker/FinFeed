@@ -36,7 +36,12 @@ def render_markdown(
     L.append("")
     L.append(f"- 生成时间：{result.generated_at}")
     L.append(f"- 数据源：{result.data_source}")
-    L.append(f"- 行情快照时间：{result.snapshot_time or '—'}")
+    kind_label = {"realtime": "盘中实时", "trade_date": "交易日收盘定格", "local": "本地时间兜底"}.get(
+        result.as_of_kind, result.as_of_kind)
+    L.append(f"- 行情快照时间：{result.snapshot_time or '—'}（{kind_label}）")
+    if result.fallback_chain and len(result.fallback_chain) > 1:
+        L.append(f"- 数据回退链：{' → '.join(result.fallback_chain)}")
+    L.append(f"- 数据覆盖率：{result.coverage:.1%}")
     L.append(f"- 覆盖样本：全市场 {result.universe_size} 只 → 通过过滤 {result.screened_size} 只 → 实际评分 {result.scored_size} 只")
     L.append(f"- 技术面富化：{'已启用' if result.technical_enabled else '未启用（质量维度回退振幅代理）'}")
     L.append(f"- 入选候选（Strong）：{len(strong)} 只")
@@ -49,14 +54,14 @@ def render_markdown(
     # 评分结果表
     L.append(f"## 评分结果 Top {len(shown)}")
     L.append("")
-    L.append("| 排名 | 代码 | 名称 | 价格 | 涨跌幅% | PE(TTM) | 综合分 | 资金 | 动量 | 估值 | 量价 | 质量 | 评级 |")
-    L.append("|------|------|------|------|---------|---------|--------|------|------|------|------|------|------|")
+    L.append("| 排名 | 代码 | 名称 | 价格 | 涨跌幅% | PE(TTM) | 综合分 | 资金 | 动量 | 估值 | 量价 | 质量 | 情绪 | 评级 |")
+    L.append("|------|------|------|------|---------|---------|--------|------|------|------|------|------|------|------|")
     for i, x in enumerate(shown, 1):
         L.append(
             f"| {i} | {x.code} | {x.name} | {x.price:.2f} | {x.change_pct:+.2f} | "
             f"{x.pe_ttm:.1f} | **{x.total_score:.1f}** | {x.capital_score:.0f} | "
             f"{x.momentum_score:.0f} | {x.valuation_score:.0f} | {x.liquidity_score:.0f} | "
-            f"{x.quality_score:.0f} | {_tier_label(x.tier)} |"
+            f"{x.quality_score:.0f} | {x.sentiment_score:.0f} | {_tier_label(x.tier)} |"
         )
     L.append("")
 

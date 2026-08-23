@@ -67,6 +67,14 @@ def _f(x: Any) -> float:
         return 0.0
 
 
+def _is_missing(x: Any) -> bool:
+    """判断是否为缺失值（None / NaN），用于区分「缺失」与「真实 0/负值」。"""
+    try:
+        return x is None or math.isnan(float(x))
+    except (TypeError, ValueError):
+        return True
+
+
 # ---------------------------------------------------------------------------
 # 维度子分
 # ---------------------------------------------------------------------------
@@ -89,26 +97,46 @@ def score_capital(row: dict, p: dict) -> tuple[float, dict[str, str]]:
 
 
 def score_momentum(row: dict, p: dict) -> tuple[float, dict[str, str]]:
-    """动量趋势：20日动量(含过热衰减) + 60日动量 + 多周期动量有序性。"""
+    """动量趋势：20日动量(含过热衰减) + 60日动量 + 动量有序 + 动量加速度。
+
+    加速度 = 20日动量 - 10日动量（趋势加速>0 更优），衡量时序动能；
+    缺失（无 10 日数据源）时给中性分（sigmoid(0)=50）。
+    """
     mp = p["momentum"]
     c5 = _f(row.get("change_5d_pct"))
+    c10 = _f(row.get("change_10d_pct"))
     c20 = _f(row.get("change_20d_pct"))
     c60 = _f(row.get("change_60d_pct"))
 
     s20 = score_sigmoid(c20, mp["mom20_mid"], mp["mom20_scale"])
     if c20 > mp["mom20_overheat"]:
-        decay = max(mp["mom20_overheat_floor"], 1.0 - (c20 - mp["mom20_overheat"]) / 80.0)
+        denom = mp.get("mom20_decay_denom", 80.0)
+        floor = mp.get("mom20_overheat_floor", 0.6)
+        decay = max(floor, 1.0 - (c20 - mp["mom20_overheat"]) / denom)
         s20 = clamp(s20 * decay)
     s60 = score_sigmoid(c60, mp["mom60_mid"], mp["mom60_scale"])
 
     # 多周期动量有序：5日≥20日≥60日≥0 每满足一项 +1/3
     ordered = ((c5 >= c20) + (c20 >= c60) + (c60 >= 0)) / 3.0 * 100.0
 
-    score = mp["w_mom20"] * s20 + mp["w_mom60"] * s60 + mp["w_align"] * ordered
+    # 动量加速度：20日动量 - 10日动量（缺失给中性 50）
+    if _is_missing(row.get("change_10d_pct")):
+        s_accel = 50.0
+        accel_label = "缺失→中性"
+    else:
+        accel = c20 - c10
+        s_accel = score_sigmoid(accel, mp["accel_mid"], mp["accel_scale"])
+        accel_label = f"{accel:+.1f}%"
+
+    score = (
+        mp["w_mom20"] * s20 + mp["w_mom60"] * s60
+        + mp["w_align"] * ordered + mp["w_accel"] * s_accel
+    )
     contrib = {
         "20日动量": f"{c20:+.1f}% → {s20:.0f}",
         "60日动量": f"{c60:+.1f}% → {s60:.0f}",
         "动量有序度": f"{ordered:.0f}",
+        "动量加速度": f"{accel_label} → {s_accel:.0f}",
     }
     return clamp(score), contrib
 
@@ -119,9 +147,14 @@ def score_valuation(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     PE_TTM 衡量相对估值（越低越便宜，钟形峰值在合理区）；
     股息率衡量收入型价值与现金流稳定性（持续高分红≈经营稳健）。
     两者按 w_pe / w_dy 加权融合。
+
+    缺失语义：PE 缺失（NaN）给中性分，**绝不误判为亏损**。
     """
     vp = p["valuation"]
     pe = _f(row.get("pe_ttm"))
+    if _is_missing(row.get("pe_ttm")):
+        contrib = {"PE_TTM": "缺失 → 中性"}
+        return clamp(vp.get("missing_score", 50.0)), contrib
     if pe <= 0:
         contrib = {"PE_TTM": f"亏损 → {vp['loss_penalty']:.0f}"}
         return clamp(vp["loss_penalty"]), contrib
@@ -207,8 +240,44 @@ def score_quality(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     return clamp(score), contrib
 
 
+def score_sentiment(row: dict, p: dict) -> tuple[float, dict[str, str]]:
+    """情绪/事件（四因子，easy-tdx 快照源）：
+
+    - 涨停基因：年内涨停天数（钟形，峰值约 6 次；过高=妖股风险衰减）
+    - 连涨动能：连涨天数（钟形，峰值 3 天；连跌自然低分）
+    - 大单动向：DDX 大单净量比（sigmoid，>0 净流入更好）
+    - 量能变化：量速（钟形，适度放量最优，爆量警惕）
+    缺失（回退源/非交易时段）按中性处理。
+    """
+    sp = p["sentiment"]
+
+    lup = _f(row.get("annual_limit_up_days"))
+    s_lup = score_bell(lup, sp["limitup_mid"], sp["limitup_width"])
+
+    streak = _f(row.get("consecutive_up_days"))
+    s_streak = score_bell(streak, sp["streak_mid"], sp["streak_width"])
+
+    ddx = _f(row.get("ddx"))
+    s_ddx = score_sigmoid(ddx, sp["ddx_mid"], sp["ddx_scale"])
+
+    vs = _f(row.get("vol_speed_pct"))
+    s_vs = score_bell(vs, sp["volspeed_mid"], sp["volspeed_width"])
+
+    score = (
+        sp["w_limitup"] * s_lup + sp["w_streak"] * s_streak
+        + sp["w_ddx"] * s_ddx + sp["w_volspeed"] * s_vs
+    )
+    contrib = {
+        "年内涨停": f"{lup:.0f}次 → {s_lup:.0f}",
+        "连涨": f"{streak:.0f}天 → {s_streak:.0f}",
+        "DDX": f"{ddx:+.3f} → {s_ddx:.0f}",
+        "量速": f"{vs:.2f} → {s_vs:.0f}",
+    }
+    return clamp(score), contrib
+
+
 def dimension_scores(row: dict, cfg) -> dict[str, tuple[float, dict[str, str]]]:
-    """返回五个维度的 (子分, 贡献说明)。"""
+    """返回六维度的 (子分, 贡献说明)。"""
     p = cfg.params
     return {
         "capital": score_capital(row, p),
@@ -216,4 +285,5 @@ def dimension_scores(row: dict, cfg) -> dict[str, tuple[float, dict[str, str]]]:
         "valuation": score_valuation(row, p),
         "liquidity": score_liquidity(row, p),
         "quality": score_quality(row, p),
+        "sentiment": score_sentiment(row, p),
     }

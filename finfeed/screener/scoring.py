@@ -14,6 +14,8 @@ import math
 import re
 from typing import Any
 
+import pandas as pd
+
 from . import factors
 from .boards import classify_board
 from .config import ScreenerConfig
@@ -30,6 +32,29 @@ def _f(x: Any) -> float:
         return 0.0
 
 
+def _is_missing(x: Any) -> bool:
+    """判断是否为缺失值（None / NaN），用于缺失三态判定（见 is_eligible）。"""
+    try:
+        return x is None or math.isnan(float(x))
+    except (TypeError, ValueError):
+        return True
+
+
+def _limit_pct(board: str, name: str) -> float:
+    """板块动态涨跌停幅度（%）。
+
+    主板 10%、科创板/创业板 20%、北交所 30%；ST/*ST/退市 5%。
+    用于入选护栏的「接近涨跌停」判定，避免统一阈值误伤双创正常涨幅标的。
+    """
+    if _ST_RE.search(name or ""):
+        return 5.0
+    if board in ("kcb", "cyb"):
+        return 20.0
+    if board == "bj":
+        return 30.0
+    return 10.0
+
+
 def build_factor_row(rec: dict) -> dict:
     """把原始记录（dict 或 DataFrame 行）规范化为含派生字段的因子行。
 
@@ -43,18 +68,26 @@ def build_factor_row(rec: dict) -> dict:
     row: dict[str, Any] = {}
     for k, v in rec.items():
         row[str(k)] = v
-    close = _f(row.get("close"))
-    pre = _f(row.get("pre_close"))
-    high = _f(row.get("high"))
-    low = _f(row.get("low"))
-    float_shares = _f(row.get("float_shares"))  # 万股
+    close_raw = row.get("close")
+    pre_raw = row.get("pre_close")
+    high_raw = row.get("high")
+    low_raw = row.get("low")
+    fs_raw = row.get("float_shares")  # 万股
 
-    row["chg_today"] = (close - pre) / pre * 100.0 if pre > 0 else 0.0
-    row["amplitude"] = (high - low) / pre * 100.0 if pre > 0 else 0.0
+    close = _f(close_raw)
+    pre = _f(pre_raw)
+    high = _f(high_raw)
+    low = _f(low_raw)
+    float_shares = _f(fs_raw)
+
+    # 派生字段保持缺失语义：pre 缺失时 chg/振幅为 NaN（不冒充 0/平盘）
+    valid = not _is_missing(pre_raw) and pre > 0
+    row["chg_today"] = (close - pre) / pre * 100.0 if valid else float("nan")
+    row["amplitude"] = (high - low) / pre * 100.0 if valid else float("nan")
     circ_cap = float_shares * 1e4 * close
-    row["circ_cap"] = circ_cap
+    row["circ_cap"] = circ_cap if not (_is_missing(fs_raw) or _is_missing(close_raw)) else float("nan")
     net5d = _f(row.get("main_net_5d_amount"))
-    row["main_net_5d_pct"] = (net5d / circ_cap * 100.0) if circ_cap > 0 else 0.0
+    row["main_net_5d_pct"] = (net5d / circ_cap * 100.0) if circ_cap > 0 else float("nan")
 
     # 技术面字段缺省
     row.setdefault("realized_vol_ann", None)
@@ -66,20 +99,33 @@ def build_factor_row(rec: dict) -> dict:
 
 
 def is_eligible(row: dict, cfg: ScreenerConfig) -> tuple[bool, str]:
-    """硬性过滤：返回 (是否通过, 未通过原因)。"""
+    """硬性过滤（缺失三态语义）：返回 (是否通过, 未通过原因)。
+
+    缺失处理原则：
+    - 价格缺失（close NaN）→ 剔除「价格缺失」（无法交易/评分）；
+    - PE 缺失 → **不**按亏损/高估值剔除（数据缺失 ≠ 亏损），估值维度按缺失给中性分；
+    - 流通市值缺失 → 不按「过小」剔除（回退源场景避免全灭），靠质量维度低分自然排序；
+    - vol/amount 缺失 → 不判停牌；明确为 0 才判停牌（无成交）。
+    """
     f = cfg.filters
     name = str(row.get("name", "") or "")
     market = int(_f(row.get("market")))
-    price = _f(row.get("close"))
-    pe = _f(row.get("pe_ttm"))
+    price_raw = row.get("close")
+    price = _f(price_raw)
+    pe_raw = row.get("pe_ttm")
+    pe = _f(pe_raw)
     turnover = _f(row.get("turnover"))
-    vol = _f(row.get("vol"))
-    amount = _f(row.get("amount"))
-    circ_cap = _f(row.get("circ_cap"))
+    vol_raw = row.get("vol")
+    amount_raw = row.get("amount")
+    circ_raw = row.get("circ_cap")
+    circ_cap = _f(circ_raw)
 
     if f.get("exclude_st") and _ST_RE.search(name):
         return False, "ST/退市"
-    if f.get("exclude_suspended") and (vol <= 0 or amount <= 0):
+    # 停牌：仅当 vol/amount 明确为 0（非缺失）时判定
+    vol_zero = not _is_missing(vol_raw) and _f(vol_raw) <= 0
+    amount_zero = not _is_missing(amount_raw) and _f(amount_raw) <= 0
+    if f.get("exclude_suspended") and (vol_zero or amount_zero):
         return False, "停牌"
     # 板块过滤：优先用 boards 白名单；无 boards 时退回 exclude_bj 兼容逻辑
     boards = f.get("boards")
@@ -89,16 +135,27 @@ def is_eligible(row: dict, cfg: ScreenerConfig) -> tuple[bool, str]:
             return False, "板块剔除"
     elif f.get("exclude_bj") and market == 2:
         return False, "北交所"
+    if _is_missing(price_raw):
+        return False, "价格缺失"
     if price < _f(f.get("min_price")) or price > _f(f.get("max_price")):
         return False, "价格越界"
-    if f.get("exclude_loss") and pe <= 0:
+    # 亏损/高估值：PE 缺失不误杀（缺失 ≠ 亏损）
+    if f.get("exclude_loss") and not _is_missing(pe_raw) and pe <= 0:
         return False, "亏损"
-    if pe > _f(f.get("pe_max")):
+    if not _is_missing(pe_raw) and pe > _f(f.get("pe_max")):
         return False, "PE过高"
-    if circ_cap < _f(f.get("min_circ_cap")):
+    # 流通市值：缺失不判「过小」
+    if not _is_missing(circ_raw) and circ_cap < _f(f.get("min_circ_cap")):
         return False, "流通市值过小"
-    if turnover < _f(f.get("min_turnover")):
+    # 换手率：缺失默认剔除（流动性无法评估）；回测等场景可设
+    # filters.turnover_missing_tolerant=True 放行缺失（验证因子预测力而非可交易性）
+    if not f.get("turnover_missing_tolerant") and _is_missing(row.get("turnover")):
         return False, "换手率过低"
+    if not _is_missing(row.get("turnover")) and turnover < _f(f.get("min_turnover")):
+        return False, "换手率过低"
+    # 可交易性护栏：成交额下限（缺失放行，回退源场景避免全灭）
+    if f.get("min_amount") and not _is_missing(amount_raw) and _f(amount_raw) < _f(f.get("min_amount")):
+        return False, "成交额过低"
     return True, ""
 
 
@@ -124,6 +181,9 @@ def _highlight_momentum(row: dict) -> list[str]:
         out.append(f"60日动量{c60:+.1f}%")
     if c5 >= c20 >= c60 >= 0:
         out.append("多周期动量多头排列")
+    c10 = _f(row.get("change_10d_pct"))
+    if not _is_missing(row.get("change_10d_pct")) and (c20 - c10) >= 5:
+        out.append(f"动量加速{(c20 - c10):+.1f}pp")
     return out
 
 
@@ -152,6 +212,21 @@ def _highlight_quality(row: dict) -> list[str]:
     if 1.0 <= amp <= 5.0:
         return [f"日振幅{amp:.1f}%平稳"]
     return []
+
+
+def _highlight_sentiment(row: dict) -> list[str]:
+    """情绪/事件亮点：涨停基因、连涨动能、大单净流入。"""
+    out = []
+    lup = _f(row.get("annual_limit_up_days"))
+    if 2 <= lup <= 12:
+        out.append(f"年内涨停{lup:.0f}次")
+    streak = _f(row.get("consecutive_up_days"))
+    if streak >= 2:
+        out.append(f"连涨{streak:.0f}天")
+    ddx = _f(row.get("ddx"))
+    if ddx >= 0.3:
+        out.append(f"大单净流入DDX={ddx:+.2f}")
+    return out
 
 
 def _make_percentile(values: list[float]):
@@ -192,6 +267,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
     valuation = blended("valuation")
     liquidity = blended("liquidity")
     quality = blended("quality")
+    sentiment = blended("sentiment") if "sentiment" in dims else 0.0
 
     total = (
         w["capital"] * capital
@@ -199,6 +275,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         + w["valuation"] * valuation
         + w["liquidity"] * liquidity
         + w["quality"] * quality
+        + w.get("sentiment", 0.0) * sentiment
     )
     total = factors.clamp(total)
 
@@ -214,7 +291,10 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         failures.append("估值偏高")
     if quality < _f(g.get("quality_min")):
         failures.append("质量/波动欠佳")
-    if abs(chg) >= _f(g.get("max_abs_chg_today")):
+    # 板块动态涨跌停护栏：接近涨跌停（≥95% 幅度）即降级，避免追高/无法成交；
+    # 按板块（主板 10% / 双创 20% / 北交所 30% / ST 5%）动态判定，替代统一阈值
+    limit = _limit_pct(str(row.get("board", "")), str(row.get("name", "")))
+    if abs(chg) >= limit * 0.95:
         failures.append("当日接近涨跌停")
 
     # 评级
@@ -254,6 +334,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         valuation_score=valuation,
         liquidity_score=liquidity,
         quality_score=quality,
+        sentiment_score=sentiment,
         total_score=total,
         tier=tier,
         eligible=True,
@@ -279,35 +360,101 @@ def score_one(row: dict, cfg: ScreenerConfig, technical_enabled: bool = False) -
 def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> list[StockScore]:
     """对 DataFrame（含原始列）做过滤+评分，返回按综合分降序的 StockScore 列表。
 
-    两遍流程：
-        Pass 1  逐行 build_factor_row + is_eligible + 绝对子分
-        Pass 2  按板块构造各维度百分位函数（截面中性化），混合后组装评级
+    向量化流程（numpy/pandas 批量，见 vector.py）：
+        Pass 0  补派生列（chg_today/amplitude/circ_cap/main_net_5d_pct），
+                与标量 build_factor_row 派生逻辑一致（缺失保持 NaN）
+        Pass 1  逐行 build_factor_row + is_eligible（硬性过滤，缺失三态语义）
+        Pass 2  向量计算五维度子分 + 板块内百分位中性化 + 动态护栏 + 评级
+        Pass 3  逐行构造 StockScore；解释性文本（rationale/highlights）仅对
+                Top RATIONALE_TOP 生成，其余留空（字符串开销集中收敛）。
+    与 factors 标量路径共用同一 config，数值行为一致。
     """
-    rows: list[tuple[dict, dict]] = []
+    from . import vector
+    from .datasource import _add_derived
+
+    df = _add_derived(df)
+
+    keep_recs: list[dict] = []
     for rec in df.to_dict("records"):
         row = build_factor_row(rec)
         ok, _reason = is_eligible(row, cfg)
         if not ok:
             continue
-        dims = factors.dimension_scores(row, cfg)
-        rows.append((row, dims))
+        keep_recs.append(rec)
+    if not keep_recs:
+        return []
 
-    # 板块内百分位（中性化）：按板块分组计算每维度相对排名
-    pct_maps: dict[str, dict[str, Any]] = {}
-    nb = _f((cfg.neutralize or {}).get("blend", 0.0))
-    if nb > 0 and rows:
-        by_board: dict[str, list[dict]] = {}
-        for row, dims in rows:
-            by_board.setdefault(row["board"], []).append(dims)
-        for board, dl in by_board.items():
-            pm: dict[str, Any] = {}
-            for d in ("capital", "momentum", "valuation", "liquidity", "quality"):
-                pm[d] = _make_percentile([x[d][0] for x in dl])
-            pct_maps[board] = pm
+    sub = pd.DataFrame(keep_recs)
+    dims = vector.dimension_scores_vec(sub, cfg)
+    assembled = vector.assemble_vec(sub, dims, cfg)
+    assembled = assembled.sort_values("total_score", ascending=False)
 
-    scores = [
-        _assemble(row, dims, pct_maps.get(row["board"], {}), cfg, technical_enabled)
-        for row, dims in rows
-    ]
-    scores.sort(key=lambda s: s.total_score, reverse=True)
+    rationale_top = 200
+    top_idx = set(assembled.index[:rationale_top])
+
+    scores: list[StockScore] = []
+    raw_records = sub.to_dict("records")
+    raw_by_pos = {i: rec for i, rec in zip(sub.index, raw_records)}
+    for i, rec in assembled.iterrows():
+        raw = raw_by_pos.get(i, {})
+        failures: list[str] = []
+        if rec["fail_capital"]:
+            failures.append("资金面不足")
+        if rec["fail_momentum"]:
+            failures.append("动量不足")
+        if rec["fail_valuation"]:
+            failures.append("估值偏高")
+        if rec["fail_quality"]:
+            failures.append("质量/波动欠佳")
+        if rec["fail_limit"]:
+            failures.append("当日接近涨跌停")
+
+        if i in top_idx:
+            row = build_factor_row(raw)
+            dims_scalar = factors.dimension_scores(row, cfg)
+            highlights = (
+                _highlight_capital(row, dims_scalar["capital"][1])
+                + _highlight_momentum(row)
+                + _highlight_valuation(row)
+                + _highlight_liquidity(row)
+                + _highlight_quality(row)
+                + _highlight_sentiment(row)
+            )
+            rationale = "；".join(highlights) if highlights else "无显著亮点"
+            if failures:
+                rationale += " ｜【降级】" + "、".join(failures)
+        else:
+            highlights = []
+            rationale = ""
+
+        rv = raw.get("realized_vol_ann")
+        dd = raw.get("drawdown_from_high")
+        scores.append(StockScore(
+            code=str(rec["code"]).zfill(6),
+            name=str(rec["name"]),
+            market=int(rec["market"]),
+            board=str(rec["board"]),
+            price=float(rec["price"]),
+            change_pct=float(rec["change_pct"]),
+            pe_ttm=float(rec["pe_ttm"]),
+            amplitude=float(rec["amplitude"]),
+            amount=float(rec["amount"]),
+            capital_score=float(rec["capital_score"]),
+            momentum_score=float(rec["momentum_score"]),
+            valuation_score=float(rec["valuation_score"]),
+            liquidity_score=float(rec["liquidity_score"]),
+            quality_score=float(rec["quality_score"]),
+            sentiment_score=float(rec["sentiment_score"]),
+            total_score=float(rec["total_score"]),
+            tier=str(rec["tier"]),
+            eligible=bool(rec["eligible"]),
+            rationale=rationale,
+            highlights=highlights,
+            guardrail_failures=failures,
+            realized_vol_ann=(float(rv)
+                              if rv is not None and math.isfinite(float(rv)) else None),
+            ma_align=bool(raw.get("ma_align", False)),
+            drawdown_from_high=(float(dd)
+                                if dd is not None and math.isfinite(float(dd)) else None),
+        ))
     return scores

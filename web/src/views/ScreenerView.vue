@@ -13,7 +13,6 @@ const store = useScreenerStore()
 // 控制参数
 const top = ref(50)
 const technical = ref(false)
-const demo = ref(false)
 const expandedRows = ref(new Set())
 const showMethodology = ref(false)
 
@@ -69,6 +68,7 @@ const headers = [
   { key: 'valuation_score', label: '估值', w: '72px', align: 'right' },
   { key: 'liquidity_score', label: '量价', w: '72px', align: 'right' },
   { key: 'quality_score', label: '质量', w: '72px', align: 'right' },
+  { key: 'sentiment_score', label: '情绪', w: '72px', align: 'right' },
 ]
 
 function toggleRow(code) {
@@ -83,7 +83,6 @@ async function onRun() {
   await store.run({
     top: top.value,
     technical: technical.value,
-    demo: demo.value,
     boards: { ...boards },
   })
 }
@@ -138,7 +137,7 @@ onBeforeUnmount(() => {
         </span>
         <div>
           <h1 class="screener-title__name">智能选股</h1>
-          <p class="screener-title__sub">五维加权评分 · 资金面 / 动量 / 估值 / 量价 / 质量</p>
+          <p class="screener-title__sub">六维加权评分 · 资金面 / 动量 / 估值 / 量价 / 质量 / 情绪</p>
         </div>
       </div>
 
@@ -158,11 +157,6 @@ onBeforeUnmount(() => {
         <label class="screener-field screener-field--switch">
           <AppSwitch v-model="technical" />
           <span class="screener-field__label">技术面富化</span>
-        </label>
-
-        <label class="screener-field screener-field--switch">
-          <AppSwitch v-model="demo" />
-          <span class="screener-field__label">演示数据</span>
         </label>
 
         <div class="screener-board-filter">
@@ -234,6 +228,20 @@ onBeforeUnmount(() => {
       <div v-if="result.snapshot_time" class="screener-stat">
         <span class="screener-stat__label">快照时间</span>
         <span class="screener-stat__value screener-stat__value--sm">{{ result.snapshot_time }}</span>
+        <span v-if="result.as_of_kind" class="screener-stat__hint">
+          {{ { realtime: '盘中实时', trade_date: '收盘定格', local: '本地兜底' }[result.as_of_kind] || result.as_of_kind }}
+        </span>
+      </div>
+      <div v-if="result.data_source" class="screener-stat">
+        <span class="screener-stat__label">数据源</span>
+        <span class="screener-stat__value screener-stat__value--sm">{{ result.data_source }}</span>
+        <span v-if="result.fallback_chain && result.fallback_chain.length > 1" class="screener-stat__hint">
+          回退链：{{ result.fallback_chain.join(' → ') }}
+        </span>
+      </div>
+      <div v-if="result.coverage !== undefined && result.coverage !== null" class="screener-stat">
+        <span class="screener-stat__label">数据覆盖率</span>
+        <span class="screener-stat__value screener-stat__value--sm">{{ (result.coverage * 100).toFixed(0) }}%</span>
       </div>
     </div>
 
@@ -261,7 +269,7 @@ onBeforeUnmount(() => {
             <div v-if="!result" class="screener-empty">
               <AppIcon name="filter" size="xl" />
               <p>点击「开始选股」运行五维加权评分模型</p>
-              <p class="screener-empty__hint">首次使用建议先开启「演示数据」验证流程</p>
+              <p class="screener-empty__hint">数据源：easy-tdx 通达信实时行情（交易时段内为盘中快照）</p>
             </div>
 
             <template v-else>
@@ -314,6 +322,7 @@ onBeforeUnmount(() => {
                         <td class="is-right">{{ fmtScore(row.valuation_score) }}</td>
                         <td class="is-right">{{ fmtScore(row.liquidity_score) }}</td>
                         <td class="is-right">{{ fmtScore(row.quality_score) }}</td>
+                        <td class="is-right">{{ fmtScore(row.sentiment_score) }}</td>
                         <td class="is-center">
                           <AppIcon
                             :name="expandedRows.has(row.code) ? 'chevron-up' : 'chevron-down'"
@@ -661,6 +670,13 @@ onBeforeUnmount(() => {
 .screener-stat__value--sm {
   font-size: var(--ff-fs-body-sm);
   font-weight: 600;
+}
+
+.screener-stat__hint {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  line-height: 1.4;
+  margin-top: 2px;
 }
 
 .screener-stat--strong .screener-stat__value {

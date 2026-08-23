@@ -37,7 +37,7 @@ def classify_board(code: str | int | None, market: int | None = None) -> str:
     """将股票归类为 main / kcb / cyb / bj。
 
     优先按代码前缀判定；代码缺失或无法判定时退回 market 字段
-    （0=上交所主板, 1=深交所主板, 2=北交所）。
+    （通达信市场约定：0=深交所, 1=上交所, 2=北交所）。
     """
     code = str(code or "").zfill(6)
     if market == 2:

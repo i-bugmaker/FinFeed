@@ -63,6 +63,7 @@ class StockScore:
     valuation_score: float = 0.0
     liquidity_score: float = 0.0
     quality_score: float = 0.0
+    sentiment_score: float = 0.0   # 情绪/事件（涨停基因/连涨/大单动向/量速）
 
     # 综合分与评级
     total_score: float = 0.0
@@ -91,7 +92,10 @@ class ScreenerResult:
 
     generated_at: str = ""
     data_source: str = ""
-    snapshot_time: str = ""          # 行情快照时间（来自 easy-tdx 服务器）
+    snapshot_time: str = ""          # 行情快照时间（真实数据时间，见 as_of_kind）
+    as_of_kind: str = "local"        # realtime=盘中实时 / trade_date=交易日收盘 / local=本地兜底
+    fallback_chain: list[str] = field(default_factory=list)  # 实际数据源降级链
+    coverage: float = 1.0            # 数据覆盖率 0~1
     universe_size: int = 0           # 全市场过滤前数量
     screened_size: int = 0           # 通过硬性过滤数量
     scored_size: int = 0             # 实际评分数量
@@ -104,6 +108,9 @@ class ScreenerResult:
             "generated_at": self.generated_at,
             "data_source": self.data_source,
             "snapshot_time": self.snapshot_time,
+            "as_of_kind": self.as_of_kind,
+            "fallback_chain": self.fallback_chain,
+            "coverage": self.coverage,
             "universe_size": self.universe_size,
             "screened_size": self.screened_size,
             "scored_size": self.scored_size,

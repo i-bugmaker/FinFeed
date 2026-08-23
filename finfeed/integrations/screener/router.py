@@ -28,7 +28,6 @@ class RunRequest(BaseModel):
     top: int = 50
     technical: bool = False
     top_tech: int = 200
-    demo: bool = False
     boards: dict | None = None        # 板块白名单：{"main":true,"kcb":true,"cyb":true,"bj":false}
 
 
@@ -46,10 +45,11 @@ def run(req: RunRequest):
             "top": req.top,
             "technical": req.technical,
             "top_tech": req.top_tech,
-            "demo": req.demo,
             "boards": req.boards,
         }
         return service.create_task(params)
+    except RuntimeError as e:  # 并发上限等业务性拒绝
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:  # noqa: BLE001
         logger.exception("create screener task failed")
         raise HTTPException(status_code=400, detail=str(e))
@@ -70,6 +70,7 @@ def task(task_id: str):
         "logs": t["logs"],
         "result": t["result"],
         "error": t["error"],
+        "error_code": t.get("error_code"),
         "started_at": t["started_at"],
         "finished_at": t["finished_at"],
     }
