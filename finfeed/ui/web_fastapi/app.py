@@ -18,27 +18,22 @@ import io
 import json
 import logging
 import os
-import threading as _threading
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs
+from typing import Dict, List, Optional
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from finfeed.application.market_service import bounded_int, first_query_value
-from finfeed.application.news_service import NewsService
+from finfeed.application.market_service import MarketService, first_query_value
 from finfeed.config.settings import DEFAULT_WEB_PORT, get_display_name
 from finfeed.config.sources import get_enabled_sources
 from finfeed.core.health import get_health_monitor
-from finfeed.ecal import api as calendar_api
 from finfeed.ecal import fetcher as calendar_fetcher
 
 # easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
@@ -46,20 +41,13 @@ from finfeed.integrations.easytdx.router import router as easytdx_router
 
 # 智能选股模块（五维加权评分）
 from finfeed.integrations.screener.router import router as screener_router
-from finfeed.llm import api as llm_api
 from finfeed.market import alerting as market_alerting
 from finfeed.market import scheduler as market_scheduler
 from finfeed.market import ws_feed as market_ws
 from finfeed.storage.database import (
     db_get_all_for_export,
-    db_get_all_stock_names,
-    db_get_date_range,
-    db_get_news_by_id,
     db_get_statistics,
-    db_mark_read,
     db_query_news,
-    db_search_news,
-    db_toggle_favorite,
     get_db,
 )
 
@@ -82,13 +70,7 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 logger = logging.getLogger("news_monitor")
 
-news_service = NewsService(
-    db_query_news,
-    legacy._build_news_response,
-    legacy._cache_get,
-    legacy._cache_set,
-    legacy.invalidate_api_cache,
-)
+
 
 app = FastAPI(
     title="FinFeed API",
@@ -419,149 +401,6 @@ def api_monitor_status():
     }
 
 
-# ----------------------------------------------------------------------
-# 快讯 / 财经文章 / 舆情 / 收藏 / 搜索 / 详情
-# ----------------------------------------------------------------------
-def _api_category_news(request: Request, category: str, display_names: list):
-    """快讯(category=flash)与财经文章(category=article)共用的分类新闻端点。
-
-    原「新闻流」(/api/news) 已拆分为本函数支撑的两个独立模块：
-      - /api/flash   ：快讯（7×24 实时短消息）
-      - /api/articles：财经文章（长文/深度内容）
-    """
-    try:
-        params = parse_query_params(qdict(request))
-        if params["source"] and params["source"] not in display_names and params["source"] != "all":
-            params["source"] = None
-        cache_key = f"{category}:{json.dumps(params, sort_keys=True, default=str)}"
-        result = news_service.list_category(
-            category=category, params=params, display_names=display_names, cache_key=cache_key
-        )
-        return json_resp(result, max_age=1)
-    except Exception as e:
-        logger.error(f"{category}API错误: {e}")
-        return json_resp({"error": str(e)}, status=500)
-
-
-def api_flash(request: Request):
-    flash_names, _ = legacy._get_flash_article_display_names()
-    return _api_category_news(request, "flash", flash_names)
-
-
-def api_articles(request: Request):
-    _, article_names = legacy._get_flash_article_display_names()
-    return _api_category_news(request, "article", article_names)
-
-
-def api_sentiment(request: Request):
-    try:
-        params = parse_query_params(qdict(request))
-        forum_raw_names, forum_raw_set, forum_display_names, forum_display_set, finance_display_names = legacy._get_cached_sources()
-        cache_key = f"sentiment:{json.dumps(params, sort_keys=True, default=str)}"
-        cached = legacy._cache_get(cache_key)
-        if cached is not None:
-            return json_resp(cached, max_age=1)
-        db_kwargs = {
-            "limit": params["page_size"],
-            "offset": params["offset"],
-            "keyword": params["keyword"],
-            "start_ts": params["start_ts"],
-            "end_ts": params["end_ts"],
-            "sentiment": params["sentiment"],
-            "is_favorite": params["is_favorite"],
-            "stock_name": params["stock"],
-            "min_importance": params["min_importance"],
-            "category": "forum",
-            "source": params["source"],
-        }
-        news_items, db_total = db_query_news(**db_kwargs)
-        result = legacy._build_news_response(news_items, db_total, params["offset"], params["page_size"], forum_display_names)
-        legacy._cache_set(cache_key, result)
-        return json_resp(result, max_age=1)
-    except Exception as e:
-        logger.error(f"舆情API错误: {e}")
-        return json_resp({"error": str(e)}, status=500)
-
-
-def api_favorites(request: Request):
-    try:
-        params = parse_query_params(qdict(request))
-        news_items, total = db_query_news(limit=params["page_size"], offset=params["offset"], keyword=params["keyword"], is_favorite=True)
-        result = legacy._build_news_response(news_items, total, params["offset"], params["page_size"], [])
-        return json_resp(result)
-    except Exception as e:
-        return json_resp({"error": str(e)}, status=500)
-
-
-def api_search(q: str = Query("", alias="q"), limit: int = Query(100)):
-    if q:
-        news = db_search_news(q, limit=limit)
-    else:
-        news = []
-    return {"keyword": q, "count": len(news), "news": [n.to_dict() for n in news]}
-
-
-def api_detail(id: int = Query(0)):
-    news = db_get_news_by_id(id)
-    if news:
-        db_mark_read(id, True)
-        return {"success": True, "news": news.to_dict()}
-    return {"success": False, "error": "News not found"}
-
-
-def api_stock_names():
-    cache_key = "stock_names_map"
-    cached = legacy._cache_get(cache_key)
-    if cached is not None:
-        return json_resp(cached, max_age=300)
-    try:
-        stock_map = db_get_all_stock_names()
-        if not stock_map:
-            from finfeed.analysis.stock_names import STOCK_NAMES
-            stock_map = dict(STOCK_NAMES)
-        result = {"stock_names": stock_map}
-        legacy._cache_set(cache_key, result)
-        return json_resp(result, max_age=300)
-    except Exception as e:
-        logger.error(f"获取股票名称映射失败: {e}")
-        return json_resp({"stock_names": {}}, status=500)
-
-
-def api_daterange():
-    min_date, max_date, dates = db_get_date_range()
-    return {"min": min_date, "max": max_date, "dates": dates}
-
-
-# ----------------------------------------------------------------------
-# 收藏 / 已读（POST）
-# ----------------------------------------------------------------------
-def api_toggle_favorite(data: dict = Body(default={})):
-    try:
-        news_id = int(data.get("id", 0))
-        if news_id <= 0:
-            return json_resp({"success": False, "error": "Invalid id"}, status=400)
-        new_state = news_service.set_favorite(news_id, db_toggle_favorite)
-        return {"success": True, "is_favorite": new_state}
-    except Exception as e:
-        return json_resp({"success": False, "error": str(e)}, status=500)
-
-
-def api_mark_read(data: dict = Body(default={})):
-    try:
-        news_id = int(data.get("id", 0))
-        is_read = bool(data.get("read", True))
-        if news_id <= 0:
-            return json_resp({"success": False, "error": "Invalid id"}, status=400)
-        news_service.mark_read(news_id, is_read, db_mark_read)
-        return {"success": True}
-    except Exception as e:
-        return json_resp({"success": False, "error": str(e)}, status=500)
-
-
-# ----------------------------------------------------------------------
-# 导出（CSV / JSON / Markdown）
-# ----------------------------------------------------------------------
-@app.get("/api/export")
 def api_export(format: str = Query("json"), start: Optional[str] = None, end: Optional[str] = None, favorites: int = Query(0)):
     fav_only = favorites == 1
     if fav_only:
@@ -605,398 +444,28 @@ def api_export(format: str = Query("json"), start: Optional[str] = None, end: Op
 
 
 # ----------------------------------------------------------------------
-# LLM / 日历 适配器（与旧 server 透传语义一致）
+# 市场行情（业务用例已下沉至 finfeed.application.market_service.MarketService）
 # ----------------------------------------------------------------------
-def api_llm_export(id: int = Query(0), fmt: str = Query("md")):
-    out = llm_api.export_report(id, fmt)
-    if not out:
-        raise HTTPException(status_code=404, detail="not found")
-    filename, body, content_type = out
-    return Response(content=body, media_type=content_type,
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
-
-async def api_llm(request: Request, rest: str):
-    path = request.url.path
-    if request.method == "GET":
-        result = llm_api.handle_get(path, parse_qs(request.url.query))
-    else:
-        body = await request.body()
-        data = json.loads(body.decode("utf-8")) if body else {}
-        result = llm_api.handle_post(path, data)
-    if result is not None:
-        return json_resp(result[1], status=result[0])
-    raise HTTPException(status_code=404, detail="not found")
-
-
-def api_calendar_export(request: Request):
-    qs = parse_qs(request.url.query)
-    try:
-        payload, content_type, filename = calendar_api.export_events(qs)
-    except Exception as e:
-        logger.error(f"日历导出失败: {e}")
-        return json_resp({"error": str(e)}, status=500)
-    return Response(content=payload, media_type=content_type,
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
-
-async def api_calendar(request: Request, rest: str):
-    path = request.url.path
-    if request.method == "GET":
-        result = calendar_api.handle_get(path, parse_qs(request.url.query))
-    else:
-        body = await request.body()
-        data = json.loads(body.decode("utf-8")) if body else {}
-        result = calendar_api.handle_post(path, data)
-    if result is not None:
-        return json_resp(result[1], status=result[0])
-    raise HTTPException(status_code=404, detail="not found")
-
-
-# ----------------------------------------------------------------------
-# 市场行情（移植自 legacy._serve_market_api / _market_dates / _serve_market_action）
-# ----------------------------------------------------------------------
-_market_tasks: Dict[str, Dict] = {}
-
-
-def _market_dates(fallback_date: str) -> dict:
-    from finfeed.storage.database import get_db
-    out: Dict[str, Any] = {"billboard": None, "limit_pool": None, "sentiment": None}
-    with get_db() as c:
-        for tbl, key, cond in (
-            ("billboard", "billboard", ""),
-            ("limit_pool", "limit_pool", ""),
-            ("market_sentiment_daily", "sentiment", "WHERE (breadth > 0 OR up_limit > 0 OR down_limit > 0)"),
-            ("money_flow", "money_flow", ""),
-            ("margin_detail", "margin_detail", ""),
-            ("daily_bar", "daily_bar", ""),
-        ):
-            try:
-                c.execute(f"SELECT MAX(trade_date) AS d FROM {tbl} {cond}")
-                row = c.fetchone()
-                out[key] = row["d"] if row and row["d"] else None
-            except Exception:
-                out[key] = None
-        for tbl, key, col in (
-            ("earnings_forecast", "forecast", "notice_date"),
-            ("ipo_calendar", "ipo", "apply_date"),
-        ):
-            try:
-                c.execute(f"SELECT MAX({col}) AS d FROM {tbl}")
-                row = c.fetchone()
-                out[key] = row["d"] if row and row["d"] else None
-            except Exception:
-                out[key] = None
-    table_dates = [d for d in (out["billboard"], out["limit_pool"]) if d]
-    if table_dates:
-        out["default_date"] = max(table_dates)
-    else:
-        sent = out.get("sentiment")
-        out["default_date"] = sent or fallback_date
-    out["has_billboard"] = out["billboard"] is not None
-    out["has_limit_pool"] = out["limit_pool"] is not None
-    return out
-
-
-def _market_action(q: Dict[str, List[str]]):
-    def gv(key, default):
-        v = q.get(key)
-        return v[0] if v else default
-    action = (gv("action", "") or "").strip().lower()
-    date = gv("date", None)
-
-    if action == "status":
-        tasks = {k: {"status": v["status"], "message": v.get("message", ""), "started": v.get("started", ""), "result": v.get("result")}
-                 for k, v in _market_tasks.items()}
-        return {"success": True, "data": tasks}
-
-    if action == "autocollect":
-        enable = gv("enable", "1") not in ("0", "false", "no")
-        if enable:
-            market_scheduler.start()
-        else:
-            market_scheduler.stop()
-        return {"success": True, "data": market_scheduler.get_state()}
-
-    svc = legacy._get_mk_service()
-    ACTION_MAP = {
-        "snapshot": ("采集行情快照", lambda: legacy._run_in_thread(lambda d=date: svc.run_daily_snapshot_sync(d))),
-        "bars": ("采集K线数据", lambda: legacy._run_in_thread(lambda d=date: svc.collect_bars_sync(d))),
-        "universe": ("初始化股票池", lambda: legacy._run_in_thread(lambda: svc.run_universe_sync())),
-        "calibrate": ("校准情绪模型", lambda: legacy._run_in_thread(lambda: legacy._mk_calibrate())),
-    }
-    if action not in ACTION_MAP:
-        return {"success": False, "error": f"未知操作: {action}，可选: {', '.join(ACTION_MAP)}"}
-    existing = _market_tasks.get(action)
-    if existing and existing["status"] == "running":
-        return {"success": False, "error": f"「{ACTION_MAP[action][0]}」正在执行中，请等待完成"}
-    label = ACTION_MAP[action][0]
-    task_id = f"{action}_{int(time.time())}"
-    _market_tasks[action] = {"status": "running", "message": f"⏳ {label} 执行中…", "started": datetime.now().strftime("%H:%M:%S"), "result": None}
-
-    def _worker():
-        try:
-            result = ACTION_MAP[action][1]()
-            _market_tasks[action]["status"] = "done"
-            _market_tasks[action]["message"] = f"✅ {label} 完成"
-            _market_tasks[action]["result"] = result
-        except Exception as exc:
-            _market_tasks[action]["status"] = "error"
-            _market_tasks[action]["message"] = f"❌ {label} 失败: {exc}"
-            _market_tasks[action]["result"] = str(exc)
-            logger.error("Market action '%s' failed: %s", action, exc, exc_info=True)
-    t = _threading.Thread(target=_worker, daemon=True, name=f"mk-{action}")
-    t.start()
-    return {"success": True, "data": {"task_id": task_id, "action": action, "label": label, "status": "running", "message": f"已启动「{label}，后台执行中"}}
-
-
-# ---------------------------------------------------------------------------
-# 指数 K 线 / 分时
-# 分时（trends）：内存 TTL 缓存（300s），日内瞬态数据不入库。
-# K 线（101 日 / 102 周 / 103 月 / 104 季 / 105 年）：本地 SQLite kline_cache
-#   优先 + TTL 定期刷新。每个 (code, klt) 在 TTL 窗口内至多触发一次东财
-#   push2his 请求，其余请求全部命中本地库，规避 600s 冷却限流。
-# ---------------------------------------------------------------------------
-_KLINE_CACHE: Dict[tuple, tuple] = {}
-_KLINE_CACHE_TTL = 300.0
-# K 线周期 -> 缓存 TTL（秒）：日K 30min / 周K 1h / 月K 3h / 季K 6h / 年K 12h
-_KLINE_TTL = {101: 1800, 102: 3600, 103: 10800, 104: 21600, 105: 43200}
-# K 线周期 -> 单次拉取窗口（根数，与前端「全部」lmt 对齐）
-_KLINE_WINDOW = {101: 1500, 102: 520, 103: 240, 104: 80, 105: 30}
-
-
-def _strip_fetched(rows_list):
-    """去掉内部字段 fetched_at，仅返回前端需要的行情字段。"""
-    return [{k: v for k, v in r.items() if k != "fetched_at"} for r in rows_list]
-
-
-def _ok(rows_list):
-    return {"rows": rows_list or [], "reason": "ok" if rows_list else "empty"}
-
-
-def _last_n(rows_list, limit):
-    """取最近 limit 根（保持升序）；limit 为空则原样返回。"""
-    if not rows_list or not limit:
-        return rows_list or []
-    return rows_list[-int(limit):]
-
-
-async def _get_chart_data(code, chart_type, klt, ndays, lmt, start, end):
-    """返回 {rows: [...], reason: 'ok'|'empty'|'rate_limited'|'error', error?: str}。
-
-    分时走内存 TTL 缓存；K 线走本地 SQLite kline_cache：
-    - TTL 内新鲜 → 直接读库返回（不触网）；
-    - 过期/无缓存 → 若处于限流冷却则不触网，回退旧缓存；
-    - 否则发一次东财请求（取「全部」窗口）写入缓存后返回。
-    """
-    from finfeed.market import kline as _mk_kline
-    from finfeed.market import store as _mk_store
-    from finfeed.market.client import RateLimited, cooldown_remaining
-
-    now = time.time()
-
-    # ---- 分时：内存 TTL 缓存（与旧行为一致）----
-    if chart_type == "trends":
-        key = (code, chart_type, klt, ndays, lmt, start, end)
-        cached = _KLINE_CACHE.get(key)
-        if cached and (now - cached[0]) < _KLINE_CACHE_TTL:
-            return cached[1]
-        try:
-            result = _ok(await _mk_kline.fetch_trends(code, ndays=ndays))
-        except RateLimited:
-            logger.warning("分时获取被限流：%s", code)
-            return {"rows": [], "reason": "rate_limited"}
-        except Exception as e:  # noqa: BLE001
-            logger.warning("分时获取失败 %s: %s", code, e)
-            return {"rows": [], "reason": "error", "error": str(e)[:200]}
-        if result["reason"] == "ok":
-            _KLINE_CACHE[key] = (now, result)
-        return result
-
-    # ---- K 线：本地优先 + TTL 刷新 ----
-    # 日线且有起止区间时优先读 daily_bar（盘后快照已入库的标的）
-    if klt == 101 and start and end:
-        db_rows = _mk_store.get_daily_bar(code, start, end)
-        if db_rows:
-            return _ok(db_rows)
-
-    cached_rows = _mk_store.get_cached_kline(code, klt, start, end)
-    if cached_rows:
-        newest_fetched = max(r["fetched_at"] for r in cached_rows)
-        try:
-            fetched_dt = datetime.strptime(newest_fetched, "%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            fetched_dt = None
-        ttl = _KLINE_TTL.get(klt, 1800)
-        if fetched_dt is not None and (now_bj() - fetched_dt).total_seconds() < ttl:
-            return _ok(_strip_fetched(_last_n(cached_rows, lmt)))
-
-    # 过期 / 无缓存：限流冷却期内不触网，回退旧缓存（旧数据优于空/限流提示）
-    if cooldown_remaining("em_push2his") > 0:
-        if cached_rows:
-            return _ok(_strip_fetched(_last_n(cached_rows, lmt)))
-        return {"rows": [], "reason": "rate_limited"}
-
-    try:
-        first_date = cached_rows[0]["trade_date"] if cached_rows else None
-        if start and first_date and start < first_date:
-            # 自定义历史区间早于缓存最早日期：区间模式补拉并合并进缓存
-            bars = await _mk_kline.fetch_daily_bar(
-                code, end_date=end or "20500101", beg=start, klt=klt
-            )
-        else:
-            # 常规刷新：一次取「全部」窗口，覆盖所有快捷区间
-            bars = await _mk_kline.fetch_daily_bar(
-                code, end_date=end, limit=_KLINE_WINDOW.get(klt, 1500), klt=klt
-            )
-        if bars:
-            _mk_store.upsert_kline_cache([dict(b, code=code) for b in bars], klt)
-        rows = _mk_store.get_cached_kline(code, klt, start, end)
-        return _ok(_strip_fetched(_last_n(rows, lmt)))
-    except RateLimited:
-        logger.warning("K线获取被限流：%s", code)
-        if cached_rows:
-            return _ok(_strip_fetched(_last_n(cached_rows, lmt)))
-        return {"rows": [], "reason": "rate_limited"}
-    except Exception as e:  # noqa: BLE001
-        logger.warning("K线获取失败 %s: %s", code, e)
-        rows = _last_n(cached_rows, lmt) if cached_rows else []
-        return {"rows": _strip_fetched(rows), "reason": "error", "error": str(e)[:200]}
+market_service = MarketService()
 
 
 async def api_market(rest: str, request: Request):
+    """市场行情传输层薄壳：仅做参数规整与响应包装，业务全部委托应用层。"""
     q = qdict(request)
     date = first_query_value(q, "date") or now_bj().strftime("%Y-%m-%d")
     sub = rest.strip("/") or "sentiment"
 
     if sub == "action":
-        return _market_action(q)
-
-    def _int(key: str, default: int, cap: int = 500) -> int:
-        return bounded_int(q, key, default, maximum=cap)
-
+        return market_service.run_action(q)
     try:
-        from finfeed.market import alerts as mk_alerts
-        from finfeed.market import store as mk_store
-        from finfeed.storage import sentiment_store as ss
-
-        if sub == "sentiment":
-            data = ss.get_market_sentiment(date) or {}
-        elif sub == "dates":
-            data = _market_dates(date)
-        elif sub == "limitup":
-            data = mk_store.get_limit_pool(date, "up")
-        elif sub == "limitdown":
-            data = mk_store.get_limit_pool(date, "down")
-        elif sub == "limitbroken":
-            data = mk_store.get_limit_pool(date, "broken")
-        elif sub == "billboard":
-            data = mk_store.get_billboard(date)
-        elif sub == "alerts":
-            data = mk_alerts.regime_summary(date)
-        elif sub == "moneyflow":
-            d = mk_store.latest_date("money_flow") or date
-            data = {
-                "trade_date": d,
-                "summary": mk_store.get_money_flow_summary(d),
-                "inflow": mk_store.get_money_flow(d, "in", first_query_value(q, "order", "main_net"), bounded_int(q, "limit", 40)),
-                "outflow": mk_store.get_money_flow(d, "out", first_query_value(q, "order", "main_net"), bounded_int(q, "limit", 40)),
-            }
-        elif sub == "margin":
-            d = mk_store.latest_date("margin_detail") or date
-            order = q.get("order", ["fin_net"])[0]
-            data = {
-                "trade_date": d,
-                "summary": mk_store.get_margin_summary(d),
-                "top": mk_store.get_margin_rank(d, order, True, _int("limit", 40)),
-                "bottom": mk_store.get_margin_rank(d, order, False, _int("limit", 40)),
-            }
-        elif sub == "forecast":
-            ftype = (q.get("type", [""])[0] or "").strip() or None
-            data = {
-                "stats": mk_store.get_forecast_type_stats(),
-                "rows": mk_store.get_earnings_forecast(ftype=ftype, order_by=q.get("order", ["increase_high"])[0], limit=_int("limit", 80)),
-            }
-        elif sub == "ipo":
-            data = mk_store.get_ipo_calendar(q.get("start", [None])[0], q.get("end", [None])[0], _int("limit", 80))
-        elif sub == "sectors":
-            d = mk_store.latest_date("money_flow") or date
-            stype = q.get("stype", ["concept"])[0]
-            data = {
-                "trade_date": d,
-                "sector_type": stype,
-                "rows": mk_store.get_sector_heat(d, stype, min_members=_int("min_members", 5, 100), order_by=q.get("order", ["avg_pct"])[0], limit=_int("limit", 40)),
-            }
-        elif sub == "sectorstocks":
-            d = mk_store.latest_date("money_flow") or date
-            data = mk_store.get_sector_stocks(q.get("sector", [""])[0], d, _int("limit", 60))
-        elif sub == "profile":
-            code = q.get("code", [""])[0]
-            data = mk_store.get_stock_profile(code, _int("bars", 120))
-        elif sub == "search":
-            data = mk_store.search_stock(q.get("kw", [""])[0], _int("limit", 20, 50))
-        elif sub == "autostatus":
-            data = market_scheduler.get_state()
-        elif sub == "alertlog":
-            data = {
-                "recent": market_alerting.get_recent(limit=_int("limit", 50)),
-                "stats": market_alerting.get_stats(),
-            }
-        elif sub == "hotrank":
-            from finfeed.market.ths_hotrank import fetch_hotrank
-            category = (q.get("category", ["stock"])[0] or "stock").strip()
-            list_type = (q.get("list", ["normal"])[0] or "normal").strip()
-            period = (q.get("period", ["hour"])[0] or "hour").strip()
-            date = (q.get("date", [None])[0]) or None
-            data = await fetch_hotrank(
-                list_type, period, _int("limit", 100, 200), date, category=category
-            )
-        elif sub == "hotrank_dates":
-            from finfeed.market import store as mk_store
-            data = mk_store.get_ths_hotrank_dates()
-        elif sub == "thslimitup":
-            from finfeed.market import ths_limitup
-            section = (q.get("section", ["all"])[0] or "all").strip()
-            date = (q.get("date", [None])[0]) or None
-            if section == "all":
-                data = await ths_limitup.fetch_limitup_focus(date, sections="all")
-            elif section == "intensity":
-                data = await ths_limitup.fetch_limit_up_intensity(date)
-            elif section == "ladder":
-                data = await ths_limitup.fetch_board_ladder(date)
-            elif section == "wind":
-                data = await ths_limitup.fetch_strong_wind(date)
-            elif section == "sentiment":
-                data = await ths_limitup.fetch_market_sentiment(date)
-            else:
-                data = {"error": f"unknown limitup section: {section}"}
-        elif sub == "thslimitup_dates":
-            from finfeed.market import store as mk_store
-            data = mk_store.get_ths_limitup_dates()
-        elif sub == "overview":
-            data = mk_store.get_fact_overview()
-        elif sub == "kline":
-            code = q.get("code", [""])[0]
-            if not code:
-                data = []
-            else:
-                chart_type = (q.get("type", ["kline"])[0] or "kline").strip()
-                klt = _int("klt", 101, 105)
-                ndays = _int("ndays", 1, 10)
-                lmt = _int("lmt", 250, 2000)
-                start = q.get("start", [None])[0]
-                end = q.get("end", [None])[0]
-                data = await _get_chart_data(code, chart_type, klt, ndays, lmt, start, end)
-        else:
-            data = {"error": f"unknown market action: {sub}"}
+        data = await market_service.dispatch(sub, q, date)
         return {"success": True, "data": data}
     except Exception as e:
         return json_resp({"success": False, "error": str(e)[:200]}, status=500)
 
 
-# The market router owns HTTP registration. Dispatch remains temporarily in
-# this composition module while individual market use cases are extracted.
 app.include_router(create_market_router(api_market))
+
 
 
 async def _startup(app: FastAPI) -> None:
