@@ -196,7 +196,37 @@
   .col-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; }
 
   /* —— 分时卡片 —— */
-  .card { flex: none; height: 246px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+  .card { flex: none; height: 246px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); user-select: none; -webkit-user-select: none; }
+
+  /* 网格平铺（A）：响应式多列，一屏看多张 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .grid .card { height: 216px; }
+
+  /* 拖拽视觉反馈：可拖拽卡片给抓取光标，拖动中的卡片变幽灵并加投影，原位留占位卡 */
+  .grid .card, .rows .card { cursor: grab; }
+  .card.is-ghost { box-shadow: 0 18px 44px rgba(16,24,40,.24); outline: none; cursor: grabbing; }
+  .card.drag-ph { background: rgba(91,140,255,.07) !important; border: 1px dashed #5b8cff !important; box-shadow: none !important; cursor: grabbing !important; }
+
+  /* 一览（C）：全部标的以迷你缩略卡片平铺，点击放大 */
+  .grid-o { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tile { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); text-align: left; transition: border-color .15s; user-select: none; -webkit-user-select: none; }
+  .tile:hover { border-color: #b9cbff; }
+  .tile-h { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tile-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text-1); font-size: 13px; }
+  .tile-code { font-family: var(--font-num); font-size: 11px; color: var(--text-3); }
+  .tile-spark { display: block; width: 100%; height: 44px; }
+  .tile-f { font-family: var(--font-num); font-size: 12px; font-weight: 600; }
+
+  /* 一览「放大」焦点弹层 */
+  .focus { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; }
+  .focus.is-hide { display: none; }
+  .focus-mask { position: absolute; inset: 0; background: rgba(22,28,40,.42); }
+  .focus-card { position: relative; width: min(880px, 92vw); height: min(72vh, 580px); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 50px rgba(16,24,40,.25); display: flex; flex-direction: column; overflow: hidden; }
+  .focus-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+  .focus-head .smic__name { font-size: 15px; font-weight: 700; }
+  .focus-sp { flex: 1; }
+  .focus-body { flex: 1; min-height: 0; padding: 8px; }
+  #focusChart { width: 100%; height: 100%; }
   .smic { display: flex; flex-direction: column; gap: 4px; width: 100%; height: 100%; min-height: 0; }
   .smic__head { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; min-height: 24px; }
   .smic__badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff; }
@@ -236,9 +266,11 @@
 
     <div class="sep"></div>
 
-    <span class="tool-caption">排列</span>
+    <span class="tool-caption">排布</span>
     <div class="seg" id="segLayout" title="多标的分时图排布方式">
       <button data-v="rows" class="is-on">纵向</button>
+      <button data-v="grid">网格</button>
+      <button data-v="overview">一览</button>
       <button data-v="columns">左右分栏</button>
     </div>
 
@@ -343,6 +375,23 @@
 
 <div class="toast" id="toast"><span class="t-tag">提示</span><span class="t-msg"></span></div>
 
+<!-- 一览「放大」焦点弹层 -->
+<div class="focus is-hide" id="focusOverlay">
+  <div class="focus-mask" data-focus-close></div>
+  <div class="focus-card">
+    <div class="focus-head">
+      <span class="smic__badge" id="focusBadge">板</span>
+      <span class="smic__name" id="focusName"></span>
+      <span class="smic__code" id="focusCode"></span>
+      <span class="focus-sp"></span>
+      <span class="smic__price" id="focusPrice"></span>
+      <span class="smic__pct" id="focusPct"></span>
+      <button type="button" class="smic__close" data-focus-close title="关闭">×</button>
+    </div>
+    <div class="focus-body"><div id="focusChart"></div></div>
+  </div>
+</div>
+
 <script>
 "use strict";
 /* ====================================================================
@@ -362,6 +411,7 @@ const API = {
   sparklines: API_BASE + "/sparklines",
 };
 const STORE_KEY = "sectorMinute_selected";
+const UI_STORE_KEY = "sectorMinute_ui";
 const BOARD_TYPES = [["hy","行业"],["hy2","二级"],["gn","概念"],["fg","风格"],["dq","地区"]];
 
 /* ---------------- 状态 ---------------- */
@@ -386,6 +436,7 @@ const state = {
 };
 let charts = {};          // ECharts 实例 key 索引
 let hoverSelf = new Set(); // 联动回环保护
+let dragActive = false;    // 拖拽进行中标志：抑制轮询重建，避免把拖到的顺序弹回原位
 let pollTimer = null, catchUpTimer = null, searchTimer = null, stockSeq = 0;
 let sparkQueue = [], sparkQueued = new Set(), sparkBusy = 0;  // 迷你分时简图懒加载
 let mainSeq = 0;           // 图表 DOM id 全局自增（增量增删时保证 id 唯一）
@@ -467,6 +518,8 @@ async function loadHealth() {
 }
 
 async function loadCharts() {
+  // 拖拽进行中：跳过本轮，避免 buildMain 用旧顺序重建 DOM 把卡片弹回原位
+  if (dragActive) return;
   try {
     const data = await (await fetch(API.charts)).json();
     const items = data.items || [];
@@ -601,6 +654,15 @@ function clearAll() {
 }
 
 function persist() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state.selected)); } catch (e) {} }
+// 持久化排布/纵轴/排序/刷新间隔等 UI 状态，刷新后原样恢复
+function persistUI() {
+  try {
+    localStorage.setItem(UI_STORE_KEY, JSON.stringify({
+      layout: state.layout, normalized: state.normalized,
+      sortByPct: state.sortByPct, refreshInterval: state.refreshInterval,
+    }));
+  } catch (e) {}
+}
 
 /* ---------------- 渲染：标的池 ---------------- */
 function visibleBoards() {
@@ -846,6 +908,40 @@ function makeCard(c, idx) {
   </div></div>`;
 }
 
+// 一览（C）缩略卡片：标题 + 迷你分时线 + 涨跌幅
+function makeTile(c) {
+  return `<button type="button" class="tile" data-key="${keyOf(c)}">
+    <span class="tile-h">
+      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : "is-board"}">${c.kind === "stock" ? "股" : "板"}</span>
+      <span class="tile-name">${esc(c.name || c.code)}</span>
+      <span class="tile-code">${esc(c.code)}</span>
+    </span>
+    <svg class="tile-spark" viewBox="0 0 140 44" preserveAspectRatio="none"></svg>
+    <span class="tile-f ${numCls(c.change_pct)}">${c.change_pct > 1e-6 ? "+" : ""}${fmtPct(c.change_pct)}　${fmtNum(c.close)}</span>
+  </button>`;
+}
+
+// 用分时真实点绘制一览缩略线（自身数据，不再额外触网）
+function drawTileSpark(svg, c) {
+  const pts = c && c.points && c.points.length ? c.points : null;
+  svg.innerHTML = "";
+  if (!pts) return;
+  const pre = c.pre_close || 0;
+  let vals = pts.map((p) => (pre > 0 ? ((p.price - pre) / pre) * 100 : p.price));
+  let lo, hi;
+  if (pre > 0) { const m = Math.max(Math.max(...vals.map(Math.abs)), 0.5); lo = -m; hi = m; }
+  else { lo = Math.min(...vals); hi = Math.max(...vals); if (hi - lo < 1e-9) { hi = lo + 1; lo -= 1; } }
+  const W = 140, H = 44, pad = 2;
+  const x = (i) => pad + (i / Math.max(vals.length - 1, 1)) * (W - 2 * pad);
+  const y = (v) => pad + (1 - (v - lo) / (hi - lo)) * (H - 2 * pad);
+  const line = vals.map((v, i) => (i ? "L" : "M") + x(i).toFixed(2) + " " + y(v).toFixed(2)).join(" ");
+  const color = (c.change_pct || 0) > 0 ? "#e5484d" : "#18a058";
+  let s = "";
+  if (pre > 0) s += `<line x1="${pad}" y1="${y(0)}" x2="${W - pad}" y2="${y(0)}" stroke="#c3ccd8" stroke-width="1" stroke-dasharray="2 2"/>`;
+  s += `<path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  svg.innerHTML = s;
+}
+
 function buildMain() {
   // 清空旧实例与 DOM
   Object.keys(charts).forEach((k) => { charts[k].dispose(); });
@@ -856,7 +952,13 @@ function buildMain() {
 
   if (!state.selected.length) return;
 
-  const byKey = new Map(state.chartsData.map((c) => [keyOf(c), c]));
+  // 一览（C）：全部标的以缩略卡平铺，点击放大
+  if (state.layout === "overview") {
+    const byKey = new Map(state.chartsData.map((c) => [keyOf(c), c]));
+    area.innerHTML = `<div class="grid-o">${state.chartsData.map((c) => makeTile(c)).join("")}</div>`;
+    area.querySelectorAll(".tile").forEach((t) => drawTileSpark(t.querySelector(".tile-spark"), byKey.get(t.dataset.key)));
+    return;
+  }
 
   let html = "";
   if (state.layout === "columns") {
@@ -870,6 +972,8 @@ function buildMain() {
         stocks.length ? stocks.map((c, i) => makeCard(c, boards.length + i)).join("") : '<div class="col-empty">未选择个股</div>'
       }</div></div>
     </div>`;
+  } else if (state.layout === "grid") {
+    html = `<div class="grid">${state.chartsData.map((c, i) => makeCard(c, i)).join("")}</div>`;
   } else {
     html = `<div class="rows">${state.chartsData.map((c, i) => makeCard(c, i)).join("")}</div>`;
   }
@@ -1048,6 +1152,184 @@ function chartAt(idx) {
   return state.chartsData[idx];
 }
 
+/* ---------------- 一览「放大」焦点弹层 ---------------- */
+let focusIns = null;
+function openFocus(k) {
+  const c = state.chartsData.find((x) => keyOf(x) === k);
+  if (!c) return;
+  $("#focusBadge").className = "smic__badge " + (c.kind === "stock" ? "is-stock" : "is-board");
+  $("#focusBadge").textContent = c.kind === "stock" ? "股" : "板";
+  $("#focusName").textContent = c.name || c.code;
+  $("#focusCode").textContent = c.code;
+  $("#focusPrice").className = "smic__price " + numCls(c.change_pct);
+  $("#focusPrice").textContent = fmtNum(c.close);
+  $("#focusPct").className = "smic__pct " + numCls(c.change_pct);
+  $("#focusPct").textContent = fmtPct(c.change_pct);
+  $("#focusOverlay").classList.remove("is-hide");
+  if (focusIns) focusIns.dispose();
+  focusIns = echarts.init($("#focusChart"), null, { renderer: "canvas" });
+  focusIns.setOption(buildChartOption(c), true);
+  setTimeout(() => focusIns && focusIns.resize(), 10);
+}
+function closeFocus() {
+  if (focusIns) { focusIns.dispose(); focusIns = null; }
+  $("#focusOverlay").classList.add("is-hide");
+}
+
+/* ---------------- 纵向布局：拖拽重排 ---------------- */
+// 依当前 DOM 顺序同步选中列表顺序并持久化（图表实例随卡移动不受影响）
+function persistDomOrder() {
+  if (state.sortByPct) return;
+  const cards = Array.from($("#mainArea").querySelectorAll(".card[data-key]"));
+  if (!cards.length) return;
+  const byKey = new Map(state.selected.map((s) => [keyOf(s), s]));
+  state.selected = cards.map((c) => byKey.get(c.dataset.key)).filter(Boolean);
+  persist();
+  applySelection();
+}
+function bindDragReorder() {
+  const area = $("#mainArea");
+  if (!area) return;
+  let st = null;
+
+  // 当前排布的卡片容器：纵向 .rows / 网格 .grid
+  function container() {
+    if (state.layout === "columns") return null;
+    return area.querySelector(state.layout === "rows" ? ".rows" : ".grid");
+  }
+  // 真实卡片（排除占位卡）
+  function realCards(c) {
+    return Array.from((c || container()).children).filter(
+      (n) => n.classList.contains("card") && !n.classList.contains("drag-ph")
+    );
+  }
+  // 把 node 插到第 idx 张真卡之前（idx 末尾则 append）
+  function insertAt(c, cards, node, idx) {
+    const ref = cards[idx];
+    if (ref && ref.parentElement === c) c.insertBefore(node, ref);
+    else c.appendChild(node);
+  }
+
+  // 落位飞入：把(仍是浮动的)clone 从当前视口位置动画滑回其最终网格槽位
+  const DUR = 200; // ms
+  function settleToSlot(clone, fromRect) {
+    requestAnimationFrame(() => {
+      const end = clone.getBoundingClientRect();
+      const dx = fromRect.left - end.left, dy = fromRect.top - end.top;
+      clone.style.transition = "none";
+      clone.style.transform = `translate(${dx}px,${dy}px)`;
+      requestAnimationFrame(() => {
+        clone.style.transition = `transform ${DUR}ms ease`;
+        clone.style.transform = "";
+        setTimeout(() => { clone.style.transition = ""; }, DUR + 40);
+      });
+    });
+  }
+
+  area.addEventListener("pointerdown", (e) => {
+    if (state.layout !== "rows" && state.layout !== "grid") return;
+    if (state.sortByPct) return; // 涨幅排序会覆盖手动顺序，暂不允许拖拽
+    if (e.target.closest("button")) return;
+    const head = e.target.closest(".smic__head");
+    const card = head && head.closest(".card");
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    st = {
+      card, c: container(), rect: r,
+      dx: e.clientX - r.left, dy: e.clientY - r.top,
+      clone: null, ph: null, moving: false, startX: e.clientX, startY: e.clientY, li: -1,
+    };
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if (!st) return;
+
+    // —— 从未拖动 → 开始拖动：原卡变“幽灵”，原位树占位卡 ——
+    if (!st.moving) {
+      if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) < 5) return; // 移动阈值（X/Y 任一方向），避免误触发
+      st.moving = true;
+      dragActive = true;   // 拖拽开始：阻止轮询 rebuild 弹回原位
+      const { card, c, rect } = st;
+      const ph = document.createElement("div");
+      ph.className = "card drag-ph";
+      ph.style.width = rect.width + "px";
+      ph.style.height = rect.height + "px";
+      card.after(ph);                 // 原位占位，占位卡保留槽位，其他卡不跳变
+      st.ph = ph;
+      card.classList.add("is-ghost");
+      card.style.position = "fixed";
+      card.style.left = "0px";         // 固定到视口原点，位置全靠下面的 translate 表达
+      card.style.top = "0px";
+      card.style.width = rect.width + "px";
+      card.style.height = rect.height + "px";
+      card.style.zIndex = "40";
+      card.style.transformOrigin = "center";
+      card.style.pointerEvents = "none";
+      document.body.appendChild(card); // 移到 body，避免容器内布局/滚动影响
+      st.clone = card;
+      // 记录幽灵当前槽位（前方真卡张数）作重叠判向的基准。
+      // 必须在 card 移出容器之后统计，否则被拖的卡自己会被算入，导致初始索引偏大 1。
+      let liCnt = 0;
+      realCards(st.c).forEach((k) => {
+        if (k.compareDocumentPosition(ph) & Node.DOCUMENT_POSITION_FOLLOWING) liCnt++;
+      });
+      st.li = liCnt;
+      document.body.style.userSelect = "none";
+    }
+
+    // —— 幽灵跟随指针（保持按下时的抓取偏移）——
+    const nx = e.clientX - st.dx, ny = e.clientY - st.dy;
+    st.clone.style.transform = `translate3d(${nx}px, ${ny}px, 0) scale(1.02)`;
+
+    // —— 让位：光标越过卡片「前半区」即让位。纵向按上半区，网格按二维（先比行、行内比列）——
+    const gcY = e.clientY, gcX = e.clientX;
+    const cards = realCards(st.c);
+    const isGrid = state.layout === "grid";
+    let ti = 0;
+    for (let i = 0; i < cards.length; i++) {
+      const b = cards[i].getBoundingClientRect();
+      let before;
+      if (isGrid) {
+        // 二维网格：光标在更高行（整行 top 之上），或同一行且水平在卡片中心左侧
+        before = gcY < b.top || (gcY < b.bottom && gcX < b.left + b.width / 2);
+      } else {
+        // 纵向单列：光标在卡片垂直中心上方
+        before = gcY < b.top + b.height / 2;
+      }
+      if (before) break;
+      ti = i + 1;
+    }
+    if (ti !== st.li) {
+      st.li = ti;
+      insertAt(st.c, cards, st.ph, ti);
+    }
+  });
+
+  window.addEventListener("pointerup", () => {
+    if (!st) return;
+    if (st.moving && st.clone && st.ph) {
+      const fromRect = st.clone.getBoundingClientRect();
+      st.ph.replaceWith(st.clone);    // 先落回占位槽位
+      st.clone.classList.remove("is-ghost");
+      st.clone.style.position = "";
+      st.clone.style.left = "";
+      st.clone.style.top = "";
+      st.clone.style.width = "";
+      st.clone.style.height = "";
+      st.clone.style.zIndex = "";
+      st.clone.style.pointerEvents = "";
+      st.clone.style.transformOrigin = "";
+      st.clone.style.transform = "";  // 清掉跟随偏移，让 getBoundingClientRect 反映真实槽位
+      settleToSlot(st.clone, fromRect); // 飞入动画
+      st.clone = null; st.ph = null;
+      persistDomOrder();
+    }
+    dragActive = false;   // 拖拽结束，恢复轮询
+    document.body.style.userSelect = "";
+    st = null;
+  });
+}
+
 /* ---------------- 事件绑定 ---------------- */
 function bindSeg(id, onPick) {
   const seg = $(id);
@@ -1061,9 +1343,9 @@ function bindSeg(id, onPick) {
 const $$_seg = $$; // 兼容局部查询别名
 function segButtons(seg) { return Array.from(seg.querySelectorAll("button")); }
 
-bindSeg("#segLayout", (v) => { state.layout = v; buildMain(); });
-bindSeg("#segAxis", (v) => { state.normalized = v === "1"; updateCharts(); });
-bindSeg("#segInterval", (v) => { state.refreshInterval = Number(v); startPolling(); });
+bindSeg("#segLayout", (v) => { state.layout = v; persistUI(); buildMain(); });
+bindSeg("#segAxis", (v) => { state.normalized = v === "1"; persistUI(); updateCharts(); });
+bindSeg("#segInterval", (v) => { state.refreshInterval = Number(v); persistUI(); startPolling(); });
 
 // 个股市场标签（风格与板块类型标签一致）
 $("#btnsMarket").addEventListener("click", (e) => {
@@ -1077,6 +1359,7 @@ $("#btnsMarket").addEventListener("click", (e) => {
 $("#btnSort").addEventListener("click", () => {
   state.sortByPct = !state.sortByPct;
   $("#btnSort").classList.toggle("is-on", state.sortByPct);
+  persistUI();
   loadCharts();
 });
 $("#btnRefresh").addEventListener("click", manualRefresh);
@@ -1164,6 +1447,17 @@ document.addEventListener("click", (e) => {
   if (rm) removeTarget(rm.dataset.remove);
 });
 
+// 一览缩略卡：点击放大
+$("#mainArea").addEventListener("click", (e) => {
+  const tile = e.target.closest(".tile");
+  if (tile) openFocus(tile.dataset.key);
+});
+// 焦点弹层：点遮罩或关闭按钮收起，Esc 亦可
+$("#focusOverlay").addEventListener("click", (e) => {
+  if (e.target.closest("[data-focus-close]") || e.target.classList.contains("focus-mask")) closeFocus();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFocus(); });
+
 /* ---------------- 轮询 ---------------- */
 function startPolling() {
   stopPolling();
@@ -1177,6 +1471,22 @@ async function init() {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
     if (Array.isArray(saved)) state.selected = saved.filter((s) => s && s.code);
   } catch (e) {}
+  // 恢复排布样式 / 纵轴 / 涨幅排序 / 自动刷新间隔（保存用户上次选择，避免每次刷新重选）
+  try {
+    const ui = JSON.parse(localStorage.getItem(UI_STORE_KEY) || "{}");
+    if (ui && typeof ui === "object") {
+      if (["rows", "grid", "overview", "columns"].includes(ui.layout)) state.layout = ui.layout;
+      if (typeof ui.normalized === "boolean") state.normalized = ui.normalized;
+      if (typeof ui.sortByPct === "boolean") state.sortByPct = ui.sortByPct;
+      if ([15, 30, 60].includes(ui.refreshInterval)) state.refreshInterval = ui.refreshInterval;
+    }
+  } catch (e) {}
+  // 同步工具栏按钮高亮到恢复后的 UI 状态
+  const syncSeg = (id, val) => $$("#" + id + " button").forEach((x) => x.classList.toggle("is-on", x.dataset.v === String(val)));
+  syncSeg("segLayout", state.layout);
+  syncSeg("segAxis", state.normalized ? "1" : "0");
+  syncSeg("segInterval", String(state.refreshInterval));
+  $("#btnSort").classList.toggle("is-on", state.sortByPct);
   renderSelect();
   // 首屏不等待个股全量池：后台并行预加载，保证搜索时板块 + 个股结果即时命中
   loadStocks();
@@ -1187,7 +1497,11 @@ async function init() {
   startPolling();
   // 模块就绪后启用手动刷新按钮（此前保持 disabled，避免"看着像可点却无反应"）
   $("#btnRefresh").disabled = false;
-  window.addEventListener("resize", () => Object.values(charts).forEach((c) => c.resize()));
+  bindDragReorder();
+  window.addEventListener("resize", () => {
+    Object.values(charts).forEach((c) => c.resize());
+    if (focusIns) focusIns.resize();
+  });
 }
 init();
 </script>
