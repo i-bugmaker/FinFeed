@@ -18,6 +18,25 @@ http.interceptors.response.use(
   },
 )
 
+// GET 自动重试：本机安全软件/代理可能对本地回环连接随机 RST（ConnectionReset），
+// 网络层错误（无 HTTP 响应）时按 0.6s/1.2s 重试 2 次，吸收偶发失败。
+// 仅对 GET 生效——POST 可能非幂等（交易/删除类），不自动重试。
+http.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    const cfg = err.config
+    if (!cfg || cfg.method !== 'get') return Promise.reject(err)
+    const retry = (cfg._retryCount || 0) + 1
+    // 无 HTTP 响应（网络层错误：RST / ECONNRESET / socket hang up / Network Error）才重试
+    const isNetworkErr = !err.response && (err.code === 'ECONNABORTED' || /network|socket|reset/i.test(err.message || ''))
+    if (isNetworkErr && retry <= 2) {
+      cfg._retryCount = retry
+      return new Promise((resolve) => setTimeout(resolve, 600 * retry)).then(() => http(cfg))
+    }
+    return Promise.reject(err)
+  },
+)
+
 // LLM 推理（chat / analyze / report / provider test）经常超过 20s，
 // 单独走长超时实例，避免「timeout of 20000ms exceeded」误导为服务端故障。
 const httpLlm = axios.create({

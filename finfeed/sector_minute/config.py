@@ -44,6 +44,19 @@ SLEEP_BETWEEN_REQUESTS: float = float(os.environ.get("SECTOR_MIN_SLEEP", "0.3"))
 MAX_LAZY_SPARKS: int = int(os.environ.get("SECTOR_MIN_MAX_LAZY_SPARKS", "12"))
 
 # --------------------------------------------------------------------------- #
+# 历史日期分时（日期切换组件）
+# --------------------------------------------------------------------------- #
+# 内存中最多保留的历史日期分时缓存天数（LRU 淘汰，超出后丢弃最旧日期）。
+MAX_HIST_DATES: int = int(os.environ.get("SECTOR_MIN_MAX_HIST_DATES", "10"))
+
+# 历史日期整批抓取时相邻两个标的的请求间隔（秒）。
+# 与实时后台刷新错峰 0.3s 不同：日期切换是用户主动操作，取小间隔换取更快出图。
+HIST_FETCH_SLEEP: float = float(os.environ.get("SECTOR_MIN_HIST_SLEEP", "0.1"))
+
+# 历史分时可回溯的最大天数（前端日期选择器的下限；超出时后端返回空数据）。
+HIST_MAX_LOOKBACK_DAYS: int = int(os.environ.get("SECTOR_MIN_HIST_LOOKBACK", "365"))
+
+# --------------------------------------------------------------------------- #
 # Web 服务
 # --------------------------------------------------------------------------- #
 HOST: str = os.environ.get("DASH_HOST", "0.0.0.0")

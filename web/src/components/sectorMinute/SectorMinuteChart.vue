@@ -302,8 +302,8 @@ watch(
   <div class="smic" :class="state.cls">
     <!-- 图头 -->
     <div v-if="!compact" class="smic__head">
-      <span class="smic__badge" :class="props.chart?.kind === 'stock' ? 'is-stock' : 'is-board'">
-        {{ props.chart?.kind === 'stock' ? '股' : props.chart?.board_type ? '板' : '板' }}
+      <span class="smic__badge" :class="props.chart?.kind === 'stock' ? 'is-stock' : props.chart?.kind === 'index' ? 'is-index' : 'is-board'">
+        {{ props.chart?.kind === 'stock' ? '股' : props.chart?.kind === 'index' ? '指' : '板' }}
       </span>
       <span class="smic__name" :title="props.chart?.code">{{ props.chart?.name || props.chart?.code || '—' }}</span>
       <span class="smic__code" v-if="props.chart?.code">{{ props.chart?.code }}</span>
@@ -367,6 +367,7 @@ watch(
 }
 .smic__badge.is-board { background: var(--ff-brand); }
 .smic__badge.is-stock { background: var(--ff-accent-teal); }
+.smic__badge.is-index { background: var(--ff-accent-violet, #7c5cd6); }
 .smic__name {
   font-weight: 600;
   color: var(--ff-text-primary);

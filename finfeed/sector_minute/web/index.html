@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>板块分时 · 多标的分时对比</title>
+<title>多标的分时对比 · 板块/个股/指数</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   /* ===== 浅色简洁专业风 · 设计令牌 ===== */
@@ -116,6 +116,25 @@
   .dot.is-live { background: var(--up-text); box-shadow: 0 0 0 3px rgba(217,54,62,.15); }
   .status .time { font-family: var(--font-num); }
 
+  /* ===== 数据日期组件（显示当前分时对应日期 + 前后切换 + 日期选择） ===== */
+  .datebox { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); overflow: hidden; flex: none; }
+  .datebox:hover { border-color: var(--border-strong); }
+  .datebox__btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; color: var(--text-3); font-size: 16px; line-height: 1; transition: background .15s, color .15s; }
+  .datebox__btn:hover:not(:disabled) { background: var(--hover); color: var(--brand-ink); }
+  .datebox__btn:disabled { opacity: .35; cursor: default; }
+  .datebox__main { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-width: 138px; padding: 3px 10px; border-left: 1px solid var(--border-subtle); border-right: 1px solid var(--border-subtle); text-align: left; transition: background .15s; }
+  .datebox__main:hover { background: var(--hover); }
+  .datebox__l1 { font-family: var(--font-num); font-size: 14px; font-weight: 700; color: var(--text-1); letter-spacing: .2px; line-height: 1; white-space: nowrap; }
+  .datebox__l2 { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); line-height: 1; white-space: nowrap; }
+  .datebox__tag { display: inline-flex; align-items: center; height: 15px; padding: 0 6px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 600; letter-spacing: .5px; }
+  .datebox__tag.is-live { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border-subtle); }
+  .datebox__tag.is-hist { background: var(--brand-subtle); color: var(--brand-ink); border: 1px solid #cfe0ff; }
+  .datebox.is-hist .datebox__l1 { color: var(--brand-ink); }
+  .datebox__today { display: inline-flex; align-items: center; justify-content: center; width: 30px; font-size: 12px; font-weight: 600; color: var(--text-2); transition: background .15s, color .15s; }
+  .datebox__today:hover:not(:disabled) { background: var(--brand-subtle); color: var(--brand-ink); }
+  .datebox__today:disabled { opacity: .35; cursor: default; }
+  .datebox__input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
   /* ===== 主体 ===== */
   main { flex: 1; min-height: 0; display: flex; gap: 12px; }
 
@@ -173,8 +192,8 @@
   .list-tools .mini-btn:disabled { opacity: .5; cursor: default; color: var(--text-3); background: var(--surface-2); border-color: var(--border-subtle); }
 
   /* 板块 / 个股池：撑满剩余高度并形成滚动容器 */
-  #poolBoard, #poolStock, #poolSearch { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  #poolStock, #poolSearch { display: none; }
+  #poolBoard, #poolStock, #poolIndex, #poolSearch { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #poolStock, #poolIndex, #poolSearch { display: none; }
 
   /* 搜索结果：板块 / 个股分区标题 */
   .search-sec { display: flex; align-items: center; gap: 6px; padding: 8px 10px 2px; font-size: 12px; color: var(--text-3); }
@@ -232,6 +251,7 @@
   .smic__badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff; }
   .smic__badge.is-board { background: var(--brand); }
   .smic__badge.is-stock { background: var(--stock); }
+  .smic__badge.is-index { background: #7c5cd6; }
   .smic__name { font-weight: 600; color: var(--text-1); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .smic__code { font-family: var(--font-num); color: var(--text-3); font-size: 11px; }
   .smic__sp { flex: 1; }
@@ -260,8 +280,25 @@
   <!-- ===================== 顶栏 ===================== -->
   <header>
     <div class="brand">
-      <h1>板块分时</h1>
-      <span class="sub">SECTOR MINUTE · 多标的分时对比</span>
+      <h1>多标的分时对比</h1>
+      <span class="sub">SECTOR MINUTE · 板块 · 个股 · 指数</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- 数据日期组件：显示当前分时对应的日期，支持前后切换与直接选日期 -->
+    <div class="datebox" id="dateBox" title="当前展示数据对应的日期">
+      <button type="button" class="datebox__btn" id="btnPrevDay" title="前一天" aria-label="前一天">‹</button>
+      <button type="button" class="datebox__main" id="btnOpenDate" title="点击选择日期">
+        <span class="datebox__l1" id="dateL1">----年--月--日</span>
+        <span class="datebox__l2">
+          <span id="dateWeek">---</span>
+          <span class="datebox__tag is-live" id="dateTag">今天</span>
+        </span>
+      </button>
+      <button type="button" class="datebox__btn" id="btnNextDay" title="后一天" aria-label="后一天" disabled>›</button>
+      <button type="button" class="datebox__today" id="btnToday" title="回到今天（最新数据）" aria-label="回到今天">今</button>
+      <input type="date" id="dateInput" class="datebox__input" aria-label="选择日期">
     </div>
 
     <div class="sep"></div>
@@ -305,7 +342,7 @@
     <div class="status">
       <span class="dot" id="dot"></span>
       <span class="tag" id="tradingLabel">非交易时段</span>
-      <span class="time">最后更新 <b id="lastTime">--:--:--</b></span>
+      <span class="time"><span id="lastTimeLabel">最后更新</span> <b id="lastTime">--:--:--</b></span>
       <span class="count"><span id="selCount">0</span></span>
     </div>
   </header>
@@ -317,12 +354,13 @@
       <div class="tabs">
         <button type="button" class="tab is-active" data-tab="board">板块</button>
         <button type="button" class="tab" data-tab="stock">个股</button>
+        <button type="button" class="tab" data-tab="index">指数</button>
       </div>
 
       <div class="panel-body">
         <div class="search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="kwGlobal" type="text" placeholder="搜索板块 / 个股名称或代码">
+          <input id="kwGlobal" type="text" placeholder="搜索板块 / 个股 / 指数名称或代码">
           <button type="button" class="kw-clear" id="kwClear" title="清除搜索" aria-label="清除搜索" style="display:none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -354,6 +392,14 @@
           <div class="list" id="listStock"></div>
         </div>
 
+        <!-- 指数池 -->
+        <div id="poolIndex" style="display:none">
+          <div class="list-tools">
+            <button type="button" class="mini-btn" id="selAllIndex">全选</button>
+          </div>
+          <div class="list" id="listIndex"></div>
+        </div>
+
         <!-- 搜索结果：同时罗列板块 + 个股 -->
         <div id="poolSearch" style="display:none">
           <div class="list" id="listSearch"></div>
@@ -365,8 +411,8 @@
     <div class="main">
       <div class="empty-main" id="emptyState">
         <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        <p>在左侧勾选板块或个股，开始多标的分时对比</p>
-        <p class="sub">支持板块-个股混合排列与左右分屏对标</p>
+        <p>在左侧勾选板块、个股或指数，开始多标的分时对比</p>
+        <p class="sub">支持板块 / 个股 / 指数混合对比、历史日期回看与左右分屏对标</p>
       </div>
       <div id="mainArea"></div>
     </div>
@@ -406,13 +452,30 @@ const API = {
   refresh: API_BASE + "/refresh",
   boards:  (t) => API_BASE + "/boards?board_type=" + t,
   stocks:  (kw) => API_BASE + "/stocks?kw=" + encodeURIComponent(kw),
+  indices: API_BASE + "/indices",
   subs:    API_BASE + "/subscriptions",
-  charts:  API_BASE + "/charts",
-  sparklines: API_BASE + "/sparklines",
+  charts:  (date) => API_BASE + "/charts" + (date ? "?date=" + date : ""),
+  sparklines: (date) => API_BASE + "/sparklines" + (date ? "?date=" + date : ""),
 };
 const STORE_KEY = "sectorMinute_selected";
 const UI_STORE_KEY = "sectorMinute_ui";
 const BOARD_TYPES = [["hy","行业"],["hy2","二级"],["gn","概念"],["fg","风格"],["dq","地区"]];
+
+/* ---------------- 日期工具（日期切换组件） ---------------- */
+const WEEK_CN = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const toDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseDateStr = (s) => { const [y, m, dd] = s.split("-").map(Number); return new Date(y, m - 1, dd); };
+// 「今天」基准：优先服务器自然日（后端新版本提供 server_date）；缺失时以浏览器本地日期兜底，
+// 保证组件在任意后端版本下均可正常使用
+const todayStr = () => state.serverDate || toDateStr(new Date());
+// 当前是否展示「今天（实时）」：date 为空串即今天；历史日期则非实时
+const isTodaySel = () => !state.date || state.date === todayStr();
+// 历史分时可回溯下限（约一年），超出时后端返回空数据
+const minDateStr = () => {
+  const base = parseDateStr(todayStr());
+  base.setDate(base.getDate() - 365);
+  return toDateStr(base);
+};
 
 /* ---------------- 状态 ---------------- */
 const state = {
@@ -428,11 +491,19 @@ const state = {
   boards: [],
   allBoards: [],
   stocks: [],
+  indices: [],
+  indicesState: "loading",   // loading | error | ok（指数池加载状态，失败可点击重试）
   selected: [],
   chartsData: [],
   sparkCache: {},        // key -> {pre_close, change_pct, points}  迷你分时简图缓存（命中不再触网）
   trading: false,
   lastUpdate: "",
+  // 数据日期（日期切换组件）："" = 今天（实时）；"YYYY-MM-DD" = 历史交易日
+  date: "",
+  serverDate: "",
+  histDone: false,       // 历史日期后台抓取是否已抓全
+  histHasData: false,    // 历史日期是否至少有一标的有分时点（非交易日为 false）
+  histNoDataShown: false,// 已提示过「该日期无数据」，避免轮询期间重复 toast
 };
 let charts = {};          // ECharts 实例 key 索引
 let hoverSelf = new Set(); // 联动回环保护
@@ -458,6 +529,24 @@ const keyOf = (s) =>
     ? "board:" + (s.board_type || "hy") + ":" + s.market + ":" + s.code
     : s.kind + ":" + s.market + ":" + s.code;
 
+// 带自动重试的 fetch+json：吸收本机网络层对本地连接的偶发重置（安全软件/代理可能随机 RST），
+// 失败按 0.5s/1s/2s 指数退避重试，重试耗尽后抛出最后一次错误。
+// 仅网络层错误（fetch 抛 TypeError，或消息含 network/socket/reset）值得重试；
+// HTTP 状态错误（如 404）是服务端确定响应，不重试。
+async function fetchJson(url, opts, retries = 3) {
+  const isRetryable = (e) => e instanceof TypeError || /network|fetch|socket|reset/i.test(e.message || "");
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(url, opts);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } catch (e) {
+      if (!isRetryable(e) || i >= retries) throw e;
+      await new Promise((res) => setTimeout(res, 500 * Math.pow(2, i)));
+    }
+  }
+}
+
 let toastTimer = null;
 function toast(msg, isErr) {
   const el = $("#toast");
@@ -477,7 +566,7 @@ async function loadAllBoards() {
   try {
     const results = await Promise.all(
       BOARD_TYPES.map(async ([k]) => {
-        const d = await (await fetch(API.boards(k))).json();
+        const d = await fetchJson(API.boards(k));
         return (d.items || []).map((b) => ({ ...b, board_type: b.board_type || k }));
       })
     );
@@ -487,7 +576,7 @@ async function loadAllBoards() {
 
 async function loadBoards() {
   try {
-    const data = await (await fetch(API.boards(state.boardType))).json();
+    const data = await fetchJson(API.boards(state.boardType));
     state.boards = data.items || [];
     renderBoardList();
   } catch (e) { toast((e.message || String(e)), true); }
@@ -498,7 +587,7 @@ async function loadStocks() {
   try {
     // 始终拉取全量个股池，市场/关键词过滤在本地 visibleStocks() 进行，
     // 避免搜索词污染池数据导致「显示不全 / 切换市场无效」。
-    const data = await (await fetch(API.stocks(""))).json();
+    const data = await fetchJson(API.stocks(""));
     if (seq !== stockSeq) return;
     // 按 深市(0)→沪市(1)→京市(2)、代码升序排列，避免「全部」以北交所打头，更贴近日常浏览习惯
     const arr = (data.items || []).slice();
@@ -509,19 +598,48 @@ async function loadStocks() {
   } catch (e) { if (seq === stockSeq) toast((e.message || String(e)), true); }
 }
 
+async function loadIndices() {
+  state.indicesState = state.indices.length ? "ok" : "loading";
+  try {
+    const data = await fetchJson(API.indices);
+    state.indices = data.items || [];
+    state.indicesState = "ok";
+  } catch (e) {
+    state.indicesState = "error"; // 重试耗尽仍失败 → 列表显示错误态，可点击重试
+    toast("指数加载失败，请重试", true);
+  }
+  renderIndexList();
+}
+
 async function loadHealth() {
   try {
-    const h = await (await fetch(API.health)).json();
+    const h = await fetchJson(API.health);
     state.trading = !!h.trading;
-    syncStatus();
-  } catch (e) { /* 静默 */ }
+    state.serverDate = h.server_date || "";
+  } catch (e) {
+    state.serverDate = ""; // health 失败时以浏览器本地日期兜底，组件仍可用
+  }
+  restoreDateFromStore();
+  renderDateBox();
+  syncStatus();
 }
 
 async function loadCharts() {
   // 拖拽进行中：跳过本轮，避免 buildMain 用旧顺序重建 DOM 把卡片弹回原位
   if (dragActive) return;
   try {
-    const data = await (await fetch(API.charts)).json();
+    const data = await fetchJson(API.charts(state.date || ""));
+    // 历史日期状态：抓取完成标记 / 是否有分时数据（用于提前结束轮询与空数据提示）
+    if (data.is_hist) {
+      state.histDone = !!data.done;
+      state.histHasData = !!data.has_data;
+      if (state.histDone && !state.histHasData && state.selected.length && !state.histNoDataShown) {
+        state.histNoDataShown = true;
+        toast("该日期无分时数据（可能为非交易日）", true);
+      }
+    } else {
+      state.histDone = false; state.histHasData = false; state.histNoDataShown = false;
+    }
     const items = data.items || [];
     const byKey = new Map(items.map((c) => [keyOf(c), c]));
     let list = state.selected.map((s) => byKey.get(keyOf(s)) || {
@@ -543,9 +661,9 @@ async function loadCharts() {
 }
 
 async function syncSubscriptions() {
-  if (!state.selected.length) { fetch(API.subs, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [] }) }).catch(() => {}); return; }
+  if (!state.selected.length) { fetchJson(API.subs, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [] }) }, 1).catch(() => {}); return; }
   try {
-    await fetch(API.subs, {
+    await fetchJson(API.subs, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: state.selected.map((s) => ({ kind: s.kind, market: s.market, code: s.code, name: s.name, board_type: s.board_type })) }),
     });
@@ -553,12 +671,14 @@ async function syncSubscriptions() {
   } catch (e) { toast((e.message || String(e)), true); }
 }
 
-/* 数据补齐：勾选/刷新后每 1.5s 拉一次，直到全部到位 */
+/* 数据补齐：勾选/刷新/切换日期后每 1.5s 拉一次，直到全部到位 */
 function startCatchUp() {
   clearTimeout(catchUpTimer);
   let tries = 0;
   const tick = async () => {
     await loadCharts();
+    // 历史日期且服务器已抓全但无分时点（非交易日）：无需再轮询
+    if (state.date && state.histDone && !state.histHasData) { catchUpTimer = null; return; }
     const withData = new Set(state.chartsData.filter((c) => c.points && c.points.length).map((c) => keyOf(c)));
     const allReady = state.selected.every((s) => withData.has(keyOf(s)));
     if (allReady || ++tries >= 20) { catchUpTimer = null; return; }
@@ -574,8 +694,8 @@ async function manualRefresh() {
   // 记录刷新前时间戳，随后等待后台 mark_refreshed（last_refresh_ts 变化）作为本轮完成的信号。
   let before = -1;
   try {
-    await fetch(API.refresh, { method: "POST" });
-    const h0 = await (await fetch(API.health)).json();
+    await fetchJson(API.refresh, { method: "POST" }, 2);
+    const h0 = await fetchJson(API.health);
     before = (h0 && h0.last_refresh_ts) || -1;
   } catch (e) { /* POST 失败也继续收尾 */ }
 
@@ -584,7 +704,7 @@ async function manualRefresh() {
   while (Date.now() < deadline) {
     let ts = -1;
     try {
-      const h = await (await fetch(API.health)).json();
+      const h = await fetchJson(API.health);
       ts = (h && h.last_refresh_ts) || -1;
     } catch (e) { /* 忽略瞬时错误 */ }
     if (ts > before) break;
@@ -620,7 +740,7 @@ function toggleTarget(t) {
   persist();
   applySelection();
   syncSubscriptions();
-  renderBoardList(); renderStockList(); renderSearchList(); renderSelect();
+  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderSelect();
   if (canIncremental()) {
     // 增量：新增单张图表 / 移除单张图表，避免全量重建造成卡顿
     if (exists) removeChartByKey(k);
@@ -638,7 +758,7 @@ function removeTarget(k) {
   persist();
   applySelection();
   if (state.selected.length) syncSubscriptions(); else state.chartsData = [];
-  renderBoardList(); renderStockList(); renderSelect();
+  renderBoardList(); renderStockList(); renderIndexList(); renderSelect();
   if (canIncremental()) removeChartByKey(k);
   else buildMain();
 }
@@ -649,17 +769,18 @@ function clearAll() {
   persist();
   state.chartsData = [];
   syncSubscriptions(); // 后端订阅置空，停止抓取
-  renderBoardList(); renderStockList(); renderSearchList(); renderSelect(); buildMain();
+  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderSelect(); buildMain();
   toast("已清空对比列表");
 }
 
 function persist() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state.selected)); } catch (e) {} }
-// 持久化排布/纵轴/排序/刷新间隔等 UI 状态，刷新后原样恢复
+// 持久化排布/纵轴/排序/刷新间隔/数据日期等 UI 状态，刷新后原样恢复
 function persistUI() {
   try {
     localStorage.setItem(UI_STORE_KEY, JSON.stringify({
       layout: state.layout, normalized: state.normalized,
       sortByPct: state.sortByPct, refreshInterval: state.refreshInterval,
+      date: state.date,
     }));
   } catch (e) {}
 }
@@ -686,6 +807,13 @@ function syncSelAllButtons() {
   bBtn.disabled = !vb.length;
   bBtn.textContent = bAny ? "取消全选" : "全选";
   bBtn.classList.toggle("is-on", !!vb.length && bAny);
+  // 指数全选（可见项 = 全部指数）
+  const idx = state.indices || [];
+  const iAny = idx.some((i) => state.selected.some((s) => keyOf(s) === "index:" + i.market + ":" + i.code));
+  const iBtn = $("#selAllIndex");
+  iBtn.disabled = !idx.length;
+  iBtn.textContent = iAny ? "取消全选" : "全选";
+  iBtn.classList.toggle("is-on", !!idx.length && iAny);
 }
 function renderBoardList() {
   const el = $("#listBoard");
@@ -717,8 +845,28 @@ function renderStockList() {
   syncSelAllButtons();
   observeSparks(el);
 }
+function renderIndexList() {
+  const el = $("#listIndex");
+  if (state.indicesState === "error" && !state.indices.length) {
+    el.innerHTML = '<div class="empty" id="retryIndices" title="点击重试" style="cursor:pointer; color:var(--brand-ink); text-decoration:underline;">指数加载失败 · 点击重试</div>';
+    syncSelAllButtons();
+    return;
+  }
+  if (!state.indices.length) { el.innerHTML = '<div class="empty">正在加载指数…</div>'; syncSelAllButtons(); return; }
+  const kw = (state.boardKw || "").trim();
+  const list = state.indices.filter((i) => !kw || i.code.includes(kw) || i.name.includes(kw));
+  el.innerHTML = list.map((i) => {
+    const k = "index:" + i.market + ":" + i.code, on = state.selected.some((x) => keyOf(x) === k);
+    return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "index", market: i.market, code: i.code, name: i.name })}'>
+      <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+      <span class="item-name">${esc(i.name)}</span><span class="item-code">${i.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
+      <span class="item-pct ${numCls(i.change_pct)}">${fmtPct(i.change_pct)}</span></button>`;
+  }).join("") || '<div class="empty">无匹配指数</div>';
+  syncSelAllButtons();
+  observeSparks(el);
+}
 
-// 全局搜索：同时合并罗列「板块 + 个股」到统一搜索结果面板
+// 全局搜索：同时合并罗列「板块 + 个股 + 指数」到统一搜索结果面板
 function renderSearchList() {
   const el = $("#listSearch");
   const kw = (state.boardKw || "").trim();
@@ -726,7 +874,8 @@ function renderSearchList() {
   if (!kw) { el.innerHTML = ""; return; }
   const bList = (state.allBoards || []).filter((b) => b.code.includes(kw) || b.name.includes(kw));
   const sList = (state.stocks || []).filter((s) => s.code.includes(kw) || s.name.includes(kw));
-  if (!bList.length && !sList.length) { el.innerHTML = '<div class="empty">无匹配的板块或个股</div>'; return; }
+  const iList = (state.indices || []).filter((i) => i.code.includes(kw) || i.name.includes(kw));
+  if (!bList.length && !sList.length && !iList.length) { el.innerHTML = '<div class="empty">无匹配的板块、个股或指数</div>'; return; }
 
   let html = "";
   if (bList.length) {
@@ -751,6 +900,17 @@ function renderSearchList() {
         <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
     }).join("");
   }
+  if (iList.length) {
+    html += `<div class="search-sec"><span class="search-sec-name">指数</span><span class="search-sec-count">${iList.length}</span></div>`;
+    html += iList.map((i) => {
+      const k = "index:" + i.market + ":" + i.code;
+      const on = state.selected.some((x) => keyOf(x) === k);
+      return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "index", market: i.market, code: i.code, name: i.name })}'>
+        <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="item-name">${esc(i.name)}</span><span class="item-code">${i.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
+        <span class="item-pct ${numCls(i.change_pct)}">${fmtPct(i.change_pct)}</span></button>`;
+    }).join("");
+  }
   el.innerHTML = html;
   observeSparks(el);
 }
@@ -759,7 +919,9 @@ function renderSearchList() {
 function toggleSelectAll(kind) {
   const items = kind === "board"
     ? visibleBoards().map((b) => ({ kind: "board", market: 1, code: b.code, name: b.name, board_type: b.board_type }))
-    : visibleStocks().map((s) => ({ kind: "stock", market: s.market, code: s.code, name: s.name }));
+    : kind === "index"
+      ? (state.indices || []).map((i) => ({ kind: "index", market: i.market, code: i.code, name: i.name }))
+      : visibleStocks().map((s) => ({ kind: "stock", market: s.market, code: s.code, name: s.name }));
   if (!items.length) return;
   const anySel = items.some((it) => state.selected.some((s) => keyOf(s) === keyOf(it)));
   if (anySel) {
@@ -774,7 +936,7 @@ function toggleSelectAll(kind) {
   }
   persist();
   syncSubscriptions();
-  renderBoardList(); renderStockList(); renderSelect(); buildMain();
+  renderBoardList(); renderStockList(); renderIndexList(); renderSelect(); buildMain();
 }
 
 function renderSelect() {
@@ -785,11 +947,91 @@ function renderSelect() {
 
 function syncStatus() {
   const live = state.trading;
-  $("#dot").className = "dot" + (live ? " is-live" : "");
+  const hist = !isTodaySel();
+  $("#dot").className = "dot" + (live && !hist ? " is-live" : "");
   const tg = $("#tradingLabel");
-  tg.textContent = live ? "交易时段" : "非交易时段";
-  tg.className = "tag" + (live ? " is-live" : "");
-  $("#lastTime").textContent = state.lastUpdate || "--:--:--";
+  if (hist) {
+    // 历史日期：非实时数据，状态区展示数据日期
+    tg.textContent = "历史数据";
+    tg.className = "tag";
+    $("#lastTimeLabel").textContent = "数据日期";
+    $("#lastTime").textContent = state.date || "--";
+    // 历史日期为静态快照，手动刷新无意义 → 禁用
+    const refreshBtn = $("#btnRefresh");
+    refreshBtn.disabled = true;
+    refreshBtn.title = "历史日期为静态数据，无需刷新";
+  } else {
+    tg.textContent = live ? "交易时段" : "非交易时段";
+    tg.className = "tag" + (live ? " is-live" : "");
+    $("#lastTimeLabel").textContent = "最后更新";
+    $("#lastTime").textContent = state.lastUpdate || "--:--:--";
+    const refreshBtn = $("#btnRefresh");
+    refreshBtn.disabled = false;
+    refreshBtn.title = "立即拉取一次最新行情";
+  }
+}
+
+/* ---------------- 数据日期组件（显示 + 前后切换 + 日期选择） ---------------- */
+// 渲染日期显示：年/月/日 + 星期 + 实时/历史徽标，并同步前后按钮可用态
+function renderDateBox() {
+  const d = state.date ? parseDateStr(state.date) : parseDateStr(todayStr());
+  $("#dateL1").textContent = `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月${String(d.getDate()).padStart(2, "0")}日`;
+  $("#dateWeek").textContent = WEEK_CN[d.getDay()];
+  const hist = !isTodaySel();
+  $("#dateBox").classList.toggle("is-hist", hist);
+  const tag = $("#dateTag");
+  if (hist) { tag.textContent = "历史"; tag.className = "datebox__tag is-hist"; }
+  else { tag.textContent = "今天"; tag.className = "datebox__tag is-live"; }
+  // 后一天：已处于今天/最新日期则禁用；今天之前均可向后切回
+  $("#btnNextDay").disabled = !state.date || state.date >= todayStr();
+  $("#btnToday").disabled = !hist;
+  const inp = $("#dateInput");
+  inp.min = minDateStr();
+  inp.max = todayStr();
+  inp.value = state.date || todayStr();
+}
+
+// 切换数据日期："" = 今天（实时）；否则为历史交易日。切换后按新日期拉取分时。
+function selectDate(dStr) {
+  if ((state.date || "") === (dStr || "")) return;
+  state.date = dStr || "";
+  state.histNoDataShown = false;
+  // 日期变化 → 历史/实时数据都不同，清空简图缓存与当前图表数据，避免显示旧日期残留
+  state.sparkCache = {};
+  resetChartsForDate();
+  persistUI();
+  renderDateBox();
+  syncStatus();
+  loadCharts();
+  if (state.selected.length) startCatchUp(); // 历史日期：轮询直至后台抓全；今天：补齐首帧
+}
+
+// 清空当前图表分时点（保留标的元数据），让卡片显示「加载中…」直至新日期数据到位
+function resetChartsForDate() {
+  state.chartsData = state.chartsData.map((c) => ({
+    kind: c.kind, market: c.market, code: c.code, name: c.name, board_type: c.board_type || "",
+    pre_close: 0, open: null, high: null, low: null, close: null,
+    change_pct: null, change_amt: null, points: [], ts: "",
+  }));
+  if (Object.keys(charts).length) updateCharts();
+}
+
+// 从本地存储恢复上次选择的数据日期（需在今天基准就绪后调用，校验不越界）
+function restoreDateFromStore() {
+  try {
+    const ui = JSON.parse(localStorage.getItem(UI_STORE_KEY) || "{}");
+    const saved = (ui && typeof ui.date === "string") ? ui.date : "";
+    const t = todayStr();
+    if (saved && t) {
+      if (saved >= t) { state.date = ""; }      // 今天或未来 → 实时
+      else if (saved < minDateStr()) { state.date = ""; }  // 超出回溯下限 → 实时
+      else { state.date = saved; }
+    } else {
+      state.date = "";
+    }
+  } catch (e) { state.date = ""; }
+  renderDateBox();
+  syncStatus();
 }
 
 /* ---------------- 迷你分时简图（列表项内） ---------------- */
@@ -863,7 +1105,8 @@ function flushSparks() {
   if (sparkBusy || !sparkQueue.length) return;
   sparkBusy = 1;
   const batch = sparkQueue.splice(0, 15);
-  fetch(API.sparklines + "?codes=" + encodeURIComponent(batch.join(",")) + "&lazy=1")
+  // 历史日期：迷你分时简图同样按所选日期取数（后端按日期缓存/抓取）
+  fetchJson(API.sparklines(state.date || "") + "?codes=" + encodeURIComponent(batch.join(",")) + "&lazy=1", null, 2)
     .then((r) => r.json())
     .then((res) => {
       const items = (res && res.items) || {};
@@ -891,7 +1134,7 @@ function esc(s) { const d = document.createElement("div"); d.textContent = s == 
 function makeCard(c, idx) {
   return `<div class="card" data-key="${keyOf(c)}"><div class="smic">
     <div class="smic__head">
-      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : "is-board"}">${c.kind === "stock" ? "股" : "板"}</span>
+      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : c.kind === "index" ? "is-index" : "is-board"}">${c.kind === "stock" ? "股" : c.kind === "index" ? "指" : "板"}</span>
       <span class="smic__name" title="${esc(c.code)}">${esc(c.name || c.code)}</span>
       <span class="smic__code">${esc(c.code)}</span><span class="smic__sp"></span>
       <span class="smic__price ${numCls(c.change_pct)}">${fmtNum(c.close)}</span>
@@ -912,7 +1155,7 @@ function makeCard(c, idx) {
 function makeTile(c) {
   return `<button type="button" class="tile" data-key="${keyOf(c)}">
     <span class="tile-h">
-      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : "is-board"}">${c.kind === "stock" ? "股" : "板"}</span>
+      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : c.kind === "index" ? "is-index" : "is-board"}">${c.kind === "stock" ? "股" : c.kind === "index" ? "指" : "板"}</span>
       <span class="tile-name">${esc(c.name || c.code)}</span>
       <span class="tile-code">${esc(c.code)}</span>
     </span>
@@ -1138,6 +1381,28 @@ function updateCharts() {
     const idx = Array.prototype.indexOf.call(nodes, node);
     const c = chartAt(idx);
     if (c) ins.setOption(buildChartOption(c), true);
+    // 同步卡片头部价格/涨跌幅/涨跌额：增量插入或切换日期后，卡片由占位数据渲染，
+    // 头部数值需随数据到位刷新，避免残留「—」或旧日期的数值
+    if (c) {
+      const card = node.closest(".card");
+      if (card) {
+        const priceEl = card.querySelector(".smic__price");
+        const pctEl = card.querySelector(".smic__pct");
+        const amtEl = card.querySelector(".smic__amt");
+        if (priceEl) {
+          priceEl.textContent = fmtNum(c.close);
+          priceEl.className = "smic__price " + numCls(c.change_pct);
+        }
+        if (pctEl) {
+          pctEl.textContent = fmtPct(c.change_pct);
+          pctEl.className = "smic__pct " + numCls(c.change_pct);
+        }
+        if (amtEl) {
+          amtEl.textContent = (c.change_amt && c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt);
+          amtEl.className = "smic__amt " + numCls(c.change_amt);
+        }
+      }
+    }
     const loading = node.parentElement.querySelector(".smic__loading");
     if (loading) loading.style.display = c && c.points && c.points.length ? "none" : "flex";
   });
@@ -1157,7 +1422,7 @@ let focusIns = null;
 function openFocus(k) {
   const c = state.chartsData.find((x) => keyOf(x) === k);
   if (!c) return;
-  $("#focusBadge").className = "smic__badge " + (c.kind === "stock" ? "is-stock" : "is-board");
+  $("#focusBadge").className = "smic__badge " + (c.kind === "stock" ? "is-stock" : c.kind === "index" ? "is-index" : "is-board");
   $("#focusBadge").textContent = c.kind === "stock" ? "股" : "板";
   $("#focusName").textContent = c.name || c.code;
   $("#focusCode").textContent = c.code;
@@ -1364,6 +1629,35 @@ $("#btnSort").addEventListener("click", () => {
 });
 $("#btnRefresh").addEventListener("click", manualRefresh);
 
+// 数据日期组件：前一天 / 后一天 / 回到今天 / 打开日期选择器 / 直接选日期
+$("#btnPrevDay").addEventListener("click", () => {
+  const base = state.date ? parseDateStr(state.date) : parseDateStr(todayStr());
+  base.setDate(base.getDate() - 1);
+  selectDate(toDateStr(base));
+});
+$("#btnNextDay").addEventListener("click", () => {
+  if (!state.date || isTodaySel()) return;
+  const base = parseDateStr(state.date);
+  base.setDate(base.getDate() + 1);
+  const s = toDateStr(base);
+  const t = todayStr();
+  selectDate(s > t ? t : s);
+});
+$("#btnToday").addEventListener("click", () => selectDate(""));
+$("#btnOpenDate").addEventListener("click", () => {
+  const inp = $("#dateInput");
+  if (inp.showPicker) { try { inp.showPicker(); } catch (e) { inp.focus(); } }
+  else inp.focus();
+});
+$("#dateInput").addEventListener("change", (e) => {
+  const v = e.target.value;
+  if (!v) return;
+  const t = todayStr();
+  if (v > t) { toast("不能选择未来日期", true); renderDateBox(); return; }
+  if (v < minDateStr()) { toast("仅支持回溯约一年内的分时数据", true); renderDateBox(); return; }
+  selectDate(v);
+});
+
 $("#btnsBoardType").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   state.boardType = b.dataset.v;
@@ -1377,36 +1671,47 @@ $$(".tab").forEach((t) => t.addEventListener("click", () => {
   const tab = t.dataset.tab;
   state.activeTab = tab;
   $$(".tab").forEach((x) => x.classList.toggle("is-active", x.dataset.tab === tab));
-  // 首次进入个股池：自动加载全部（含「全部」市场）
+  // 首次进入个股池：自动加载全部（含「全部」市场）；首次进入指数池：加载指数列表
   if (tab === "stock" && !state.stocks.length) loadStocks();
+  if (tab === "index" && !state.indices.length) loadIndices();
   // 面板显示由当前搜索词决定：有词→统一搜索结果；无词→回到对应 tab 池
   const kw = (state.boardKw || "").trim();
-  if (kw) { $("#poolSearch").style.display = "flex"; $("#poolBoard").style.display = "none"; $("#poolStock").style.display = "none"; }
-  else { $("#poolSearch").style.display = "none"; $("#poolBoard").style.display = tab === "board" ? "flex" : "none"; $("#poolStock").style.display = tab === "stock" ? "flex" : "none"; }
+  if (kw) { $("#poolSearch").style.display = "flex"; $("#poolBoard").style.display = "none"; $("#poolStock").style.display = "none"; $("#poolIndex").style.display = "none"; }
+  else {
+    $("#poolSearch").style.display = "none";
+    $("#poolBoard").style.display = tab === "board" ? "flex" : "none";
+    $("#poolStock").style.display = tab === "stock" ? "flex" : "none";
+    $("#poolIndex").style.display = tab === "index" ? "flex" : "none";
+  }
 }));
 $("#poolBoard").style.display = "flex";
 $("#poolBoard").style.flexDirection = "column";
 $("#poolStock").style.flexDirection = "column";
+$("#poolIndex").style.flexDirection = "column";
 $("#poolSearch").style.flexDirection = "column";
 
-// 全局搜索：有词时切换到「板块 + 个股」统一结果面板，同时罗列；无词时回到对应 tab 池
+// 全局搜索：有词时切换到「板块 + 个股 + 指数」统一结果面板，同时罗列；无词时回到对应 tab 池
 $("#kwGlobal").addEventListener("input", (e) => {
   state.boardKw = e.target.value;
   state.stockKw = e.target.value;
   const kw = e.target.value.trim();
   if (kw) {
     if (!state.stocks.length) loadStocks(); // 搜索前未加载个股则补充
+    if (!state.indices.length) loadIndices(); // 搜索前未加载指数则补充
     $("#poolSearch").style.display = "flex";
     $("#poolBoard").style.display = "none";
     $("#poolStock").style.display = "none";
+    $("#poolIndex").style.display = "none";
     renderSearchList();
   } else {
     $("#poolSearch").style.display = "none";
     const tab = state.activeTab;
     $("#poolBoard").style.display = tab === "board" ? "flex" : "none";
     $("#poolStock").style.display = tab === "stock" ? "flex" : "none";
+    $("#poolIndex").style.display = tab === "index" ? "flex" : "none";
     renderBoardList();
     renderStockList();
+    renderIndexList();
   }
   // 有输入内容才显示「清除」叉号
   $("#kwClear").style.display = e.target.value.trim() ? "inline-flex" : "none";
@@ -1425,6 +1730,7 @@ $("#btnClearAll").addEventListener("click", clearAll);
 
 // 全选 / 取消全选
 $("#selAllBoard").addEventListener("click", () => toggleSelectAll("board"));
+$("#selAllIndex").addEventListener("click", () => toggleSelectAll("index"));
 
 // 标的勾选（事件委托）
 $("#poolBoard").addEventListener("click", (e) => {
@@ -1435,7 +1741,12 @@ $("#poolStock").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-toggle]"); if (!btn) return;
   toggleTarget(JSON.parse(btn.dataset.toggle));
 });
-// 搜索结果面板：板块 + 个股 均可勾选
+$("#poolIndex").addEventListener("click", (e) => {
+  if (e.target.closest("#retryIndices")) { loadIndices(); return; }
+  const btn = e.target.closest("[data-toggle]"); if (!btn) return;
+  toggleTarget(JSON.parse(btn.dataset.toggle));
+});
+// 搜索结果面板：板块 + 个股 + 指数 均可勾选
 $("#poolSearch").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-toggle]"); if (!btn) return;
   toggleTarget(JSON.parse(btn.dataset.toggle));
@@ -1490,13 +1801,13 @@ async function init() {
   renderSelect();
   // 首屏不等待个股全量池：后台并行预加载，保证搜索时板块 + 个股结果即时命中
   loadStocks();
+  loadIndices();
   await Promise.all([loadBoards(), loadAllBoards(), loadHealth()]);
   if (state.selected.length) syncSubscriptions();
   await loadCharts();
   if (state.selected.length) startCatchUp();
   startPolling();
-  // 模块就绪后启用手动刷新按钮（此前保持 disabled，避免"看着像可点却无反应"）
-  $("#btnRefresh").disabled = false;
+  // 刷新按钮可用态由 syncStatus 依据「实时/历史」模式统一管理
   bindDragReorder();
   window.addEventListener("resize", () => {
     Object.values(charts).forEach((c) => c.resize());

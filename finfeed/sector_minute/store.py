@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from . import config
@@ -81,6 +81,10 @@ class SectorStore:
         self._last_refresh_ts: float = 0.0
         self._last_error: str = ""
         self._refresh_count: int = 0
+        # 历史日期分时缓存：date_str("YYYY-MM-DD") -> {sub_key -> TickChart}
+        self._hist_ticks: dict[str, dict[str, TickChart]] = {}
+        self._hist_order: list[str] = []       # LRU 顺序（尾部最新）
+        self._hist_busy: set[str] = set()      # 正在后台抓取的日期（去重）
 
     # -- 订阅 ---------------------------------------------------------------
     def set_subscriptions(self, items: list[dict]) -> list[Subscription]:
@@ -89,7 +93,7 @@ class SectorStore:
             seen: set[str] = set()
             subs: list[Subscription] = []
             for it in items or []:
-                kind = "stock" if it.get("kind") == "stock" else "board"
+                kind = it.get("kind") if it.get("kind") in ("board", "stock", "index") else "board"
                 market = int(it.get("market", 0))
                 code = str(it.get("code", "")).strip()
                 name = str(it.get("name", "")).strip()
@@ -133,6 +137,88 @@ class SectorStore:
         """按缓存 key 取分时（key 形如 board:hy:1:000883 / stock:1:600000）。"""
         with self._lock:
             return self._ticks.get(key)
+
+    # -- 历史日期分时缓存（日期切换组件） -----------------------------------
+    # 与实时缓存（_ticks，RefreshWorker 持续写今日数据）相互独立：
+    # 历史日期为一次性静态快照，按 date_str 分桶缓存，LRU 淘汰。
+
+    def _hist_touch(self, date_str: str) -> None:
+        """LRU 触碰并把该日期移到队列尾部；超容量时淘汰最旧日期。"""
+        with self._lock:
+            if date_str in self._hist_order:
+                self._hist_order.remove(date_str)
+            self._hist_order.append(date_str)
+            while len(self._hist_order) > config.MAX_HIST_DATES:
+                old = self._hist_order.pop(0)
+                self._hist_ticks.pop(old, None)
+
+    def hist_set(self, date_str: str, sub: Subscription, chart: Optional[TickChart]) -> None:
+        """写入某历史日期的单标的分时（chart 为 None 时记录为缺失，避免重复触网）。"""
+        with self._lock:
+            bucket = self._hist_ticks.setdefault(date_str, {})
+            if chart is None:
+                bucket.setdefault(sub.key, None)
+            else:
+                chart.kind = sub.kind
+                chart.board_type = sub.board_type
+                chart.name = sub.name or chart.name
+                chart.trade_date = date_str
+                bucket[sub.key] = chart
+            self._hist_touch(date_str)
+
+    def hist_get(self, date_str: str, key: str) -> Optional[TickChart]:
+        with self._lock:
+            bucket = self._hist_ticks.get(date_str)
+            ch = bucket.get(key) if bucket else None
+            return ch if isinstance(ch, TickChart) else None
+
+    def hist_has(self, date_str: str, key: str) -> bool:
+        """该日期是否已记录过该标的（含明确无数据的缺失记录，避免重复触网）。"""
+        with self._lock:
+            bucket = self._hist_ticks.get(date_str)
+            return bool(bucket) and key in bucket
+
+    def hist_ticks(self, date_str: str) -> list[TickChart]:
+        """按订阅顺序返回某历史日期的分时列表（未抓到的标的跳过）。"""
+        with self._lock:
+            subs = list(self._subscriptions)
+            bucket = self._hist_ticks.get(date_str) or {}
+        out: list[TickChart] = []
+        with self._lock:
+            for s in subs:
+                ch = bucket.get(s.key)
+                if isinstance(ch, TickChart):
+                    out.append(ch)
+        return out
+
+    def hist_any_points(self, date_str: str) -> bool:
+        """该历史日期是否已有任一标的分时点（用于判断是否交易日）。"""
+        with self._lock:
+            bucket = self._hist_ticks.get(date_str) or {}
+            return any(isinstance(ch, TickChart) and bool(ch.points) for ch in bucket.values())
+
+    def hist_all_ready(self, date_str: str, subs: Optional[list[Subscription]] = None) -> bool:
+        """该历史日期的全部订阅标的是否都已抓到（含明确无数据/失败的缺失记录）。"""
+        with self._lock:
+            bucket = self._hist_ticks.get(date_str) or {}
+            missing = [s for s in (subs or self._subscriptions) if s.key not in bucket]
+        return not missing
+
+    def hist_fetch_start(self, date_str: str) -> bool:
+        """登记某历史日期开始后台抓取；返回 True 表示由调用方发起本轮抓取。"""
+        with self._lock:
+            if date_str in self._hist_busy:
+                return False
+            self._hist_busy.add(date_str)
+            return True
+
+    def hist_fetch_end(self, date_str: str) -> None:
+        with self._lock:
+            self._hist_busy.discard(date_str)
+
+    def hist_cached_dates(self) -> list[str]:
+        with self._lock:
+            return list(self._hist_order)
 
     def set_board_list(self, board_type: str, boards: list[BoardMeta]) -> None:
         with self._lock:
@@ -202,6 +288,8 @@ class SectorStore:
                 "ticks": len(self._ticks),
                 "interval": config.REFRESH_INTERVAL,
                 "trading": is_trading_time(),
+                "server_date": datetime.now().strftime("%Y-%m-%d"),
+                "hist_dates": list(self._hist_order),
             }
 
 

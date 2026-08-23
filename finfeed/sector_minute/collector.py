@@ -33,6 +33,21 @@ BOARD_TYPES: dict[str, tuple[BoardType, str]] = {
     "dq": (BoardType.DQ, "地区"),
 }
 
+# 常用指数池（宽基 / 风格），market 遵循 TDX：1=沪 / 0=深。
+# 指数与板块/个股同走 0x122D 分时命令，可查询任意交易日的 240 点分时。
+# 注：北证50（899050）经实测服务器不返回分时，故不纳入。
+INDEX_LIST: list[dict] = [
+    {"market": 1, "code": "000001", "name": "上证指数"},
+    {"market": 0, "code": "399001", "name": "深证成指"},
+    {"market": 0, "code": "399006", "name": "创业板指"},
+    {"market": 1, "code": "000688", "name": "科创50"},
+    {"market": 1, "code": "000300", "name": "沪深300"},
+    {"market": 1, "code": "000016", "name": "上证50"},
+    {"market": 1, "code": "000905", "name": "中证500"},
+    {"market": 1, "code": "000852", "name": "中证1000"},
+    {"market": 0, "code": "399330", "name": "深证100"},
+]
+
 
 def _safe(fn, default=None, tag: str = ""):
     """执行采集函数，异常打日志并返回默认值（单点故障不拖垮整轮采集）。"""
@@ -97,23 +112,31 @@ def fetch_board_list(board_type: str, client: MacClient | None = None) -> list[B
 # 分时图
 # --------------------------------------------------------------------------- #
 
-def fetch_tick_chart(market: int, code: str, client: MacClient | None = None) -> Optional[TickChart]:
-    """获取单个标的当日分时图。
+def fetch_tick_chart(
+    market: int,
+    code: str,
+    query_date: Optional["date"] = None,
+    client: MacClient | None = None,
+) -> Optional[TickChart]:
+    """获取单个标的单日分时图。
 
     Args:
         market: 市场代码（板块恒为 1；个股按代码推断 0/1）。
         code:   标的代码（板块 88xxxx / 个股 6 位代码）。
+        query_date: 查询日期；``None`` 表示「今天」（服务器返回最近一个交易日的分时，
+                   周末/节假日时即为上一交易日）。
 
     通过原始 0x122D 命令取得完整分时（含昨收/开高低收/名称元数据）；
-    返回 ``TickChart``；失败返回 None。
+    返回 ``TickChart``；失败或无数据返回 None。
     """
+    from datetime import date as _date_cls
     from easy_tdx.mac.commands.symbol_tick_chart import SymbolTickChartCmd
 
     ensure_alive()
     client = client or get_client()
     chart = _safe(
-        lambda: client._execute(SymbolTickChartCmd(int(market), str(code), None)),
-        tag=f"tick_{market}_{code}",
+        lambda: client._execute(SymbolTickChartCmd(int(market), str(code), query_date)),
+        tag=f"tick_{market}_{code}_{query_date or 'today'}",
     )
     if chart is None or not getattr(chart, "charts", None):
         return None
@@ -140,6 +163,8 @@ def fetch_tick_chart(market: int, code: str, client: MacClient | None = None) ->
         market=int(market),
         code=str(code).strip(),
         name=str(chart.name or "").strip(),
+        board_type="",
+        trade_date=query_date.isoformat() if query_date is not None else "",
         pre_close=round(pre_close, 3),
         open=round(float(chart.open or points[0].price), 3),
         high=round(float(chart.high or close), 3),

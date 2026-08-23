@@ -54,6 +54,7 @@ class TickChart:
     code: str = ""
     name: str = ""
     board_type: str = ""        # 板块类型（个股为空）
+    trade_date: str = ""        # 数据所属交易日 YYYY-MM-DD（历史查询时为查询日期；实时为空）
     pre_close: float = 0.0
     open: float = 0.0
     high: float = 0.0
