@@ -36,6 +36,20 @@ echo.
 echo  ============================================
 echo.
 
+:: 确保前端构建产物 web/dist 存在（删缓存/构建产物后可能缺失）
+if not exist "%~dp0..\web\dist\index.html" (
+    echo.
+    echo  [INFO] web/dist 缺失，正在构建前端...
+    pushd "%~dp0..\web"
+    call npm run build
+    if errorlevel 1 (
+        echo  [WARN] 前端构建失败，Web 界面可能无法加载（API 仍正常）
+    ) else (
+        echo  [OK] 前端构建完成
+    )
+    popd
+)
+
 python "%~dp0..\main.py" %*
 echo.
 echo  [Done] Monitor stopped
