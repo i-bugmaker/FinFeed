@@ -127,6 +127,36 @@ try:
 except Exception as _cap_exc:  # noqa: BLE001
     logger.warning("全市场资金流大屏模块未加载（可忽略；安装依赖后重启生效）: %s", _cap_exc)
 
+# ----------------------------------------------------------------------
+# 板块分时模块（web 左侧导航 独立页 /sector-minute）
+#  - API 前缀：/api/sector-minute/*
+#  - 独立页面：/sector-minute（浅色简洁专业风）
+#  - 后台刷新线程随主应用启动/停止
+# ----------------------------------------------------------------------
+try:
+    from finfeed.sector_minute import config as _sm_config
+    from finfeed.sector_minute.server import (
+        create_router as _sm_create_router,
+        start_refresh_worker as _sm_start_worker,
+        stop_refresh_worker as _sm_stop_worker,
+    )
+
+    app.include_router(_sm_create_router("/api/sector-minute"))
+
+    @app.get("/sector-minute", include_in_schema=False)
+    async def sector_minute_page():
+        """板块分时独立页面（注入 /api/sector-minute 前缀供前端消费）。"""
+        idx = Path(_sm_config.__file__).resolve().parent / "web" / "index.html"
+        html = idx.read_text(encoding="utf-8")
+        inject = '<script>window.SECTOR_MINUTE_API_BASE="/api/sector-minute";</script>'
+        html = html.replace("</head>", inject + "</head>", 1)
+        return HTMLResponse(html)
+
+    logger.info("已集成板块分时独立页（/sector-minute, /api/sector-minute/*）")
+except Exception as _sm_exc:  # noqa: BLE001
+    _sm_start_worker = _sm_stop_worker = None
+    logger.warning("板块分时模块未加载（可忽略；安装依赖后重启生效）: %s", _sm_exc)
+
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
@@ -1076,6 +1106,13 @@ async def _startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"资金流大屏刷新线程启动失败（可忽略）: {e}")
 
+    # 板块分时后台刷新线程（若模块已集成则启动；TDX 连接失败不阻断主服务）
+    try:
+        if _sm_start_worker is not None:
+            _sm_start_worker()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"板块分时刷新线程启动失败（可忽略）: {e}")
+
     legacy.init_broadcast_watermark()
     # 创建 tick 哨兵文件并置为当前时间，使 _sse_poll_loop 的 last_tick 基准有效；
     # 之后主进程每次抓取完成都会更新其 mtime 以「唤醒」本进程的即时推送。
@@ -1125,6 +1162,12 @@ async def _shutdown():
     # 停止资金流大屏刷新线程并断开 TDX 连接
     try:
         _cap_stop_worker()
+    except Exception:  # noqa: BLE001
+        pass
+    # 停止板块分时刷新线程
+    try:
+        if _sm_stop_worker is not None:
+            _sm_stop_worker()
     except Exception:  # noqa: BLE001
         pass
 

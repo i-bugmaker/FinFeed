@@ -1,0 +1,217 @@
+# -*- coding: utf-8 -*-
+"""板块分时 —— FastAPI 服务入口。
+
+提供板块列表 / 分时图 / 订阅管理 / 个股池搜索等 API，并以独立后台线程
+周期刷新行情写入内存仓库（对齐需求文档「后台自动刷新与时效控制」）。
+
+挂载到 FinFeed 主应用时使用前缀 ``/api/sector-minute``。
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from typing import Any, Optional
+
+from fastapi import APIRouter, Body, HTTPException, Query
+
+from . import config
+from .collector import fetch_tick_chart
+from .store import RefreshWorker, SectorStore
+
+logger = logging.getLogger("finfeed.sector_minute")
+
+# 进程级单例
+store = SectorStore()
+worker: Optional[RefreshWorker] = None
+_worker_lock = threading.Lock()
+
+
+# --------------------------------------------------------------------------- #
+# 刷新线程生命周期（幂等，供主应用挂载共用）
+# --------------------------------------------------------------------------- #
+
+def start_refresh_worker() -> None:
+    """启动后台刷新线程（幂等：已在运行则跳过）。"""
+    global worker
+    with _worker_lock:
+        if worker is not None and worker.is_alive():
+            return
+        worker = RefreshWorker(store)
+        worker.start()
+        logger.info("板块分时后台刷新线程已启动 interval=%ss", config.REFRESH_INTERVAL)
+
+
+def stop_refresh_worker() -> None:
+    """停止后台刷新线程（幂等）。"""
+    global worker
+    with _worker_lock:
+        if worker is not None:
+            worker.stop()
+            worker.join(timeout=3)
+            worker = None
+            logger.info("板块分时后台刷新线程已停止")
+
+
+# --------------------------------------------------------------------------- #
+# 序列化辅助
+# --------------------------------------------------------------------------- #
+
+def _chart_dict(chart) -> dict[str, Any]:
+    """TickChart → JSON 字典（points 直接透传，前端折线图使用）。"""
+    return {
+        "kind": chart.kind,
+        "market": chart.market,
+        "code": chart.code,
+        "name": chart.name,
+        "board_type": chart.board_type,
+        "pre_close": chart.pre_close,
+        "open": chart.open,
+        "high": chart.high,
+        "low": chart.low,
+        "close": chart.close,
+        "change_pct": chart.change_pct,
+        "change_amt": chart.change_amt,
+        "points": [
+            {"time": p.time, "price": p.price, "avg": p.avg, "vol": p.vol}
+            for p in chart.points
+        ],
+        "ts": chart.ts,
+    }
+
+
+def _immediate_fetch_new(subs) -> None:
+    """对新增且尚无缓存分时的标的，立即抓取首帧并写入仓库。
+
+    用于勾选后快速出图：这些标的无需排在后台整轮串行采集队列末尾等待，
+    独立线程立即采集；已缓存标的仍由 RefreshWorker 按周期刷新。
+    """
+    for i, s in enumerate(subs):
+        chart = fetch_tick_chart(s.market, s.code)
+        store.update_tick(s, chart)
+        if i < len(subs) - 1:
+            time.sleep(config.SLEEP_BETWEEN_REQUESTS)
+
+
+# --------------------------------------------------------------------------- #
+# 路由工厂：独立运行使用前缀 /api，挂载到 FinFeed 主应用时使用 /api/sector-minute
+# --------------------------------------------------------------------------- #
+
+def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
+    router = APIRouter(prefix=prefix, tags=["sector-minute"])
+
+    @router.get("/health")
+    def health() -> dict[str, Any]:
+        """模块运行状态：最近刷新时间 / 订阅数 / 分时缓存数 / 错误信息。"""
+        h = store.health()
+        h["board_types"] = {bt: len(store.get_board_list(bt)) for bt in ("hy", "hy2", "gn", "fg", "dq")}
+        return h
+
+    @router.post("/refresh")
+    def manual_refresh() -> dict[str, Any]:
+        """手动触发一轮行情刷新。
+
+        仅唤醒后台线程异步抓取（不阻塞请求）；前端通过轮询取数。
+        """
+        with _worker_lock:
+            if worker is None or not worker.is_alive():
+                raise HTTPException(status_code=503, detail="刷新线程未运行")
+            worker.refresh_now()
+            return {"ok": True, "msg": "已触发刷新"}
+
+    @router.get("/boards")
+    def boards(board_type: str = Query("hy", pattern="^(hy|hy2|gn|fg|dq)$")) -> dict[str, Any]:
+        """指定类型板块列表（含实时涨跌幅）。"""
+        items = store.get_board_list(board_type)
+        if not items:
+            # 冷启动无缓存时立即触网补一次
+            from .collector import fetch_board_list
+            items = fetch_board_list(board_type)
+            if items:
+                store.set_board_list(board_type, items)
+        return {
+            "board_type": board_type,
+            "total": len(items),
+            "items": [
+                {
+                    "market": b.market,
+                    "code": b.code,
+                    "name": b.name,
+                    "board_type": b.board_type,
+                    "price": b.price,
+                    "pre_close": b.pre_close,
+                    "rise_pct": b.rise_pct,
+                }
+                for b in items
+            ],
+        }
+
+    @router.get("/subscriptions")
+    def get_subscriptions() -> dict[str, Any]:
+        """当前对比标的列表。"""
+        return {"items": [{"kind": s.kind, "market": s.market, "code": s.code,
+                           "name": s.name, "board_type": s.board_type} for s in store.subscriptions()]}
+
+    @router.post("/subscriptions")
+    def set_subscriptions(payload: dict = Body(default={})) -> dict[str, Any]:
+        """整体替换对比标的列表（前端多选后一次性提交）。
+
+        仅登记订阅并唤醒后台线程异步抓取（不阻塞请求）；
+        后台线程按周期自动刷新所有订阅的分时数据，前端轮询取数。
+
+        优化：对「新勾选且尚无缓存分时」的标的，立即在独立线程抓取首帧，
+        使其无需排在整轮串行采集队列末尾，勾选后能快速出图。
+        """
+        items = payload.get("items", [])
+        subs = store.set_subscriptions(items)
+
+        # 新勾选且尚无缓存分时的标的 → 独立线程立即首抓，尽快出图
+        new_subs = [s for s in subs if not store.has_tick(s)]
+        if new_subs:
+            threading.Thread(
+                target=_immediate_fetch_new, args=(new_subs,), daemon=True
+            ).start()
+
+        with _worker_lock:
+            if worker is not None and worker.is_alive():
+                worker.refresh_now()
+        return {"ok": True, "count": len(subs),
+                "items": [{"kind": s.kind, "market": s.market, "code": s.code,
+                           "name": s.name, "board_type": s.board_type} for s in subs]}
+
+    @router.get("/charts")
+    def charts() -> dict[str, Any]:
+        """当前订阅标的分时图集合（涨跌幅已按昨收归一化）。"""
+        ticks = store.get_ticks()
+        return {
+            "ts": store.health().get("last_refresh_ts", 0),
+            "total": len(ticks),
+            "items": [_chart_dict(t) for t in ticks],
+        }
+
+    @router.get("/stocks")
+    def stocks(kw: str = Query("", max_length=32)) -> dict[str, Any]:
+        """个股池搜索（按代码/名称模糊匹配，用于个股对比添加）。"""
+        from .collector import stock_market
+
+        with _worker_lock:
+            if worker is not None and worker.is_alive():
+                worker.ensure_stock_pool()
+        pool = store.get_stock_pool()
+        kw = kw.strip()
+        if kw:
+            pool = [s for s in pool if kw in s.code or kw in s.name]
+        return {
+            "total": len(pool),
+            "items": [
+                {"market": s.market, "code": s.code, "name": s.name,
+                 "price": s.price, "change_pct": s.change_pct}
+                for s in pool
+            ],
+        }
+
+    return router
+
+
+app = None  # 模块仅提供路由工厂，不建立独立 FastAPI 实例

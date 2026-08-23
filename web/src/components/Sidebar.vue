@@ -23,6 +23,7 @@ const nav = [
   { to: '/ai', label: 'AI 分析', icon: 'sparkles' },
   { to: '/screener', label: '智能选股', icon: 'filter' },
   { to: '/easytdx', label: 'easy-tdx', icon: 'cpu' },
+  { href: '/sector-minute', label: '板块分时', icon: 'activity', external: true },
   { href: '/capital', label: '资金流大屏', icon: 'bar-chart', external: true },
 ]
 
