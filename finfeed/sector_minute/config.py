@@ -34,7 +34,8 @@ STOCK_POOL_TTL: int = int(os.environ.get("SECTOR_MIN_STOCK_POOL_TTL", "300"))
 # 风控与性能
 # --------------------------------------------------------------------------- #
 # 单屏最大同时展示标的数量上限（避免前端性能过载）。
-MAX_TARGETS: int = int(os.environ.get("SECTOR_MIN_MAX_TARGETS", "15"))
+# 注意：前端 SectorMinuteView.vue 的 MAX_TARGETS 需与本值保持一致。
+MAX_TARGETS: int = int(os.environ.get("SECTOR_MIN_MAX_TARGETS", "50"))
 
 # 串行刷新时相邻两个标的的请求间隔（秒），错峰避免瞬间集中请求触发风控。
 SLEEP_BETWEEN_REQUESTS: float = float(os.environ.get("SECTOR_MIN_SLEEP", "0.3"))

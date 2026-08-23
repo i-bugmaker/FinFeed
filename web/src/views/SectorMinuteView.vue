@@ -19,6 +19,8 @@ import SectorMinuteChart from '../components/sectorMinute/SectorMinuteChart.vue'
 const app = useAppStore()
 
 // ---------------- 布局 / 显示偏好 ----------------
+// 单屏最多同时对比的标的数（与后端 SECTOR_MIN_MAX_TARGETS 保持一致）
+const MAX_TARGETS = 50
 const layout = ref('rows') // rows 垂直混排 | columns 左右分屏
 const refreshInterval = ref(30) // 15 / 30 / 60
 const normalized = ref(true) // Y 轴：涨跌幅归一化 / 绝对价格
@@ -379,8 +381,8 @@ function toggleTarget(t) {
   if (selectedKeys.value.has(key)) {
     selected.value = selected.value.filter((s) => `${s.kind}:${s.market}:${s.code}` !== key)
   } else {
-    if (selected.value.length >= 15) {
-      errorMsg.value = '单屏最多对比 15 个标的'
+    if (selected.value.length >= MAX_TARGETS) {
+      errorMsg.value = `单屏最多对比 ${MAX_TARGETS} 个标的`
       return
     }
     selected.value.push({
@@ -420,7 +422,9 @@ function toggleAllIndices() {
     const add = indices.value
       .filter((i) => !cur.has(`index:${i.market}:${i.code}`))
       .map((i) => ({ kind: 'index', market: i.market, code: i.code, name: i.name }))
-    selected.value = selected.value.concat(add)
+    // 全选同样受单屏上限约束，避免越过后端截断导致部分标的无数据
+    const room = Math.max(0, MAX_TARGETS - selected.value.length)
+    selected.value = selected.value.concat(room > 0 ? add.slice(0, room) : [])
   }
   persistSelected()
   syncSubscriptions()
