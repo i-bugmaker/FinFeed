@@ -25,7 +25,10 @@ from fastapi.staticfiles import StaticFiles
 from . import config, tdx
 from .collector import fetch_stock_detail
 from .rotation import STATUS_LABEL
-from .snapshot import RefreshWorker, SnapshotStore
+from .snapshot import RefreshWorker, SnapshotStore, DetailEnricher
+from .alerting import manager as _alert_manager, wire_ws_push
+from .ws import ws_router as _ws_router
+from .observability import tracker as _signal_tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +41,7 @@ _WEB_DIR = Path(__file__).resolve().parent / "web"
 # 进程级单例
 store = SnapshotStore()
 worker: Optional[RefreshWorker] = None
+enricher: Optional[DetailEnricher] = None
 _worker_lock = threading.Lock()
 
 
@@ -47,23 +51,35 @@ _worker_lock = threading.Lock()
 
 def start_refresh_worker() -> None:
     """启动后台刷新线程（幂等：已在运行则跳过）。"""
-    global worker
+    global worker, enricher
     with _worker_lock:
         if worker is not None and worker.is_alive():
             return
         worker = RefreshWorker(store)
         worker.start()
+        wire_ws_push()  # 把资金流告警接到行情 WebSocket 的 alert 通道（幂等）
+        # 启动前从落盘数据回填，重启后立即可见上一时段状态
+        try:
+            store.bootstrap_from_persist()
+        except Exception:  # noqa: BLE001
+            pass
+        # 个股四档详情后台补全线程（解耦主循环）
+        enricher = DetailEnricher(store)
+        enricher.start()
         logger.info("资金流大屏后台刷新线程已启动 interval=%ss", config.REFRESH_INTERVAL)
 
 
 def stop_refresh_worker() -> None:
     """停止后台刷新线程并断开 TDX 连接（幂等）。"""
-    global worker
+    global worker, enricher
     with _worker_lock:
         if worker is not None:
             worker.stop()
             worker.join(timeout=3)
             worker = None
+        if enricher is not None:
+            enricher.stop()
+            enricher = None
         tdx.close()
         logger.info("资金流大屏后台刷新线程已停止")
 
@@ -82,9 +98,7 @@ async def lifespan(_: FastAPI):
 # 路由工厂：独立运行使用前缀 /api，挂载到 FinFeed 主应用时使用 /api/capital
 # --------------------------------------------------------------------------- #
 
-def create_router(prefix: str = "/api") -> APIRouter:
-    router = APIRouter(prefix=prefix, tags=["capital-dashboard"])
-
+# （路由定义见下方 create_router）
 
 # --------------------------------------------------------------------------- #
 # 工具函数
@@ -169,8 +183,17 @@ def create_router(prefix: str = "/api") -> APIRouter:
     @router.get("/health")
     def health() -> dict[str, Any]:
         h = store.health()
+        h["signal"] = _signal_tracker.summary()
         h.update(_now())
         return h
+
+    @router.get("/observability")
+    def observability() -> dict[str, Any]:
+        """信号命中率可观测性：已触发/已验证/命中率/按类型分布/近期样本。
+
+        说明：命中率采用「方向跟随验证」而非收益回测（详见 observability.py 注释）。
+        """
+        return _signal_tracker.summary()
 
     @router.post("/refresh")
     def manual_refresh() -> dict[str, Any]:
@@ -240,6 +263,24 @@ def create_router(prefix: str = "/api") -> APIRouter:
             raise HTTPException(status_code=503, detail="轮动分析未就绪")
         return asdict(rep)
 
+    @router.get("/anomalies")
+    def anomalies() -> dict[str, Any]:
+        """统计异常检测：板块 z-score 异常 + 个股级异常（涨停背离/主力异动等）。"""
+        rep = store.get_anomalies()
+        if rep is None:
+            raise HTTPException(status_code=503, detail="异常检测未就绪")
+        return rep.to_dict()
+
+    @router.get("/alerts/recent")
+    def alerts_recent(limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
+        """近期资金流告警（规则命中 + 统计异常，含冷却去重后的记录）。"""
+        return {"items": _alert_manager.get_recent(limit)}
+
+    @router.get("/alerts/config")
+    def alerts_config() -> dict[str, Any]:
+        """当前告警规则阈值与通道状态。"""
+        return _alert_manager.get_config()
+
     @router.get("/unusual")
     def unusual() -> dict[str, Any]:
         """市场异动（涨停/跌停/异动拉升等）。"""
@@ -264,6 +305,9 @@ def create_router(prefix: str = "/api") -> APIRouter:
         if not detail:
             raise HTTPException(status_code=404, detail=f"未获取到 {code} 资金流数据")
         return {"code": code, "name": name, **detail}
+
+    # WebSocket 实时推送通道（增量检查 + 批量下发）
+    router.include_router(_ws_router)
 
     return router
 

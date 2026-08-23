@@ -33,7 +33,7 @@ from .models import (
     StockFlow,
     UnusualEvent,
 )
-from .tdx import ensure_alive, get_client
+from .tdx import ensure_alive, get_client, call_lock
 
 logger = logging.getLogger("finfeed.capital_dashboard.collector")
 
@@ -83,13 +83,14 @@ def fetch_all_stocks(client: MacClient | None = None) -> list[StockFlow]:
     """
     ensure_alive()
     client = client or get_client()
-    df = client.get_stock_quotes_list(
-        Category.A,
-        count=12000,
-        sort_type=SortType.CODE,
-        sort_order=SortOrder.ASC,
-        fields=FIELDS,
-    )
+    with call_lock():
+        df = client.get_stock_quotes_list(
+            Category.A,
+            count=12000,
+            sort_type=SortType.CODE,
+            sort_order=SortOrder.ASC,
+            fields=FIELDS,
+        )
     rows: list[StockFlow] = []
     for _, r in df.iterrows():
         rows.append(
@@ -135,6 +136,12 @@ def _board_rows(df, board_type: str) -> list[BoardFlow]:
     return rows
 
 
+def _board_ranking_locked(client, board_type, top_n):
+    """在调用锁内执行板块排行请求（保证 TDX 客户端线程安全）。"""
+    with call_lock():
+        return client.get_board_ranking(board_type, top_n=top_n)
+
+
 def fetch_board_rankings(client: MacClient | None = None) -> dict[str, list[BoardFlow]]:
     """获取行业(HY)与概念(GN)板块排行（含主力资金流）。"""
     ensure_alive()
@@ -142,16 +149,14 @@ def fetch_board_rankings(client: MacClient | None = None) -> dict[str, list[Boar
     result: dict[str, list[BoardFlow]] = {}
 
     hy = _safe(
-        lambda: client.get_board_ranking(BoardType.HY, top_n=config.BOARD_TOP_N * 2),
+        lambda: _board_ranking_locked(client, BoardType.HY, config.BOARD_TOP_N * 2),
         tag="board_ranking_hy",
     )
     if hy is not None and len(hy):
         result["HY"] = _board_rows(hy, "HY")
 
     gn = _safe(
-        lambda: client.get_board_ranking(
-            BoardType.GN, top_n=config.GN_RANKING_TOP
-        ),
+        lambda: _board_ranking_locked(client, BoardType.GN, config.GN_RANKING_TOP),
         tag="board_ranking_gn",
     )
     if gn is not None and len(gn):
@@ -168,9 +173,10 @@ def fetch_indices(client: MacClient | None = None) -> list[IndexQuote]:
     """获取主要指数行情（按白名单过滤）。"""
     ensure_alive()
     client = client or get_client()
-    df = client.get_stock_quotes_list(
-        Category.ZS, count=120, fields=FIELDS
-    )
+    with call_lock():
+        df = client.get_stock_quotes_list(
+            Category.ZS, count=120, fields=FIELDS
+        )
     wanted = set(config.MAIN_INDEX_CODES)
     out: list[IndexQuote] = []
     for _, r in df.iterrows():
@@ -197,7 +203,8 @@ def fetch_unusual(client: MacClient | None = None) -> list[UnusualEvent]:
     """获取市场异动（涨停/跌停/异动拉升等）。"""
     ensure_alive()
     client = client or get_client()
-    df = client.get_unusual(0, 0, 60)
+    with call_lock():
+        df = client.get_unusual(0, 0, 60)
     out: list[UnusualEvent] = []
     for _, r in df.iterrows():
         out.append(
@@ -232,7 +239,8 @@ def fetch_stock_detail(market: int, code: str) -> dict[str, Any]:
     ensure_alive()
     client = get_client()
     try:
-        df = client.get_capital_flow(int(market), str(code))
+        with call_lock():
+            df = client.get_capital_flow(int(market), str(code))
     except TdxError as exc:
         logger.debug("个股资金流详情失败 %s/%s: %s", market, code, exc)
         return {}

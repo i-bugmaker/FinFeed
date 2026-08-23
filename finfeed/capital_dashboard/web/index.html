@@ -50,7 +50,7 @@
     --panel-border: rgba(56, 108, 196, 0.30);
     --line: rgba(56, 108, 196, 0.18);
     --text-main: #16223a;
-    --text-sub: #4a5b7a;
+    --text-sub: #44557a;   /* 调深以满足 WCAG AA（对 #eef2f8 ≈ 5.3:1） */
     --text-dim: #8a99b5;
     /* 红涨绿跌在亮底上加深，保证 ≥ WCAG AA 对比度 */
     --red: #e03131;
@@ -174,6 +174,8 @@
   .rank-no.t1 { background: linear-gradient(135deg,#ff6b35,#e8322a); color: #fff; }
   .rank-no.t2 { background: linear-gradient(135deg,#ffb347,#ff8c00); color: #fff; }
   .rank-no.t3 { background: linear-gradient(135deg,#ffe066,#f5c542); color: #3a2b00; }
+  .stock-row { cursor: pointer; }
+  .stock-row:hover { background: var(--chip-bg); }
 
   /* ---------- 信号卡片 ---------- */
   .sig-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
@@ -231,6 +233,79 @@
   .empty { color: var(--text-dim); font-size: 12px; padding: 12px; text-align: center; }
   .chart { flex: 1; min-height: 0; }
   .legend-note { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ============================================================
+   * WCAG AA 对比度基线（仅注释，实际色值在 :root / [data-theme] 定义）
+   * - 正文（--text-main）对面板底：暗色 ≥ 7:1、亮色 ≥ 9:1，远超 AA 4.5:1
+   * - 次级文字（--text-sub）：暗 #8fa3c8/底#0b1226 ≈ 7:1；亮 #44557a/底#eef2f8 ≈ 5.3:1，均 ≥ AA
+   * - 红涨(#e03131)/绿跌(#0ca678)对亮底 ≥ 4.6:1；对暗底(#ff4d4f/#00d68f)≥5.5:1，达 AA
+   * - 所有状态色（黄/紫/青）仅作强调边框/徽标，不承载关键数值可读性
+   * ============================================================ */
+
+  /* ---------- 头部操作按钮：导出CSV / 声音 ---------- */
+  .hdr-actions { display: flex; gap: 8px; align-items: center; }
+  .act-btn {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+    padding: 6px 11px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    color: var(--text-main); background: var(--chip-bg); border: 1px solid var(--line);
+    transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+  }
+  .act-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .act-btn svg { width: 14px; height: 14px; }
+
+  /* ---------- 可观测面板 ---------- */
+  .obs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+  .obs-cell { background: var(--chip-bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  .obs-cell .k { font-size: 10px; color: var(--text-dim); }
+  .obs-cell .v { font-family: var(--font-num); font-size: 18px; font-weight: 700; }
+  .obs-cell .v.up { color: var(--green); } .obs-cell .v.down { color: var(--red); }
+  .obs-bar { height: 6px; border-radius: 3px; background: var(--row-line); overflow: hidden; margin-top: 3px; }
+  .obs-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--accent)); }
+  .obs-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; min-height: 0; }
+  .obs-row { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 2px 4px; border-bottom: 1px solid var(--row-line); }
+  .obs-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .obs-tag { font-size: 9px; padding: 0 5px; border-radius: 3px; }
+  .obs-hit { background: rgba(0,214,143,.16); color: var(--green-soft); }
+  .obs-miss { background: rgba(255,77,79,.16); color: var(--red-soft); }
+  .obs-wait { background: rgba(94,152,255,.16); color: var(--text-sub); }
+
+  /* ---------- 个股钻取模态 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(3,7,16,.62); backdrop-filter: blur(3px);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-mask.show { display: flex; }
+  .modal {
+    width: min(720px, 92vw); max-height: 86vh; overflow-y: auto;
+    background: var(--bg-1); border: 1px solid var(--panel-border); border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5); padding: 16px 18px;
+  }
+  .modal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .modal-head .m-name { font-size: 20px; font-weight: 700; }
+  .modal-head .m-code { font-family: var(--font-num); color: var(--text-dim); font-size: 12px; }
+  .modal-head .m-close { margin-left: auto; cursor: pointer; color: var(--text-sub); font-size: 22px; line-height: 1; }
+  .modal-head .m-close:hover { color: var(--red); }
+  .modal-stat { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  .modal-stat .ms { font-size: 12px; color: var(--text-sub); }
+  .modal-stat .ms b { font-family: var(--font-num); font-size: 15px; color: var(--text-main); }
+  .modal .chart { width: 100%; height: 230px; }
+  .modal-sub { font-size: 12px; color: var(--text-sub); margin: 4px 0 2px; }
+
+  /* ---------- 响应式：<1920 与窄屏（大屏通常 ≥1920；此处保证收窄不破版） ---------- */
+  @media (max-width: 1600px) {
+    main { grid-template-columns: 22% 1fr 22%; }
+    .brand h1 { font-size: 20px; letter-spacing: 1px; }
+    .idx-val { font-size: 17px; }
+    .stat-cell .v { font-size: 15px; }
+  }
+  @media (max-width: 1280px) {
+    html, body { overflow: auto; }   /* 窄屏允许滚动，避免内容被裁切 */
+    #app { height: auto; min-height: 100vh; }
+    main { grid-template-columns: 1fr; }
+    .col { min-height: 0; }
+    .panel { min-height: 220px; }
+    .clock { display: none; }
+  }
 </style>
 <script>
 /* 首屏前确定主题，避免闪烁：localStorage 记忆优先，否则跟随系统 prefers-color-scheme */
@@ -259,6 +334,17 @@
       <div class="stat-cell"><div class="k">两市成交额</div><div class="v" id="statAmount">--</div></div>
       <div class="stat-cell"><div class="k">全市场主力净流入</div><div class="v" id="statMainNet">--</div></div>
       <div class="stat-cell"><div class="k">上涨/下跌/涨停</div><div class="v" id="statBreadth">--</div></div>
+      <div class="stat-cell"><div class="k">信号命中率</div><div class="v" id="statHitRate">--</div></div>
+    </div>
+    <div class="hdr-actions">
+      <div class="act-btn" id="exportBtn" title="导出当前个股榜与板块榜为 CSV" role="button" aria-label="导出CSV">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>导出CSV</span>
+      </div>
+      <div class="act-btn" id="soundBtn" title="新异动时播放提示音（默认关）" role="button" aria-label="声音开关">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="22" y1="9" x2="22" y2="15"/></svg>
+        <span id="soundLabel">静音</span>
+      </div>
     </div>
     <div class="clock" id="clock">--:--:--</div>
     <div class="theme-btn" id="themeBtn" title="切换亮/暗主题（记忆偏好）" role="button" aria-label="切换主题">
@@ -289,6 +375,10 @@
             <tbody></tbody>
           </table>
         </div>
+      </div>
+      <div class="panel" style="flex:1.1">
+        <div class="panel-title">板块资金流树图 <span class="tag">尺寸=成交额 色=主力净占比%</span></div>
+        <div class="chart" id="boardTree"></div>
       </div>
     </div>
 
@@ -329,6 +419,14 @@
         <div class="panel-title">市场异动播报 <span class="tag">涨停 / 跌停 / 异动</span></div>
         <div class="unusual-list" id="unusualList"></div>
       </div>
+      <div class="panel" style="flex:1.2">
+        <div class="panel-title">信号可观测 <span class="tag">跟随验证命中率</span></div>
+        <div class="obs-grid">
+          <div class="obs-cell"><div class="k">命中率</div><div class="v" id="obsHitRate">--</div><div class="obs-bar"><i id="obsHitBar" style="width:0%"></i></div></div>
+          <div class="obs-cell"><div class="k">已验证 / 待验证</div><div class="v" id="obsResolved">--</div></div>
+        </div>
+        <div class="obs-list" id="obsList"><div class="empty">暂无信号样本</div></div>
+      </div>
     </div>
   </main>
 
@@ -338,6 +436,22 @@
     <div class="ticker"><div class="ticker-inner" id="ticker"></div></div>
     <span class="foot-status" id="footStatus">--</span>
   </footer>
+</div>
+
+<!-- ===================== 个股四档钻取模态 ===================== -->
+<div class="modal-mask" id="stockModal" role="dialog" aria-modal="true" aria-label="个股资金流详情">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="m-name" id="mName">--</span>
+      <span class="m-code" id="mCode">--</span>
+      <span class="m-close" id="mClose" role="button" aria-label="关闭">×</span>
+    </div>
+    <div class="modal-stat" id="mStat"></div>
+    <div class="modal-sub">当日资金流四档（主力流入 / 主力流出 / 散户流入 / 散户流出，单位：元）</div>
+    <div class="chart" id="stockWaterfall"></div>
+    <div class="modal-sub">近 5 日维度（大单净额 / 中单净额，单位：元）</div>
+    <div class="modal-stat" id="m5d"></div>
+  </div>
 </div>
 
 <script>
@@ -358,6 +472,7 @@ const API = {
   boardGn:   API_BASE + "/ranking/boards?board_type=gn&sort=main_net&limit=12",
   rotation:  API_BASE + "/rotation",
   unusual:   API_BASE + "/unusual",
+  observability: API_BASE + "/observability",
 };
 const REFRESH_MS = 5000;
 
@@ -388,7 +503,11 @@ function getPalette() {
 const P = getPalette;
 
 /* 缓存最近一次渲染数据，主题切换时重绘图表（不重新请求） */
-let last = { boardHy: [], rot: null };
+let last = { boardHy: [], rot: null, boardTree: null, stockDetail: null };
+/* 个股缓存：code -> 完整对象（含四档明细），供钻取模态取数 */
+const stockMap = {};
+/* 当前已渲染的板块列表（树图 + CSV 导出共用） */
+let boardListCache = [];
 
 const fmtMoney = v => {
   if (v === null || v === undefined || isNaN(v)) return "--";
@@ -409,6 +528,8 @@ function initCharts() {
   charts.boardBar = echarts.init(document.getElementById("boardBar"));
   charts.rotationHeat = echarts.init(document.getElementById("rotationHeat"));
   charts.rotationTrend = echarts.init(document.getElementById("rotationTrend"));
+  charts.boardTree = echarts.init(document.getElementById("boardTree"));
+  charts.stockWaterfall = echarts.init(document.getElementById("stockWaterfall"));
   Object.values(charts).forEach(c => c.setOption(common));
   window.addEventListener("resize", () => Object.values(charts).forEach(c => c.resize()));
 }
@@ -425,6 +546,8 @@ function rerenderCharts() {
   if (last.boardHy.length) renderBoardBar(last.boardHy);
   if (last.rot) renderHeatmap(last.rot, nameMap);
   if (last.rot) renderTrend(last.rot, nameMap);
+  if (last.boardTree) renderBoardTreemap(last.boardTree);
+  if (last.stockDetail) renderStockModal(last.stockDetail);
 }
 function toggleTheme() {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
@@ -465,10 +588,11 @@ function rankNo(i) {
 function renderStockTbl(id, items) {
   const tbody = document.querySelector(`#${id} tbody`);
   if (!items || !items.length) { tbody.innerHTML = `<tr><td colspan="6" class="empty">暂无数据</td></tr>`; return; }
+  items.forEach(s => { stockMap[s.code] = s; });
   tbody.innerHTML = items.map((s, i) => `
-    <tr>
+    <tr class="stock-row" data-code="${s.code}" title="点击查看 ${s.name} 四档资金流明细">
       <td>${rankNo(i)}</td>
-      <td><div class="name" title="${s.name}">${s.name}</div><div class="code">${s.code}</div></td>
+      <td><div class="name">${s.name}</div><div class="code">${s.code}</div></td>
       <td class="${chgCls(s.change_pct)}">${s.price.toFixed ? s.price.toFixed(2) : s.price}</td>
       <td class="${chgCls(s.change_pct)}">${fmtPct(s.change_pct)}</td>
       <td class="${clsOf(s.main_net)}" style="font-weight:600">${fmtMoney(s.main_net)}</td>
@@ -633,7 +757,224 @@ function renderUnusual(list) {
   }).join("");
 }
 
-/* ---------- 跑马灯 ---------- */
+/* ---------- 个股四档钻取（P2-6） ---------- */
+function openStockModal(code) {
+  const s = stockMap[code];
+  if (!s) return;
+  last.stockDetail = s;
+  renderStockModal(s);
+  document.getElementById("stockModal").classList.add("show");
+  // 模态由 display:none 变为可见后，需要让瀑布图按实际尺寸重排
+  setTimeout(() => { try { charts.stockWaterfall.resize(); } catch (e) {} }, 30);
+}
+function closeStockModal() {
+  document.getElementById("stockModal").classList.remove("show");
+}
+function renderStockModal(s) {
+  document.getElementById("mName").textContent = s.name;
+  document.getElementById("mCode").textContent = s.code + " · " + (s.market === 1 ? "沪" : "深");
+  const hasDetail = [s.main_in, s.main_out, s.retail_in, s.retail_out].some(v => v !== null && v !== undefined);
+  document.getElementById("mStat").innerHTML = `
+    <span class="ms">现价 <b class="${chgCls(s.change_pct)}">${s.price.toFixed ? s.price.toFixed(2) : s.price}</b></span>
+    <span class="ms">涨跌 <b class="${chgCls(s.change_pct)}">${fmtPct(s.change_pct)}</b></span>
+    <span class="ms">成交额 <b>${fmtMoney(s.amount)}</b></span>
+    <span class="ms">换手 <b>${(s.turnover || 0).toFixed(2)}%</b></span>
+    <span class="ms">主力净额 <b class="${clsOf(s.main_net)}">${fmtMoney(s.main_net)}</b></span>
+    <span class="ms">5分钟主力 <b class="${clsOf(s.main_net_5m)}">${fmtMoney(s.main_net_5m)}</b></span>`;
+  document.getElementById("m5d").innerHTML = `
+    <span class="ms">5日大单净额 <b class="${clsOf(s.large_net_5d)}">${fmtMoney(s.large_net_5d)}</b></span>
+    <span class="ms">5日中单净额 <b class="${clsOf(s.mid_net_5d)}">${fmtMoney(s.mid_net_5d)}</b></span>
+    <span class="ms">5日主力净额 <b class="${clsOf(s.main_net_5d)}">${fmtMoney(s.main_net_5d)}</b></span>
+    <span class="ms">3日主力净额 <b class="${clsOf(s.main_net_3d)}">${fmtMoney(s.main_net_3d)}</b></span>`;
+
+  const pal = P();
+  const c = charts.stockWaterfall;
+  if (!hasDetail) {
+    c.clear();
+    c.setOption({
+      title: { text: "四档明细尚未补全（后台线程每 30s 刷新一次）", left: "center", top: "middle",
+               textStyle: { color: pal.textDim, fontSize: 13, fontWeight: 400 } },
+    }, true);
+    return;
+  }
+  // 瀑布图：主力流入(净入) / 主力流出(净出) / 散户流入 / 散户流出
+  const data = [
+    { name: "主力流入", val: s.main_in || 0 },
+    { name: "主力流出", val: s.main_out || 0 },
+    { name: "散户流入", val: s.retail_in || 0 },
+    { name: "散户流出", val: s.retail_out || 0 },
+  ];
+  c.setOption({
+    tooltip: {
+      trigger: "axis", axisPointer: { type: "shadow" },
+      backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder,
+      textStyle: { color: pal.tooltipText, fontSize: 12 },
+      formatter: p => {
+        const d = data[p[0].dataIndex];
+        return `<b>${d.name}</b><br/>金额：<b style="color:${d.val >= 0 ? pal.upSoft : pal.downSoft}">${fmtMoney(d.val)}</b>` +
+               (d.name === "主力流入" || d.name === "主力流出"
+                 ? `<br/>（当日主力净额 ${fmtMoney(s.main_net)}）` : "");
+      }
+    },
+    grid: { left: 10, right: 12, top: 24, bottom: 6, containLabel: true },
+    xAxis: { type: "category", data: data.map(d => d.name),
+      axisLabel: { color: pal.axisName, fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: "value", name: "元", nameTextStyle: { color: pal.axisLabel, fontSize: 10 },
+      splitLine: { lineStyle: { color: pal.splitLine } }, axisLabel: { color: pal.axisLabel, fontSize: 10, formatter: v => fmtMoney(v) } },
+    series: [{
+      type: "bar", barWidth: 44, data: data.map(d => d.val),
+      itemStyle: {
+        color: p => {
+          const d = data[p.dataIndex];
+          const isMain = d.name === "主力流入" || d.name === "主力流出";
+          const base = d.val >= 0 ? pal.up : pal.down;
+          return isMain ? base : base + "77"; // 主力档不透明、散户档半透明
+        },
+        borderRadius: [4, 4, 0, 0]
+      },
+      label: { show: true, position: "top", color: pal.textSub, fontSize: 10, formatter: p => fmtMoney(data[p.dataIndex].val) }
+    }]
+  }, true);
+}
+
+/* ---------- 板块资金流树图（P2-6） ---------- */
+function renderBoardTreemap(items) {
+  const c = charts.boardTree;
+  if (!items || !items.length) { c.clear(); return; }
+  last.boardTree = items;
+  boardListCache = items;
+  const pal = P();
+  const data = items
+    .filter(b => b.amount > 0)
+    .slice(0, 40)
+    .map(b => ({
+      name: b.name, value: b.amount,
+      mainNet: b.main_net, ratio: b.amount > 0 ? (b.main_net / b.amount * 100) : 0,
+      change: b.change_pct,
+    }));
+  if (!data.length) { c.clear(); return; }
+  const ratios = data.map(d => d.ratio);
+  const minR = Math.min(...ratios), maxR = Math.max(...ratios);
+  const bound = Math.max(Math.abs(minR), Math.abs(maxR), 0.01);
+  c.setOption({
+    tooltip: {
+      backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder,
+      textStyle: { color: pal.tooltipText, fontSize: 12 },
+      formatter: p => {
+        const d = p.data;
+        return `<b>${d.name}</b><br/>成交额：${fmtMoney(d.value)}<br/>主力净占比：<b style="color:${d.ratio>=0?pal.upSoft:pal.downSoft}">${d.ratio.toFixed(2)}%</b><br/>主力净额：${fmtMoney(d.mainNet)}<br/>涨跌：${fmtPct(d.change)}`;
+      }
+    },
+    visualMap: {
+      min: -bound, max: bound, calculable: false, orient: "horizontal", left: "center", top: 0,
+      inRange: { color: pal.heat },
+      textStyle: { color: pal.axisLabel, fontSize: 9 },
+      formatter: v => v.toFixed(1) + "%"
+    },
+    series: [{
+      type: "treemap",
+      roam: false,
+      nodeClick: false,
+      breadcrumb: { show: false },
+      label: { show: true, formatter: p => `${p.name}\n${p.data.ratio.toFixed(2)}%`, color: "#fff", fontSize: 10, lineHeight: 14 },
+      itemStyle: { borderColor: pal.tooltipBg, borderWidth: 1, gapWidth: 1 },
+      levels: [{ itemStyle: { borderWidth: 1, gapWidth: 1 } }],
+      data,
+    }]
+  }, true);
+}
+
+/* ---------- CSV 导出（P2-6） ---------- */
+function exportCSV() {
+  const rows = [];
+  const esc = v => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  // 板块表
+  rows.push(["类型", "板块名称", "代码", "涨跌幅%", "成交额(元)", "主力净额(元)", "净占比%", "涨/跌家数", "状态"]);
+  (boardListCache || []).forEach(b => rows.push([
+    b.board_type === "HY" ? "行业" : "概念", b.name, b.code,
+    (b.change_pct || 0).toFixed(2), Math.round(b.amount || 0), Math.round(b.main_net || 0),
+    b.amount ? (b.main_net / b.amount * 100).toFixed(2) : "", `${b.up_count}/${b.down_count}`, b.status || ""
+  ]));
+  rows.push([]);
+  // 个股表（当前 TOP 榜，含四档明细）
+  rows.push(["代码", "名称", "市场", "现价", "涨跌幅%", "成交额(元)", "换手%", "主力净额(元)", "净比%", "5分钟主力(元)", "主力流入(元)", "主力流出(元)", "散户流入(元)", "散户流出(元)", "5日大单(元)", "5日中单(元)"]);
+  Object.values(stockMap).forEach(s => rows.push([
+    s.code, s.name, s.market === 1 ? "沪" : "深",
+    s.price, (s.change_pct || 0).toFixed(2), Math.round(s.amount || 0), (s.turnover || 0).toFixed(2),
+    Math.round(s.main_net || 0), (s.main_net_ratio || 0).toFixed(2), Math.round(s.main_net_5m || 0),
+    s.main_in == null ? "" : Math.round(s.main_in), s.main_out == null ? "" : Math.round(s.main_out),
+    s.retail_in == null ? "" : Math.round(s.retail_in), s.retail_out == null ? "" : Math.round(s.retail_out),
+    s.large_net_5d == null ? "" : Math.round(s.large_net_5d), s.mid_net_5d == null ? "" : Math.round(s.mid_net_5d),
+  ]));
+  const csv = "\uFEFF" + rows.map(r => r.map(esc).join(",")).join("\r\n"); // BOM 供 Excel 识别中文
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  a.href = URL.createObjectURL(blob);
+  a.download = `资金流快照_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- 信号可观测面板（P2-7） ---------- */
+function renderObservability(stats) {
+  if (!stats) return;
+  const el = document.getElementById("obsHitRate");
+  const rate = stats.hit_rate;
+  el.textContent = rate === null || rate === undefined ? "--" : (rate * 100).toFixed(0) + "%";
+  el.className = "v " + (rate === null ? "" : (rate >= 0.5 ? "up" : "down"));
+  document.getElementById("obsHitBar").style.width = (rate === null || rate === undefined ? 0 : Math.round(rate * 100)) + "%";
+  document.getElementById("obsResolved").textContent =
+    `${stats.resolved || 0} / ${stats.open || 0}`;
+  const listEl = document.getElementById("obsList");
+  const recent = stats.recent || [];
+  if (!recent.length) { listEl.innerHTML = '<div class="empty">暂无信号样本（信号触发后 N 轮内验证）</div>'; return; }
+  listEl.innerHTML = recent.map(p => {
+    let tag, cls;
+    if (p.outcome === true) { tag = "命中"; cls = "obs-hit"; }
+    else if (p.outcome === false) { tag = "未命中"; cls = "obs-miss"; }
+    else { tag = "待验证"; cls = "obs-wait"; }
+    const dir = p.direction > 0 ? "多" : (p.direction < 0 ? "空" : "中");
+    return `<div class="obs-row"><span class="obs-tag ${cls}">${tag}</span>
+      <span class="nm" title="${p.kind}">${p.name}</span>
+      <span style="color:var(--text-dim);font-size:10px">${p.kind} · ${dir}</span></div>`;
+  }).join("");
+  document.getElementById("statHitRate").textContent = rate === null || rate === undefined ? "--" : (rate * 100).toFixed(0) + "%";
+}
+
+/* ---------- 告警视听提示（P2-6，声音默认关） ---------- */
+let soundOn = false;
+let lastAnomCount = null;
+function updateSoundLabel() {
+  document.getElementById("soundLabel").textContent = soundOn ? "声音开" : "静音";
+}
+function beep() {
+  if (!soundOn) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = "sine"; osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.5);
+  } catch (e) { /* 音频不可用则静默 */ }
+}
+function checkNewAnomalies(p) {
+  const anom = p.anomalies;
+  if (!anom) return;
+  const n = (anom.boards || []).length + (anom.stocks || []).length;
+  if (lastAnomCount !== null && n > lastAnomCount) beep();
+  lastAnomCount = n;
+}
+
+
 let lastTickerHTML = "";
 function renderTicker(rot, ov) {
   const parts = [];
@@ -672,7 +1013,7 @@ function setRefreshTag(ok, msg) {
 let nameMap = {};
 async function loadAll() {
   try {
-    const [ov, si, so, bhy, bgn, rot, un] = await Promise.all([
+    const [ov, si, so, bhy, bgn, rot, un, obs] = await Promise.all([
       fetch(API.overview).then(r => r.json()),
       fetch(API.stockIn).then(r => r.json()),
       fetch(API.stockOut).then(r => r.json()),
@@ -680,6 +1021,7 @@ async function loadAll() {
       fetch(API.boardGn).then(r => r.json()),
       fetch(API.rotation).then(r => r.json()),
       fetch(API.unusual).then(r => r.json()),
+      fetch(API.observability).then(r => r.json()),
     ]);
     nameMap = {};
     [...(bhy.items || []), ...(bgn.items || [])].forEach(b => nameMap[b.code] = b.name);
@@ -688,11 +1030,13 @@ async function loadAll() {
     renderStockTbl("stockInTbl", si.items);
     renderStockTbl("stockOutTbl", so.items);
     renderBoardBar(bhy.items);
+    renderBoardTreemap([...(bhy.items || []), ...(bgn.items || [])]);
     renderHeatmap(rot, nameMap);
     renderTrend(rot, nameMap);
     renderLeader(rot);
     renderSignals(rot);
     renderUnusual(un.items);
+    renderObservability(obs);
     renderTicker(rot, ov);
 
     const rt = document.getElementById("refreshTag");
@@ -702,6 +1046,61 @@ async function loadAll() {
   } catch (e) {
     console.error(e);
     setRefreshTag(false, "获取数据失败，重试中…");
+  }
+}
+
+/* ---------- WebSocket 实时推送（REST 轮询兜底） ---------- */
+function renderPayload(p) {
+  if (!p) return;
+  const ov = {
+    indices: p.indices, breadth: p.breadth, stats: p.stats,
+    ts: p.ts, ts_label: p.ts_label, last_refresh: p.last_refresh,
+  };
+  nameMap = {};
+  (p.boards_hy || []).concat(p.boards_gn || []).forEach(b => nameMap[b.code] = b.name);
+  renderOverview(ov);
+  renderStockTbl("stockInTbl", p.stock_in || []);
+  renderStockTbl("stockOutTbl", p.stock_out || []);
+  renderBoardBar(p.boards_hy || []);
+  renderBoardTreemap([...(p.boards_hy || []), ...(p.boards_gn || [])]);
+  if (p.rotation) {
+    renderHeatmap(p.rotation, nameMap);
+    renderTrend(p.rotation, nameMap);
+    renderLeader(p.rotation);
+    renderSignals(p.rotation);
+    last.rot = p.rotation;
+  }
+  renderUnusual(p.unusual || []);
+  renderObservability(p.signal_stats);
+  renderTicker(p.rotation, ov);
+  checkNewAnomalies(p);
+  setRefreshTag(true, p.ts_label ? `推送于 ${p.ts_label}` : "等待数据");
+}
+
+const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + API_BASE + "/ws";
+let pollingTimer = null;
+function startPolling() {
+  if (!pollingTimer) { pollingTimer = setInterval(loadAll, REFRESH_MS); loadAll(); }
+}
+function stopPolling() {
+  if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+}
+function connectWS() {
+  try {
+    const ws = new WebSocket(WS_URL);
+    let got = false;
+    ws.onmessage = (ev) => {
+      try {
+        const p = JSON.parse(ev.data);
+        if (p) { got = true; stopPolling(); renderPayload(p); }
+      } catch (e) { /* ignore malformed */ }
+    };
+    ws.onclose = () => { startPolling(); setTimeout(connectWS, 3000); };
+    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    // 2.5s 内未收到数据则回退到 REST 轮询
+    setTimeout(() => { if (!got) { try { ws.close(); } catch (e) {} startPolling(); } }, 2500);
+  } catch (e) {
+    startPolling();
   }
 }
 
@@ -722,8 +1121,29 @@ try {
     else if (mq.addListener) mq.addListener(onSys);
   }
 } catch (e) {}
-loadAll();
-setInterval(loadAll, REFRESH_MS);
+// 优先 WebSocket 推送，失败自动回退 REST 轮询
+connectWS();
+
+/* ---------- P2-6 交互绑定 ---------- */
+// 榜单击行 -> 四档钻取（事件委托，覆盖两表）
+document.addEventListener("click", e => {
+  const row = e.target.closest(".stock-row");
+  if (row) openStockModal(row.dataset.code);
+});
+document.getElementById("exportBtn").addEventListener("click", exportCSV);
+document.getElementById("soundBtn").addEventListener("click", () => {
+  soundOn = !soundOn;
+  updateSoundLabel();
+});
+updateSoundLabel();
+const closeModal = () => closeStockModal();
+document.getElementById("mClose").addEventListener("click", closeModal);
+document.getElementById("stockModal").addEventListener("click", e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeStockModal();
+});
 </script>
 </body>
 </html>

@@ -21,6 +21,7 @@ from .collector import (
     fetch_unusual,
 )
 from .rotation import RotationReport, RotationSignal, analyze_rotation
+from .anomaly import AnomalyDetector, AnomalyReport, detector
 from .server import (
     app,
     create_router,
@@ -44,6 +45,9 @@ __all__ = [
     "RotationReport",
     "RotationSignal",
     "analyze_rotation",
+    "AnomalyDetector",
+    "AnomalyReport",
+    "detector",
     "fetch_all_stocks",
     "fetch_board_rankings",
     "fetch_indices",

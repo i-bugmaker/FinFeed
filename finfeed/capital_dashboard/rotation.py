@@ -67,6 +67,21 @@ def main_net_ratio(board: BoardFlow) -> float:
     return board.main_net / board.amount * 100.0
 
 
+def signal_confidence(delta_abs: int, main_net: float, board_amount: float) -> float:
+    """轮动信号置信度（原则化，替换旧的 ``0.55 + 0.06*delta`` 伪造公式）。
+
+    置信度由两类证据共同决定，且均与信号强度单调相关：
+      - 排名跳变证据：``delta_abs`` 越大越可信（归一化到 8 档封顶）；
+      - 资金强度证据：主力净占比（``main_net/board_amount``）越大越可信。
+    结果裁剪到 [0, 0.98]。
+    """
+    rank_evidence = min(1.0, delta_abs / 8.0)
+    mag = abs(main_net) / max(board_amount, 1.0) if board_amount > 0 else 0.0
+    mag_evidence = min(1.0, mag * 20.0)  # 主力净占比约 5% 即达满分
+    score = 0.4 + 0.6 * (0.5 * rank_evidence + 0.5 * mag_evidence)
+    return round(min(0.98, max(0.0, score)), 2)
+
+
 def _rank_map(boards: Iterable[BoardFlow]) -> dict[str, int]:
     """按主力净流入从大到小生成 {code: rank}（rank 从 1 开始）。"""
     ordered = sorted(boards, key=lambda b: b.main_net, reverse=True)
@@ -158,19 +173,19 @@ def analyze_rotation(
                 if delta >= config.ROTATION_RANK_DELTA and b.main_net > 0:
                     sig = "rotate_in"
                     label = "资金轮入"
-                    conf = min(0.98, 0.55 + 0.06 * delta)
+                    conf = signal_confidence(delta, b.main_net, b.amount)
                 elif delta <= -config.ROTATION_RANK_DELTA and b.main_net < 0:
                     sig = "rotate_out"
                     label = "资金轮出"
-                    conf = min(0.98, 0.55 + 0.06 * abs(delta))
+                    conf = signal_confidence(abs(delta), b.main_net, b.amount)
                 elif b.status == STATUS_DIVERGE:
                     sig = "diverge"
                     label = "价升背离"
-                    conf = 0.5
+                    conf = signal_confidence(0, b.main_net, b.amount)
                 elif b.status == STATUS_ACCUMULATE:
                     sig = "accumulate"
                     label = "资金吸筹"
-                    conf = 0.55
+                    conf = signal_confidence(0, b.main_net, b.amount)
                 else:
                     continue
                 signals.append(

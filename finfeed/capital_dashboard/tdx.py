@@ -21,6 +21,20 @@ logger = logging.getLogger("finfeed.capital_dashboard.tdx")
 _lock = threading.RLock()  # 可重入：ensure_alive 与 get_client 存在嵌套调用
 _client: Optional[MacClient] = None
 
+# 客户端调用串行锁：easy-tdx 的 MacClient 非线程安全，所有行情请求必须串行，
+# 以便「后台详情补全线程」与主刷新线程并发使用同一连接而不致协议错乱。
+_CALL_LOCK = threading.Lock()
+
+
+class call_lock:  # noqa: N801  # 作上下文管理器使用
+    """串行化对 TDX 客户端的调用（线程安全）。"""
+
+    def __enter__(self) -> None:
+        _CALL_LOCK.acquire()
+
+    def __exit__(self, *exc: object) -> None:
+        _CALL_LOCK.release()
+
 
 def get_client() -> MacClient:
     """获取进程级 MacClient 单例（线程安全，断线自动重建）。
