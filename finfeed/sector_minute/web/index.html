@@ -1106,8 +1106,10 @@ function flushSparks() {
   sparkBusy = 1;
   const batch = sparkQueue.splice(0, 15);
   // 历史日期：迷你分时简图同样按所选日期取数（后端按日期缓存/抓取）
-  fetchJson(API.sparklines(state.date || "") + "?codes=" + encodeURIComponent(batch.join(",")) + "&lazy=1", null, 2)
-    .then((r) => r.json())
+  // 注意：API.sparklines(date) 在 date 非空时已带 ?date=…，追加参数需用 & 而非 ?
+  const dateStr = state.date || "";
+  const sep = dateStr ? "&" : "?";
+  fetchJson(API.sparklines(dateStr) + sep + "codes=" + encodeURIComponent(batch.join(",")) + "&lazy=1", null, 2)
     .then((res) => {
       const items = (res && res.items) || {};
       Object.entries(items).forEach(([k, d]) => { state.sparkCache[k] = d; });
