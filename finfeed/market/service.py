@@ -21,9 +21,21 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from . import board, client, kline, quote, reference, snapshot, store, ths_hotrank, ths_limitup, universe
 from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import now_bj
+
+from . import (
+    board,
+    client,
+    kline,
+    quote,
+    reference,
+    snapshot,
+    store,
+    ths_hotrank,
+    ths_limitup,
+    universe,
+)
 
 logger = logging.getLogger("news_monitor")
 

@@ -3,11 +3,16 @@
 """凤凰财经 解析器"""
 
 import re
+
 import httpx
 from bs4 import BeautifulSoup
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts, parse_relative_time
+
+from ..base import BaseParser
+
+
 class IfengParser(BaseParser):
     """凤凰财经 - HTML 页面"""
 

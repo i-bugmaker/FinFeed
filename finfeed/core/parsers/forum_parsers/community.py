@@ -8,15 +8,16 @@
 两者页面均有一定 JS 渲染与反爬，保留浏览器渲染兜底（_try_browser_render）。
 """
 
-import re
 import logging
+import re
 from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from finfeed.utils.time_utils import TZ_BJ, now_bj
+
 from .base import BaseHtmlForumParser
-from finfeed.utils.time_utils import now_bj, TZ_BJ
 from .utils import extract_stocks_from_text, find_time_in_element
 
 logger = logging.getLogger("news_monitor")

@@ -21,13 +21,18 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from finfeed.storage import sentiment_store as ss
+
+from . import store
 from .client import datacenter_pages
 from .endpoints import (
-    BOARD_OF_TYPE, RP_F10_BASIC_ORGINFO, RP_F10_CORETHEME, RP_VALUATION,
-    dash_date, is_a_share,
+    BOARD_OF_TYPE,
+    RP_F10_BASIC_ORGINFO,
+    RP_F10_CORETHEME,
+    RP_VALUATION,
+    dash_date,
+    is_a_share,
 )
-from . import store
-from finfeed.storage import sentiment_store as ss
 
 logger = logging.getLogger("news_monitor")
 

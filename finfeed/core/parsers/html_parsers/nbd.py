@@ -3,12 +3,17 @@
 """每经网 解析器"""
 
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import httpx
 from bs4 import BeautifulSoup
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
+
+from ..base import BaseParser
+
+
 class NBDParser(BaseParser):
     """每经网 - HTML 页面"""
 

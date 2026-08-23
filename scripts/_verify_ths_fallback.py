@@ -15,9 +15,9 @@ import sys
 
 sys.path.insert(0, ".")
 
+from finfeed.market import store  # noqa: E402
 from finfeed.market import ths_limitup as M  # noqa: E402
 from finfeed.storage.database import get_db_manager  # noqa: E402
-from finfeed.market import store  # noqa: E402
 
 _orig_request = M._request
 _FAIL: set = set()

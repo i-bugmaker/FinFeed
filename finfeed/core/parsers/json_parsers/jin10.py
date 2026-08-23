@@ -2,15 +2,19 @@
 # -*- coding: utf-8 -*-
 """金十数据 解析器"""
 
-import re
+import asyncio
 import json
 import logging
-import asyncio
+import re
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import ts_from_bj_str, bj_str_from_ts
 from finfeed.utils.http_utils import strip_html
+from finfeed.utils.time_utils import bj_str_from_ts, ts_from_bj_str
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class Jin10Parser(BaseParser):
     """金十数据 - JavaScript 变量"""
@@ -78,7 +82,7 @@ class Jin10Parser(BaseParser):
 
         all_news = []
         catch_up_start_ts = self.get_catch_up_start_ts()
-        logger.info(f"金十数据补抓模式：开始获取历史数据")
+        logger.info("金十数据补抓模式：开始获取历史数据")
 
         for attempt in range(3):
             try:

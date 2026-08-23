@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 from easy_tdx import BoardType, Category, MacClient, SortOrder, SortType
@@ -33,7 +32,7 @@ from .models import (
     StockFlow,
     UnusualEvent,
 )
-from .tdx import ensure_alive, get_client, call_lock
+from .tdx import call_lock, ensure_alive, get_client
 
 logger = logging.getLogger("finfeed.capital_dashboard.collector")
 

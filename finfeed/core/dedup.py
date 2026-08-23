@@ -14,22 +14,30 @@
   - duplicate_sources 记录所有报道源
 """
 
-import time
 import logging
 import threading
-from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional, Set
+import time
 from collections import deque
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
 
-from finfeed.storage.models import NewsItem
 from finfeed.config.settings import (
-    SIMHASH_THRESHOLD, DEDUP_TIME_WINDOW, DEDUP_KEYWORD_OVERLAP,
-    DEDUP_SLIDING_WINDOW_SIZE, DEDUP_SLIDING_WINDOW_TTL,
-    get_source_priority, is_forum_source, is_cross_source_exempt,
+    DEDUP_KEYWORD_OVERLAP,
+    DEDUP_SLIDING_WINDOW_SIZE,
+    DEDUP_SLIDING_WINDOW_TTL,
+    DEDUP_TIME_WINDOW,
+    SIMHASH_THRESHOLD,
+    get_source_priority,
+    is_cross_source_exempt,
+    is_forum_source,
 )
+from finfeed.storage.models import NewsItem
 from finfeed.utils.hash_utils import (
-    compute_normalized_title_hash, compute_simhash, simhash_to_hex,
-    hex_to_simhash, hamming_distance,
+    compute_normalized_title_hash,
+    compute_simhash,
+    hamming_distance,
+    hex_to_simhash,
+    simhash_to_hex,
 )
 
 logger = logging.getLogger("news_monitor")

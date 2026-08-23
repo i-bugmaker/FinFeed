@@ -9,11 +9,10 @@
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
-from .database import get_db_manager
 from ..utils.time_utils import now_bj
-
+from .database import get_db_manager
 
 logger = logging.getLogger("news_monitor")
 

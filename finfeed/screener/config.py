@@ -22,11 +22,10 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .boards import BOARD_LABELS
-
 
 # ---------------------------------------------------------------------------
 # 默认配置（经验校准；均为可调参数，运行时可由 JSON 覆盖）
@@ -282,7 +281,7 @@ class ScreenerConfig:
                      f" + {p['momentum']['w_accel']:.2f}×动量加速度分")
         lines.append(f"  - 20日动量：sigmoid(锚点 {p['momentum']['mom20_mid']}%)；> {p['momentum']['mom20_overheat']}% 触发过热衰减（回测校准）")
         lines.append(f"  - 60日动量：sigmoid(锚点 {p['momentum']['mom60_mid']}%)")
-        lines.append(f"  - 动量有序：满足 5日≥20日≥60日≥0 的程度（每满足一项 +1/3）")
+        lines.append("  - 动量有序：满足 5日≥20日≥60日≥0 的程度（每满足一项 +1/3）")
         lines.append(f"  - 动量加速度：20日动量−10日动量（sigmoid 锚点 {p['momentum']['accel_mid']}%），趋势加速>0 更优（时序因子）")
         lines.append(f"- **估值** = {p['valuation']['w_pe']:.2f}×PE_TTM 钟形分（股息率已移至质量维度，消除重复计分）")
         lines.append(f"  - PE_TTM：钟形（峰值 {p['valuation']['pe_mid']}，宽度 {p['valuation']['pe_width']}）；亏损股给 {p['valuation']['loss_penalty']:.0f} 分、缺失给中性分")
@@ -292,7 +291,7 @@ class ScreenerConfig:
         qp = p['quality']
         lines.append(f"- **质量稳定** = {qp['w_vol']:.2f}×波动率分 + {qp['w_profit']:.2f}×盈利分 + {qp['w_size']:.2f}×市值规模分 + {qp['w_dy']:.2f}×分红分")
         lines.append(f"  - 波动率：钟形（振幅峰值 {qp['amp_mid']}%；技术面启用时改用年化波动峰值 {qp['vol_ann_mid']}%）")
-        lines.append(f"  - 盈利：EPS>0 计满分（亏损股已被过滤）")
+        lines.append("  - 盈利：EPS>0 计满分（亏损股已被过滤）")
         lines.append(f"  - 市值规模：log10(总市值) 钟形（峰值 {qp['size_log_mid']}，宽度 {qp['size_log_width']}），过小(壳/妖)或过大(超大盘)均降权")
         lines.append(f"  - 分红：股息率钟形（峰值 {qp['dy_mid']}%），持续分红代表经营稳健")
         sp = p['sentiment']

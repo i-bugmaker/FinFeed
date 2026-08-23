@@ -2,12 +2,16 @@
 # -*- coding: utf-8 -*-
 """财联社 解析器"""
 
-import re
 import logging
+import re
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class CLSParser(BaseParser):
     """财联社电报 - 使用 /api/cache 无签名API"""

@@ -20,10 +20,11 @@ import logging
 from datetime import timedelta
 from typing import Dict, List, Optional
 
+from finfeed.utils.time_utils import now_bj
+
+from . import store
 from .client import datacenter_pages
 from .endpoints import RP_IPO_APPLY, RP_OP_PREDICT, RP_RZRQ_DETAIL, dash_date
-from . import store
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 

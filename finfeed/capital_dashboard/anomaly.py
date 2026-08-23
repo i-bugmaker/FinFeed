@@ -27,8 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from . import config
-from .models import BoardFlow, MarketSnapshot, StockFlow
+from .models import BoardFlow, MarketSnapshot
 from .rotation import STATUS_ACCUMULATE, STATUS_DIVERGE, STATUS_STRONG, STATUS_WEAK
 
 logger = logging.getLogger("finfeed.capital_dashboard.anomaly")

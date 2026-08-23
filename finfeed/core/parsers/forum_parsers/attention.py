@@ -7,18 +7,19 @@
 - 热榜 = 全市场人群的关注焦点（含未持仓者），是情绪扩散的前瞻信号
 """
 
-import re
 import logging
+import re
 from typing import Optional
 from urllib.parse import quote as urlquote
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from finfeed.utils.time_utils import TZ_BJ, now_bj
+
 from .base import BaseHtmlForumParser, BaseJsonForumParser
-from finfeed.utils.time_utils import now_bj, TZ_BJ
-from .utils import extract_stocks_from_text
 from .ugc_platforms import FINANCE_KEYWORDS
+from .utils import extract_stocks_from_text
 
 logger = logging.getLogger("news_monitor")
 

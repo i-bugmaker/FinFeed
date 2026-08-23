@@ -7,9 +7,10 @@ from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseParser
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from .base import BaseParser
 
 
 class RSSParser(BaseParser):

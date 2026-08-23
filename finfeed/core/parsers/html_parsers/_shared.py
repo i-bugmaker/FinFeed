@@ -3,7 +3,9 @@
 """HTML 解析器包共享辅助函数"""
 
 import re
+
 from finfeed.utils.time_utils import parse_relative_time
+
 
 def _extract_time_from_parent(elem, max_levels: int = 5) -> str:
     """从元素向上查找父容器，提取时间文本"""

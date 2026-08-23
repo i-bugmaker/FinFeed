@@ -22,8 +22,8 @@ import logging
 import os
 import time
 from collections import deque
-from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Optional
+from dataclasses import asdict, dataclass
+from typing import Callable, Optional
 
 logger = logging.getLogger("finfeed.capital_dashboard.alerting")
 

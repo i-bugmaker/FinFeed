@@ -17,9 +17,9 @@ import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from finfeed.storage.database import get_db_manager
-from finfeed.market import store as market_store
 from finfeed.analysis.text_analyzer import extract_stock_codes
+from finfeed.market import store as market_store
+from finfeed.storage.database import get_db_manager
 
 logger = logging.getLogger("news_monitor")
 

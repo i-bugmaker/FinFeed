@@ -2,21 +2,20 @@
 # -*- coding: utf-8 -*-
 """东方财富系列股吧解析器"""
 
-import re
 import asyncio
 import logging
-from typing import Optional
-
+import re
 from datetime import datetime, timedelta
+from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from .base import BaseHtmlForumParser, BaseJsonForumParser
-from finfeed.utils.time_utils import parse_relative_time, now_bj, TZ_BJ
-
 from finfeed.config.sources import NewsSource
-from .utils import extract_stocks_from_text, parse_forum_time, find_time_in_element, STOCK_NAME_MAP
+from finfeed.utils.time_utils import TZ_BJ, now_bj, parse_relative_time
+
+from .base import BaseHtmlForumParser, BaseJsonForumParser
+from .utils import STOCK_NAME_MAP, extract_stocks_from_text, find_time_in_element, parse_forum_time
 
 logger = logging.getLogger("news_monitor")
 
@@ -173,7 +172,7 @@ class CLSTelegraphParser(BaseJsonForumParser):
                     )
                     if news:
                         news_list.append(news)
-                except Exception as e:
+                except Exception:
                     continue
         except Exception as e:
             logger.warning(f"财联社JSON解析失败，尝试HTML: {str(e)[:60]}")
@@ -910,7 +909,7 @@ class ThsAdvisorParser(BaseHtmlForumParser):
     def _extract_stock_from_ths_href(self, href: str) -> list:
         stocks = []
         try:
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import parse_qs, urlparse
             parsed = urlparse(href)
             params = parse_qs(parsed.query)
             for key in ["code", "stockcode", "secid", "stock_code"]:

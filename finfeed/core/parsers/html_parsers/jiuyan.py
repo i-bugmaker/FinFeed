@@ -2,14 +2,18 @@
 # -*- coding: utf-8 -*-
 """九言财经 解析器"""
 
-import re
 import logging
-from datetime import datetime, timezone, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class JiuyanParser(BaseParser):
     """韭研公社 - 通过浏览器渲染捕获网络响应获取数据"""

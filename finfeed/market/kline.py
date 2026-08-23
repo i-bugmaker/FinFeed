@@ -26,6 +26,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from . import store
 from .client import RateLimited, cooldown_remaining, get_json
 from .endpoints import (
     FLTT,
@@ -37,7 +38,6 @@ from .endpoints import (
     compact_date,
     secid_of,
 )
-from . import store
 
 # 指数代码 -> 东财 secid。前缀规则对 000001/399001 失效：
 # 000001 既是上证指数（沪，1.000001）又是平安银行（深，0.000001），

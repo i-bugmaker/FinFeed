@@ -22,10 +22,10 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 from . import collector, prompts
 from .cleanup import clean_report_body
-from .decorate import decorate_report_body
-from .config import get_prompts
 from .client import LLMClient, LLMError
 from .collector import NewsRecord
+from .config import get_prompts
+from .decorate import decorate_report_body
 
 logger = logging.getLogger("news_monitor")
 

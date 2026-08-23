@@ -29,11 +29,13 @@ from .sources import (
     EM_FOREX_CALENDAR,
     EM_MAX_PAGES,
     EM_PAGE_SIZE,
-    EM_FOREX_CALENDAR as _FC,
     FINANCE_COLUMNS,
     STOCK_COLUMNS,
     datacenter_headers,
     forex_headers,
+)
+from .sources import (
+    EM_FOREX_CALENDAR as _FC,
 )
 
 logger = logging.getLogger("news_monitor")

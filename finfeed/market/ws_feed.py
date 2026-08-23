@@ -109,7 +109,6 @@ class MarketWSService:
     # 连接处理（每个连接一个协程）
     # ------------------------------------------------------------------
     async def handle_connection(self, websocket) -> None:  # noqa: ANN001
-        from fastapi import WebSocket
 
         self.ensure_started()
         await websocket.accept()

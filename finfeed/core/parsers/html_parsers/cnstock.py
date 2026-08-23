@@ -3,11 +3,15 @@
 """中国证券网 解析器"""
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class CNStockParser(BaseParser):
     """上海证券报 - 浏览器渲染提取DOM数据"""

@@ -12,22 +12,21 @@
 - 健康检查端点
 """
 
-import os
 import csv
+import gzip
 import io
 import json
-import gzip
-import time
-import socket
 import logging
-import threading
+import os
 import queue
+import socket
+import threading
+import time
 import traceback
-from typing import Optional, Dict, List, Any, Tuple
-
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlparse
 
 
 class DualStackThreadingHTTPServer(ThreadingHTTPServer):
@@ -40,23 +39,33 @@ class DualStackThreadingHTTPServer(ThreadingHTTPServer):
         self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         super().server_bind()
 
-from finfeed.config.settings import get_display_name, DEFAULT_WEB_PORT, API_CACHE_TTL
+from finfeed.config.settings import API_CACHE_TTL, DEFAULT_WEB_PORT, get_display_name
 from finfeed.config.sources import (
-    get_enabled_sources, get_forum_sources,
-    get_flash_sources, get_article_sources,
+    get_article_sources,
+    get_enabled_sources,
+    get_flash_sources,
+    get_forum_sources,
 )
-from finfeed.utils.time_utils import now_bj, bj_str_from_ts, ts_from_bj_str
-from finfeed.storage.database import (
-    db_get_all_for_export, db_get_date_range, db_search_news,
-    db_get_news_by_id, db_get_recent_news, db_mark_read, db_toggle_favorite,
-    db_query_news, db_get_statistics, db_get_favorites, get_db,
-    db_get_all_stock_names, db_get_news_after_id, db_get_max_news_id,
-)
-from finfeed.storage.models import NewsItem
 from finfeed.core.health import get_health_monitor
-from finfeed.llm import api as llm_api
 from finfeed.ecal import api as calendar_api
 from finfeed.ecal import fetcher as calendar_fetcher
+from finfeed.llm import api as llm_api
+from finfeed.storage.database import (
+    db_get_all_for_export,
+    db_get_all_stock_names,
+    db_get_date_range,
+    db_get_max_news_id,
+    db_get_news_after_id,
+    db_get_news_by_id,
+    db_get_statistics,
+    db_mark_read,
+    db_query_news,
+    db_search_news,
+    db_toggle_favorite,
+    get_db,
+)
+from finfeed.storage.models import NewsItem
+from finfeed.utils.time_utils import bj_str_from_ts, now_bj, ts_from_bj_str
 
 logger = logging.getLogger("news_monitor")
 
@@ -133,6 +142,7 @@ _api_cache_lock = threading.Lock()
 # 修复：monitor 抓取完成后「触碰」本哨兵文件，FastAPI 监听到 mtime 变化即
 # 立即触发 broadcast_new_news()，推送延迟降到亚秒级，且不再依赖盲轮询时序。
 import os as _os
+
 _SSE_TICK_PATH = _os.path.join(
     _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
     ".finfeed_sse_tick",
@@ -698,7 +708,7 @@ class _WebHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         elif fmt == "markdown" or fmt == "md":
-            lines = [f"# FinFeed 财经新闻导出", f"", f"导出时间: {now_bj().strftime('%Y-%m-%d %H:%M:%S')}", f"共 {len(news)} 条新闻", f""]
+            lines = ["# FinFeed 财经新闻导出", "", f"导出时间: {now_bj().strftime('%Y-%m-%d %H:%M:%S')}", f"共 {len(news)} 条新闻", ""]
             for n in news:
                 time_str = n.publish_time or ""
                 lines.append(f"### [{n.title}]({n.url})")
@@ -1026,9 +1036,9 @@ class _WebHandler(BaseHTTPRequestHandler):
 
     def _serve_market_api(self, parsed):
         """事实层只读 API：/api/market/<action>?date=&code=&start=&end="""
+        from finfeed.market import alerts as mk_alerts
         from finfeed.market import store as mk_store
         from finfeed.storage import sentiment_store as ss
-        from finfeed.market import alerts as mk_alerts
         from finfeed.utils.time_utils import now_bj
 
         q = parse_qs(parsed.query)
@@ -1387,7 +1397,8 @@ class _WebHandler(BaseHTTPRequestHandler):
     def _run_snapshot_staged(self, date, cb):
         """snapshot：3 个独立阶段，依次 await；阶段间上报进度。"""
         import asyncio
-        from finfeed.market import quote, board, reference
+
+        from finfeed.market import board, quote, reference
 
         async def _go():
             cb(1)  # 全市场快照
@@ -1412,6 +1423,7 @@ class _WebHandler(BaseHTTPRequestHandler):
     def _run_universe_staged(self, date, cb):
         """universe：4 个独立 populate_*，阶段间上报进度。"""
         import asyncio
+
         from finfeed.market import universe
 
         async def _go():
@@ -1659,7 +1671,7 @@ def stop_web_server(timeout: float = 5.0) -> None:
     关闭所有SSE连接，停止接受新请求，等待现有请求完成
     """
     global _global_server
-    
+
     with _sse_clients_lock:
         for q in _sse_clients:
             try:
@@ -1667,7 +1679,7 @@ def stop_web_server(timeout: float = 5.0) -> None:
             except Exception as e:
                 logger.debug(f"SSE 关闭通知失败: {e}")
         _sse_clients.clear()
-    
+
     if _global_server:
         threading.Thread(target=_global_server.shutdown, daemon=True).start()
         _global_server = None

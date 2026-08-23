@@ -2,15 +2,19 @@
 # -*- coding: utf-8 -*-
 """和讯网 解析器"""
 
-import re
 import logging
-from datetime import datetime, timezone, timedelta
+import re
+from datetime import datetime, timedelta, timezone
+
 import httpx
 from bs4 import BeautifulSoup
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts, parse_relative_time
+
+from ..base import BaseParser
 from ._shared import _extract_time_from_parent
+
 logger = logging.getLogger("news_monitor")
 class HexunParser(BaseParser):
     """和讯网 - HTML 页面（使用浏览器渲染绕过反爬虫）"""

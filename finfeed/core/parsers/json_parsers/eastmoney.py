@@ -3,9 +3,13 @@
 """东方财富 解析器"""
 
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import ts_from_bj_str
+
+from ..base import BaseParser
+
+
 class EastMoneyParser(BaseParser):
     """东方财富 - JSON API"""
 

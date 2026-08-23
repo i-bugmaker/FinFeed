@@ -16,13 +16,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import pandas as pd
 
 from .boards import classify_board
-from .scoring import _limit_pct  # 复用板块动态涨跌停阈值（纯函数，可向量映射）
 
 
 def _vec_sigmoid(x: pd.Series, mid: float, scale: float) -> pd.Series:

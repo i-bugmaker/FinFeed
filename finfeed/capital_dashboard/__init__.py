@@ -12,6 +12,7 @@
 """
 
 from . import config
+from .anomaly import AnomalyDetector, AnomalyReport, detector
 from .collector import (
     enrich_top_stocks,
     fetch_all_stocks,
@@ -21,7 +22,6 @@ from .collector import (
     fetch_unusual,
 )
 from .rotation import RotationReport, RotationSignal, analyze_rotation
-from .anomaly import AnomalyDetector, AnomalyReport, detector
 from .server import (
     app,
     create_router,

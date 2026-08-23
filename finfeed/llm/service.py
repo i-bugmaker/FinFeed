@@ -10,10 +10,11 @@ import logging
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
-from . import analyzer, collector, config as cfg, store
+from . import analyzer, collector, store
+from . import config as cfg
 from .analyzer import AnalysisCancelled
 from .client import LLMError, build_client
 

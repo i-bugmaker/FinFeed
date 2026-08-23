@@ -16,7 +16,6 @@ from finfeed.storage.database import get_db
 logger = logging.getLogger("news_monitor")
 from finfeed.utils.time_utils import now_bj
 
-
 # ============================================================
 # 自选股管理
 # ============================================================

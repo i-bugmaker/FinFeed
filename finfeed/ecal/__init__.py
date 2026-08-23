@@ -20,16 +20,16 @@
     api.handle_post(path, json_body)  -> (status, dict) | None
 """
 
+from .models import CalendarEvent
+from .schema import ensure_tables
 from .sources import (
     CAL_TYPES,
     FINANCE_CATEGORIES,
-    STOCK_CATEGORIES,
-    IPO_CATEGORIES,
     GLOBAL_COUNTRIES,
     IMPORTANCE_LABELS,
+    IPO_CATEGORIES,
+    STOCK_CATEGORIES,
 )
-from .models import CalendarEvent
-from .schema import ensure_tables
 
 __all__ = [
     "CAL_TYPES",

@@ -10,23 +10,28 @@
 """
 
 import asyncio
-import time
 import logging
-from typing import Optional, Dict, Tuple, List
+import time
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
-from finfeed.config.sources import NewsSource, get_enabled_sources
 from finfeed.config.settings import (
-    FETCH_CONCURRENCY, SOURCE_RATE_LIMITS, SOURCE_SKIP_REQ_TRACE,
-    get_source_timeout, should_skip_source,
-    CATCH_UP_CONCURRENCY, CATCH_UP_MIN_INTERVAL,
+    CATCH_UP_CONCURRENCY,
+    CATCH_UP_MIN_INTERVAL,
+    FETCH_CONCURRENCY,
+    SOURCE_RATE_LIMITS,
+    SOURCE_SKIP_REQ_TRACE,
+    get_source_timeout,
+    should_skip_source,
 )
-from .parsers.factory import create_parser
-from .parsers.base import BaseParser
-from .health import get_health_monitor
-from finfeed.storage.models import NewsItem
+from finfeed.config.sources import NewsSource, get_enabled_sources
 from finfeed.storage.database import db_get_source_last_ts, db_set_source_last_ts
+from finfeed.storage.models import NewsItem
+
+from .health import get_health_monitor
+from .parsers.base import BaseParser
+from .parsers.factory import create_parser
 
 logger = logging.getLogger("news_monitor")
 

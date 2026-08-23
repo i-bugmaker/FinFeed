@@ -21,14 +21,15 @@ B. ThsHotRankParser —— 同花顺热股榜
 import asyncio
 import logging
 import random
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 import httpx
 
+from finfeed.utils.time_utils import TZ_BJ, now_bj
+
 from .base import BaseForumParser
-from finfeed.utils.time_utils import now_bj, TZ_BJ
-from .utils import STOCK_NAME_MAP
 from .ugc_platforms import PROMO_PATTERNS
+from .utils import STOCK_NAME_MAP
 
 logger = logging.getLogger("news_monitor")
 

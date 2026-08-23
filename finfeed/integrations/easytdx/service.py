@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import threading
 import time
@@ -293,9 +292,15 @@ def _call_ping(params: dict):
 def _call_host(func_def: dict, params: dict):
     from easy_tdx import ping_all, ping_mac_all
     from easy_tdx.config import (
-        get_best_ex_host, get_best_host, get_best_mac_host,
-        get_calc_hosts, get_ex_hosts, get_known_hosts, get_mac_hosts,
-        save_best_ex_host, save_best_host, save_best_mac_host,
+        get_best_ex_host,
+        get_best_host,
+        get_best_mac_host,
+        get_calc_hosts,
+        get_ex_hosts,
+        get_known_hosts,
+        get_mac_hosts,
+        save_best_host,
+        save_best_mac_host,
     )
     method = func_def["method"]
     which = params.get("which", "tdx")
@@ -332,7 +337,7 @@ def _call_host(func_def: dict, params: dict):
 
 
 def _call_chanlun(func_def: dict, params: dict):
-    from easy_tdx import Adjust, MacClient, Market, Period
+    from easy_tdx import Adjust, MacClient, Period
     from easy_tdx.chanlun import ChanlunAnalyser
 
     # 枚举类参数（market/period/adjust）经注册表 schema 转换后才是整数值
@@ -393,8 +398,7 @@ def _chanlun_to_table(d: dict, code: str) -> dict:
 
 
 def _call_backtest(func_def: dict, params: dict):
-    import easy_tdx.backtest.strategies.builtin  # 触发策略注册
-    from easy_tdx import Adjust, MacClient, Market, Period
+    from easy_tdx import Adjust, MacClient, Period
     from easy_tdx.backtest import BacktestEngine
     from easy_tdx.backtest.strategies import get_registry
 

@@ -18,7 +18,6 @@ import logging
 import os
 import sqlite3
 import threading
-from typing import Iterable, Optional
 
 from .models import BoardFlow, MarketSnapshot
 

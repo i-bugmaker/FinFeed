@@ -20,22 +20,20 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
-from . import config
+from . import config, persist
+from .alerting import manager as _alert_manager
+from .anomaly import AnomalyReport, detector
 from .collector import (
     compute_breadth,
-    enrich_top_stocks,
     fetch_all_stocks,
     fetch_board_rankings,
     fetch_indices,
+    fetch_stock_detail,
     fetch_unusual,
 )
 from .models import BoardFlow, IndexQuote, MarketSnapshot, UnusualEvent
-from .rotation import RotationReport, analyze_rotation
-from .anomaly import AnomalyReport, detector
-from .alerting import manager as _alert_manager
-from . import persist
-from .collector import fetch_stock_detail
 from .observability import tracker as _signal_tracker
+from .rotation import RotationReport, analyze_rotation
 
 logger = logging.getLogger("finfeed.capital_dashboard.snapshot")
 

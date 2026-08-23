@@ -4,10 +4,14 @@
 
 import httpx
 from bs4 import BeautifulSoup
-from ..base import BaseParser
+
+from finfeed.config.settings import get_display_name
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts, parse_relative_time
-from finfeed.config.settings import get_display_name
+
+from ..base import BaseParser
+
+
 class GelonghuiArticleParser(BaseParser):
     """格隆汇文章 - HTML 页面"""
 

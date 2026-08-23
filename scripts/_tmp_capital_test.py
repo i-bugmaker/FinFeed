@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """临时冒烟测试：桩化 easy_tdx，验证 anomaly/alerting/ws 逻辑可导入且可运行。"""
-import sys, types
+import sys
+import types
 
 # ---- 桩化 easy_tdx ----
 easy = types.ModuleType("easy_tdx")
@@ -31,10 +32,18 @@ for mod in ("finfeed.market.alerting", "finfeed.market.ws_feed", "finfeed.alerts
 
 sys.path.insert(0, r"E:\VibeCoding\FinFeed")
 
-from finfeed.capital_dashboard.models import (
-    MarketSnapshot, BoardFlow, StockFlow, MarketBreadth, MarketStats, IndexQuote, UnusualEvent)
-from finfeed.capital_dashboard.anomaly import detector, AnomalyReport
 from finfeed.capital_dashboard.alerting import manager
+from finfeed.capital_dashboard.anomaly import AnomalyReport, detector
+from finfeed.capital_dashboard.models import (
+    BoardFlow,
+    IndexQuote,
+    MarketBreadth,
+    MarketSnapshot,
+    MarketStats,
+    StockFlow,
+    UnusualEvent,
+)
+
 
 # ---- 构造合成数据 ----
 def mk_board(code, name, change, main_net, amount, btype="HY"):
@@ -91,6 +100,7 @@ print("告警配置:", manager.get_config())
 
 # WS 负载构建（不启动服务，仅验证函数存在）
 from finfeed.capital_dashboard import ws
+
 print("WS 模块导入 OK, ws_router 路由数:", len(ws.ws_router.routes))
 
 # ---- 信号可观测性（P2-7）：跟随验证命中率 ----

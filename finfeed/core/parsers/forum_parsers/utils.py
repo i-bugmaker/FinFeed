@@ -4,13 +4,12 @@
 
 import re
 from datetime import datetime
-
 from typing import Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin, urlparse
+
 from bs4 import Tag
 
-
-from finfeed.utils.time_utils import now_bj, TZ_BJ, parse_relative_time
+from finfeed.utils.time_utils import TZ_BJ, now_bj, parse_relative_time
 
 STOCK_CODE_FROM_URL = re.compile(r'[=/,_](\d{6})(?:\.html)?[/?]?$')
 STOCK_CODE_PATTERN = re.compile(r'\b(60\d{4}|688\d{3}|00\d{4}|30\d{4})\b')

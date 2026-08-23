@@ -18,9 +18,9 @@ import argparse
 import datetime as _dt
 import logging
 import os
-from typing import Any
 
-from . import datasource, report as report_mod, scoring
+from . import datasource, scoring
+from . import report as report_mod
 from .config import load_config
 from .models import ScreenerResult
 

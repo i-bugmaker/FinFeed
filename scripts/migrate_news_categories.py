@@ -27,15 +27,15 @@ python scripts/migrate_news_categories.py [--dry-run]
 执行前会自动备份 news_monitor.db 到同目录 *.bak。
 """
 
-import os
-import sys
-import shutil
 import argparse
+import os
+import shutil
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from finfeed.config.settings import DB_PATH, get_display_name
-from finfeed.config.sources import get_flash_sources, get_article_sources
+from finfeed.config.sources import get_article_sources, get_flash_sources
 from finfeed.storage.database import get_db_manager
 
 # 曾把栏目名写入 category 的文章类栏目（见 core/parsers/json_parsers/thsyc.py、

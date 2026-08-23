@@ -14,9 +14,9 @@ tdx_weight_to_record → 批量 write_stock_sentiment_snapshot → build_sector_
 import logging
 from typing import Dict, List, Optional
 
+from finfeed.storage import sentiment_store as ss
 from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import now_bj
-from finfeed.storage import sentiment_store as ss
 
 logger = logging.getLogger("news_monitor")
 

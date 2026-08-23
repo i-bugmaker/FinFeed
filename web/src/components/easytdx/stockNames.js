@@ -1,7 +1,7 @@
 // 股票名称工具：加载 FinFeed 全量 A 股名称映射（/api/stock_names），
 // 提供代码/名称搜索与市场推断。供股票选择器与结果表格代码列美化使用。
 
-import http from '../../api/client'
+import http from '@/shared/api/client'
 
 let cache = null
 let cachePromise = null

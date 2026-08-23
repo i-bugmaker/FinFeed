@@ -1,22 +1,6 @@
-# FinFeed 依赖清单
+# Compatibility install entry point.
 #
-# ⚠️ 唯一真相源是 pyproject.toml 的 [project.dependencies]。
-# 本文件仅为兼容 `pip install -r requirements.txt` 的便捷入口，
-# 内容需与 pyproject.toml 保持同步。
-# 推荐安装方式: pip install -e .
-
-httpx>=0.28.0
-beautifulsoup4>=4.12.0
-lxml>=4.9.0
-rich>=13.0.0
-playwright>=1.40.0
-openpyxl>=3.1.0
-
-# --- 通达信行情（easy-tdx 集成 + 资金流大屏模块） ---
-easy-tdx>=1.20
-
-# --- Web 后端（FastAPI 单轨） ---
-fastapi>=0.110
-uvicorn>=0.27
-pydantic>=2.13,<3
-pydantic-core==2.46.4
+# Dependency versions are declared only in pyproject.toml. Keeping a second
+# hand-maintained list here caused version drift, so `pip install -r
+# requirements.txt` now delegates to the canonical editable install.
+-e .

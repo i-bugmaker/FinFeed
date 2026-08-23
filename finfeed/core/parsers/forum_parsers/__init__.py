@@ -2,16 +2,21 @@
 # -*- coding: utf-8 -*-
 """论坛舆情解析器包"""
 
+from .attention import BaiduFinanceHotParser, ZhihuHotParser
 from .base import BaseForumParser, BaseHtmlForumParser, BaseJsonForumParser
+from .community import JisiluParser, TaogubaParser
 from .eastmoney import (
-    EastMoneyStockBarParser, EastMoneyHotBarParser,
-    EastMoneyMobileGubaParser, EastMoneyHotRankParser, EastMoneyDynamicGubaParser,
+    EastMoneyDynamicGubaParser,
+    EastMoneyHotBarParser,
+    EastMoneyHotRankParser,
+    EastMoneyMobileGubaParser,
+    EastMoneyStockBarParser,
+    SinaStockBarParser,
+    ThsAdvisorParser,
+    ThsStockBarParser,
     XueqiuHotParser,
-    SinaStockBarParser, ThsAdvisorParser, ThsStockBarParser,
 )
 from .ugc_platforms import ThsLoungeParser, WeiboFinanceParser
-from .attention import BaiduFinanceHotParser, ZhihuHotParser
-from .community import TaogubaParser, JisiluParser
 from .utils import extract_stock_from_url, extract_stocks_from_text
 
 __all__ = [

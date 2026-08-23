@@ -28,8 +28,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from .config import ScreenerConfig, load_config
-from .datasource import _kline_metrics_from, _kline_pool
-from .models import ScreenerResult
+from .datasource import _kline_pool
 from .scoring import score_frame
 
 logger = logging.getLogger("finfeed.screener.backtest")

@@ -17,7 +17,6 @@ import logging
 from typing import Optional
 
 from easy_tdx import BoardType, MacClient
-
 from finfeed.capital_dashboard.tdx import ensure_alive, get_client
 
 from .models import BoardMeta, StockMeta, TickChart, TickPoint
@@ -129,7 +128,6 @@ def fetch_tick_chart(
     通过原始 0x122D 命令取得完整分时（含昨收/开高低收/名称元数据）；
     返回 ``TickChart``；失败或无数据返回 None。
     """
-    from datetime import date as _date_cls
     from easy_tdx.mac.commands.symbol_tick_chart import SymbolTickChartCmd
 
     ensure_alive()

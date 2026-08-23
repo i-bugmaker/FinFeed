@@ -22,10 +22,8 @@ import logging
 import os
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any, Optional
-
-from . import config
 
 logger = logging.getLogger("finfeed.capital_dashboard.observability")
 

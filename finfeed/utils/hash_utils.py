@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """哈希与去重相关工具函数"""
 
-import re
 import hashlib
+import re
 import unicodedata
 
 

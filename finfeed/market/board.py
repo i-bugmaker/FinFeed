@@ -18,12 +18,19 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from finfeed.utils.time_utils import now_bj
+
+from . import store
 from .client import RateLimited, datacenter_pages, get_json
 from .endpoints import (
-    FLTT, FUND_FIELDS, PUSH2, RP_DAILYBILLBOARD, UT, dash_date, secid_of,
+    FLTT,
+    FUND_FIELDS,
+    PUSH2,
+    RP_DAILYBILLBOARD,
+    UT,
+    dash_date,
+    secid_of,
 )
-from . import store
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 

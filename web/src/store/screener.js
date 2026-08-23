@@ -1,6 +1,6 @@
 // 智能选股全局状态：配置 / 任务 / 结果 / 最近任务
 import { defineStore } from 'pinia'
-import screenerApi from '../api/screener'
+import screenerApi from '@/features/screener/api/screenerApi'
 
 const POLL_INTERVAL = 800
 const TASK_IDLE_TIMEOUT = 60_000

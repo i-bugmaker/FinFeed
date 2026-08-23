@@ -5,13 +5,14 @@
 支持导出格式：JSON, CSV, Excel, Markdown
 """
 
-import os
-import json
 import csv
-from collections import defaultdict, Counter
+import json
+import os
+from collections import Counter, defaultdict
 from typing import List, Optional
 
 from finfeed.utils.time_utils import now_bj
+
 from .database import db_get_all_for_export
 from .models import NewsItem
 
@@ -147,7 +148,7 @@ def export_to_excel(output_path: str, news: Optional[List[NewsItem]] = None,
     """导出新闻为 Excel 文件（需要 openpyxl）"""
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill
+        from openpyxl.styles import Alignment, Font, PatternFill
     except ImportError:
         csv_path = output_path.replace(".xlsx", ".csv").replace(".xls", ".csv")
         return export_to_csv(csv_path, news, start_date, end_date)

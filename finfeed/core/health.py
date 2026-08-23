@@ -8,16 +8,16 @@
 - 状态持久化到数据库
 """
 
-import time
 import logging
+import time
 from typing import Optional
 
 from finfeed.config.settings import (
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     CIRCUIT_BREAKER_RECOVERY_TIME,
 )
-from finfeed.storage.models import SourceHealth
 from finfeed.storage.database import get_db
+from finfeed.storage.models import SourceHealth
 
 logger = logging.getLogger("news_monitor")
 

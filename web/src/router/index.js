@@ -1,15 +1,18 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import FlashView from '../views/FlashView.vue'
-import ArticlesView from '../views/ArticlesView.vue'
-import DashboardView from '../views/DashboardView.vue'
-import SentimentView from '../views/SentimentView.vue'
-import FavoritesView from '../views/FavoritesView.vue'
-import AiView from '../views/AiView.vue'
-import CalendarView from '../views/CalendarView.vue'
-import MarketView from '../views/MarketView.vue'
-import StyleGuideView from '../views/StyleGuideView.vue'
-import EasyTdxView from '../views/EasyTdxView.vue'
-import ScreenerView from '../views/ScreenerView.vue'
+
+// Route views are lazy-loaded so specialised features do not enlarge the
+// initial news-feed bundle. Each route remains independently deployable.
+const FlashView = () => import('../views/FlashView.vue')
+const ArticlesView = () => import('../views/ArticlesView.vue')
+const DashboardView = () => import('../views/DashboardView.vue')
+const SentimentView = () => import('../views/SentimentView.vue')
+const FavoritesView = () => import('../views/FavoritesView.vue')
+const AiView = () => import('../views/AiView.vue')
+const CalendarView = () => import('../views/CalendarView.vue')
+const MarketView = () => import('../views/MarketView.vue')
+const StyleGuideView = () => import('../views/StyleGuideView.vue')
+const EasyTdxView = () => import('../views/EasyTdxView.vue')
+const ScreenerView = () => import('../views/ScreenerView.vue')
 
 // 原「新闻流」已拆分为「快讯」与「财经」两个独立模块：
 //   - /flash    ：快讯（7×24 实时短消息）

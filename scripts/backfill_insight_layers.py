@@ -26,9 +26,8 @@ import sqlite3
 from datetime import datetime
 from typing import Dict
 
-from finfeed.storage.database import get_db_manager
-from finfeed.config.settings import DB_PATH
 from finfeed.analysis import sentiment_index as si
+from finfeed.config.settings import DB_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backfill")

@@ -9,7 +9,7 @@ import os
 from typing import Any
 
 from .config import ScreenerConfig
-from .models import ScreenerResult, StockScore
+from .models import ScreenerResult
 
 
 def _tier_label(tier: str) -> str:

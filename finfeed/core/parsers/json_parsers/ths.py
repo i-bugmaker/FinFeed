@@ -3,10 +3,15 @@
 """同花顺 解析器"""
 
 import re
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
+
 class THSParser(BaseParser):
     """同花顺 - JSON API"""
 

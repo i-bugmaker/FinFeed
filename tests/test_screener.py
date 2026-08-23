@@ -15,8 +15,6 @@ from __future__ import annotations
 import math
 
 import pandas as pd
-
-from finfeed.screener import config as cfg_mod
 from finfeed.screener import factors, scoring
 from finfeed.screener.config import ScreenerConfig
 from finfeed.screener.models import StockScore

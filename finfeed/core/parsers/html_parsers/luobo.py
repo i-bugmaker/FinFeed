@@ -2,15 +2,19 @@
 # -*- coding: utf-8 -*-
 """萝卜投研 解析器"""
 
-import re
 import logging
-from datetime import datetime, timezone, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 import httpx
 from bs4 import BeautifulSoup
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import ts_from_bj_str, bj_str_from_ts
+from finfeed.utils.time_utils import bj_str_from_ts, ts_from_bj_str
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class LuoBoParser(BaseParser):
     """萝卜投研 - 通过浏览器渲染捕获网络响应获取数据"""
@@ -214,7 +218,7 @@ class LuoBoParser(BaseParser):
 
         for url in self.SOURCE_URLS:
             try:
-                logger.info(f"萝卜投研浏览器渲染中...")
+                logger.info("萝卜投研浏览器渲染中...")
                 data_list = await self._fetch_with_browser(url, headers)
                 logger.info(f"萝卜投研浏览器渲染完成，获取到 {len(data_list)} 个API响应")
                 for data in data_list:
@@ -237,7 +241,7 @@ class LuoBoParser(BaseParser):
         logger.info(f"萝卜投研浏览器解析结果: {len(news_list)} 条")
 
         if not news_list:
-            logger.info(f"萝卜投研浏览器解析为空，尝试HTML备用方案")
+            logger.info("萝卜投研浏览器解析为空，尝试HTML备用方案")
             try:
                 html_news = self._parse_html_fallback(response.text, bj_tz, seen_urls)
                 logger.info(f"萝卜投研HTML备用方案解析到 {len(html_news)} 条")

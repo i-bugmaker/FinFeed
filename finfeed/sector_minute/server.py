@@ -351,7 +351,6 @@ def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
     @router.get("/stocks")
     def stocks(kw: str = Query("", max_length=32)) -> dict[str, Any]:
         """个股池搜索（按代码/名称模糊匹配，用于个股对比添加）。"""
-        from .collector import stock_market
 
         with _worker_lock:
             if worker is not None and worker.is_alive():

@@ -19,16 +19,17 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, tdx
+from .alerting import manager as _alert_manager
+from .alerting import wire_ws_push
 from .collector import fetch_stock_detail
-from .rotation import STATUS_LABEL
-from .snapshot import RefreshWorker, SnapshotStore, DetailEnricher
-from .alerting import manager as _alert_manager, wire_ws_push
-from .ws import ws_router as _ws_router
 from .observability import tracker as _signal_tracker
+from .rotation import STATUS_LABEL
+from .snapshot import DetailEnricher, RefreshWorker, SnapshotStore
+from .ws import ws_router as _ws_router
 
 logging.basicConfig(
     level=logging.INFO,

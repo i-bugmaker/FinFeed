@@ -3,7 +3,7 @@
 """JSON 解析器包共享常量与辅助函数"""
 
 import re
-from datetime import timezone, timedelta
+from datetime import timedelta, timezone
 
 _RE_HHMM = re.compile(r"(\d{1,2}):(\d{2})")
 

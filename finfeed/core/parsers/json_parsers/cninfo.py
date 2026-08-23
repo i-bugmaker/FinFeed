@@ -2,17 +2,21 @@
 # -*- coding: utf-8 -*-
 """巨潮资讯 解析器"""
 
+import asyncio
+import logging
 import re
 import time
-import logging
-import asyncio
 from datetime import datetime, timedelta
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 from finfeed.utils.http_utils import strip_html
+from finfeed.utils.time_utils import bj_str_from_ts, now_bj
+
+from ..base import BaseParser
 from ._shared import TZ_BJ
+
 logger = logging.getLogger("news_monitor")
 class CninfoParser(BaseParser):
     """巨潮公告 - JSON API

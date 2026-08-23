@@ -2,16 +2,20 @@
 # -*- coding: utf-8 -*-
 """中证网 解析器"""
 
-import re
-import json
 import asyncio
+import json
 import logging
-from datetime import datetime, timezone, timedelta
+import re
+from datetime import datetime, timedelta, timezone
+
 import httpx
-from ..base import BaseParser
+
+from finfeed.config.settings import get_display_name
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
-from finfeed.config.settings import get_display_name
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class ZhongzhengParser(BaseParser):
     """中证快讯 - JS数据文件（按日期存储，支持7天补抓）"""
@@ -29,7 +33,7 @@ class ZhongzhengParser(BaseParser):
     def _parse_js_data(self, js_text: str, bj_tz, seen_urls: set) -> list[NewsItem]:
         """解析JS数据文件中的MI4_PAGE_ARTICLE数组"""
         news_list = []
-        
+
         m = re.search(r'var\s+MI4_PAGE_ARTICLE\s*=\s*(\[.*\])', js_text, re.DOTALL)
         if not m:
             return news_list
@@ -159,7 +163,7 @@ class ZhongzhengParser(BaseParser):
         if not self._catch_up_mode:
             return []
 
-        logger.info(f"中证快讯补抓模式：开始补抓最近7天数据")
+        logger.info("中证快讯补抓模式：开始补抓最近7天数据")
         news_list = []
         bj_tz = timezone(timedelta(hours=8))
         seen_urls = set()

@@ -10,13 +10,13 @@
 - 简洁的核心表结构
 """
 
-import sqlite3
-import time
-import logging
-import threading
 import json
+import logging
+import sqlite3
+import threading
+import time
 from contextlib import contextmanager
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from finfeed.config.settings import DB_PATH, USE_WAL_MODE
 from finfeed.utils.time_utils import now_bj, ts_from_bj_str
@@ -185,7 +185,11 @@ class NewsDatabase:
         if not c.fetchone():
             try:
                 # 延迟导入，避免循环依赖
-                from finfeed.utils.hash_utils import compute_normalized_title_hash, compute_simhash, simhash_to_hex
+                from finfeed.utils.hash_utils import (
+                    compute_normalized_title_hash,
+                    compute_simhash,
+                    simhash_to_hex,
+                )
                 c.execute("SELECT id, title, intro FROM news WHERE title_hash = '' OR title_hash IS NULL")
                 rows = c.fetchall()
                 updated = 0

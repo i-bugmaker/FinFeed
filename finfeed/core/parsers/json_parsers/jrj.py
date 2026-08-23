@@ -2,12 +2,16 @@
 # -*- coding: utf-8 -*-
 """金融界 解析器"""
 
-import logging
 import asyncio
+import logging
+
 import httpx
-from ..base import BaseParser, CATCH_UP_MIN_INTERVAL
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import ts_from_bj_str
+
+from ..base import CATCH_UP_MIN_INTERVAL, BaseParser
+
 logger = logging.getLogger("news_monitor")
 class JrjParser(BaseParser):
     """金融界（jrj.com.cn）7×24小时快讯 - JSON API

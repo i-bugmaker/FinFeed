@@ -13,15 +13,15 @@ FinFeed 实时新闻监控 - 主入口
     python main.py --export csv        # 导出所有新闻为CSV
 """
 
-import os
-import sys
-import time
-import signal
 import argparse
 import asyncio
 import logging
 import logging.handlers
+import os
+import signal
 import subprocess
+import sys
+import time
 import traceback
 from typing import Optional
 
@@ -30,16 +30,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 logger = logging.getLogger("news_monitor")
 
 from finfeed.config.settings import (
-    DEFAULT_WEB_PORT, DEFAULT_INTERVAL,
-    LOG_MAX_BYTES, LOG_BACKUP_COUNT,
+    DEFAULT_INTERVAL,
+    DEFAULT_WEB_PORT,
+    LOG_BACKUP_COUNT,
+    LOG_MAX_BYTES,
 )
-from finfeed.storage.database import init_db, db_set_last_exit_ts
-from finfeed.storage.exporter import export_to_json, export_to_csv, export_to_excel, export_to_markdown, get_default_export_path
 from finfeed.core.monitor import get_monitor
-from finfeed.ui.terminal import print_once_result, TerminalUI
+from finfeed.storage.database import db_set_last_exit_ts, init_db
+from finfeed.storage.exporter import (
+    export_to_csv,
+    export_to_excel,
+    export_to_json,
+    export_to_markdown,
+    get_default_export_path,
+)
+from finfeed.ui.terminal import TerminalUI, print_once_result
 from finfeed.ui.web.server import (
-    start_web_server, stop_web_server, update_web_state, broadcast_new_news,
+    start_web_server,
+    stop_web_server,
     touch_sse_tick,
+    update_web_state,
 )
 
 
@@ -55,7 +65,11 @@ async def run_continuous(interval: int, web_port: int):
     monitor = get_monitor()
     terminal_ui = TerminalUI(interval=interval, web_port=web_port)
 
-    from finfeed.storage.database import db_get_recent_news, db_get_statistics, db_get_all_source_last_ts
+    from finfeed.storage.database import (
+        db_get_all_source_last_ts,
+        db_get_recent_news,
+        db_get_statistics,
+    )
 
     def _build_source_stats() -> dict:
         return {src: 1 for src in db_get_all_source_last_ts()}
@@ -450,10 +464,10 @@ def _release_monitor_lock(lock_path: Optional[str]) -> None:
 
 def _run_market_action(args):
     """事实层 CLI 调度。"""
-    from finfeed.market import service as mkt
     from finfeed.analysis import crossref
-    from finfeed.market import report as mk_report
     from finfeed.market import alerts as mk_alerts
+    from finfeed.market import report as mk_report
+    from finfeed.market import service as mkt
 
     mkt.init_market()
     action = args.market
@@ -573,7 +587,7 @@ def main():
 
     if args.web_only:
         fastapi_proc = start_web_stack(args.web, args.port)
-        print(f"\nWeb 服务已启动（后台运行，日志仅写入 logs/finfeed.log）：")
+        print("\nWeb 服务已启动（后台运行，日志仅写入 logs/finfeed.log）：")
         print(f"  界面:    http://127.0.0.1:{args.port}/")
         print(f"  API文档: http://127.0.0.1:{args.port}/docs")
         print("  按 Ctrl+C 停止。")
@@ -622,7 +636,7 @@ def main():
                 sys.exit(1)
             asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
     except KeyboardInterrupt:
-        print(f"\n监控已停止。数据已持久化。")
+        print("\n监控已停止。数据已持久化。")
     finally:
         if fastapi_proc is not None:
             _terminate_fastapi(fastapi_proc)

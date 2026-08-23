@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Optional
 
 from . import config
@@ -32,7 +32,7 @@ from .collector import (
     fetch_tick_chart,
     stock_market,
 )
-from .models import BoardMeta, StockMeta, Subscription, TickChart, to_dict
+from .models import BoardMeta, StockMeta, Subscription, TickChart
 
 logger = logging.getLogger("finfeed.sector_minute.store")
 

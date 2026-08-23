@@ -27,10 +27,11 @@ import asyncio
 import logging
 from typing import Dict, List, Optional, Tuple
 
+from finfeed.utils.time_utils import now_bj
+
+from . import store
 from .client import datacenter_pages
 from .endpoints import RP_MAINFUND, dash_date
-from . import store
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 

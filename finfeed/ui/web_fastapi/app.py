@@ -18,30 +18,37 @@ import io
 import json
 import logging
 import os
-import queue as _queue
 import threading as _threading
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket
-
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
+from finfeed.application.market_service import bounded_int, first_query_value
+from finfeed.application.news_service import NewsService
 from finfeed.config.settings import DEFAULT_WEB_PORT, get_display_name
 from finfeed.config.sources import get_enabled_sources
 from finfeed.core.health import get_health_monitor
 from finfeed.ecal import api as calendar_api
 from finfeed.ecal import fetcher as calendar_fetcher
+
+# easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
+from finfeed.integrations.easytdx.router import router as easytdx_router
+
+# 智能选股模块（五维加权评分）
+from finfeed.integrations.screener.router import router as screener_router
 from finfeed.llm import api as llm_api
-from finfeed.market import scheduler as market_scheduler
 from finfeed.market import alerting as market_alerting
+from finfeed.market import scheduler as market_scheduler
 from finfeed.market import ws_feed as market_ws
 from finfeed.storage.database import (
     db_get_all_for_export,
@@ -60,36 +67,43 @@ from finfeed.storage.database import (
 # 复用旧实现的模块级对象（SSE 客户端集合 / 广播 / 缓存 / 解析辅助）
 # ----------------------------------------------------------------------
 from finfeed.ui.web import server as legacy
+from finfeed.ui.web_fastapi.core.errors import install_exception_handlers
+from finfeed.ui.web_fastapi.routers.calendar import create_router as create_calendar_router
+from finfeed.ui.web_fastapi.routers.llm import create_router as create_llm_router
+from finfeed.ui.web_fastapi.routers.market import create_router as create_market_router
+from finfeed.ui.web_fastapi.routers.news import create_router as create_news_router
+from finfeed.ui.web_fastapi.routers.realtime import (
+    LegacyNewsEventPublisher,
+    create_router as create_realtime_router,
+    poll_events,
+)
+from finfeed.ui.web_fastapi.routers.system import create_router as create_system_router
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
-
-# easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
-from finfeed.integrations.easytdx.router import router as easytdx_router
-
-# 智能选股模块（五维加权评分）
-from finfeed.integrations.screener.router import router as screener_router
 
 logger = logging.getLogger("news_monitor")
 
-SSE_CLIENT_QUEUE_MAXSIZE = legacy.SSE_CLIENT_QUEUE_MAXSIZE
-
-# SSE 增量推送的触发策略（亚秒级 + 兜底）：
-# - SSE_TICK_POLL_INTERVAL：高频检查 monitor 主进程写入的 tick 哨兵文件
-#   （finfeed/.finfeed_sse_tick）mtime。主进程每轮抓取完成即触碰该文件，
-#   本进程随即立即触发 broadcast_new_news()，推送延迟降到亚秒级，与 TUI 同级。
-# - SSE_SAFETY_POLL_INTERVAL：兜底全量轮询。即便 tick 文件机制因极端时序
-#   （如同一秒内两次抓取导致 1s 精度 mtime 未变）漏触发，也能在 15s 内补上，
-#   避免 Web 端静默停更。
-# 设计依据：monitor 在主进程，浏览器 SSE 连接在本（FastAPI）子进程的
-# _sse_clients；主进程直接 broadcast_new_news() 只能推到自己进程的空集合，
-# 对浏览器无效。故仅由本进程负责推送，主进程改为触碰 tick 文件来「唤醒」本进程。
-SSE_TICK_POLL_INTERVAL = 0.5
-SSE_SAFETY_POLL_INTERVAL = 15.0
+news_service = NewsService(
+    db_query_news,
+    legacy._build_news_response,
+    legacy._cache_get,
+    legacy._cache_set,
+    legacy.invalidate_api_cache,
+)
 
 app = FastAPI(
     title="FinFeed API",
     version="2.1.0",
     description="FinFeed 实时财经新闻监控 — FastAPI 后端（双轨并行，兼容旧 SSE 通道）",
 )
+install_exception_handlers(app)
+
+# Transport adapters receive their dependencies explicitly. The temporary
+# legacy publisher keeps SSE behaviour intact while isolating its globals here.
+news_events = LegacyNewsEventPublisher()
+app.include_router(create_realtime_router(news_events, market_ws.handle_connection))
+app.include_router(create_system_router("2.1.0"))
+app.include_router(create_llm_router())
+app.include_router(create_calendar_router())
 
 # 注册 easy-tdx 集成路由（/api/easytdx/*）
 app.include_router(easytdx_router)
@@ -105,12 +119,16 @@ app.include_router(screener_router)
 # 依赖缺失或导入失败时优雅降级，不影响 FinFeed 主服务。
 # ----------------------------------------------------------------------
 try:
+    from finfeed.capital_dashboard import config as _cap_config
     from finfeed.capital_dashboard.server import (
         create_router as _cap_create_router,
+    )
+    from finfeed.capital_dashboard.server import (
         start_refresh_worker as _cap_start_worker,
+    )
+    from finfeed.capital_dashboard.server import (
         stop_refresh_worker as _cap_stop_worker,
     )
-    from finfeed.capital_dashboard import config as _cap_config
 
     app.include_router(_cap_create_router("/api/capital"))
 
@@ -137,7 +155,11 @@ try:
     from finfeed.sector_minute import config as _sm_config
     from finfeed.sector_minute.server import (
         create_router as _sm_create_router,
+    )
+    from finfeed.sector_minute.server import (
         start_refresh_worker as _sm_start_worker,
+    )
+    from finfeed.sector_minute.server import (
         stop_refresh_worker as _sm_stop_worker,
     )
 
@@ -205,7 +227,6 @@ def parse_query_params(q: Dict[str, List[str]]) -> dict:
     start_date = gv("start", "")
     end_date = gv("end", "")
     fav_only = gv("favorites", "0") == "1"
-    unread_only = gv("unread", "0") == "1"
     min_importance = gv("min_importance", "0")
 
     start_ts = legacy._ts_from_date_str(start_date, end_of_day=False) if start_date else None
@@ -237,6 +258,10 @@ def qdict(request: Request) -> Dict[str, List[str]]:
     for k, v in request.query_params.multi_items():
         out.setdefault(k, []).append(v)
     return out
+
+
+# News routes depend on the shared query normalization helpers above.
+app.include_router(create_news_router(parse_query_params, qdict))
 
 
 # ----------------------------------------------------------------------
@@ -409,46 +434,25 @@ def _api_category_news(request: Request, category: str, display_names: list):
         if params["source"] and params["source"] not in display_names and params["source"] != "all":
             params["source"] = None
         cache_key = f"{category}:{json.dumps(params, sort_keys=True, default=str)}"
-        cached = legacy._cache_get(cache_key)
-        if cached is not None:
-            return json_resp(cached, max_age=1)
-        db_kwargs = {
-            "limit": params["page_size"],
-            "offset": params["offset"],
-            "keyword": params["keyword"],
-            "start_ts": params["start_ts"],
-            "end_ts": params["end_ts"],
-            "sentiment": params["sentiment"],
-            "is_favorite": params["is_favorite"],
-            "stock_name": params["stock"],
-            "min_importance": params["min_importance"],
-            # 分类隔离：快讯/文章/舆情互不混流
-            "category": category,
-        }
-        if params["source"]:
-            db_kwargs["source"] = params["source"]
-        news_items, db_total = db_query_news(**db_kwargs)
-        result = legacy._build_news_response(news_items, db_total, params["offset"], params["page_size"], display_names)
-        legacy._cache_set(cache_key, result)
+        result = news_service.list_category(
+            category=category, params=params, display_names=display_names, cache_key=cache_key
+        )
         return json_resp(result, max_age=1)
     except Exception as e:
         logger.error(f"{category}API错误: {e}")
         return json_resp({"error": str(e)}, status=500)
 
 
-@app.get("/api/flash")
 def api_flash(request: Request):
     flash_names, _ = legacy._get_flash_article_display_names()
     return _api_category_news(request, "flash", flash_names)
 
 
-@app.get("/api/articles")
 def api_articles(request: Request):
     _, article_names = legacy._get_flash_article_display_names()
     return _api_category_news(request, "article", article_names)
 
 
-@app.get("/api/sentiment")
 def api_sentiment(request: Request):
     try:
         params = parse_query_params(qdict(request))
@@ -479,7 +483,6 @@ def api_sentiment(request: Request):
         return json_resp({"error": str(e)}, status=500)
 
 
-@app.get("/api/favorites")
 def api_favorites(request: Request):
     try:
         params = parse_query_params(qdict(request))
@@ -490,7 +493,6 @@ def api_favorites(request: Request):
         return json_resp({"error": str(e)}, status=500)
 
 
-@app.get("/api/search")
 def api_search(q: str = Query("", alias="q"), limit: int = Query(100)):
     if q:
         news = db_search_news(q, limit=limit)
@@ -499,7 +501,6 @@ def api_search(q: str = Query("", alias="q"), limit: int = Query(100)):
     return {"keyword": q, "count": len(news), "news": [n.to_dict() for n in news]}
 
 
-@app.get("/api/detail")
 def api_detail(id: int = Query(0)):
     news = db_get_news_by_id(id)
     if news:
@@ -508,7 +509,6 @@ def api_detail(id: int = Query(0)):
     return {"success": False, "error": "News not found"}
 
 
-@app.get("/api/stock_names")
 def api_stock_names():
     cache_key = "stock_names_map"
     cached = legacy._cache_get(cache_key)
@@ -527,7 +527,6 @@ def api_stock_names():
         return json_resp({"stock_names": {}}, status=500)
 
 
-@app.get("/api/daterange")
 def api_daterange():
     min_date, max_date, dates = db_get_date_range()
     return {"min": min_date, "max": max_date, "dates": dates}
@@ -536,28 +535,24 @@ def api_daterange():
 # ----------------------------------------------------------------------
 # 收藏 / 已读（POST）
 # ----------------------------------------------------------------------
-@app.post("/api/favorite")
 def api_toggle_favorite(data: dict = Body(default={})):
     try:
         news_id = int(data.get("id", 0))
         if news_id <= 0:
             return json_resp({"success": False, "error": "Invalid id"}, status=400)
-        new_state = db_toggle_favorite(news_id)
-        legacy.invalidate_api_cache()
+        new_state = news_service.set_favorite(news_id, db_toggle_favorite)
         return {"success": True, "is_favorite": new_state}
     except Exception as e:
         return json_resp({"success": False, "error": str(e)}, status=500)
 
 
-@app.post("/api/read")
 def api_mark_read(data: dict = Body(default={})):
     try:
         news_id = int(data.get("id", 0))
         is_read = bool(data.get("read", True))
         if news_id <= 0:
             return json_resp({"success": False, "error": "Invalid id"}, status=400)
-        db_mark_read(news_id, is_read)
-        legacy.invalidate_api_cache()
+        news_service.mark_read(news_id, is_read, db_mark_read)
         return {"success": True}
     except Exception as e:
         return json_resp({"success": False, "error": str(e)}, status=500)
@@ -612,7 +607,6 @@ def api_export(format: str = Query("json"), start: Optional[str] = None, end: Op
 # ----------------------------------------------------------------------
 # LLM / 日历 适配器（与旧 server 透传语义一致）
 # ----------------------------------------------------------------------
-@app.get("/api/llm/report/export")
 def api_llm_export(id: int = Query(0), fmt: str = Query("md")):
     out = llm_api.export_report(id, fmt)
     if not out:
@@ -622,7 +616,6 @@ def api_llm_export(id: int = Query(0), fmt: str = Query("md")):
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-@app.api_route("/api/llm/{rest:path}", methods=["GET", "POST"])
 async def api_llm(request: Request, rest: str):
     path = request.url.path
     if request.method == "GET":
@@ -636,7 +629,6 @@ async def api_llm(request: Request, rest: str):
     raise HTTPException(status_code=404, detail="not found")
 
 
-@app.get("/api/calendar/export")
 def api_calendar_export(request: Request):
     qs = parse_qs(request.url.query)
     try:
@@ -648,7 +640,6 @@ def api_calendar_export(request: Request):
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-@app.api_route("/api/calendar/{rest:path}", methods=["GET", "POST"])
 async def api_calendar(request: Request, rest: str):
     path = request.url.path
     if request.method == "GET":
@@ -873,20 +864,16 @@ async def _get_chart_data(code, chart_type, klt, ndays, lmt, start, end):
         return {"rows": _strip_fetched(rows), "reason": "error", "error": str(e)[:200]}
 
 
-@app.api_route("/api/market/{rest:path}", methods=["GET", "POST"])
 async def api_market(rest: str, request: Request):
     q = qdict(request)
-    date = (q.get("date", [None])[0]) or now_bj().strftime("%Y-%m-%d")
+    date = first_query_value(q, "date") or now_bj().strftime("%Y-%m-%d")
     sub = rest.strip("/") or "sentiment"
 
     if sub == "action":
         return _market_action(q)
 
     def _int(key: str, default: int, cap: int = 500) -> int:
-        try:
-            return max(1, min(int(q.get(key, [default])[0]), cap))
-        except (TypeError, ValueError):
-            return default
+        return bounded_int(q, key, default, maximum=cap)
 
     try:
         from finfeed.market import alerts as mk_alerts
@@ -912,8 +899,8 @@ async def api_market(rest: str, request: Request):
             data = {
                 "trade_date": d,
                 "summary": mk_store.get_money_flow_summary(d),
-                "inflow": mk_store.get_money_flow(d, "in", q.get("order", ["main_net"])[0], _int("limit", 40)),
-                "outflow": mk_store.get_money_flow(d, "out", q.get("order", ["main_net"])[0], _int("limit", 40)),
+                "inflow": mk_store.get_money_flow(d, "in", first_query_value(q, "order", "main_net"), bounded_int(q, "limit", 40)),
+                "outflow": mk_store.get_money_flow(d, "out", first_query_value(q, "order", "main_net"), bounded_int(q, "limit", 40)),
             }
         elif sub == "margin":
             d = mk_store.latest_date("margin_detail") or date
@@ -1007,92 +994,12 @@ async def api_market(rest: str, request: Request):
         return json_resp({"success": False, "error": str(e)[:200]}, status=500)
 
 
-# ----------------------------------------------------------------------
-# SSE 增量推送（桥接 legacy._sse_clients 广播通道）
-# ----------------------------------------------------------------------
-@app.get("/api/events")
-async def sse_events(request: Request):
-    q = _queue.Queue(maxsize=SSE_CLIENT_QUEUE_MAXSIZE)
-    with legacy._sse_clients_lock:
-        legacy._sse_clients.add(q)
-    loop = asyncio.get_event_loop()
-    aq: "asyncio.Queue" = asyncio.Queue()
-    stop = {"v": False}
-
-    def pump():
-        while not stop["v"]:
-            try:
-                item = q.get(timeout=15)
-            except _queue.Empty:
-                asyncio.run_coroutine_threadsafe(aq.put(("ping", None)), loop)
-                continue
-            if item.get("type") == "shutdown":
-                break
-            asyncio.run_coroutine_threadsafe(aq.put(("data", item)), loop)
-
-    t = _threading.Thread(target=pump, daemon=True)
-    t.start()
-
-    async def gen():
-        yield "event: connected\ndata: {\"type\":\"connected\"}\n\n"
-        try:
-            while True:
-                kind, item = await aq.get()
-                if kind == "ping":
-                    yield ": ping\n\n"
-                else:
-                    payload = json.dumps(item, ensure_ascii=False)
-                    yield f"event: news\ndata: {payload}\n\n"
-        finally:
-            stop["v"] = True
-            with legacy._sse_clients_lock:
-                legacy._sse_clients.discard(q)
-
-    return StreamingResponse(
-        gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
+# The market router owns HTTP registration. Dispatch remains temporarily in
+# this composition module while individual market use cases are extracted.
+app.include_router(create_market_router(api_market))
 
 
-async def _sse_poll_loop() -> None:
-    """SSE 增量推送循环：tick 即时触发 + 定时兜底轮询。
-
-    主进程 monitor 每轮抓取完成会触碰 tick 哨兵文件（finfeed/.finfeed_sse_tick）；
-    本循环高频（SSE_TICK_POLL_INTERVAL）检查其 mtime，一旦变化立即调用
-    broadcast_new_news() 把增量推给本进程的 SSE 客户端（即浏览器连接）。
-    同时保留 SSE_SAFETY_POLL_INTERVAL 的兜底全量轮询，防止 tick 机制在
-    极短时序下漏触发导致 Web 端静默停更。broadcast_new_news() 基于 DB 自增
-    id 水位线且严格幂等，重复/兜底触发不会重复推送、也不会遗漏。
-    """
-    logger.info(
-        f"SSE 增量推送循环已启动（tick 轮询 {SSE_TICK_POLL_INTERVAL}s / 兜底 {SSE_SAFETY_POLL_INTERVAL}s）"
-    )
-    last_tick = legacy.get_sse_tick_mtime()
-    acc = 0.0
-    while True:
-        try:
-            await asyncio.sleep(SSE_TICK_POLL_INTERVAL)
-            acc += SSE_TICK_POLL_INTERVAL
-            tick = legacy.get_sse_tick_mtime()
-            triggered = bool(tick) and tick != last_tick
-            if triggered:
-                last_tick = tick
-            if triggered or acc >= SSE_SAFETY_POLL_INTERVAL:
-                acc = 0.0
-                await asyncio.to_thread(legacy.broadcast_new_news)
-        except asyncio.CancelledError:
-            break
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"SSE 增量推送循环异常: {e}")
-            try:
-                await asyncio.sleep(SSE_TICK_POLL_INTERVAL)
-            except asyncio.CancelledError:
-                break
-
-
-@app.on_event("startup")
-async def _startup():
+async def _startup(app: FastAPI) -> None:
     # 确保行情相关表（含涨停聚焦四模块）存在，支撑历史快照回看
     try:
         from finfeed.market import store as _mk_store
@@ -1113,17 +1020,17 @@ async def _startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"板块分时刷新线程启动失败（可忽略）: {e}")
 
-    legacy.init_broadcast_watermark()
+    news_events.initialize()
     # 创建 tick 哨兵文件并置为当前时间，使 _sse_poll_loop 的 last_tick 基准有效；
     # 之后主进程每次抓取完成都会更新其 mtime 以「唤醒」本进程的即时推送。
-    legacy.touch_sse_tick()
+    news_events.touch()
     try:
         calendar_fetcher.warmup()
     except Exception as e:
         logger.warning(f"日历连接池预热失败（可忽略）: {e}")
     # 启动 SSE 增量推送循环（tick 即时触发 + 定时兜底），修复子进程跨进程
     # 广播失效导致的 Web 端不实时更新。
-    app.state.sse_poll_task = asyncio.create_task(_sse_poll_loop())
+    app.state.sse_poll_task = asyncio.create_task(poll_events(news_events))
 
     # 行情后台自动采集调度器（按交易日时点定时自我完成采集任务）
     try:
@@ -1140,8 +1047,7 @@ async def _startup():
         logger.warning(f"行情 WebSocket 推送服务启动失败（可忽略）: {e}")
 
 
-@app.on_event("shutdown")
-async def _shutdown():
+async def _shutdown(app: FastAPI) -> None:
     task = getattr(app.state, "sse_poll_task", None)
     if task is not None:
         task.cancel()
@@ -1154,6 +1060,8 @@ async def _shutdown():
         await market_ws.stop()
     except Exception:  # noqa: BLE001
         pass
+
+
     # 关闭行情自动采集调度器
     try:
         market_scheduler.stop()
@@ -1172,36 +1080,17 @@ async def _shutdown():
         pass
 
 
-@app.get("/api/ping")
-def ping():
-    return {"service": "FinFeed API", "version": "2.1.0", "docs": "/docs"}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Own application resources in one modern FastAPI lifecycle boundary."""
+    await _startup(app)
+    try:
+        yield
+    finally:
+        await _shutdown(app)
 
 
-@app.get("/api/sse/health")
-def sse_health():
-    """SSE 推送桥接健康度：供前端/运维判断 Web 实时通道是否存活。
-
-    - clients: 当前本进程 SSE 客户端数（即已连浏览器数）
-    - last_broadcast_ts: 最近一次「实际广播出数据」的时间戳（0 表示从未）
-    - watermark: 各分类增量推送水位线（自增 id）
-    - watermark_initialized: 水位线是否已初始化
-    """
-    with legacy._sse_clients_lock:
-        n = len(legacy._sse_clients)
-    return {
-        "clients": n,
-        "last_broadcast_ts": legacy._last_broadcast_ts,
-        "watermark": dict(legacy._broadcast_watermarks),
-        "watermark_initialized": legacy._watermark_initialized,
-    }
-
-
-# ----------------------------------------------------------------------
-# WebSocket 行情推送（独立于 SSE 的实时行情通道）
-# ----------------------------------------------------------------------
-@app.websocket("/ws/market")
-async def ws_market(websocket: WebSocket):
-    await market_ws.handle_connection(websocket)
+app.router.lifespan_context = lifespan
 
 
 # ----------------------------------------------------------------------

@@ -11,22 +11,26 @@
 
 import asyncio
 import logging
-from datetime import datetime
-
-from typing import Optional, List
 from abc import abstractmethod
+from datetime import datetime
+from typing import List, Optional
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from finfeed.config.settings import get_display_name
 from finfeed.core.parsers.base import BaseParser
 from finfeed.storage.models import NewsItem
-from finfeed.config.settings import get_display_name
-from finfeed.utils.time_utils import now_bj, bj_str_from_ts, TZ_BJ
+from finfeed.utils.time_utils import TZ_BJ, bj_str_from_ts, now_bj
+
 from .utils import (
-    extract_stock_from_url, extract_stocks_from_text,
-    merge_stocks, find_time_in_element, normalize_url, parse_forum_time,
     STOCK_NAME_MAP,
+    extract_stock_from_url,
+    extract_stocks_from_text,
+    find_time_in_element,
+    merge_stocks,
+    normalize_url,
+    parse_forum_time,
 )
 
 logger = logging.getLogger("news_monitor")

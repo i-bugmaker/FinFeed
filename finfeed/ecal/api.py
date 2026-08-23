@@ -30,8 +30,8 @@ from finfeed.utils.time_utils import now_bj
 from . import service, store
 from .schema import ensure_tables
 from .sources import (
-    CAL_TYPES,
     CAL_TYPE_KEYS,
+    CAL_TYPES,
     FINANCE_CATEGORIES,
     GLOBAL_COUNTRIES,
     IMPORTANCE_LABELS,

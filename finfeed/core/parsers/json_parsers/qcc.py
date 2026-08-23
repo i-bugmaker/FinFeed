@@ -3,11 +3,16 @@
 """企查查 解析器"""
 
 import re
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import bj_str_from_ts
 from finfeed.utils.http_utils import strip_html
+from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
+
 class QCCParser(BaseParser):
     """企查查 - JSON API"""
 

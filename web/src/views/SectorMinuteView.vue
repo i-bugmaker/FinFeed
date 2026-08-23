@@ -11,7 +11,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../store/app'
-import { sectorMinuteApi } from '../api/sectorMinute'
+import { sectorMinuteApi } from '@/features/sector-minute/api/sectorMinuteApi'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSegmented from '../ui/AppSegmented.vue'
 import SectorMinuteChart from '../components/sectorMinute/SectorMinuteChart.vue'

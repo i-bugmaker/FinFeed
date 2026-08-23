@@ -9,5 +9,5 @@
     - terminal: 终端输出格式化
 """
 
+from .terminal import TerminalUI, build_display, build_news_table, console, print_once_result
 from .web.server import start_web_server
-from .terminal import print_once_result, console, build_display, build_news_table, TerminalUI

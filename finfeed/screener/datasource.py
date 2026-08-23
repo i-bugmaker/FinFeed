@@ -34,13 +34,11 @@ from easy_tdx import Adjust, Category, MacClient, Period, SortOrder, SortType
 from easy_tdx.codec.bitmap import FieldBit, PresetField
 
 from finfeed.capital_dashboard import config as tdx_config
-from finfeed.capital_dashboard.tdx import close as close_tdx
 from finfeed.capital_dashboard.tdx import call_lock, ensure_alive, get_client
+from finfeed.capital_dashboard.tdx import close as close_tdx
 from finfeed.utils.time_utils import now_bj
 
 from .contract import (
-    MIN_SNAPSHOT_ROWS,
-    REQUIRED_COLS,
     SnapshotBundle,
     build_missing_mask,
     coverage_ratio,
@@ -99,8 +97,9 @@ class DataSourceError(RuntimeError):
 def _persist_snapshot(bundle: SnapshotBundle) -> None:
     """把快照按交易日落库（历史数据积累，供未来资金/估值因子回测）。失败不阻断主流程。"""
     try:
-        from .snapshot_store import snapshot_store
         from finfeed.utils.time_utils import now_bj
+
+        from .snapshot_store import snapshot_store
 
         as_of = bundle.as_of or ""
         # 支持两种格式：YYYYMMDD HH:MM:SS（easy-tdx）与 YYYY-MM-DD HH:MM:SS（东财回退）

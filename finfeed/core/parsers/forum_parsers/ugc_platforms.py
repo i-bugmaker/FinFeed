@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*-
 """新增舆情UGC平台解析器：同花顺论股堂、微博财经热搜"""
 
-import re
 import logging
-from typing import Optional
+import re
 from datetime import datetime
+from typing import Optional
 from urllib.parse import quote as urlquote
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from .base import BaseHtmlForumParser, BaseJsonForumParser
-from finfeed.utils.time_utils import now_bj, TZ_BJ
+from finfeed.utils.time_utils import TZ_BJ, now_bj
 
+from .base import BaseHtmlForumParser, BaseJsonForumParser
 from .utils import extract_stocks_from_text, parse_forum_time
 
 logger = logging.getLogger("news_monitor")

@@ -2,13 +2,17 @@
 # -*- coding: utf-8 -*-
 """爱股票 解析器"""
 
-import re
 import json
 import logging
+import re
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class AiGuPiaoParser(BaseParser):
     """爱股票（aigupiao.com）- 要闻快讯 JSON API
@@ -149,7 +153,7 @@ class AiGuPiaoParser(BaseParser):
         if not self._catch_up_mode or self.last_ts <= 0:
             return []
 
-        logger.info(f"爱股票补抓模式：开始分页补抓")
+        logger.info("爱股票补抓模式：开始分页补抓")
 
         params = {"source": "pc", "web_data": "yes", "number": 50}
         all_news = await self._paginated_fetch(

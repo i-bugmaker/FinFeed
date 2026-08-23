@@ -10,20 +10,28 @@
 """
 
 import asyncio
-import time
 import logging
+import time
 from typing import Callable, Optional
 
-
-from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE, CATCH_UP_ZERO_STREAK_LIMIT, CATCH_UP_HARD_TIMEOUT
+from finfeed.config.settings import (
+    CATCH_UP_CYCLE_INTERVAL,
+    CATCH_UP_HARD_TIMEOUT,
+    CATCH_UP_SOURCES_PER_CYCLE,
+    CATCH_UP_ZERO_STREAK_LIMIT,
+)
+from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL
 from finfeed.config.sources import get_enabled_sources
-from .fetcher import get_fetcher, fetch_all_news
-from .pipeline import process_and_store
+from finfeed.core.health import get_health_monitor
 from finfeed.storage.database import (
-    db_get_last_exit_ts, db_set_last_exit_ts, db_get_all_source_last_ts,
+    db_get_all_source_last_ts,
+    db_get_last_exit_ts,
+    db_set_last_exit_ts,
     db_set_source_last_ts,
 )
-from finfeed.core.health import get_health_monitor
+
+from .fetcher import fetch_all_news, get_fetcher
+from .pipeline import process_and_store
 
 logger = logging.getLogger("news_monitor")
 
@@ -125,7 +133,6 @@ class NewsMonitor:
         # 全源覆盖保护：切片模式下（CATCH_UP_SOURCES_PER_CYCLE > 0）需保证
         # 轮次足够覆盖全部启用源至少一次，避免长离线时只回补了部分源。
         # CATCH_UP_SOURCES_PER_CYCLE == 0 时每轮全量，一轮即覆盖，无需上调。
-        from finfeed.config.settings import CATCH_UP_SOURCES_PER_CYCLE
         if CATCH_UP_SOURCES_PER_CYCLE > 0:
             total = len(get_enabled_sources())
             needed = (total + CATCH_UP_SOURCES_PER_CYCLE - 1) // CATCH_UP_SOURCES_PER_CYCLE

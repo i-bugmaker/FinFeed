@@ -1,6 +1,6 @@
 // easy-tdx 全局状态：标的上下文 / 功能选择 / 参数 / 任务 / 收藏与最近 / UI 面板状态
 import { defineStore } from 'pinia'
-import easytdxApi from '../api/easytdx'
+import easytdxApi from '@/features/easytdx/api/easytdxApi'
 import { loadStockNames } from '../components/easytdx/stockNames'
 import { createTaskRunner } from '../composables/useTaskRunner'
 import {

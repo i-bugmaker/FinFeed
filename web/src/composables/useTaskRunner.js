@@ -2,7 +2,7 @@
 // 轮询周期与超时策略集中于此；状态写入 Pinia store（store.task / running / errMsg）。
 // 挂载方（store）在卸载或切换功能时调用 stopPolling 清理定时器。
 
-import easytdxApi from '../api/easytdx'
+import easytdxApi from '@/features/easytdx/api/easytdxApi'
 
 export const POLL_INTERVAL = 800
 export const TASK_IDLE_TIMEOUT = 60_000 // 60s 无日志/进度变化判定卡死

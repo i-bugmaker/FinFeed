@@ -5,22 +5,21 @@
 处理流程: 解析 -> 字段清洗 -> 股票格式验证 -> 情感分析 -> 重要性评分 -> 多级去重 -> 入库/合并
 """
 
-import re
-import math
 import logging
+import math
+import re
 import time
 from typing import List, Optional
 
-
-from finfeed.storage.models import NewsItem
-from finfeed.storage.database import db_insert_news, db_update_stock_meta, db_merge_duplicate
-from finfeed.core.dedup import deduplicate, get_dedup_engine
-from finfeed.analysis.sentiment import analyze_sentiment_async
 from finfeed.analysis.importance import compute_importance
+from finfeed.analysis.sentiment import analyze_sentiment_async
 from finfeed.analysis.text_analyzer import extract_keywords_simple
+from finfeed.config.sources import get_article_display_names, get_flash_display_names
+from finfeed.core.dedup import deduplicate, get_dedup_engine
 from finfeed.core.parsers.forum_parsers.utils import extract_stocks_from_text
+from finfeed.storage.database import db_insert_news, db_merge_duplicate, db_update_stock_meta
+from finfeed.storage.models import NewsItem
 from finfeed.utils.hash_utils import compute_normalized_title_hash, compute_simhash, simhash_to_hex
-from finfeed.config.sources import get_flash_display_names, get_article_display_names
 
 logger = logging.getLogger("news_monitor")
 

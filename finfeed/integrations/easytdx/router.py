@@ -49,7 +49,6 @@ def meta():
 def strategies():
     """返回回测注册表中的策略及其参数 schema。"""
     try:
-        import easy_tdx.backtest.strategies.builtin  # 触发注册
         from easy_tdx.backtest.strategies import get_registry
         reg = get_registry()
         out = []

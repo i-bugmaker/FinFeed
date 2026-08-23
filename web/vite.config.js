@@ -1,10 +1,14 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { fileURLToPath, URL } from 'node:url'
 
 // 构建产物输出到 dist/，由 FastAPI 静态托管（见 finfeed/ui/web_fastapi/app.py）。
 // 开发态通过 proxy 把 /api 转发到 8866 的 FastAPI 服务。
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   base: './',
   server: {
     port: 5173,

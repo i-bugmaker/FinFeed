@@ -40,7 +40,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from finfeed.market.client import get_json, warm, RateLimited
+from finfeed.market.client import RateLimited, get_json, warm
 from finfeed.storage.database import now_bj
 
 logger = logging.getLogger("news_monitor")
@@ -1015,7 +1015,6 @@ async def collect_all(trade_date: Optional[str] = None) -> Dict[str, Any]:
 
     返回 {trade_date, saved, attempted, errors}。
     """
-    from finfeed.market import store
     td = trade_date or now_bj().strftime("%Y-%m-%d")
     saved = 0
     attempted = 0

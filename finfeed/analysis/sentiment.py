@@ -9,10 +9,9 @@
 - 词典覆盖更全面的金融术语
 """
 
-import re
 import asyncio
+import re
 from typing import List
-
 
 from finfeed.storage.models import NewsItem
 

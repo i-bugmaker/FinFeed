@@ -2,16 +2,20 @@
 # -*- coding: utf-8 -*-
 """同花顺财经 解析器"""
 
-import re
-import logging
 import asyncio
+import logging
+import re
+
 import httpx
-from ..base import BaseParser
+
+from finfeed.config.settings import get_display_name
+from finfeed.config.sources import THSFINANCE_BASE_URL, THSFINANCE_CHANNELS
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj, parse_url_date
-from finfeed.config.settings import get_display_name
-from finfeed.config.sources import THSFINANCE_CHANNELS, THSFINANCE_BASE_URL
+
+from ..base import BaseParser
 from ._shared import _RE_HHMM, _RE_MD_HHMM
+
 logger = logging.getLogger("news_monitor")
 class THSFinanceParser(BaseParser):
     """同花顺财经 - HTML 多栏目（news.10jqka.com.cn）
@@ -201,7 +205,7 @@ class THSFinanceParser(BaseParser):
         _thsf_channel_last_ts: dict[str, int] = getattr(self, '_channel_last_ts', {})
         catch_up_start_ts = self.get_catch_up_start_ts()
 
-        logger.info(f"同花顺财经补抓模式：开始分页补抓")
+        logger.info("同花顺财经补抓模式：开始分页补抓")
 
         processed_channels = 0
         for ch in THSFINANCE_CHANNELS:

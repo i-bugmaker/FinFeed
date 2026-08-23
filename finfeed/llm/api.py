@@ -15,8 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from finfeed.utils.time_utils import now_bj
 
-from . import collector, config as cfg, store
-from .client import LLMClient, LLMError, build_client, build_chat_url, build_models_url
+from . import collector, store
+from . import config as cfg
+from .client import LLMClient, LLMError, build_chat_url, build_client, build_models_url
 from .schema import ensure_tables
 from .service import get_service
 

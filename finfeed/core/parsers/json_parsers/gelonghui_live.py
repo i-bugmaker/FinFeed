@@ -3,10 +3,14 @@
 """格隆汇快讯 解析器"""
 
 import httpx
-from ..base import BaseParser
+
+from finfeed.config.settings import get_display_name
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
-from finfeed.config.settings import get_display_name
+
+from ..base import BaseParser
+
+
 class GelonghuiLiveParser(BaseParser):
     """格隆汇快讯 - JSON API"""
 

@@ -2,14 +2,18 @@
 # -*- coding: utf-8 -*-
 """第一财经 解析器"""
 
-import re
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+import re
+from datetime import datetime, timedelta, timezone
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import bj_str_from_ts
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class YicaiParser(BaseParser):
     """第一财经 - JSON API"""
@@ -99,7 +103,7 @@ class YicaiParser(BaseParser):
         if not self._catch_up_mode or self.last_ts <= 0:
             return []
 
-        logger.info(f"第一财经补抓模式：开始分页补抓")
+        logger.info("第一财经补抓模式：开始分页补抓")
 
         all_news = await self._paginated_fetch(
             http_client,

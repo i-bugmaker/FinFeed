@@ -4,10 +4,14 @@
 
 import json
 import logging
+
 import httpx
-from ..base import BaseParser
+
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import ts_from_bj_str, bj_str_from_ts
+from finfeed.utils.time_utils import bj_str_from_ts, ts_from_bj_str
+
+from ..base import BaseParser
+
 logger = logging.getLogger("news_monitor")
 class FastbullParser(BaseParser):
     """法布财经 - JSON API"""
@@ -85,7 +89,7 @@ class FastbullParser(BaseParser):
         params = dict(self.source.params)
         params["pageSize"] = 50
 
-        logger.info(f"法布财经补抓模式：开始分页补抓")
+        logger.info("法布财经补抓模式：开始分页补抓")
 
         all_news = await self._paginated_fetch(
             http_client,
