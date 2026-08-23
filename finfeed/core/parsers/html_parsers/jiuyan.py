@@ -190,22 +190,12 @@ class JiuyanParser(BaseParser):
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
-        """补抓模式：获取韭研公社多个板块的数据"""
-        news_list = []
-        bj_tz = timezone(timedelta(hours=8))
-        seen_urls = set()
-        headers = dict(self.source.headers)
+        """补抓模式：获取韭研公社多个板块的数据
 
-        for url in self.SOURCE_URLS:
-            try:
-                data_list = await self._fetch_with_browser(url, headers)
-                url_news = await self._extract_news_from_data(data_list, bj_tz, seen_urls)
-                news_list.extend(url_news)
-            except Exception as e:
-                logger.warning(f"韭研公社补抓失败({url}): {str(e)[:80]}")
-
-        news_list.sort(key=lambda x: x.publish_ts, reverse=True)
-        if news_list:
-            self.last_ts = max(n.publish_ts for n in news_list if n.publish_ts > 0)
-
-        return news_list
+        加固(2026-08-24)：补抓模式跳过浏览器渲染（playwright 驱动易挂起，
+        曾导致整轮补抓停滞约 10 分钟），直接返回空；实时模式不受影响。
+        """
+        logger.info(
+            f"韭研公社补抓模式降级跳过（浏览器渲染不参与补抓），last_ts={self.last_ts}"
+        )
+        return []

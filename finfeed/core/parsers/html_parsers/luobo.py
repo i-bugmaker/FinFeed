@@ -250,38 +250,13 @@ class LuoBoParser(BaseParser):
         return news_list
 
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
-        """补抓模式：获取萝卜投研数据"""
-        news_list = []
-        bj_tz = timezone(timedelta(hours=8))
-        seen_urls = set()
-        headers = dict(self.source.headers)
-        logger.info(f"萝卜投研补抓模式开始，_catch_up_mode={self._catch_up_mode}, last_ts={self.last_ts}")
+        """补抓模式：获取萝卜投研数据
 
-        for url in self.SOURCE_URLS:
-            try:
-                logger.info(f"萝卜投研补抓浏览器渲染中...")
-                data_list = await self._fetch_with_browser(url, headers)
-                logger.info(f"萝卜投研补抓浏览器渲染完成，获取到 {len(data_list)} 个API响应")
-                for data in data_list:
-                    if not isinstance(data, dict):
-                        continue
-                    feed_data = data.get("data", {})
-                    if not isinstance(feed_data, dict):
-                        continue
-                    items = feed_data.get("list", [])
-                    if not isinstance(items, list):
-                        continue
-                    logger.info(f"萝卜投研补抓解析到 {len(items)} 条原始数据")
-                    for item in items:
-                        news = self._parse_feed_item(item, bj_tz, seen_urls)
-                        if news:
-                            news_list.append(news)
-            except Exception as e:
-                logger.warning(f"萝卜投研补抓失败({url}): {str(e)[:80]}")
-
-        logger.info(f"萝卜投研补抓最终结果: {len(news_list)} 条")
-        news_list.sort(key=lambda x: x.publish_ts, reverse=True)
-        if news_list:
-            self.last_ts = max(n.publish_ts for n in news_list if n.publish_ts > 0)
-
-        return news_list
+        加固(2026-08-24)：补抓模式跳过浏览器渲染（单次渲染 60s 超时 + 常驻
+        playwright 驱动，易挂起并拖垮整轮补抓节奏），直接返回空；实时模式
+        parse() 仍走浏览器渲染，不受影响。缺失历史数据由实时轮次自然覆盖。
+        """
+        logger.info(
+            f"萝卜投研补抓模式降级跳过（浏览器渲染不参与补抓），last_ts={self.last_ts}"
+        )
+        return []

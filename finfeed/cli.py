@@ -23,6 +23,7 @@ import logging
 import logging.handlers
 import subprocess
 import traceback
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -377,6 +378,76 @@ def _setup_logging():
     logging.getLogger("asyncio").propagate = True
 
 
+# ---------------------------------------------------------------------------
+# 单实例锁（2026-08-24 加固）
+# ---------------------------------------------------------------------------
+
+
+def _pid_alive(pid: int) -> bool:
+    """检查 PID 是否存活（跨平台，不依赖 psutil）。"""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    except Exception:
+        return True
+    return True
+
+
+def _monitor_lock_path() -> str:
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "finfeed",
+        ".finfeed_monitor.lock",
+    )
+
+
+def _acquire_monitor_lock() -> Optional[str]:
+    """获取单实例锁，防止多个监控实例并发抢源/写库。
+
+    锁文件内写入本进程 PID。若锁已存在且持有者 PID 仍存活则拒绝启动；
+    持有者已退出则接管锁。返回锁文件路径，退出时由调用方释放。
+    """
+    lock_path = _monitor_lock_path()
+    try:
+        if os.path.exists(lock_path):
+            old_pid = 0
+            try:
+                with open(lock_path, "r", encoding="utf-8") as fp:
+                    old_pid = int(fp.read().strip() or "0")
+            except (OSError, ValueError):
+                old_pid = 0
+            if old_pid > 0 and _pid_alive(old_pid):
+                logger.error(
+                    f"检测到监控实例已在运行 (PID {old_pid})，"
+                    f"拒绝本实例启动以避免并发冲突。"
+                )
+                return None
+            logger.warning(f"接管失效监控锁（旧 PID {old_pid}）")
+        with open(lock_path, "w", encoding="utf-8") as fp:
+            fp.write(str(os.getpid()))
+        return lock_path
+    except OSError as e:
+        logger.warning(f"监控锁创建失败（忽略，继续启动）: {e}")
+        return None
+
+
+def _release_monitor_lock(lock_path: Optional[str]) -> None:
+    """释放单实例锁（仅当持有者仍是本进程时删除）。"""
+    if not lock_path:
+        return
+    try:
+        if os.path.exists(lock_path):
+            with open(lock_path, "r", encoding="utf-8") as fp:
+                pid = int(fp.read().strip() or "0")
+            if pid == os.getpid():
+                os.remove(lock_path)
+    except Exception:
+        pass
+
+
 def _run_market_action(args):
     """事实层 CLI 调度。"""
     from finfeed.market import service as mkt
@@ -532,6 +603,7 @@ def main():
             pass
 
     fastapi_proc = None
+    lock_path = None
     try:
         fastapi_proc = start_web_stack(args.web, args.port)
 
@@ -539,6 +611,15 @@ def main():
             total_new = asyncio.run(run_once())
             print_once_result([], total_new, 0, 0)
         else:
+            # 单实例锁(2026-08-24加固)：防止多个监控实例并发抢同一批源/同一数据库。
+            # 历史事故：多实例并发补抓互相打断，实时主循环被饿死数小时，
+            # 消息停留在昨日 22:49 无任何新增。
+            lock_path = _acquire_monitor_lock()
+            if lock_path is None:
+                print("\n[ERROR] 已存在运行中的监控实例，本实例拒绝启动以避免并发冲突。")
+                print("        如需强制启动，请先停止旧实例，或删除 "
+                      "finfeed/.finfeed_monitor.lock 后重试。")
+                sys.exit(1)
             asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
     except KeyboardInterrupt:
         print(f"\n监控已停止。数据已持久化。")
@@ -548,6 +629,7 @@ def main():
         if not args.once:
             stop_web_server()
         db_set_last_exit_ts(int(time.time()))
+        _release_monitor_lock(lock_path)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ import logging
 from typing import Callable, Optional
 
 
-from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE
+from finfeed.config.settings import DEFAULT_INTERVAL as FETCH_INTERVAL, CATCH_UP_CYCLE_INTERVAL, CATCH_UP_SOURCES_PER_CYCLE, CATCH_UP_ZERO_STREAK_LIMIT, CATCH_UP_HARD_TIMEOUT
 from finfeed.config.sources import get_enabled_sources
 from .fetcher import get_fetcher, fetch_all_news
 from .pipeline import process_and_store
@@ -144,8 +144,17 @@ class NewsMonitor:
         for src_name, ts in saved_last_ts.items():
             fetcher.set_parser_last_ts(src_name, ts)
 
+        # 加固(2026-08-24)：补抓不得无限期阻塞实时主循环——
+        # 1) 连续 2 轮零新增即提前终止（离线缺口大概率已无可补内容）；
+        # 2) 单次补抓总耗时超过 CATCH_UP_HARD_TIMEOUT 秒强制切回实时轮次，
+        #    避免慢源（浏览器渲染/大分页补抓）把主循环饿死数小时。
+        catch_up_started = time.time()
+        zero_streak = 0
         for cycle in range(1, max_cycles + 1):
             if not self._running and self._shutdown_event.is_set():
+                break
+            if time.time() - catch_up_started > CATCH_UP_HARD_TIMEOUT:
+                logger.info(f"补抓已持续超过 {CATCH_UP_HARD_TIMEOUT}s 硬上限，强制进入实时轮次")
                 break
             try:
                 logger.info(f"补抓轮次 {cycle}/{max_cycles}...")
@@ -157,6 +166,16 @@ class NewsMonitor:
                 cycle_new = await self._process_fetched(all_news, fetcher)
                 total_catchup += cycle_new
                 logger.info(f"补抓轮次 {cycle} 完成，本轮新增 {cycle_new} 条")
+
+                if cycle_new == 0:
+                    zero_streak += 1
+                    if zero_streak >= CATCH_UP_ZERO_STREAK_LIMIT:
+                        logger.info(
+                            f"连续 {zero_streak} 轮补抓无新增，提前结束补抓进入实时轮次"
+                        )
+                        break
+                else:
+                    zero_streak = 0
 
                 if cycle < max_cycles:
                     await asyncio.sleep(CATCH_UP_CYCLE_INTERVAL)
