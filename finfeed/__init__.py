@@ -20,4 +20,3 @@ from .core.fetcher import fetch_all_news, get_fetcher
 from .core.monitor import get_monitor
 from .storage.database import db_get_recent_news, db_get_statistics, get_db, init_db
 from .storage.exporter import export_to_csv, export_to_json
-from .ui.web.server import start_web_server, stop_web_server

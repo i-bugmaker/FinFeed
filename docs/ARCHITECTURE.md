@@ -23,7 +23,6 @@ finfeed/
     web/
       shared.py         shared runtime: SSE channel, API cache, source names,
                         news response builder, web state (single instances)
-      server.py         legacy stdlib HTTP service (fallback only)
 web/src/
   shared/               framework-neutral browser utilities and configuration
   features/             feature-owned API adapters, state and components
@@ -54,9 +53,8 @@ is retained only as a compatibility pointer to that canonical manifest.
 
 `routers/realtime.py` owns SSE, SSE health, and market WebSocket routes. It
 receives a `NewsEventPublisher` dependency backed by the shared broadcaster
-(`ui/web/shared.py`), which is the single instance shared with the legacy
-service. Market use cases live in `application/market_service.py`
+(`ui/web/shared.py`). Market use cases live in `application/market_service.py`
 (`MarketService`); news use cases live in `application/news_service.py`
-(`NewsService`). Routers depend on these service facades, not on
-`ui/web/server.py` globals — the legacy module now only owns its HTTP handler
-and `start/stop_web_server` lifecycle control.
+(`NewsService`). Routers depend on these service facades only; the legacy
+stdlib HTTP service has been retired — `ui/web/server.py` no longer exists and
+the CLI runs FastAPI single-track.

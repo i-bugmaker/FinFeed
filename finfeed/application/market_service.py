@@ -8,7 +8,7 @@
 - 数据可用日期 → :meth:`MarketService.get_dates`
 
 采集动作的底层依赖（market.service / 情绪校准 / 线程执行）可注入，
-默认实现与 legacy（``finfeed.ui.web.server``）行为完全一致。
+默认实现与已退役的旧 stdlib 服务行为完全一致。
 """
 
 from __future__ import annotations

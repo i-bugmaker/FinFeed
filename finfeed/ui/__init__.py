@@ -5,9 +5,8 @@
 提供 Web 界面和终端输出功能。
 
 子模块:
-    - web: Web 服务器和 HTML 模板
+    - web: Web 共享运行时（ui.web.shared）与 FastAPI 后端（ui.web_fastapi）
     - terminal: 终端输出格式化
 """
 
 from .terminal import TerminalUI, build_display, build_news_table, console, print_once_result
-from .web.server import start_web_server

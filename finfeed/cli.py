@@ -45,7 +45,6 @@ from finfeed.storage.exporter import (
     get_default_export_path,
 )
 from finfeed.ui.terminal import TerminalUI, print_once_result
-from finfeed.ui.web.server import start_web_server, stop_web_server
 from finfeed.ui.web.shared import touch_sse_tick, update_web_state
 
 
@@ -175,7 +174,6 @@ async def run_continuous(interval: int, web_port: int):
         except asyncio.CancelledError:
             pass
 
-    stop_web_server()
     db_set_last_exit_ts(int(time.time()))
 
 
@@ -246,31 +244,24 @@ def _terminate_fastapi(proc: "subprocess.Popen"):
         pass
 
 
-def start_web_stack(mode: str, port: int) -> "subprocess.Popen | None":
-    """按模式启动 Web 服务栈（已简化为单轨）。
+def start_web_stack(port: int) -> "subprocess.Popen | None":
+    """启动 Web 服务栈（FastAPI 单轨）。
 
-    - ``mode='fastapi'``（默认）：仅 uvicorn(FastAPI) 监听 ``port``（默认 8866）。
-      旧的 server.py 独立前端已移除；server.py 模块仅作为 SSE 广播通道被复用。
-    - ``mode='legacy'``：仅旧 ``server.py`` 监听 ``port``（保留向后兼容）。
+    - 仅 uvicorn(FastAPI) 监听 ``port``（默认 8866），由 ``finfeed.ui.web_fastapi.app`` 提供服务；
+    - 旧的 stdlib ``server.py`` 已退役删除，SSE 广播通道由 ``ui.web.shared`` 承载。
+    - 依赖检查：uvicorn/fastapi 缺失时给出明确报错，不再静默降级。
 
     返回 FastAPI 子进程句柄（可能为 ``None``），供退出时回收。
     """
-    fastapi_proc = None
-    if mode == "fastapi":
-        # 依赖检查：uvicorn/fastapi 缺失时自动降级为旧版单轨，避免服务端无法启动
-        try:
-            import uvicorn  # noqa: F401
-        except ImportError:
-            logger.error("未检测到 uvicorn/fastapi，已降级为旧版 server.py 单轨模式。"
-                         "安装新依赖请执行: pip install -e .")
-            mode = "legacy"
-        else:
-            fastapi_proc = _launch_fastapi(port)
-            # 单轨模式：仅 FastAPI(8866) 提供服务；旧的 server.py 独立前端已移除
-            # （server.py 中的 SSE 广播通道仍被 8866 复用，不得删除该模块）
-    if mode != "fastapi":
-        start_web_server(port=port)
-    return fastapi_proc
+    try:
+        import uvicorn  # noqa: F401
+    except ImportError:
+        logger.error(
+            "未检测到 uvicorn/fastapi，无法启动 Web 服务。"
+            "请先安装依赖: pip install -e ."
+        )
+        raise SystemExit(1) from None
+    return _launch_fastapi(port)
 
 
 class SafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -541,8 +532,8 @@ def main():
     parser.add_argument("--date", help="事实层指令所用交易日 (YYYY-MM-DD)")
     parser.add_argument("--limit", type=int, default=0, help="bars 回补数量上限")
     parser.add_argument(
-        "--web", choices=["fastapi", "legacy"], default="fastapi",
-        help="Web 后端模式: fastapi(默认, 单轨 8866) / legacy(降级: 仅旧 server.py，FastAPI 缺失时兜底)",
+        "--web", choices=["fastapi"], default="fastapi",
+        help="Web 后端: 仅 FastAPI 单轨（默认，端口见 --port）。旧 stdlib server.py 已退役。",
     )
     parser.add_argument(
         "--web-only", action="store_true",
@@ -582,7 +573,7 @@ def main():
         return
 
     if args.web_only:
-        fastapi_proc = start_web_stack(args.web, args.port)
+        fastapi_proc = start_web_stack(args.port)
         print("\nWeb 服务已启动（后台运行，日志仅写入 logs/finfeed.log）：")
         print(f"  界面:    http://127.0.0.1:{args.port}/")
         print(f"  API文档: http://127.0.0.1:{args.port}/docs")
@@ -595,7 +586,6 @@ def main():
         finally:
             if fastapi_proc is not None:
                 _terminate_fastapi(fastapi_proc)
-            stop_web_server()
             db_set_last_exit_ts(int(time.time()))
         return
 
@@ -615,7 +605,7 @@ def main():
     fastapi_proc = None
     lock_path = None
     try:
-        fastapi_proc = start_web_stack(args.web, args.port)
+        fastapi_proc = start_web_stack(args.port)
 
         if args.once:
             total_new = asyncio.run(run_once())
@@ -636,8 +626,6 @@ def main():
     finally:
         if fastapi_proc is not None:
             _terminate_fastapi(fastapi_proc)
-        if not args.once:
-            stop_web_server()
         db_set_last_exit_ts(int(time.time()))
         _release_monitor_lock(lock_path)
 

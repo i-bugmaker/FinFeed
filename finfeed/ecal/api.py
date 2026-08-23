@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """日历模块 HTTP 接口
 
-被 finfeed/ui/web/server.py 以「前缀路由」方式挂载，模块自洽：
+被 finfeed/ui/web_fastapi（routers/calendar.py）以「前缀路由」方式挂载，模块自洽：
     GET  /api/calendar/*  -> handle_get(path, query_dict)
     POST /api/calendar/*  -> handle_post(path, json_body)
 返回 (status_code, dict)；返回 None 表示该路径不属于本模块。

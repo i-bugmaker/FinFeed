@@ -51,7 +51,7 @@ class NewsMonitor:
 
         回调签名: async def callback(total_new: int) -> None
         回调只收到「本轮新增条数」，具体新增了哪些条目由 Web 层按数据库
-        自增 id 水位线自行确定（见 ui.web.server.broadcast_new_news）。
+        自增 id 水位线自行确定（见 ui.web.shared.broadcast_new_news）。
         """
         self._push_callback = callback
 

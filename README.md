@@ -61,7 +61,7 @@ FinFeed 并非单一的新闻聚合器，而是将**非结构化新闻**与**结
 - 供应商配置持久化于本地库，API Key 仅在接口返回掩码值，不回传前端。
 
 **Web 仪表盘与推送**
-- FastAPI 单轨：新版 Vue 3 + Vite SPA（8866）由 FastAPI 同源托管；旧版 `server.py` 仅作为 SSE 广播通道被复用，不再作为独立前端。
+- FastAPI 单轨：新版 Vue 3 + Vite SPA（8866）由 FastAPI 同源托管；SSE 广播通道由 `ui.web.shared` 承载，旧版 `server.py` 已退役。
 - 实时 SSE 增量推送、情感趋势、收藏、全文检索、历史导出、LLM 报表导出。
 - 完整 OpenAPI 文档（Swagger UI / ReDoc）。
 
@@ -217,9 +217,8 @@ python main.py --interval 60
 # 只抓取一次后退出
 python main.py --once
 
-# 显式指定 Web 后端
-python main.py --web fastapi   # 默认：FastAPI 单轨(8866)
-python main.py --web legacy    # 降级：仅旧版 server.py（FastAPI 缺失时兜底，监听 --port，默认 8866）
+# 显式指定 Web 后端（FastAPI 单轨）
+python main.py --web fastapi   # 默认：FastAPI 单轨(8866)；旧版 server.py 已退役
 ```
 
 ### 无浏览器 / 仅预览界面
@@ -273,14 +272,14 @@ python main.py --market alerts      # 市场状态告警
 | `--market ACTION` | 事实层指令：`init`/`universe`/`snapshot`/`bars`/`backfill`/`calibrate`/`report`/`alerts` | — |
 | `--date DATE` | 事实层所用交易日 | — |
 | `--limit N` | `bars` 回补数量上限 | — |
-| `--web {fastapi,legacy}` | Web 后端模式 | `fastapi` |
+| `--web {fastapi}` | Web 后端模式（FastAPI 单轨） | `fastapi` |
 | `--web-only` | 仅启动 Web（不运行监控器） | — |
 
 ---
 
 ## Web 界面与 API
 
-自 v2.1 起，Web 前端为 Vue 3 + Vite 构建的 SPA，由 FastAPI 同源单轨托管（8866）；旧版 `server.py` 仅作为 SSE 广播通道被复用，不再作为独立前端。
+自 v2.1 起，Web 前端为 Vue 3 + Vite 构建的 SPA，由 FastAPI 同源单轨托管（8866）；SSE 广播通道由 `ui.web.shared` 承载，旧版 `server.py` 已退役。
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
@@ -322,7 +321,7 @@ FinFeed/
 │   ├── market/                 # 市场事实层（A股快照/涨停归因/龙虎榜/日线）
 │   ├── storage/                # 数据持久化（database / exporter / models）
 │   ├── ui/                     # 用户界面
-│   │   ├── web/                # 旧版 Web（server.py，仅作 SSE 广播通道被复用）
+│   │   ├── web/                # 共享运行时（shared.py：SSE 通道/缓存/Web 状态）
 │   │   └── web_fastapi/        # 新 Web 后端（FastAPI，8866 主入口）
 │   └── utils/                  # 工具函数
 ├── web/                        # 新前端（Vue 3 + Vite，构建产物 dist/）
