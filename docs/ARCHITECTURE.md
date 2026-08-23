@@ -9,6 +9,7 @@ inward: transport/UI -> application/domain -> storage and external adapters.
 ```text
 finfeed/
   core/                 ingestion orchestration and parser contracts
+  application/          framework-independent use-case services (NewsService, MarketService)
   storage/              SQLite models, repositories and exporters
   market/               market-data domain (service, store, collectors)
   screener/             screening domain (factors, scoring, reports)
@@ -18,6 +19,11 @@ finfeed/
   ui/
     web_fastapi/        HTTP composition root only
       core/             API error contract and cross-cutting transport policy
+      routers/          transport boundaries; business goes to application/
+    web/
+      shared.py         shared runtime: SSE channel, API cache, source names,
+                        news response builder, web state (single instances)
+      server.py         legacy stdlib HTTP service (fallback only)
 web/src/
   shared/               framework-neutral browser utilities and configuration
   features/             feature-owned API adapters, state and components
@@ -46,8 +52,11 @@ to work. New code must use `@/shared/*` or its owning `@/features/<name>/*`.
 The Python dependency source of truth is `pyproject.toml`; `requirements.txt`
 is retained only as a compatibility pointer to that canonical manifest.
 
-`routers/realtime.py` now owns SSE, SSE health, and market WebSocket routes.
-It receives a `NewsEventPublisher` dependency and currently uses a compatibility
-adapter for the legacy broadcaster. News, market, and system endpoint extraction
-remains governed by the same router rule: each router must depend on a small
-service facade rather than `ui.web.server` globals.
+`routers/realtime.py` owns SSE, SSE health, and market WebSocket routes. It
+receives a `NewsEventPublisher` dependency backed by the shared broadcaster
+(`ui/web/shared.py`), which is the single instance shared with the legacy
+service. Market use cases live in `application/market_service.py`
+(`MarketService`); news use cases live in `application/news_service.py`
+(`NewsService`). Routers depend on these service facades, not on
+`ui/web/server.py` globals — the legacy module now only owns its HTTP handler
+and `start/stop_web_server` lifecycle control.

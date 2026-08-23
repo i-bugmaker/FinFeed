@@ -16,7 +16,18 @@ from typing import Any, Protocol
 from fastapi import APIRouter, Request, WebSocket
 from fastapi.responses import StreamingResponse
 
-from finfeed.ui.web import server as legacy
+from finfeed.ui.web.shared import (
+    SSE_CLIENT_QUEUE_MAXSIZE,
+    _broadcast_watermarks,
+    _last_broadcast_ts,
+    _sse_clients,
+    _sse_clients_lock,
+    _watermark_initialized,
+    broadcast_new_news,
+    get_sse_tick_mtime,
+    init_broadcast_watermark,
+    touch_sse_tick,
+)
 
 SSE_TICK_POLL_INTERVAL = 0.5
 SSE_SAFETY_POLL_INTERVAL = 15.0
@@ -37,36 +48,36 @@ class NewsEventPublisher(Protocol):
 class LegacyNewsEventPublisher:
     """Compatibility adapter around the old process-local broadcaster."""
 
-    queue_size = legacy.SSE_CLIENT_QUEUE_MAXSIZE
+    queue_size = SSE_CLIENT_QUEUE_MAXSIZE
 
     def add_client(self, client: queue.Queue[dict[str, Any]]) -> None:
-        with legacy._sse_clients_lock:
-            legacy._sse_clients.add(client)
+        with _sse_clients_lock:
+            _sse_clients.add(client)
 
     def remove_client(self, client: queue.Queue[dict[str, Any]]) -> None:
-        with legacy._sse_clients_lock:
-            legacy._sse_clients.discard(client)
+        with _sse_clients_lock:
+            _sse_clients.discard(client)
 
     def initialize(self) -> None:
-        legacy.init_broadcast_watermark()
+        init_broadcast_watermark()
 
     def touch(self) -> None:
-        legacy.touch_sse_tick()
+        touch_sse_tick()
 
     def tick_mtime(self) -> float:
-        return legacy.get_sse_tick_mtime()
+        return get_sse_tick_mtime()
 
     def publish_pending(self) -> None:
-        legacy.broadcast_new_news()
+        broadcast_new_news()
 
     def health(self) -> dict[str, Any]:
-        with legacy._sse_clients_lock:
-            clients = len(legacy._sse_clients)
+        with _sse_clients_lock:
+            clients = len(_sse_clients)
         return {
             "clients": clients,
-            "last_broadcast_ts": legacy._last_broadcast_ts,
-            "watermark": dict(legacy._broadcast_watermarks),
-            "watermark_initialized": legacy._watermark_initialized,
+            "last_broadcast_ts": _last_broadcast_ts,
+            "watermark": dict(_broadcast_watermarks),
+            "watermark_initialized": _watermark_initialized,
         }
 
 

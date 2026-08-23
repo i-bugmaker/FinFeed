@@ -45,12 +45,8 @@ from finfeed.storage.exporter import (
     get_default_export_path,
 )
 from finfeed.ui.terminal import TerminalUI, print_once_result
-from finfeed.ui.web.server import (
-    start_web_server,
-    stop_web_server,
-    touch_sse_tick,
-    update_web_state,
-)
+from finfeed.ui.web.server import start_web_server, stop_web_server
+from finfeed.ui.web.shared import touch_sse_tick, update_web_state
 
 
 async def run_once():

@@ -4,10 +4,10 @@
 
 设计要点
 --------
-1. **复用而非重写**：业务函数与 SSE 广播通道直接复用 ``finfeed.ui.web.server``
-   （下文 ``legacy``）的模块级实现，仅替换 HTTP 传输层为 FastAPI。
+1. **复用而非重写**：业务函数与 SSE 广播通道复用 ``finfeed.ui.web.shared``
+   共享运行时（SSE 通道 / 缓存 / Web 状态），仅替换 HTTP 传输层为 FastAPI。
 2. **SSE 桥接**：FastAPI 的 ``StreamingResponse`` 通过 threading.Queue 注册进
-   ``legacy._sse_clients``，复用同一条广播通道；monitor 触发的 ``broadcast_new_news``
+   ``shared._sse_clients``，复用同一条广播通道；monitor 触发的 ``broadcast_new_news``
    会自动送达本端 SSE 客户端，双水位线/幂等/降级语义不变。
 3. **导出 / 健康检查 / 熔断状态**：与旧实现逐字段对齐。
 """
@@ -52,9 +52,9 @@ from finfeed.storage.database import (
 )
 
 # ----------------------------------------------------------------------
-# 复用旧实现的模块级对象（SSE 客户端集合 / 广播 / 缓存 / 解析辅助）
+# 共享运行时：SSE 广播通道 / Web 状态 / 时间解析（由 finfeed.ui.web.shared 收敛）
 # ----------------------------------------------------------------------
-from finfeed.ui.web import server as legacy
+from finfeed.ui.web.shared import _ts_from_date_str, _web_state, _web_state_lock
 from finfeed.ui.web_fastapi.core.errors import install_exception_handlers
 from finfeed.ui.web_fastapi.routers.calendar import create_router as create_calendar_router
 from finfeed.ui.web_fastapi.routers.llm import create_router as create_llm_router
@@ -211,8 +211,8 @@ def parse_query_params(q: Dict[str, List[str]]) -> dict:
     fav_only = gv("favorites", "0") == "1"
     min_importance = gv("min_importance", "0")
 
-    start_ts = legacy._ts_from_date_str(start_date, end_of_day=False) if start_date else None
-    end_ts = legacy._ts_from_date_str(end_date, end_of_day=True) if end_date else None
+    start_ts = _ts_from_date_str(start_date, end_of_day=False) if start_date else None
+    end_ts = _ts_from_date_str(end_date, end_of_day=True) if end_date else None
 
     return {
         "page": page,
@@ -280,10 +280,10 @@ def api_health():
 @app.get("/api/stats")
 def api_stats():
     stats = db_get_statistics()
-    with legacy._web_state_lock:
-        stats["cycle"] = legacy._web_state.get("cycle", 0)
-        stats["status"] = legacy._web_state.get("status", "运行中")
-        stats["new_count"] = legacy._web_state.get("new_count", 0)
+    with _web_state_lock:
+        stats["cycle"] = _web_state.get("cycle", 0)
+        stats["status"] = _web_state.get("status", "运行中")
+        stats["new_count"] = _web_state.get("new_count", 0)
 
     source_list = []
     try:

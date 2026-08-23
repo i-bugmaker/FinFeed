@@ -20,7 +20,14 @@ from finfeed.storage.database import (
     db_search_news,
     db_toggle_favorite,
 )
-from finfeed.ui.web import server as legacy
+from finfeed.ui.web.shared import (
+    _build_news_response,
+    _cache_get,
+    _cache_set,
+    _get_cached_sources,
+    _get_flash_article_display_names,
+    invalidate_api_cache,
+)
 
 logger = logging.getLogger("news_monitor")
 
@@ -29,7 +36,7 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
     router = APIRouter(tags=["news"])
     service = NewsService(
         db_query_news,
-        legacy._build_news_response, legacy._cache_get, legacy._cache_set, legacy.invalidate_api_cache,
+        _build_news_response, _cache_get, _cache_set, invalidate_api_cache,
     )
 
     def response(data: Any, status: int = 200, max_age: int = 0) -> JSONResponse:
@@ -48,17 +55,17 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
 
     @router.get("/api/flash")
     def flash(request: Request) -> JSONResponse:
-        names, _ = legacy._get_flash_article_display_names()
+        names, _ = _get_flash_article_display_names()
         return category(request, "flash", names)
 
     @router.get("/api/articles")
     def articles(request: Request) -> JSONResponse:
-        _, names = legacy._get_flash_article_display_names()
+        _, names = _get_flash_article_display_names()
         return category(request, "article", names)
 
     @router.get("/api/sentiment")
     def sentiment(request: Request) -> JSONResponse:
-        _, _, names, _, _ = legacy._get_cached_sources()
+        _, _, names, _, _ = _get_cached_sources()
         return category(request, "forum", names)
 
     @router.get("/api/favorites")
@@ -66,13 +73,13 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
         try:
             params = parse_params(qdict(request))
             items, total = db_query_news(limit=params["page_size"], offset=params["offset"], keyword=params["keyword"], is_favorite=True)
-            return response(legacy._build_news_response(items, total, params["offset"], params["page_size"], []))
+            return response(_build_news_response(items, total, params["offset"], params["page_size"], []))
         except Exception as exc:  # noqa: BLE001
             return response({"error": str(exc)}, status=500)
 
     @router.get("/api/stock_names")
     def stock_names() -> JSONResponse:
-        cached = legacy._cache_get("stock_names_map")
+        cached = _cache_get("stock_names_map")
         if cached is not None:
             return response(cached, max_age=300)
         try:
@@ -81,7 +88,7 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
                 from finfeed.analysis.stock_names import STOCK_NAMES
                 names = dict(STOCK_NAMES)
             result = {"stock_names": names}
-            legacy._cache_set("stock_names_map", result)
+            _cache_set("stock_names_map", result)
             return response(result, max_age=300)
         except Exception as exc:  # noqa: BLE001
             return response({"stock_names": {}, "error": str(exc)}, status=500)
