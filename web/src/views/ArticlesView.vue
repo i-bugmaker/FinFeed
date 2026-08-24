@@ -86,11 +86,6 @@ onUnmounted(() => observer && observer.disconnect())
 <template>
   <div class="ff-page ff-articles-view">
     <div class="ff-articles-view__header">
-      <div class="ff-articles-view__header-info">
-        <h1 class="ff-h2">深度财经</h1>
-        <p class="ff-body-sm ff-text-muted">权威机构研报、深度产业剖析与宏观财经专栏</p>
-      </div>
-
       <div class="ff-articles-view__view-toggle">
         <button
           class="ff-articles-view__toggle-btn"
@@ -183,17 +178,9 @@ onUnmounted(() => observer && observer.disconnect())
 .ff-articles-view__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-bottom: var(--ff-space-4);
   gap: var(--ff-space-4);
-}
-
-.ff-articles-view__header-info h1 {
-  margin: 0 0 4px 0;
-}
-
-.ff-articles-view__header-info p {
-  margin: 0;
 }
 
 .ff-articles-view__view-toggle {

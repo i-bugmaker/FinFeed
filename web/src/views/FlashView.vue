@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api } from '../api/client'
 import { useAppStore } from '../store/app'
 import NewsRow from '../components/NewsRow.vue'
@@ -25,24 +25,6 @@ const sentinel = ref(null)
 const contentEl = ref(null)
 const viewMode = ref('table') // 'table' | 'cards'
 let observer = null
-
-// 统计情绪占比
-const sentimentCounts = computed(() => {
-  let pos = 0, neg = 0, neu = 0
-  for (const item of list.value) {
-    const s = (item.sentiment || '').toLowerCase()
-    if (s === 'positive') pos++
-    else if (s === 'negative') neg++
-    else neu++
-  }
-  const t = list.value.length || 1
-  return {
-    pos, neg, neu,
-    posPct: Math.round((pos / t) * 100),
-    negPct: Math.round((neg / t) * 100),
-    neuPct: Math.round((neu / t) * 100),
-  }
-})
 
 async function loadFirst() {
   page.value = 1
@@ -152,51 +134,6 @@ onUnmounted(() => {
 
 <template>
   <div class="ff-page ff-flash-view">
-    <!-- 顶部状态栏与情绪比例条 -->
-    <div class="ff-flash-view__hero ff-glass" v-if="list.length > 0">
-      <div class="ff-flash-view__hero-stats">
-        <div class="ff-flash-view__stat-item">
-          <span class="ff-flash-view__stat-label">当前已收录</span>
-          <span class="ff-flash-view__stat-val ff-num">{{ total }}</span>
-        </div>
-        <div class="ff-flash-view__stat-divider" />
-        <div class="ff-flash-view__stat-item">
-          <span class="ff-flash-view__stat-label ff-t-up">利好讯息</span>
-          <span class="ff-flash-view__stat-val ff-num ff-t-up">{{ sentimentCounts.pos }}</span>
-        </div>
-        <div class="ff-flash-view__stat-divider" />
-        <div class="ff-flash-view__stat-item">
-          <span class="ff-flash-view__stat-label ff-t-down">利空讯息</span>
-          <span class="ff-flash-view__stat-val ff-num ff-t-down">{{ sentimentCounts.neg }}</span>
-        </div>
-      </div>
-
-      <div class="ff-flash-view__ratio-bar" title="当前列表情绪分布">
-        <div class="ff-flash-view__ratio-seg ff-flash-view__ratio-seg--up" :style="{ width: sentimentCounts.posPct + '%' }" />
-        <div class="ff-flash-view__ratio-seg ff-flash-view__ratio-seg--neu" :style="{ width: sentimentCounts.neuPct + '%' }" />
-        <div class="ff-flash-view__ratio-seg ff-flash-view__ratio-seg--down" :style="{ width: sentimentCounts.negPct + '%' }" />
-      </div>
-
-      <div class="ff-flash-view__view-toggle">
-        <button
-          class="ff-flash-view__toggle-btn"
-          :class="{ 'is-active': viewMode === 'table' }"
-          title="表格列表视图"
-          @click="viewMode = 'table'"
-        >
-          <AppIcon name="menu" size="xs" />
-        </button>
-        <button
-          class="ff-flash-view__toggle-btn"
-          :class="{ 'is-active': viewMode === 'cards' }"
-          title="卡片流视图"
-          @click="viewMode = 'cards'"
-        >
-          <AppIcon name="dashboard" size="xs" />
-        </button>
-      </div>
-    </div>
-
     <!-- 筛选过滤栏 -->
     <FilterBar
       v-model="filters"

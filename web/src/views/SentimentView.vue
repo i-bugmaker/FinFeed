@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../api/client'
 import NewsCard from '../components/NewsCard.vue'
 import FilterBar from '../components/FilterBar.vue'
@@ -17,23 +17,6 @@ const finished = ref(false)
 const sources = ref([])
 const sentinel = ref(null)
 let observer = null
-
-const sentimentStats = computed(() => {
-  let pos = 0, neg = 0, neu = 0
-  for (const item of list.value) {
-    const s = (item.sentiment || '').toLowerCase()
-    if (s === 'positive') pos++
-    else if (s === 'negative') neg++
-    else neu++
-  }
-  const t = list.value.length || 1
-  const posPct = Math.round((pos / t) * 100)
-  const negPct = Math.round((neg / t) * 100)
-  const neuPct = Math.round((neu / t) * 100)
-  // 情绪指数：0~100 (50 为中性)
-  const sentimentScore = Math.round(((pos - neg) / t + 1) * 50)
-  return { pos, neg, neu, posPct, negPct, neuPct, sentimentScore }
-})
 
 async function loadFirst() {
   page.value = 1
@@ -93,47 +76,6 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-sentiment-view">
-    <!-- 舆情晴雨表 Hero 面板 -->
-    <div class="ff-sentiment-view__barometer ff-glass" v-if="list.length > 0">
-      <div class="ff-sentiment-view__gauge-wrap">
-        <div class="ff-sentiment-view__gauge-val ff-num" :class="sentimentStats.sentimentScore >= 50 ? 'ff-t-up' : 'ff-t-down'">
-          {{ sentimentStats.sentimentScore }}
-        </div>
-        <div class="ff-sentiment-view__gauge-label">
-          {{ sentimentStats.sentimentScore >= 60 ? '多头偏热' : sentimentStats.sentimentScore <= 40 ? '空头偏冷' : '情绪均衡' }}
-        </div>
-      </div>
-
-      <div class="ff-sentiment-view__barometer-details">
-        <div class="ff-sentiment-view__ratio-header">
-          <span class="ff-sentiment-view__ratio-title">全网舆情多空比例</span>
-          <span class="ff-sentiment-view__ratio-nums">
-            <strong class="ff-t-up ff-num">{{ sentimentStats.posPct }}% 利好</strong>
-            <span class="ff-text-muted">/</span>
-            <strong class="ff-t-down ff-num">{{ sentimentStats.negPct }}% 利空</strong>
-          </span>
-        </div>
-
-        <div class="ff-sentiment-view__ratio-bar">
-          <div class="ff-sentiment-view__ratio-bar-up" :style="{ width: sentimentStats.posPct + '%' }" />
-          <div class="ff-sentiment-view__ratio-bar-neu" :style="{ width: sentimentStats.neuPct + '%' }" />
-          <div class="ff-sentiment-view__ratio-bar-down" :style="{ width: sentimentStats.negPct + '%' }" />
-        </div>
-
-        <div class="ff-sentiment-view__chips">
-          <span class="ff-sentiment-view__chip ff-sentiment-view__chip--up">
-            <AppIcon name="trending-up" size="xs" /> 利好: {{ sentimentStats.pos }} 条
-          </span>
-          <span class="ff-sentiment-view__chip ff-sentiment-view__chip--neu">
-            <AppIcon name="minus" size="xs" /> 中性: {{ sentimentStats.neu }} 条
-          </span>
-          <span class="ff-sentiment-view__chip ff-sentiment-view__chip--down">
-            <AppIcon name="trending-down" size="xs" /> 利空: {{ sentimentStats.neg }} 条
-          </span>
-        </div>
-      </div>
-    </div>
-
     <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
 
     <div class="ff-sentiment-view__list">

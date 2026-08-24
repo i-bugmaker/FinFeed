@@ -58,7 +58,6 @@ function isActive(item) {
   <aside class="ff-sidebar" :class="mobile && 'ff-sidebar--mobile'">
     <div class="ff-sidebar__brand">
       <AppLogo mode="combined" :size="32" />
-      <span class="ff-sidebar__version">v4.0 Pro</span>
     </div>
 
     <div class="ff-sidebar__scroll">
@@ -107,12 +106,6 @@ function isActive(item) {
       </nav>
     </div>
 
-    <div class="ff-sidebar__footer">
-      <router-link to="/styleguide" class="ff-sidebar__footer-link" @click="mobile && emit('close')">
-        <AppIcon name="sliders" size="xs" />
-        <span>设计系统 4.0</span>
-      </router-link>
-    </div>
   </aside>
 </template>
 
@@ -139,19 +132,6 @@ function isActive(item) {
   padding: var(--ff-space-4) var(--ff-space-5);
   border-bottom: 1px solid var(--ff-border-subtle);
   height: var(--ff-topbar-h);
-}
-
-.ff-sidebar__version {
-  font-size: 10px;
-  font-family: var(--ff-font-mono);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 2px 6px;
-  border-radius: var(--ff-radius-xs);
-  background: var(--ff-brand-subtle);
-  color: var(--ff-brand-text);
-  border: 1px solid var(--ff-brand-border);
 }
 
 .ff-sidebar__scroll {
@@ -274,27 +254,5 @@ function isActive(item) {
   background: var(--ff-up);
   color: var(--ff-up-fg);
   animation: ff-scale-in var(--ff-dur-fast) var(--ff-ease-spring);
-}
-
-.ff-sidebar__footer {
-  padding: var(--ff-space-3) var(--ff-space-4);
-  border-top: 1px solid var(--ff-border-subtle);
-}
-
-.ff-sidebar__footer-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  font-size: 12px;
-  color: var(--ff-text-tertiary);
-  text-decoration: none;
-  padding: 4px 8px;
-  border-radius: var(--ff-radius-sm);
-  transition: color var(--ff-dur-fast), background var(--ff-dur-fast);
-}
-
-.ff-sidebar__footer-link:hover {
-  color: var(--ff-text-primary);
-  background: var(--ff-bg-hover);
 }
 </style>
