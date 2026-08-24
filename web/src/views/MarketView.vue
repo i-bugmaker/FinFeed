@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ff-page ff-market-view">
-    <AppCard class="ff-market-view__toolbar" v-if="active !== 'hotrank'">
+    <AppCard class="ff-market-view__toolbar ff-glass" v-if="active !== 'hotrank'">
       <div class="ff-market-view__row">
         <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />
         <AppInput

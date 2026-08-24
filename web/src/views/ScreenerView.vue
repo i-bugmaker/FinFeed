@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="screener-shell">
     <!-- ═══════ 顶部控制区 ═══════ -->
-    <header class="screener-top">
+    <header class="screener-top ff-glass">
       <div class="screener-title">
         <span class="screener-title__mark">
           <AppIcon name="filter" size="sm" />

@@ -277,42 +277,47 @@
   --ff-ls-body: -0.006em;
 
   /* 表面层级 */
-  --ff-bg-canvas: #fbfaf7;
-  --ff-bg-surface: var(--p-gray-0);
-  --ff-bg-surface-raised: var(--p-gray-0);
-  --ff-bg-subtle: #f7f4ee;
-  --ff-bg-muted: #f1ede5;
-  --ff-bg-hover: rgba(35, 51, 43, 0.045);
-  --ff-bg-active: rgba(35, 51, 43, 0.08);
-  --ff-bg-selected: var(--p-brand-50);
-  --ff-bg-inverse: var(--p-gray-900);
-  --ff-bg-overlay: rgba(11, 18, 30, 0.44);
-  --ff-bg-scrim: rgba(255, 255, 255, 0.74);
+  --ff-bg-canvas: #f8fafc;
+  --ff-bg-surface: #ffffff;
+  --ff-bg-surface-raised: #ffffff;
+  --ff-bg-subtle: #f1f5f9;
+  --ff-bg-muted: #e2e8f0;
+  --ff-bg-hover: rgba(15, 23, 42, 0.04);
+  --ff-bg-active: rgba(15, 23, 42, 0.08);
+  --ff-bg-selected: #e0f2fe;
+  --ff-bg-inverse: #0f172a;
+  --ff-bg-overlay: rgba(15, 23, 42, 0.4);
+  --ff-bg-scrim: rgba(248, 250, 252, 0.82);
+
+  /* 玻璃拟态 */
+  --ff-glass-bg: rgba(255, 255, 255, 0.85);
+  --ff-glass-border: rgba(226, 232, 240, 0.8);
+  --ff-glass-blur: blur(16px);
 
   /* 边框 */
-  --ff-border-subtle: #efeae0;
-  --ff-border: #e7e2d8;
-  --ff-border-strong: #d8d1c2;
-  --ff-border-inverse: var(--p-gray-700);
+  --ff-border-subtle: #f1f5f9;
+  --ff-border: #e2e8f0;
+  --ff-border-strong: #cbd5e1;
+  --ff-border-inverse: #334155;
 
   /* 文本 */
-  --ff-text-primary: #23332b;
-  --ff-text-secondary: #5c6b60;
-  --ff-text-tertiary: #968d7c;
-  --ff-text-disabled: #b3a99a;
-  --ff-text-placeholder: #b3a99a;
-  --ff-text-inverse: var(--p-gray-0);
-  --ff-text-link: var(--p-brand-600);
+  --ff-text-primary: #0f172a;
+  --ff-text-secondary: #475569;
+  --ff-text-tertiary: #94a3b8;
+  --ff-text-disabled: #cbd5e1;
+  --ff-text-placeholder: #94a3b8;
+  --ff-text-inverse: #ffffff;
+  --ff-text-link: #2563eb;
 
   /* 品牌 */
-  --ff-brand: var(--p-brand-600);
-  --ff-brand-hover: var(--p-brand-700);
-  --ff-brand-active: var(--p-brand-800);
+  --ff-brand: #2563eb;
+  --ff-brand-hover: #1d4ed8;
+  --ff-brand-active: #1e40af;
   --ff-brand-fg: #ffffff;
-  --ff-brand-subtle: var(--p-brand-50);
-  --ff-brand-subtle-hover: var(--p-brand-100);
-  --ff-brand-border: var(--p-brand-200);
-  --ff-brand-text: var(--p-brand-700);
+  --ff-brand-subtle: #eff6ff;
+  --ff-brand-subtle-hover: #dbeafe;
+  --ff-brand-border: #bfdbfe;
+  --ff-brand-text: #1d4ed8;
 
   /* ---- 兼容别名（历史代码引用的旧名称，映射到现行 token；勿删） ---- */
   --ff-bg-brand: var(--ff-brand);
@@ -320,7 +325,7 @@
   --ff-icon-brand: var(--ff-brand);
   --ff-text-brand: var(--ff-brand-text);
   --ff-border-brand: var(--ff-brand-border);
-  --ff-border-hover: #d8d1c2;
+  --ff-border-hover: #cbd5e1;
   --ff-border-focus: var(--ff-brand);
   --ff-border-up: var(--ff-up-border);
   --ff-border-down: var(--ff-down-border);
@@ -335,138 +340,144 @@
   --ff-fs-base: var(--ff-fs-body);
   --ff-z-popover: var(--ff-z-dropdown);
 
-  /* 涨 / 利好 */
-  --ff-up: var(--p-up-500);
-  --ff-up-strong: var(--p-up-600);
+  /* 涨 / 利好 (A股科技红) */
+  --ff-up: #e11d48;
+  --ff-up-strong: #be123c;
   --ff-up-fg: #ffffff;
-  --ff-up-subtle: var(--p-up-50);
-  --ff-up-border: var(--p-up-200);
-  --ff-up-text: var(--p-up-700);
+  --ff-up-subtle: #fff1f2;
+  --ff-up-border: #fecdd3;
+  --ff-up-text: #be123c;
 
-  /* 跌 / 利空 */
-  --ff-down: var(--p-down-500);
-  --ff-down-strong: var(--p-down-600);
+  /* 跌 / 利空 (A股清爽绿) */
+  --ff-down: #059669;
+  --ff-down-strong: #047857;
   --ff-down-fg: #ffffff;
-  --ff-down-subtle: var(--p-down-50);
-  --ff-down-border: var(--p-down-200);
-  --ff-down-text: var(--p-down-700);
+  --ff-down-subtle: #ecfdf5;
+  --ff-down-border: #a7f3d0;
+  --ff-down-text: #047857;
 
   /* 警示 */
-  --ff-warn: var(--p-warn-500);
+  --ff-warn: #d97706;
   --ff-warn-fg: #ffffff;
-  --ff-warn-subtle: var(--p-warn-50);
-  --ff-warn-border: var(--p-warn-200);
-  --ff-warn-text: var(--p-warn-700);
+  --ff-warn-subtle: #fffbeb;
+  --ff-warn-border: #fde68a;
+  --ff-warn-text: #b45309;
 
-  /* 危险（表单错误、破坏性操作）*/
-  --ff-danger: var(--p-up-600);
-  --ff-danger-hover: var(--p-up-700);
+  /* 危险 */
+  --ff-danger: #dc2626;
+  --ff-danger-hover: #b91c1c;
   --ff-danger-fg: #ffffff;
-  --ff-danger-subtle: var(--p-up-50);
-  --ff-danger-border: var(--p-up-200);
-  --ff-danger-text: var(--p-up-700);
+  --ff-danger-subtle: #fef2f2;
+  --ff-danger-border: #fecaca;
+  --ff-danger-text: #b91c1c;
 
   /* 信息 / 中性 */
-  --ff-info: var(--p-brand-600);
-  --ff-info-subtle: var(--p-brand-50);
-  --ff-info-text: var(--p-brand-700);
-  --ff-neutral-subtle: var(--p-gray-100);
-  --ff-neutral-text: var(--p-gray-600);
+  --ff-info: #2563eb;
+  --ff-info-subtle: #eff6ff;
+  --ff-info-text: #1d4ed8;
+  --ff-neutral-subtle: #f1f5f9;
+  --ff-neutral-text: #475569;
 
   /* 收藏 / 高亮 */
-  --ff-star: var(--p-warn-500);
-  --ff-star-subtle: var(--p-warn-50);
+  --ff-star: #eab308;
+  --ff-star-subtle: #fefce8;
 
-  /* 强调（图表序列） */
-  --ff-accent-teal: var(--p-teal-500);
-  --ff-accent-violet: var(--p-violet-500);
+  /* 强调 */
+  --ff-accent-teal: #0d9488;
+  --ff-accent-violet: #7c3aed;
 
-  /* 图表语义色（具体十六进制值，供 ECharts canvas 直接消费；
-     canvas 无法解析 var()，故此处必须为具体色值，禁止 var() 引用） */
-  --ff-chart-up: #e5484d;
-  --ff-chart-down: #12a150;
-  --ff-chart-neutral: #697586;
-  --ff-chart-primary: #2f7d5b;
-  --ff-chart-primary-2: #0ea5a5;
-  --ff-chart-primary-3: #875bf7;
-  --ff-chart-axis: #e7e2d8;
+  /* 图表语义色 */
+  --ff-chart-up: #e11d48;
+  --ff-chart-down: #059669;
+  --ff-chart-neutral: #64748b;
+  --ff-chart-primary: #2563eb;
+  --ff-chart-primary-2: #0d9488;
+  --ff-chart-primary-3: #7c3aed;
+  --ff-chart-axis: #e2e8f0;
 
   /* 阴影 */
-  --ff-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --ff-shadow-sm: 0 1px 2px rgba(35, 51, 43, 0.04), 0 1px 3px rgba(35, 51, 43, 0.04);
-  --ff-shadow-md: 0 2px 4px -2px rgba(35, 51, 43, 0.05), 0 6px 16px -3px rgba(35, 51, 43, 0.08);
-  --ff-shadow-lg: 0 4px 8px -2px rgba(35, 51, 43, 0.04), 0 14px 30px -5px rgba(35, 51, 43, 0.10);
-  --ff-shadow-xl: 0 10px 14px -6px rgba(35, 51, 43, 0.05), 0 26px 50px -8px rgba(35, 51, 43, 0.14);
-  --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --ff-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ff-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ff-shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --ff-shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --ff-shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+  --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 
-  /* 焦点环（无障碍） */
-  --ff-focus-ring: 0 0 0 3px rgba(47, 125, 91, 0.22);
-  --ff-focus-ring-danger: 0 0 0 3px rgba(208, 43, 49, 0.2);
+  /* 焦点环 */
+  --ff-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  --ff-focus-ring-danger: 0 0 0 3px rgba(225, 29, 72, 0.2);
 
   /* 滚动条 */
-  --ff-scroll-thumb: rgba(105, 117, 134, 0.34);
-  --ff-scroll-thumb-hover: rgba(105, 117, 134, 0.56);
+  --ff-scroll-thumb: rgba(148, 163, 184, 0.5);
+  --ff-scroll-thumb-hover: rgba(100, 116, 139, 0.7);
   --ff-scroll-track: transparent;
 
   /* 骨架屏 */
-  --ff-skeleton-base: var(--p-gray-100);
-  --ff-skeleton-shine: rgba(255, 255, 255, 0.85);
+  --ff-skeleton-base: #f1f5f9;
+  --ff-skeleton-shine: rgba(255, 255, 255, 0.9);
 }
 
 /* ============================================================================
-   9. 语义色 · 深色主题 (Dark)
+   9. 语义色 · 深色主题 (Dark - Obsidian Pro Terminal)
    ========================================================================== */
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* 字体渲染 · 暗色：灰度抗锯齿，避免彩边与大面积光晕；
-     CJK 在小字号下易显拥挤，正文追踪放宽到 0 提升清晰度 */
   --ff-font-smoothing: antialiased;
   --ff-font-smoothing-moz: grayscale;
   --ff-font-synthesis: none;
   --ff-ls-body: 0;
 
-  --ff-bg-canvas: #0f1c16;
-  --ff-bg-surface: #16271f;
-  --ff-bg-surface-raised: #1c2f25;
-  --ff-bg-subtle: #1a2b22;
-  --ff-bg-muted: #203329;
-  --ff-bg-hover: rgba(255, 255, 255, 0.05);
-  --ff-bg-active: rgba(255, 255, 255, 0.09);
-  --ff-bg-selected: rgba(63, 138, 98, 0.16);
-  --ff-bg-inverse: var(--p-gray-100);
-  --ff-bg-overlay: rgba(5, 12, 8, 0.66);
-  --ff-bg-scrim: rgba(15, 28, 22, 0.72);
+  /* 表面层级 (Cyber Obsidian) */
+  --ff-bg-canvas: #090d16;
+  --ff-bg-surface: #0f172a;
+  --ff-bg-surface-raised: #1e293b;
+  --ff-bg-subtle: #141e33;
+  --ff-bg-muted: #1e293b;
+  --ff-bg-hover: rgba(255, 255, 255, 0.06);
+  --ff-bg-active: rgba(255, 255, 255, 0.1);
+  --ff-bg-selected: rgba(59, 130, 246, 0.18);
+  --ff-bg-inverse: #f8fafc;
+  --ff-bg-overlay: rgba(3, 7, 18, 0.75);
+  --ff-bg-scrim: rgba(9, 13, 22, 0.85);
 
-  --ff-border-subtle: #203329;
-  --ff-border: #2a4034;
-  --ff-border-strong: #354a3c;
-  --ff-border-inverse: var(--p-gray-300);
+  /* 玻璃拟态 */
+  --ff-glass-bg: rgba(15, 23, 42, 0.78);
+  --ff-glass-border: rgba(255, 255, 255, 0.08);
+  --ff-glass-blur: blur(20px);
 
-  --ff-text-primary: #eaf1ea;
-  --ff-text-secondary: #a9b8ad;
-  --ff-text-tertiary: #7e8e82;
-  --ff-text-disabled: #5f6e62;
-  --ff-text-placeholder: #6a786c;
-  --ff-text-inverse: var(--p-gray-900);
-  --ff-text-link: var(--p-brand-400);
+  /* 边框 */
+  --ff-border-subtle: rgba(255, 255, 255, 0.06);
+  --ff-border: rgba(255, 255, 255, 0.1);
+  --ff-border-strong: rgba(255, 255, 255, 0.18);
+  --ff-border-inverse: #e2e8f0;
 
-  --ff-brand: var(--p-brand-500);
-  --ff-brand-hover: var(--p-brand-400);
-  --ff-brand-active: var(--p-brand-300);
-  --ff-brand-fg: #07140d;
-  --ff-brand-subtle: rgba(63, 138, 98, 0.16);
-  --ff-brand-subtle-hover: rgba(63, 138, 98, 0.24);
-  --ff-brand-border: rgba(127, 191, 156, 0.34);
-  --ff-brand-text: var(--p-brand-300);
+  /* 文本 */
+  --ff-text-primary: #f8fafc;
+  --ff-text-secondary: #94a3b8;
+  --ff-text-tertiary: #64748b;
+  --ff-text-disabled: #475569;
+  --ff-text-placeholder: #475569;
+  --ff-text-inverse: #090d16;
+  --ff-text-link: #60a5fa;
 
-  /* ---- 兼容别名（暗色，映射到现行 token；勿删） ---- */
+  /* 品牌 */
+  --ff-brand: #3b82f6;
+  --ff-brand-hover: #60a5fa;
+  --ff-brand-active: #93c5fd;
+  --ff-brand-fg: #090d16;
+  --ff-brand-subtle: rgba(59, 130, 246, 0.15);
+  --ff-brand-subtle-hover: rgba(59, 130, 246, 0.25);
+  --ff-brand-border: rgba(96, 165, 250, 0.3);
+  --ff-brand-text: #60a5fa;
+
+  /* ---- 兼容别名（暗色） ---- */
   --ff-bg-brand: var(--ff-brand);
   --ff-bg-brand-subtle: var(--ff-brand-subtle);
   --ff-icon-brand: var(--ff-brand);
   --ff-text-brand: var(--ff-brand-text);
   --ff-border-brand: var(--ff-brand-border);
-  --ff-border-hover: var(--p-gray-500);
+  --ff-border-hover: rgba(255, 255, 255, 0.22);
   --ff-border-focus: var(--ff-brand);
   --ff-border-up: var(--ff-up-border);
   --ff-border-down: var(--ff-down-border);
@@ -481,70 +492,78 @@
   --ff-fs-base: var(--ff-fs-body);
   --ff-z-popover: var(--ff-z-dropdown);
 
-  --ff-up: #f0575c;
-  --ff-up-strong: #f47276;
-  --ff-up-fg: #1a0708;
-  --ff-up-subtle: rgba(240, 87, 92, 0.14);
-  --ff-up-border: rgba(240, 87, 92, 0.36);
-  --ff-up-text: #f6a2a5;
+  /* 涨 / 利好 (霓虹科技红) */
+  --ff-up: #f43f5e;
+  --ff-up-strong: #fb7185;
+  --ff-up-fg: #ffffff;
+  --ff-up-subtle: rgba(244, 63, 94, 0.15);
+  --ff-up-border: rgba(244, 63, 94, 0.35);
+  --ff-up-text: #fda4af;
 
-  --ff-down: #2bb763;
-  --ff-down-strong: #43c877;
-  --ff-down-fg: #04140a;
-  --ff-down-subtle: rgba(43, 183, 99, 0.14);
-  --ff-down-border: rgba(43, 183, 99, 0.34);
-  --ff-down-text: #6ce9a6;
+  /* 跌 / 利空 (霓虹科技绿) */
+  --ff-down: #10b981;
+  --ff-down-strong: #34d399;
+  --ff-down-fg: #022c22;
+  --ff-down-subtle: rgba(16, 185, 129, 0.15);
+  --ff-down-border: rgba(16, 185, 129, 0.35);
+  --ff-down-text: #6ee7b7;
 
-  --ff-warn: #f0a728;
-  --ff-warn-fg: #1a1002;
-  --ff-warn-subtle: rgba(240, 167, 40, 0.14);
-  --ff-warn-border: rgba(240, 167, 40, 0.34);
-  --ff-warn-text: #fedf89;
+  /* 警示 */
+  --ff-warn: #f59e0b;
+  --ff-warn-fg: #1c1917;
+  --ff-warn-subtle: rgba(245, 158, 11, 0.15);
+  --ff-warn-border: rgba(245, 158, 11, 0.35);
+  --ff-warn-text: #fde68a;
 
-  --ff-danger: #f0575c;
-  --ff-danger-hover: #f47276;
-  --ff-danger-fg: #1a0708;
-  --ff-danger-subtle: rgba(240, 87, 92, 0.14);
-  --ff-danger-border: rgba(240, 87, 92, 0.36);
-  --ff-danger-text: #f6a2a5;
+  /* 危险 */
+  --ff-danger: #ef4444;
+  --ff-danger-hover: #f87171;
+  --ff-danger-fg: #ffffff;
+  --ff-danger-subtle: rgba(239, 68, 68, 0.15);
+  --ff-danger-border: rgba(239, 68, 68, 0.35);
+  --ff-danger-text: #fca5a5;
 
-  --ff-info: var(--p-brand-400);
-  --ff-info-subtle: rgba(63, 138, 98, 0.16);
-  --ff-info-text: var(--p-brand-300);
-  --ff-neutral-subtle: rgba(255, 255, 255, 0.07);
-  --ff-neutral-text: #a5b1c2;
+  /* 信息 / 中性 */
+  --ff-info: #3b82f6;
+  --ff-info-subtle: rgba(59, 130, 246, 0.15);
+  --ff-info-text: #93c5fd;
+  --ff-neutral-subtle: rgba(255, 255, 255, 0.06);
+  --ff-neutral-text: #94a3b8;
 
-  --ff-star: #f0b429;
-  --ff-star-subtle: rgba(240, 180, 41, 0.16);
+  /* 收藏 / 高亮 */
+  --ff-star: #fbbf24;
+  --ff-star-subtle: rgba(251, 191, 36, 0.15);
 
-  --ff-accent-teal: #2ec4c4;
-  --ff-accent-violet: var(--p-violet-400);
+  /* 强调 */
+  --ff-accent-teal: #14b8a6;
+  --ff-accent-violet: #8b5cf6;
 
-  /* 图表语义色（暗色主题具体值，供 ECharts canvas 消费） */
-  --ff-chart-up: #f0575c;
-  --ff-chart-down: #2bb763;
-  --ff-chart-neutral: #7d8a9c;
-  --ff-chart-primary: #4f9e76;
-  --ff-chart-primary-2: #2ec4c4;
-  --ff-chart-primary-3: #a48afb;
-  --ff-chart-axis: #2a4034;
+  /* 图表语义色（深色） */
+  --ff-chart-up: #f43f5e;
+  --ff-chart-down: #10b981;
+  --ff-chart-neutral: #64748b;
+  --ff-chart-primary: #3b82f6;
+  --ff-chart-primary-2: #14b8a6;
+  --ff-chart-primary-3: #8b5cf6;
+  --ff-chart-axis: rgba(255, 255, 255, 0.1);
 
-  --ff-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --ff-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
-  --ff-shadow-md: 0 2px 4px -2px rgba(0, 0, 0, 0.5), 0 4px 12px -2px rgba(0, 0, 0, 0.5);
-  --ff-shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.5), 0 14px 26px -4px rgba(0, 0, 0, 0.6);
-  --ff-shadow-xl: 0 10px 14px -6px rgba(0, 0, 0, 0.5), 0 26px 48px -8px rgba(0, 0, 0, 0.7);
-  --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  /* 阴影 */
+  --ff-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --ff-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ff-shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.7), 0 2px 6px -1px rgba(0, 0, 0, 0.5);
+  --ff-shadow-lg: 0 10px 24px -4px rgba(0, 0, 0, 0.8), 0 4px 10px -2px rgba(0, 0, 0, 0.6);
+  --ff-shadow-xl: 0 20px 32px -6px rgba(0, 0, 0, 0.85), 0 8px 16px -4px rgba(0, 0, 0, 0.7);
+  --ff-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
-  --ff-focus-ring: 0 0 0 3px rgba(127, 191, 156, 0.3);
-  --ff-focus-ring-danger: 0 0 0 3px rgba(240, 87, 92, 0.28);
+  --ff-focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.35);
+  --ff-focus-ring-danger: 0 0 0 3px rgba(244, 63, 94, 0.35);
 
-  --ff-scroll-thumb: rgba(169, 184, 173, 0.24);
-  --ff-scroll-thumb-hover: rgba(169, 184, 173, 0.42);
+  --ff-scroll-thumb: rgba(148, 163, 184, 0.25);
+  --ff-scroll-thumb-hover: rgba(148, 163, 184, 0.45);
   --ff-scroll-track: transparent;
 
-  --ff-skeleton-base: #203329;
-  --ff-skeleton-shine: rgba(255, 255, 255, 0.05);
+  --ff-skeleton-base: #1e293b;
+  --ff-skeleton-shine: rgba(255, 255, 255, 0.08);
 }
 
 /* ============================================================================

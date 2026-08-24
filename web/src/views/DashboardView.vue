@@ -353,7 +353,7 @@ onMounted(async () => {
       </div>
 
       <!-- ═══ L2 运行状态 + 数据源健康（紧凑单条）═══ -->
-      <div class="ff-dashboard-view__statusbar">
+      <div class="ff-dashboard-view__statusbar ff-glass">
         <span class="ff-dashboard-view__statusbar-label">
           <AppIcon name="server" size="sm" /> 运行状态
         </span>

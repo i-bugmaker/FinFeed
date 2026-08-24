@@ -484,6 +484,23 @@ h6 {
   min-width: 0;
 }
 
+/* 玻璃拟态与终端发光 */
+.ff-glass {
+  background: var(--ff-glass-bg);
+  backdrop-filter: var(--ff-glass-blur);
+  -webkit-backdrop-filter: var(--ff-glass-blur);
+  border: 1px solid var(--ff-glass-border);
+}
+.ff-glow-brand {
+  box-shadow: 0 0 20px -4px rgba(59, 130, 246, 0.35);
+}
+.ff-glow-up {
+  box-shadow: 0 0 20px -4px rgba(244, 63, 94, 0.35);
+}
+.ff-glow-down {
+  box-shadow: 0 0 20px -4px rgba(16, 185, 129, 0.35);
+}
+
 /* 可见性 */
 .ff-hide-mobile {
   display: initial;

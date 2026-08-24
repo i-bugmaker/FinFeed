@@ -44,19 +44,16 @@ function go() {
 <style scoped>
 .ff-statcard {
   position: relative;
-  padding: var(--ff-space-3) var(--ff-space-4);
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-1-5);
+  gap: 6px;
   background: var(--ff-bg-surface);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
-  box-shadow: var(--ff-shadow-sm);
+  box-shadow: var(--ff-shadow-xs);
   overflow: hidden;
-  transition:
-    transform var(--ff-dur-fast) var(--ff-ease-standard),
-    box-shadow var(--ff-dur-fast) var(--ff-ease-standard),
-    border-color var(--ff-dur-fast) var(--ff-ease-standard);
+  transition: all var(--ff-dur-base) var(--ff-ease-standard);
 }
 .ff-statcard::before {
   content: '';
@@ -66,12 +63,15 @@ function go() {
   bottom: 0;
   width: 3px;
   background: var(--ff-border-strong);
+  transition: width var(--ff-dur-fast);
 }
 .ff-statcard--up::before {
   background: var(--ff-up);
+  box-shadow: 0 0 10px var(--ff-up);
 }
 .ff-statcard--down::before {
   background: var(--ff-down);
+  box-shadow: 0 0 10px var(--ff-down);
 }
 .ff-statcard--link {
   cursor: pointer;
@@ -80,7 +80,11 @@ function go() {
 .ff-statcard--link:focus-visible {
   box-shadow: var(--ff-shadow-md);
   border-color: var(--ff-border-strong);
+  transform: translateY(-2px);
   outline: none;
+}
+.ff-statcard--link:hover::before {
+  width: 4px;
 }
 .ff-statcard--link:focus-visible {
   box-shadow: var(--ff-focus-ring), var(--ff-shadow-sm);
@@ -93,14 +97,14 @@ function go() {
 .ff-statcard__head {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-1-5);
+  gap: 8px;
   min-width: 0;
 }
 .ff-statcard__icon {
   flex-shrink: 0;
 }
 .ff-statcard__label {
-  font-size: var(--ff-fs-body-sm);
+  font-size: 13px;
   color: var(--ff-text-secondary);
   font-weight: 500;
   white-space: nowrap;
@@ -122,16 +126,17 @@ function go() {
 }
 
 .ff-statcard__value {
-  font-size: var(--ff-fs-2xl);
-  font-weight: 600;
-  line-height: var(--ff-lh-tight);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
   color: var(--ff-text-primary);
-  letter-spacing: var(--ff-ls-tight);
+  letter-spacing: -0.02em;
+  font-family: var(--ff-font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .ff-statcard__sub {
-  font-size: var(--ff-fs-caption);
+  font-size: 12px;
   color: var(--ff-text-tertiary);
   white-space: nowrap;
   overflow: hidden;

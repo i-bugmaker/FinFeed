@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useAppStore } from '../store/app'
 import { api } from '../api/client'
 import AppIcon from '../ui/AppIcon.vue'
@@ -10,6 +10,7 @@ const props = defineProps({
   mode: { type: String, default: 'news' }, // 'news' | 'sentiment'
 })
 const store = useAppStore()
+const copied = ref(false)
 
 const sentClass = computed(() => {
   const s = (props.item.sentiment || '').toLowerCase()
@@ -33,82 +34,135 @@ async function toggleFav() {
     /* ignore */
   }
 }
+
+async function copyNews() {
+  const text = `${props.item.title}\n${props.item.url || ''}`
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  } catch (e) {}
+}
 </script>
 
 <template>
   <article
     class="ff-newscard"
-    :class="!item.is_read && 'ff-newscard--unread'"
+    :class="[!item.is_read && 'ff-newscard--unread', `ff-newscard--${sentClass}`]"
     @click="api.markRead(item.id, true).catch(() => {})"
   >
     <div class="ff-newscard__main">
       <div class="ff-newscard__head">
-        <AppBadge v-if="mode === 'sentiment'" :text="sentLabel" :variant="sentClass" />
-        <span v-if="importance >= 7" class="ff-newscard__importance" title="重要性">
-          <AppIcon name="flame" size="xs" tone="up" /> {{ importance.toFixed(1) }}
+        <AppBadge :text="sentLabel" :variant="sentClass" />
+        <span v-if="importance >= 7" class="ff-newscard__importance" title="热度与重要度">
+          <AppIcon name="zap" size="xs" tone="warn" /> {{ importance.toFixed(1) }}
         </span>
         <span class="ff-newscard__source">{{ item.source }}</span>
-        <span class="ff-newscard__time">{{ item.publish_time || '' }}</span>
+        <span class="ff-newscard__time ff-num">{{ item.publish_time || '' }}</span>
       </div>
-      <a class="ff-newscard__title" :href="item.url" target="_blank" rel="noopener" @click.stop>
+
+      <a class="ff-newscard__title" :href="item.url" target="_blank" rel="noopener" @click.stop="api.markRead(item.id, true).catch(() => {})">
         {{ item.title }}
         <AppIcon name="external-link" size="xs" class="ff-newscard__link" />
       </a>
+
       <p v-if="item.intro" class="ff-newscard__intro">{{ item.intro }}</p>
+
       <div class="ff-newscard__meta">
-        <span v-for="k in item.keywords?.slice(0, 5)" :key="k" class="ff-newscard__tag">#{{ k }}</span>
-        <span v-for="s in item.stocks?.slice(0, 6)" :key="s" class="ff-newscard__stock">{{ s }}</span>
+        <div class="ff-newscard__tags" v-if="item.keywords?.length || item.stocks?.length">
+          <span v-for="k in item.keywords?.slice(0, 5)" :key="k" class="ff-newscard__tag">#{{ k }}</span>
+          <span v-for="s in item.stocks?.slice(0, 6)" :key="s" class="ff-newscard__stock">
+            <AppIcon name="trending-up" size="xs" />
+            {{ s }}
+          </span>
+        </div>
       </div>
     </div>
-    <button
-      class="ff-newscard__fav"
-      :class="item.is_favorite && 'ff-newscard__fav--active'"
-      :aria-label="item.is_favorite ? '取消收藏' : '收藏'"
-      @click.stop="toggleFav"
-    >
-      <AppIcon :name="item.is_favorite ? 'star-filled' : 'star'" size="lg" />
-    </button>
+
+    <div class="ff-newscard__actions">
+      <button
+        class="ff-newscard__btn"
+        :title="copied ? '已复制' : '复制内容'"
+        @click.stop="copyNews"
+      >
+        <AppIcon :name="copied ? 'check' : 'copy'" size="sm" :tone="copied ? 'down' : 'muted'" />
+      </button>
+
+      <button
+        class="ff-newscard__fav"
+        :class="item.is_favorite && 'ff-newscard__fav--active'"
+        :aria-label="item.is_favorite ? '取消收藏' : '收藏'"
+        :title="item.is_favorite ? '取消收藏' : '收藏'"
+        @click.stop="toggleFav"
+      >
+        <AppIcon :name="item.is_favorite ? 'star-filled' : 'star'" size="md" />
+      </button>
+    </div>
   </article>
 </template>
 
 <style scoped>
 .ff-newscard {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--ff-space-3);
-  padding: var(--ff-space-4) var(--ff-space-5);
+  padding: 16px 20px;
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
   background: var(--ff-bg-surface);
-  transition: border-color var(--ff-dur-fast), box-shadow var(--ff-dur-fast);
+  transition: all var(--ff-dur-base) var(--ff-ease-standard);
   cursor: pointer;
 }
 
 .ff-newscard:hover {
-  border-color: var(--ff-border-hover);
-  box-shadow: var(--ff-shadow-sm);
+  border-color: var(--ff-border-strong);
+  box-shadow: var(--ff-shadow-md);
+  transform: translateY(-1px);
 }
 
 .ff-newscard--unread {
-  border-left: 3px solid var(--ff-border-brand);
+  border-left: 3px solid var(--ff-brand);
+}
+
+.ff-newscard--up {
+  border-left: 3px solid var(--ff-up);
+}
+
+.ff-newscard--down {
+  border-left: 3px solid var(--ff-down);
 }
 
 .ff-newscard__main {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .ff-newscard__head {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-3);
-  margin-bottom: var(--ff-space-2);
+  gap: var(--ff-space-2);
   flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.ff-newscard__importance {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--ff-font-mono);
+  font-weight: 700;
+  color: var(--ff-warn-text);
+  background: var(--ff-warn-subtle);
+  padding: 2px 6px;
+  border-radius: var(--ff-radius-xs);
+  border: 1px solid var(--ff-warn-border);
 }
 
 .ff-newscard__source {
-  font-size: var(--ff-fs-xs);
-  color: var(--ff-text-secondary);
   background: var(--ff-bg-subtle);
   border: 1px solid var(--ff-border);
   padding: 2px 9px;

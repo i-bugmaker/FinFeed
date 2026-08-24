@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { api } from '../api/client'
 import { useAppStore } from '../store/app'
 import NewsRow from '../components/NewsRow.vue'
+import NewsCard from '../components/NewsCard.vue'
 import FilterBar from '../components/FilterBar.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
@@ -10,9 +11,6 @@ import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
-// 快讯模块：7×24 实时短消息。承接原「新闻流」页的表格样式与 SSE 实时合并
-// 逻辑（增量到达即前置插入可见列表 + 顶部自动标记已读），视觉与功能均与
-// 改造前的新闻流页保持一致。
 const store = useAppStore()
 
 const filters = ref({ source: 'all', sentiment: 'all', keyword: '', start: '', end: '', favorites: false })
@@ -25,7 +23,26 @@ const finished = ref(false)
 const sources = ref([])
 const sentinel = ref(null)
 const contentEl = ref(null)
+const viewMode = ref('table') // 'table' | 'cards'
 let observer = null
+
+// 统计情绪占比
+const sentimentCounts = computed(() => {
+  let pos = 0, neg = 0, neu = 0
+  for (const item of list.value) {
+    const s = (item.sentiment || '').toLowerCase()
+    if (s === 'positive') pos++
+    else if (s === 'negative') neg++
+    else neu++
+  }
+  const t = list.value.length || 1
+  return {
+    pos, neg, neu,
+    posPct: Math.round((pos / t) * 100),
+    negPct: Math.round((neg / t) * 100),
+    neuPct: Math.round((neu / t) * 100),
+  }
+})
 
 async function loadFirst() {
   page.value = 1
@@ -83,12 +100,8 @@ function isNearTop() {
   return contentEl.value.scrollTop < 80
 }
 
-// 实时合并 SSE 推送的增量：增量到达即前置插入可见列表，不再要求用户
-// 滚到顶部或手动点击。pendingNews 作为「未读」缓冲保留，用于驱动右上角
-// 「N 条新新闻」提示；当用户已在顶部（新条目立即可见）时自动标记已读。
 function applyPending() {
   const items = store.pendingNews.filter((n) => n.category === 'flash')
-  // 单轮增量被截断（items 只含部分条目）时，局部插入会漏条目，整表刷新兜底。
   if (store.pendingTruncated.flash) {
     store.pendingNews = store.pendingNews.filter((n) => n.category !== 'flash')
     store.pendingTruncated.flash = false
@@ -100,16 +113,13 @@ function applyPending() {
   if (fresh.length) {
     list.value = [...fresh, ...list.value]
   }
-  // 已在顶部：新条目立即可见，标记已读（清空未读缓冲，角标自动隐藏）
   if (isNearTop()) store.markSeen('flash')
 }
 
 function onContentScroll() {
-  // 滚到顶部即视为已读最新条目，清空未读缓冲
   if (isNearTop()) store.markSeen('flash')
 }
 
-// 增量到达即实时合并，不再受滚动位置限制
 watch(
   () => store.pendingNews.length,
   () => applyPending(),
@@ -121,7 +131,6 @@ onMounted(async () => {
     contentEl.value.addEventListener('scroll', onContentScroll)
   }
   await loadFirst()
-  // 首屏列表已包含最新数据；若处于顶部，直接清空未读缓冲
   if (isNearTop()) store.markSeen('flash')
   await nextTick()
   observer = new IntersectionObserver(
@@ -132,6 +141,7 @@ onMounted(async () => {
   )
   if (sentinel.value) observer.observe(sentinel.value)
 })
+
 onUnmounted(() => {
   if (observer) observer.disconnect()
   if (contentEl.value) {
@@ -142,6 +152,52 @@ onUnmounted(() => {
 
 <template>
   <div class="ff-page ff-flash-view">
+    <!-- 顶部状态栏与情绪比例条 -->
+    <div class="ff-flash-view__hero ff-glass" v-if="list.length > 0">
+      <div class="ff-flash-view__hero-stats">
+        <div class="ff-flash-view__stat-item">
+          <span class="ff-flash-view__stat-label">当前已收录</span>
+          <span class="ff-flash-view__stat-val ff-num">{{ total }}</span>
+        </div>
+        <div class="ff-flash-view__stat-divider" />
+        <div class="ff-flash-view__stat-item">
+          <span class="ff-flash-view__stat-label ff-t-up">利好讯息</span>
+          <span class="ff-flash-view__stat-val ff-num ff-t-up">{{ sentimentCounts.pos }}</span>
+        </div>
+        <div class="ff-flash-view__stat-divider" />
+        <div class="ff-flash-view__stat-item">
+          <span class="ff-flash-view__stat-label ff-t-down">利空讯息</span>
+          <span class="ff-flash-view__stat-val ff-num ff-t-down">{{ sentimentCounts.neg }}</span>
+        </div>
+      </div>
+
+      <div class="ff-flash-view__ratio-bar" title="当前列表情绪分布">
+        <div class="ff-flash-view__ratio-seg ff-flash-view__ratio-seg--up" :style="{ width: sentimentCounts.posPct + '%' }" />
+        <div class="ff-flash-view__ratio-seg ff-flash-view__ratio-seg--neu" :style="{ width: sentimentCounts.neuPct + '%' }" />
+        <div class="ff-flash-view__ratio-seg ff-flash-view__ratio-seg--down" :style="{ width: sentimentCounts.negPct + '%' }" />
+      </div>
+
+      <div class="ff-flash-view__view-toggle">
+        <button
+          class="ff-flash-view__toggle-btn"
+          :class="{ 'is-active': viewMode === 'table' }"
+          title="表格列表视图"
+          @click="viewMode = 'table'"
+        >
+          <AppIcon name="menu" size="xs" />
+        </button>
+        <button
+          class="ff-flash-view__toggle-btn"
+          :class="{ 'is-active': viewMode === 'cards' }"
+          title="卡片流视图"
+          @click="viewMode = 'cards'"
+        >
+          <AppIcon name="dashboard" size="xs" />
+        </button>
+      </div>
+    </div>
+
+    <!-- 筛选过滤栏 -->
     <FilterBar
       v-model="filters"
       :sources="sources"
@@ -156,7 +212,8 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <AppCard :no-padding="true" class="ff-flash-view__table">
+    <!-- 表格模式 -->
+    <AppCard :no-padding="true" class="ff-flash-view__table" v-if="viewMode === 'table'">
       <table class="ff-table ff-table--sticky ff-table--hover" v-if="list.length > 0">
         <thead>
           <tr>
@@ -185,6 +242,16 @@ onUnmounted(() => {
       </EmptyState>
     </AppCard>
 
+    <!-- 卡片流模式 -->
+    <div class="ff-flash-view__cards" v-else>
+      <NewsCard v-for="item in list" :key="item.id" :item="item" mode="news" />
+      <EmptyState
+        v-if="!loading && list.length === 0"
+        :text="filters.keyword ? `未找到与「${filters.keyword}」相关的快讯` : '暂无快讯数据'"
+        icon="zap"
+      />
+    </div>
+
     <div ref="sentinel" class="ff-flash-view__sentinel">
       <AppSkeleton v-if="loading" variant="text" :lines="2" />
       <span v-else-if="finished && list.length > 0" class="ff-text-muted">
@@ -200,8 +267,109 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
+.ff-flash-view__hero {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-4);
+  padding: 12px 18px;
+  border-radius: var(--ff-radius-lg);
+  margin-bottom: var(--ff-space-4);
+  border: 1px solid var(--ff-border);
+}
+
+.ff-flash-view__hero-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+}
+
+.ff-flash-view__stat-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ff-flash-view__stat-label {
+  font-size: 11.5px;
+  color: var(--ff-text-tertiary);
+  font-weight: 500;
+}
+
+.ff-flash-view__stat-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ff-text-primary);
+}
+
+.ff-flash-view__stat-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--ff-border);
+}
+
+.ff-flash-view__ratio-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-muted);
+  display: flex;
+  overflow: hidden;
+  min-width: 80px;
+}
+
+.ff-flash-view__ratio-seg--up {
+  background: var(--ff-up);
+  transition: width var(--ff-dur-base);
+}
+.ff-flash-view__ratio-seg--neu {
+  background: var(--ff-chart-neutral);
+  transition: width var(--ff-dur-base);
+}
+.ff-flash-view__ratio-seg--down {
+  background: var(--ff-down);
+  transition: width var(--ff-dur-base);
+}
+
+.ff-flash-view__view-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-subtle);
+  border: 1px solid var(--ff-border-subtle);
+}
+
+.ff-flash-view__toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ff-radius-sm);
+  color: var(--ff-text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--ff-dur-fast);
+}
+
+.ff-flash-view__toggle-btn:hover {
+  color: var(--ff-text-primary);
+}
+
+.ff-flash-view__toggle-btn.is-active {
+  background: var(--ff-bg-surface);
+  color: var(--ff-brand-text);
+  box-shadow: var(--ff-shadow-xs);
+}
+
 .ff-flash-view__table {
   overflow: hidden;
+}
+
+.ff-flash-view__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
 }
 
 .ff-flash-view__result {
@@ -253,5 +421,15 @@ onUnmounted(() => {
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-sm);
   gap: var(--ff-space-2);
+}
+
+@media (max-width: 640px) {
+  .ff-flash-view__hero {
+    flex-wrap: wrap;
+  }
+  .ff-flash-view__ratio-bar {
+    order: 3;
+    width: 100%;
+  }
 }
 </style>
