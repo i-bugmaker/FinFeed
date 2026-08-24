@@ -148,6 +148,8 @@ class RotationReport:
     laggard: list[dict] = field(default_factory=list)   # 领跌+资金流出板块
     # 热力图：boards(纵轴) x times(横轴) -> values
     heatmap_boards: list[str] = field(default_factory=list)
+    # 热力图纵轴板块名称（与 heatmap_boards 平行；避免前端依赖板块榜推送范围导致缺名）
+    heatmap_board_names: list[str] = field(default_factory=list)
     heatmap_times: list[str] = field(default_factory=list)
     heatmap_values: list[list[float]] = field(default_factory=list)
     # 趋势：focus 板块主力净占比时间序列

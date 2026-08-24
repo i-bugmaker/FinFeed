@@ -315,7 +315,7 @@ def create_router(prefix: str = "/api") -> APIRouter:
 
 # 独立运行模式的应用对象（也可作为 FastAPI 子应用被挂载）
 app = FastAPI(
-    title="全市场资金流与板块轮动监控大屏",
+    title="资金流监控",
     version="1.0.0",
     description="基于 easy-tdx (通达信 MAC 协议) 的全市场资金流与板块轮动实时监控",
     lifespan=lifespan,

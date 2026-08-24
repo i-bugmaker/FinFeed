@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>全市场资金流 · 板块轮动监控大屏</title>
+<title>资金流监控</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   /* ===== 主题变量：默认暗色（大屏）；亮色经 [data-theme="light"] 覆盖 ===== */
@@ -95,53 +95,59 @@
 
   /* ---------- 顶栏 ---------- */
   header {
-    display: flex; align-items: center; gap: 18px;
-    height: 62px; flex: 0 0 62px;
-    padding: 0 20px;
+    display: flex; align-items: center; gap: 14px;
+    height: 58px; flex: 0 0 58px;
+    padding: 0 14px;
     background: var(--header-bg);
     border: 1px solid var(--panel-border);
     border-radius: 10px;
     box-shadow: 0 4px 24px rgba(0,0,0,.18);
     position: relative; overflow: hidden;
+    white-space: nowrap;              /* 顶栏文字禁止竖排/换行 */
     transition: background-color .3s ease, border-color .3s ease;
   }
   header::after {
     content: ""; position: absolute; left: 0; top: 0; width: 100%; height: 2px;
     background: linear-gradient(90deg, transparent, var(--accent), var(--cyan), transparent);
   }
-  .brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  .brand { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
   .brand h1 {
-    font-size: 24px; letter-spacing: 3px; font-weight: 700;
+    font-size: 20px; letter-spacing: 2px; font-weight: 700;
     background: var(--title-grad);
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .brand .sub { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
-  .indices { display: flex; gap: 14px; flex: 1; justify-content: center; }
-  .idx-card { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 6px;
+  .brand .sub { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+  .indices { display: flex; gap: 10px; flex: 1; justify-content: center; min-width: 0; }
+  .idx-card { display: flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px;
     background: var(--chip-bg); border: 1px solid var(--line); }
-  .idx-name { font-size: 13px; color: var(--text-sub); }
-  .idx-val { font-family: var(--font-num); font-size: 20px; font-weight: 600; }
-  .idx-chg { font-family: var(--font-num); font-size: 13px; }
+  .idx-name { font-size: 12px; color: var(--text-sub); }
+  .idx-val { font-family: var(--font-num); font-size: 18px; font-weight: 600; }
+  .idx-chg { font-family: var(--font-num); font-size: 12px; }
   .up { color: var(--red); } .down { color: var(--green); } .flat { color: var(--text-dim); }
-  .hdr-stats { display: flex; gap: 16px; align-items: center; }
+  .hdr-stats { display: flex; gap: 12px; align-items: center; }
   .stat-cell { text-align: right; }
-  .stat-cell .k { font-size: 12px; color: var(--text-dim); }
-  .stat-cell .v { font-family: var(--font-num); font-size: 18px; font-weight: 600; }
-  .clock { font-family: var(--font-num); font-size: 22px; color: var(--cyan); min-width: 110px; text-align: right; }
+  .stat-cell .k { font-size: 11px; color: var(--text-dim); }
+  .stat-cell .v { font-family: var(--font-num); font-size: 16px; font-weight: 600; }
+  .clock { font-family: var(--font-num); font-size: 20px; color: var(--cyan); min-width: 96px; text-align: right; }
   .refresh-tag { font-size: 11px; color: var(--text-dim); }
   .refresh-tag.ok { color: var(--green-soft); } .refresh-tag.err { color: var(--red-soft); }
   /* 主题切换按钮 */
   .theme-btn {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
-    padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+    padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 600;
     color: var(--text-main); background: var(--chip-bg); border: 1px solid var(--line);
     transition: background-color .2s ease, border-color .2s ease, color .2s ease;
   }
   .theme-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .theme-btn svg { width: 16px; height: 16px; }
+  .theme-btn svg { width: 15px; height: 15px; }
+  /* 窄视口：隐藏装饰性副标题与状态标签，让位指数卡与统计 */
+  @media (max-width: 1760px) {
+    .brand .sub { display: none; }
+    .refresh-tag { display: none; }
+  }
 
   /* ---------- 主体 ---------- */
-  main { flex: 1; display: grid; grid-template-columns: 24% 1fr 24%; gap: 10px; min-height: 0; }
+  main { flex: 1; display: grid; grid-template-columns: 28% 1fr 28%; gap: 8px; min-height: 0; }
   .col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
   .panel {
     background: var(--panel); border: 1px solid var(--panel-border);
@@ -167,8 +173,8 @@
   }
   table.data th:first-child, table.data td:first-child { text-align: left; padding-left: 6px; }
   table.data td { padding: 4px 4px; text-align: right; font-family: var(--font-num); border-bottom: 1px solid var(--row-line); white-space: nowrap; }
-  table.data td.name { font-family: inherit; color: var(--text-main); font-weight: 600; max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
-  table.data td.code { color: var(--text-dim); font-size: 11px; }
+  table.data td div.name { font-family: inherit; color: var(--text-main); font-weight: 600; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.data td div.code { color: var(--text-dim); font-size: 11px; max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rank-no { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center;
     border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,.07); color: var(--text-sub); }
   .rank-no.t1 { background: linear-gradient(135deg,#ff6b35,#e8322a); color: #fff; }
@@ -243,10 +249,10 @@
    * ============================================================ */
 
   /* ---------- 头部操作按钮：导出CSV / 声音 ---------- */
-  .hdr-actions { display: flex; gap: 8px; align-items: center; }
+  .hdr-actions { display: flex; gap: 6px; align-items: center; }
   .act-btn {
-    display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
-    padding: 6px 11px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;
+    padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 600;
     color: var(--text-main); background: var(--chip-bg); border: 1px solid var(--line);
     transition: background-color .2s ease, border-color .2s ease, color .2s ease;
   }
@@ -293,10 +299,16 @@
 
   /* ---------- 响应式：<1920 与窄屏（大屏通常 ≥1920；此处保证收窄不破版） ---------- */
   @media (max-width: 1600px) {
-    main { grid-template-columns: 22% 1fr 22%; }
-    .brand h1 { font-size: 20px; letter-spacing: 1px; }
-    .idx-val { font-size: 17px; }
-    .stat-cell .v { font-size: 15px; }
+    main { grid-template-columns: 25% 1fr 25%; }
+    .brand h1 { font-size: 17px; letter-spacing: 1px; }
+    .idx-name { font-size: 11px; }
+    .idx-val { font-size: 15px; }
+    .idx-chg { font-size: 11px; }
+    .idx-card { padding: 2px 7px; gap: 4px; }
+    .stat-cell .k { font-size: 10px; }
+    .stat-cell .v { font-size: 14px; }
+    .hdr-stats { gap: 9px; }
+    .clock { font-size: 17px; min-width: 84px; }
   }
   @media (max-width: 1280px) {
     html, body { overflow: auto; }   /* 窄屏允许滚动，避免内容被裁切 */
@@ -326,8 +338,7 @@
   <!-- ===================== 顶栏 ===================== -->
   <header>
     <div class="brand">
-      <h1>全市场资金流监控大屏</h1>
-      <span class="sub">CAPITAL FLOW · 板块轮动 SECTOR ROTATION</span>
+      <h1>资金流监控</h1>
     </div>
     <div class="indices" id="idxBar"><!-- 指数卡 --></div>
     <div class="hdr-stats">
@@ -645,6 +656,9 @@ function renderHeatmap(rot, nameMap) {
   const boards = rot.heatmap_boards || [], times = rot.heatmap_times || [], vals = rot.heatmap_values || [];
   if (!boards.length || !times.length) { c.clear(); return; }
   const pal = P();
+  // 名称优先取报告内嵌（热力图 focus 板块可能超出板块榜推送范围，nameMap 会缺名）
+  const bNames = (rot.heatmap_board_names && rot.heatmap_board_names.length === boards.length)
+    ? rot.heatmap_board_names : boards.map(b => nameMap[b] || b);
   const data = [];
   vals.forEach((row, bi) => row.forEach((v, ti) => data.push([ti, bi, v])));
   // 用绝对值的 90% 分位作为色阶上限，避免个别离群尖峰把梯度压扁成单色
@@ -658,14 +672,14 @@ function renderHeatmap(rot, nameMap) {
       backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder,
       textStyle: { color: pal.tooltipText, fontSize: 12 },
       formatter: p => {
-        const b = boards[p.value[1]], t = times[p.value[0]], v = p.value[2];
-        return `<b>${nameMap[b] || b}</b> ${t}<br/>主力净占比：<b style="color:${v>=0?pal.upSoft:pal.downSoft}">${v.toFixed(2)}%</b>`;
+        const b = bNames[p.value[1]], t = times[p.value[0]], v = p.value[2];
+        return `<b>${b}</b> ${t}<br/>主力净占比：<b style="color:${v>=0?pal.upSoft:pal.downSoft}">${v.toFixed(2)}%</b>`;
       }
     },
     grid: { left: 8, right: 12, top: 8, bottom: 26, containLabel: true },
     xAxis: { type: "category", data: times, splitArea: { show: true },
       axisLabel: { color: pal.axisLabel, fontSize: 9, interval: Math.max(0, Math.floor(times.length / 8) - 1) } },
-    yAxis: { type: "category", data: boards.map(b => nameMap[b] || b), splitArea: { show: true },
+    yAxis: { type: "category", data: bNames, splitArea: { show: true },
       axisLabel: { color: pal.axisName, fontSize: 10 } },
     visualMap: {
       min: -max, max: max, calculable: false, orient: "horizontal", left: "center", bottom: 0,
@@ -689,7 +703,17 @@ function renderTrend(rot, nameMap) {
   last.rot = rot;
   const pal = P();
   const picked = series.slice(0, 5);
+  // 收盘后资金流为当日累计值，多轮采样值恒定 → 折线退化为直线；此时改为居中提示，隐藏无信息量的图例
+  const flat = picked.length > 0 && picked.every(
+    s => (s.values || []).length > 1 && new Set(s.values).size === 1
+  );
   c.setOption({
+    title: {
+      show: flat,
+      text: "已收盘 · 资金流为当日累计值，采样恒定",
+      left: "center", top: 6,
+      textStyle: { color: pal.textDim, fontSize: 11, fontWeight: 400 },
+    },
     tooltip: {
       trigger: "axis", backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder,
       textStyle: { color: pal.tooltipText, fontSize: 12 },
@@ -699,14 +723,14 @@ function renderTrend(rot, nameMap) {
         return s;
       }
     },
-    legend: { data: picked.map(s => nameMap[s.board] || s.board), textStyle: { color: pal.textSub, fontSize: 9 }, top: 0, itemWidth: 12, itemHeight: 6 },
+    legend: { show: !flat, data: picked.map(s => s.name || nameMap[s.board] || s.board), textStyle: { color: pal.textSub, fontSize: 9 }, top: 0, itemWidth: 12, itemHeight: 6 },
     grid: { left: 8, right: 14, top: 22, bottom: 6, containLabel: true },
     xAxis: { type: "category", data: picked[0].times, boundaryGap: false,
       axisLabel: { color: pal.axisLabel, fontSize: 9, interval: Math.max(0, Math.floor(picked[0].times.length / 8) - 1) } },
     yAxis: { type: "value", name: "%", nameTextStyle: { color: pal.axisLabel, fontSize: 9 },
       splitLine: { lineStyle: { color: pal.splitLine } }, axisLabel: { color: pal.axisLabel, fontSize: 9 } },
     series: picked.map((s, i) => ({
-      name: nameMap[s.board] || s.board, type: "line", smooth: true, symbol: "none",
+      name: s.name || nameMap[s.board] || s.board, type: "line", smooth: true, symbol: "none",
       data: s.values, lineStyle: { width: 2, color: pal.lineColors[i % pal.lineColors.length] },
       itemStyle: { color: pal.lineColors[i % pal.lineColors.length] },
       emphasis: { focus: "series" }
@@ -751,7 +775,9 @@ function renderUnusual(list) {
     let tagCls = "u-flat", tag = u.desc || "异动";
     if (/涨停/.test(u.desc)) { tagCls = "u-up"; }
     else if (/跌停/.test(u.desc)) { tagCls = "u-down"; }
-    return `<div class="u-item"><span class="u-time">${u.time}</span>
+    // 通达信 0x1237 接口对异动统一返回 09:15:00，无日内精确时间，显示"今日"
+    const t = (u.time === "09:15:00") ? "今日" : u.time;
+    return `<div class="u-item"><span class="u-time">${t}</span>
       <span class="u-tag ${tagCls}">${tag}</span>
       <span class="u-name">${u.name}</span><span class="u-desc">${u.code}</span></div>`;
   }).join("");
@@ -853,9 +879,13 @@ function renderBoardTreemap(items) {
       change: b.change_pct,
     }));
   if (!data.length) { c.clear(); return; }
-  const ratios = data.map(d => d.ratio);
-  const minR = Math.min(...ratios), maxR = Math.max(...ratios);
-  const bound = Math.max(Math.abs(minR), Math.abs(maxR), 0.01);
+  // 颜色按主力净占比(ratio)内联着色，避免 treemap 的 visualMap 误映射 value(成交额)导致全红
+  data.forEach(d => {
+    const t = Math.min(Math.abs(d.ratio) / 5, 1);      // 5% 为满浓度
+    const alpha = Math.round(40 + t * 200).toString(16).padStart(2, "0");
+    d.itemStyle = { color: (d.ratio >= 0 ? pal.up : pal.down) + alpha };
+    d.label = { color: t >= 0.35 ? "#fff" : pal.textMain };
+  });
   c.setOption({
     tooltip: {
       backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder,
@@ -864,12 +894,6 @@ function renderBoardTreemap(items) {
         const d = p.data;
         return `<b>${d.name}</b><br/>成交额：${fmtMoney(d.value)}<br/>主力净占比：<b style="color:${d.ratio>=0?pal.upSoft:pal.downSoft}">${d.ratio.toFixed(2)}%</b><br/>主力净额：${fmtMoney(d.mainNet)}<br/>涨跌：${fmtPct(d.change)}`;
       }
-    },
-    visualMap: {
-      min: -bound, max: bound, calculable: false, orient: "horizontal", left: "center", top: 0,
-      inRange: { color: pal.heat },
-      textStyle: { color: pal.axisLabel, fontSize: 9 },
-      formatter: v => v.toFixed(1) + "%"
     },
     series: [{
       type: "treemap",
@@ -935,15 +959,24 @@ function renderObservability(stats) {
   const listEl = document.getElementById("obsList");
   const recent = stats.recent || [];
   if (!recent.length) { listEl.innerHTML = '<div class="empty">暂无信号样本（信号触发后 N 轮内验证）</div>'; return; }
+  const KIND_LABEL = {
+    price_flow_divergence: "价格资金背离",
+    limit_up_divergence: "涨停背离",
+    limit_down_divergence: "跌停背离",
+    rotation_rotate_in: "资金轮入",
+    rotation_accumulate: "资金吸筹",
+    rotation_rotate_out: "资金轮出",
+  };
   listEl.innerHTML = recent.map(p => {
     let tag, cls;
     if (p.outcome === true) { tag = "命中"; cls = "obs-hit"; }
     else if (p.outcome === false) { tag = "未命中"; cls = "obs-miss"; }
     else { tag = "待验证"; cls = "obs-wait"; }
     const dir = p.direction > 0 ? "多" : (p.direction < 0 ? "空" : "中");
+    const kindLabel = KIND_LABEL[p.kind] || p.kind;
     return `<div class="obs-row"><span class="obs-tag ${cls}">${tag}</span>
-      <span class="nm" title="${p.kind}">${p.name}</span>
-      <span style="color:var(--text-dim);font-size:10px">${p.kind} · ${dir}</span></div>`;
+      <span class="nm" title="${kindLabel}">${p.name}</span>
+      <span style="color:var(--text-dim);font-size:10px">${kindLabel} · ${dir}</span></div>`;
   }).join("");
   document.getElementById("statHitRate").textContent = rate === null || rate === undefined ? "--" : (rate * 100).toFixed(0) + "%";
 }

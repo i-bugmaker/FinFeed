@@ -43,7 +43,7 @@ const groups = [
     title: '独立大屏',
     items: [
       { href: '/sector-minute', label: '多标的分时对比', icon: 'activity', external: true },
-      { href: '/capital', label: '资金流大屏', icon: 'bar-chart', external: true },
+      { href: '/capital', label: '资金流监控', icon: 'bar-chart', external: true },
     ],
   },
 ]

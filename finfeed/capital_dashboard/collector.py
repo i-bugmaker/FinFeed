@@ -191,6 +191,9 @@ def fetch_indices(client: MacClient | None = None) -> list[IndexQuote]:
                 amount=float(r.get("amount", 0.0) or 0.0),
             )
         )
+    # 按配置白名单顺序固定输出：上证/深成/创业板/科创50/沪深300/中证500
+    order = {code: i for i, code in enumerate(config.MAIN_INDEX_CODES)}
+    out.sort(key=lambda q: order.get(q.code, 999))
     return out
 
 

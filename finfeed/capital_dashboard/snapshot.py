@@ -205,67 +205,6 @@ class RefreshWorker(threading.Thread):
             self._manual_evt.wait(timeout=config.REFRESH_INTERVAL)
         logger.info("后台刷新线程已停止")
 
-
-class DetailEnricher(threading.Thread):
-    """个股资金流详情（四档）后台补全线程。
-
-    原实现在主刷新循环内串行补全 40 只个股的 ``get_capital_flow``，会阻塞主循环；
-    此处将其解耦到独立后台线程，并借助进程级 ``call_lock`` 并行调用 TDX 客户端，
-    既不再拖慢主刷新/发布节奏，又显著加快四档数据覆盖。补全结果就地写回内存快照的
-    个股对象，下一轮读取即可见。
-    """
-
-    def __init__(self, store: SnapshotStore, max_workers: int = 4) -> None:
-        super().__init__(name="capital-detail-enricher", daemon=True)
-        self.store = store
-        self._stop_evt = threading.Event()
-        self._exec = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="cap-detail")
-
-    def stop(self) -> None:
-        self._stop_evt.set()
-        try:
-            self._exec.shutdown(wait=False)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def run(self) -> None:
-        logger.info("个股详情补全线程启动，every=%ss", config.DETAIL_REFRESH_EVERY)
-        while not self._stop_evt.is_set():
-            self._stop_evt.wait(timeout=config.DETAIL_REFRESH_EVERY)
-            if self._stop_evt.is_set():
-                break
-            try:
-                self._enrich_once()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("个股详情补全异常（已忽略）: %s", exc)
-
-    def _enrich_once(self) -> None:
-        snap = self.store.get_snapshot()
-        if snap is None or not snap.stocks:
-            return
-        top_in = sorted(snap.stocks, key=lambda s: s.main_net, reverse=True)[: config.DETAIL_TOP_N]
-        top_out = sorted(snap.stocks, key=lambda s: s.main_net)[: config.DETAIL_TOP_N]
-        todo = [s for s in (top_in + top_out) if s.main_in is None]
-        if not todo:
-            return
-        list(self._exec.map(self._enrich_one, todo))
-
-    @staticmethod
-    def _enrich_one(s) -> None:
-        try:
-            detail = fetch_stock_detail(s.market, s.code)
-        except Exception:  # noqa: BLE001
-            return
-        if not detail:
-            return
-        s.main_in = detail.get("main_in")
-        s.main_out = detail.get("main_out")
-        s.retail_in = detail.get("retail_in")
-        s.retail_out = detail.get("retail_out")
-        s.large_net_5d = detail.get("large_net_5d")
-        s.mid_net_5d = detail.get("mid_net_5d")
-
-
     # -- 采集 --------------------------------------------------------------
     def _collect_round(self) -> None:
         t0 = time.time()
@@ -330,6 +269,66 @@ class DetailEnricher(threading.Thread):
             snapshot.ts_label, len(stocks), len(boards),
             len(anomalies.boards), len(anomalies.stocks), time.time() - t0,
         )
+
+
+class DetailEnricher(threading.Thread):
+    """个股资金流详情（四档）后台补全线程。
+
+    原实现在主刷新循环内串行补全 40 只个股的 ``get_capital_flow``，会阻塞主循环；
+    此处将其解耦到独立后台线程，并借助进程级 ``call_lock`` 并行调用 TDX 客户端，
+    既不再拖慢主刷新/发布节奏，又显著加快四档数据覆盖。补全结果就地写回内存快照的
+    个股对象，下一轮读取即可见。
+    """
+
+    def __init__(self, store: SnapshotStore, max_workers: int = 4) -> None:
+        super().__init__(name="capital-detail-enricher", daemon=True)
+        self.store = store
+        self._stop_evt = threading.Event()
+        self._exec = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="cap-detail")
+
+    def stop(self) -> None:
+        self._stop_evt.set()
+        try:
+            self._exec.shutdown(wait=False)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def run(self) -> None:
+        logger.info("个股详情补全线程启动，every=%ss", config.DETAIL_REFRESH_EVERY)
+        while not self._stop_evt.is_set():
+            self._stop_evt.wait(timeout=config.DETAIL_REFRESH_EVERY)
+            if self._stop_evt.is_set():
+                break
+            try:
+                self._enrich_once()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("个股详情补全异常（已忽略）: %s", exc)
+
+    def _enrich_once(self) -> None:
+        snap = self.store.get_snapshot()
+        if snap is None or not snap.stocks:
+            return
+        top_in = sorted(snap.stocks, key=lambda s: s.main_net, reverse=True)[: config.DETAIL_TOP_N]
+        top_out = sorted(snap.stocks, key=lambda s: s.main_net)[: config.DETAIL_TOP_N]
+        todo = [s for s in (top_in + top_out) if s.main_in is None]
+        if not todo:
+            return
+        list(self._exec.map(self._enrich_one, todo))
+
+    @staticmethod
+    def _enrich_one(s) -> None:
+        try:
+            detail = fetch_stock_detail(s.market, s.code)
+        except Exception:  # noqa: BLE001
+            return
+        if not detail:
+            return
+        s.main_in = detail.get("main_in")
+        s.main_out = detail.get("main_out")
+        s.retail_in = detail.get("retail_in")
+        s.retail_out = detail.get("retail_out")
+        s.large_net_5d = detail.get("large_net_5d")
+        s.mid_net_5d = detail.get("mid_net_5d")
 
 
 def _history_as_snapshots(store: SnapshotStore) -> list[MarketSnapshot]:

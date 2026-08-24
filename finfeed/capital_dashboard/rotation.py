@@ -141,6 +141,7 @@ def analyze_rotation(
         heat_values.append([round(row.get(c, 0.0), 4) for c in heat_boards])
 
     report.heatmap_boards = heat_boards
+    report.heatmap_board_names = [b.name for b in focus]
     report.heatmap_times = heat_times
     # heat_values 目前按时间行存储 -> 转置为 [板块][时间]
     report.heatmap_values = (
@@ -150,6 +151,7 @@ def analyze_rotation(
     report.trend_series = [
         {
             "board": c,
+            "name": next((b.name for b in focus if b.code == c), ""),
             "times": [p[0] for p in series_map[c]],
             "values": [p[1] for p in series_map[c]],
         }
