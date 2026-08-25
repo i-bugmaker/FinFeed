@@ -55,6 +55,9 @@ is retained only as a compatibility pointer to that canonical manifest.
 receives a `NewsEventPublisher` dependency backed by the shared broadcaster
 (`ui/web/shared.py`). Market use cases live in `application/market_service.py`
 (`MarketService`); news use cases live in `application/news_service.py`
-(`NewsService`). Routers depend on these service facades only; the legacy
-stdlib HTTP service has been retired — `ui/web/server.py` no longer exists and
-the CLI runs FastAPI single-track.
+(`NewsService`). LLM use cases live in `application/llm_service.py`; the LLM
+transport (`routers/llm.py`) exposes native typed routes plus
+`GET /api/llm/task/stream`, a per-task SSE channel fed by a publisher callback
+injected into `AnalysisService` at composition time. Routers depend on these
+service facades only; the legacy stdlib HTTP service has been retired —
+`ui/web/server.py` no longer exists and the CLI runs FastAPI single-track.

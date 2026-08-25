@@ -63,6 +63,7 @@ FinFeed 并非单一的新闻聚合器，而是将**非结构化新闻**与**结
 **Web 仪表盘与推送**
 - FastAPI 单轨：新版 Vue 3 + Vite SPA（8866）由 FastAPI 同源托管；SSE 广播通道由 `ui.web.shared` 承载，旧版 `server.py` 已退役。
 - 实时 SSE 增量推送、情感趋势、收藏、全文检索、历史导出、LLM 报表导出。
+- AI 投研报告生成支持 SSE 流式输出：REDUCE 汇总阶段逐段实时预览（`GET /api/llm/task/stream?id=<task_id>`，事件：stage / delta / reset / done），流式失败自动回退一次性生成保证结果完整。
 - 完整 OpenAPI 文档（Swagger UI / ReDoc）。
 
 **数据导出**
