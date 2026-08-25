@@ -1,5 +1,6 @@
 // Compatibility facade. New feature code imports shared/api/client directly.
 import http, { httpLlm } from '@/shared/api/client'
+import { API_BASE_URL } from '@/shared/config/runtime'
 
 export const api = {
   health: () => http.get('/health').then((r) => r.data),
@@ -28,6 +29,33 @@ export const api = {
     httpLlm.get('/llm' + path, { ...config, params }).then((r) => r.data),
   llmPost: (path, data, config = {}) =>
     httpLlm.post('/llm' + path, data, config).then((r) => r.data),
+
+  /**
+   * 订阅 LLM 分析任务事件流（SSE）。
+   * handlers: { onStage, onDelta, onReset, onDone, onError }
+   * delta 事件携带模型增量文本；reset 表示清空半成品缓冲（后端流式回退时发出）。
+   * 返回取消订阅函数（幂等）。
+   */
+  llmTaskStream(taskId, handlers = {}) {
+    const es = new EventSource(`${API_BASE_URL}/llm/task/stream?id=${encodeURIComponent(taskId)}`)
+    const bind = (event, fn) => {
+      if (typeof fn !== 'function') return
+      es.addEventListener(event, (e) => {
+        try {
+          fn(e.data ? JSON.parse(e.data) : {})
+        } catch { /* 忽略单条坏帧 */ }
+      })
+    }
+    bind('stage', handlers.onStage)
+    bind('delta', (d) => handlers.onDelta?.(d.text || ''))
+    bind('reset', () => handlers.onReset?.())
+    bind('done', (d) => {
+      handlers.onDone?.(d)
+      es.close()
+    })
+    es.onerror = () => handlers.onError?.()
+    return () => es.close()
+  },
   calendar: (path, params) => http.get('/calendar' + path, { params }).then((r) => r.data),
   market: (sub, params) => http.get('/market/' + sub, { params }).then((r) => r.data),
   marketAction: (params) => http.get('/market/action', { params }).then((r) => r.data),

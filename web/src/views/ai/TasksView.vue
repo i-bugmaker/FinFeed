@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import { useAiStore } from '../../store/ai'
 import AppIcon from '../../ui/AppIcon.vue'
 import TaskProgress from '../../components/ai/TaskProgress.vue'
+import MarkdownView from '../../components/ai/MarkdownView.vue'
 
 const router = useRouter()
 const store = useAiStore()
@@ -29,6 +30,15 @@ const filtered = computed(() => {
   return store.tasks.filter((t) => t.status === tab.value)
 })
 const failedCount = computed(() => store.tasks.filter((t) => t.status === 'failed').length)
+
+// REDUCE 流式预览：仅当订阅中的任务处于汇总阶段且有增量时展示
+// （订阅跨视图保持存活：离开再回来正文不丢，done 事件自动刷新任务与报告）
+const streamingTaskId = computed(() => store.streamTaskId)
+const streamText = computed(() => store.taskStreamText)
+const showStream = computed(() => {
+  const t = store.activeTask
+  return !!(t && t.task_id === streamingTaskId.value && t.stage === 'reduce' && streamText.value)
+})
 
 const STATUS_META = {
   pending: { label: '排队中', cls: 'run' },
@@ -90,11 +100,18 @@ onMounted(() => {
           <span class="tv__elapsed">{{ t.elapsed ? t.elapsed.toFixed(1) + 's' : '' }}</span>
         </div>
 
-        <!-- 运行中：阶段进度 -->
+        <!-- 运行中：阶段进度 + REDUCE 流式预览 -->
         <div v-if="t.status === 'running' || t.status === 'pending'" class="tv__progress">
           <TaskProgress :task="t" />
           <div class="tv__ops">
             <button class="tv__op tv__op--danger" @click="store.cancelTask(t.task_id)">取消</button>
+          </div>
+          <div v-if="t.task_id === streamingTaskId && streamText" class="tv__stream">
+            <div class="tv__stream-head">
+              <span class="tv__stream-dot"></span>
+              实时生成中 · {{ streamText.length }} 字
+            </div>
+            <MarkdownView :content="streamText" compact class="tv__stream-body" />
           </div>
         </div>
 
@@ -173,6 +190,10 @@ onMounted(() => {
 .tv__model { font-size: 11.5px; color: var(--ff-text-3, #9ca3af); font-family: var(--ff-font-mono, ui-monospace, monospace); }
 .tv__time, .tv__elapsed { font-size: 11.5px; color: var(--ff-text-3, #9ca3af); }
 .tv__progress { margin-top: 12px; }
+.tv__stream { margin-top: 10px; border: 1px dashed var(--ff-border-brand, #bfd9cc); border-radius: 10px; background: var(--ff-bg-subtle, #f7faf8); overflow: hidden; }
+.tv__stream-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--ff-brand-dark, #1d4e39); padding: 8px 12px; background: var(--ff-bg-brand-subtle, #eaf4ef); }
+.tv__stream-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ff-brand, #2f7d5b); animation: tv-pulse 1.2s infinite; }
+.tv__stream-body { max-height: 320px; overflow-y: auto; padding: 4px 12px 10px; }
 .tv__done { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .tv__fail { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 .tv__msg { font-size: 12.5px; color: var(--ff-text-2, #6b7280); }

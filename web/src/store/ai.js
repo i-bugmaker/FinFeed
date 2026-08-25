@@ -22,6 +22,10 @@ export const useAiStore = defineStore('ai', {
     pollTimer: null,
     pollActive: false,
     cmdOpen: false, // Ctrl+K 命令面板
+    // REDUCE 阶段流式输出：taskStreamText 为渐进正文，streamTaskId 标识当前订阅
+    taskStreamText: '',
+    streamTaskId: null,
+    streamUnsub: null,
     // 分析默认配置（scope/window/focus）：设置页保存，工作台/生成任务读取
     config: {
       scope: 'all',
@@ -117,6 +121,10 @@ export const useAiStore = defineStore('ai', {
         this.tasks = r.tasks || []
         this.activeTask =
           this.tasks.find((t) => t.status === 'running' || t.status === 'pending') || null
+        // 页面刷新/断线重连后自动续订运行中任务的流式输出
+        if (this.activeTask?.task_id && this.streamTaskId !== this.activeTask.task_id) {
+          this.startTaskStream(this.activeTask.task_id)
+        }
       } catch (e) {}
     },
     async loadSessions() {
@@ -155,6 +163,7 @@ export const useAiStore = defineStore('ai', {
         min_importance: 0,
       })
       await this.loadTasks()
+      if (r.ok && r.task_id) this.startTaskStream(r.task_id)
       return r
     },
     async cancelTask(taskId) {
@@ -166,7 +175,50 @@ export const useAiStore = defineStore('ai', {
     async retryTask(taskId) {
       const r = await api.llmPost('/task/retry', { task_id: taskId })
       await this.loadTasks()
+      if (r.ok && r.task_id) this.startTaskStream(r.task_id)
       return r
+    },
+
+    // ---------- 任务流式输出（SSE） ----------
+    startTaskStream(taskId) {
+      if (!taskId || this.streamTaskId === taskId) return
+      this.stopTaskStream()
+      this.streamTaskId = taskId
+      this.taskStreamText = ''
+      this.streamUnsub = api.llmTaskStream(taskId, {
+        onStage: () => {}, // 阶段进度仍由轮询驱动，保持单一来源
+        onDelta: (text) => {
+          if (this.streamTaskId === taskId) this.taskStreamText += text
+        },
+        onReset: () => {
+          if (this.streamTaskId === taskId) this.taskStreamText = ''
+        },
+        onDone: async (d) => {
+          if (this.streamTaskId !== taskId) return
+          this.streamUnsub?.()
+          this.streamUnsub = null
+          await Promise.all([this.loadTasks(), this.loadStatus()])
+          if (d?.status === 'success') await this.loadReports({ limit: 6 })
+          // 保留正文数秒供「查看报告」过渡，随后清理由下次订阅接管
+          setTimeout(() => {
+            if (this.streamTaskId === taskId && !this.activeTask) {
+              this.taskStreamText = ''
+              this.streamTaskId = null
+            }
+          }, 4000)
+        },
+        onError: () => {
+          // SSE 断开：轮询仍在，静默降级；任务未结束时允许重连由视图层触发
+        },
+      })
+    },
+    stopTaskStream() {
+      try {
+        this.streamUnsub?.()
+      } catch (e) {}
+      this.streamUnsub = null
+      this.streamTaskId = null
+      this.taskStreamText = ''
     },
 
     // ---------- 会话动作 ----------
