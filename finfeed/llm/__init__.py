@@ -10,11 +10,13 @@
   4. map-reduce 分块归纳，输出结构化 Markdown 复盘报告
   5. 报告持久化与历史管理
 
-与主链路解耦：不修改抓取/去重/存储流程，仅新增独立表与独立路由。
+与主链路解耦：不修改抓取/去重/存储流程。HTTP 传输层位于
+``finfeed.ui.web_fastapi.routers.llm``，用例编排在 ``finfeed.application.llm_service``
+（领域包不 import FastAPI，见 docs/ARCHITECTURE.md 规则 3）。
 
 对外入口：
-    from finfeed.llm import api as llm_api      # HTTP 路由处理
-    from finfeed.llm.service import get_service  # 任务调度
+    from finfeed.application import llm_service   # 用例编排（框架无关）
+    from finfeed.llm.service import get_service   # 任务调度
 """
 
 __all__ = [
@@ -26,7 +28,6 @@ __all__ = [
     "analyzer",
     "store",
     "service",
-    "api",
 ]
 
 MODULE_VERSION = "1.0.0"
