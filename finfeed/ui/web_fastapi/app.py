@@ -62,8 +62,10 @@ from finfeed.ui.web_fastapi.routers.market import create_router as create_market
 from finfeed.ui.web_fastapi.routers.news import create_router as create_news_router
 from finfeed.ui.web_fastapi.routers.realtime import (
     LegacyNewsEventPublisher,
-    create_router as create_realtime_router,
     poll_events,
+)
+from finfeed.ui.web_fastapi.routers.realtime import (
+    create_router as create_realtime_router,
 )
 from finfeed.ui.web_fastapi.routers.system import create_router as create_system_router
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
@@ -85,6 +87,16 @@ news_events = LegacyNewsEventPublisher()
 app.include_router(create_realtime_router(news_events, market_ws.handle_connection))
 app.include_router(create_system_router("2.1.0"))
 app.include_router(create_llm_router())
+
+# LLM 任务事件桥接：领域层 AnalysisService 通过注入的回调发布 stage/delta/done，
+# SSE 订阅注册表位于 llm 路由模块（领域包不感知 UI，依赖方向保持向内）。
+from finfeed.llm.service import get_service as _get_llm_service  # noqa: E402
+from finfeed.ui.web_fastapi.routers.llm import (  # noqa: E402
+    publish_llm_task_event as _publish_llm_task_event,
+)
+
+_get_llm_service().set_event_publisher(_publish_llm_task_event)
+
 app.include_router(create_calendar_router())
 
 # 注册 easy-tdx 集成路由（/api/easytdx/*）
