@@ -113,7 +113,7 @@ onMounted(async () => {
               <span v-if="r.error" class="rv__err">{{ r.error.slice(0, 40) }}</span>
             </td>
             <td class="rv__mono">{{ r.model || '—' }}</td>
-            <td>{{ r.scope || 'all' }} / {{ r.window_hours || 24 }}h</td>
+            <td>{{ store.scopeLabel(r.scope) }} / {{ r.window_hours || 24 }} 小时</td>
             <td class="rv__mono">{{ r.news_count || 0 }}</td>
             <td class="rv__muted">{{ fmtDate(r.created_ts) }}</td>
             <td>

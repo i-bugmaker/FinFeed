@@ -83,7 +83,7 @@ onMounted(() => {
             <span class="tv__dot" :class="STATUS_META[t.status]?.cls || 'idle'"></span>
             {{ STATUS_META[t.status]?.label || t.status }}
           </span>
-          <span class="tv__name">{{ t.provider_name || '分析' }} · {{ t.scope || 'all' }} / {{ t.hours || 24 }}h</span>
+          <span class="tv__name">{{ t.provider_name || '分析' }} · {{ store.scopeLabel(t.scope) }} / {{ t.hours || 24 }} 小时</span>
           <span v-if="t.model" class="tv__model">{{ t.model }}</span>
           <span class="tv__sp"></span>
           <span class="tv__time">{{ fmtTime(t.created_ts) }}</span>

@@ -51,11 +51,12 @@ async function generate() {
   generating.value = true
   genMsg.value = ''
   try {
+    // 使用设置页保存的分析默认值
     const r = await store.submitAnalysis({
       provider_id: store.status?.default_provider?.id,
-      scope: 'all',
-      window: 24,
-      focus: '',
+      scope: store.config.scope,
+      window: Number(store.config.window) || 24,
+      focus: store.config.focus || '',
     })
     if (r.ok) {
       genMsg.value = `已提交分析任务（${r.task_id}），可在任务中心查看进度`
@@ -83,6 +84,7 @@ function fmtDate(ts) {
 }
 
 onMounted(() => {
+  store.loadConfig()
   store.loadInit()
   store.loadReports({ limit: 6 })
   store.loadTasks()
@@ -131,8 +133,8 @@ onBeforeUnmount(() => store.stopPolling())
       </div>
       <div class="wb__kpi">
         <div class="wb__kpi-label">数据窗口</div>
-        <div class="wb__kpi-num" style="font-size:15px">24<small> 小时</small></div>
-        <div class="wb__kpi-sub">全市场</div>
+        <div class="wb__kpi-num" style="font-size:15px">{{ store.config.window || 24 }}<small> 小时</small></div>
+        <div class="wb__kpi-sub">{{ store.scopeLabel(store.config.scope) }}</div>
       </div>
     </div>
 

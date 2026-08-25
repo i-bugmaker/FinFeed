@@ -39,13 +39,19 @@ function openCmd() { store.cmdOpen = true }
 
 <template>
   <div class="ail">
-    <header class="ail__top">
-      <div class="ail__brand">
-        <div class="ail__logo"><AppIcon name="sparkles" size="md" /></div>
-        <div>
-          <h1 class="ail__title">AI 投研</h1>
-          <p class="ail__sub">以任务与报告为中心的投研助手</p>
-        </div>
+    <nav class="ail__nav">
+      <div class="ail__tabs">
+        <router-link
+          v-for="n in NAVS"
+          :key="n.to"
+          :to="n.to"
+          class="ail__tab"
+          :class="{ on: isActive(n) }"
+        >
+          <AppIcon :name="n.icon" size="sm" />
+          <span>{{ n.label }}</span>
+          <span v-if="n.badge && n.badge() > 0" class="ail__badge">{{ n.badge() }}</span>
+        </router-link>
       </div>
       <div class="ail__right">
         <span class="ail__model" :title="modelLabel">
@@ -57,20 +63,6 @@ function openCmd() { store.cmdOpen = true }
           <AppIcon name="command" size="sm" /> K
         </button>
       </div>
-    </header>
-
-    <nav class="ail__nav">
-      <router-link
-        v-for="n in NAVS"
-        :key="n.to"
-        :to="n.to"
-        class="ail__tab"
-        :class="{ on: isActive(n) }"
-      >
-        <AppIcon :name="n.icon" size="sm" />
-        <span>{{ n.label }}</span>
-        <span v-if="n.badge && n.badge() > 0" class="ail__badge">{{ n.badge() }}</span>
-      </router-link>
     </nav>
 
     <main class="ail__content">
@@ -94,11 +86,7 @@ function openCmd() { store.cmdOpen = true }
 <style scoped>
 .ail { max-width: var(--ff-container-max, 1400px); margin: 0 auto; padding: 0 24px 40px; display: flex; flex-direction: column; gap: 16px; }
 .ail__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 8px; }
-.ail__brand { display: flex; align-items: center; gap: 14px; }
-.ail__logo { width: 44px; height: 44px; border-radius: 12px; background: var(--ff-bg-brand-subtle, #eaf4ef); color: var(--ff-brand, #2f7d5b); display: flex; align-items: center; justify-content: center; }
-.ail__title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--ff-text-primary, #1f2937); }
-.ail__sub { font-size: 12.5px; color: var(--ff-text-3, #9ca3af); margin-top: 1px; }
-.ail__right { display: flex; align-items: center; gap: 10px; }
+.ail__right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .ail__model { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ff-text-secondary, #6b7280); background: var(--ff-bg-surface, #fff); border: 1px solid var(--ff-border, #e5e7eb); border-radius: 20px; padding: 5px 13px; }
 .ail__dot { width: 8px; height: 8px; border-radius: 50%; }
 .ail__dot.ok { background: var(--ff-up, #12a150); }
@@ -106,8 +94,9 @@ function openCmd() { store.cmdOpen = true }
 .ail__model-name { font-size: 11px; color: var(--ff-text-3, #9ca3af); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ail__kbd { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ff-border, #d1d5db); background: var(--ff-bg-surface, #fff); border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; transition: all 120ms; }
 .ail__kbd:hover { border-color: var(--ff-brand, #2f7d5b); color: var(--ff-brand, #2f7d5b); }
-.ail__nav { display: flex; gap: 4px; background: var(--ff-bg-subtle, #f1f4f2); border-radius: 12px; padding: 4px; border: 1px solid var(--ff-border, #e5e7eb); }
-.ail__tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); text-decoration: none; transition: all 130ms; }
+.ail__nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--ff-bg-subtle, #f1f4f2); border-radius: 12px; padding: 4px 8px 4px 4px; border: 1px solid var(--ff-border, #e5e7eb); }
+.ail__tabs { display: flex; gap: 4px; flex-wrap: nowrap; min-width: 0; overflow-x: auto; }
+.ail__tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); text-decoration: none; transition: all 130ms; white-space: nowrap; }
 .ail__tab:hover { color: var(--ff-text-primary, #1f2937); }
 .ail__tab.on { background: var(--ff-bg-surface, #fff); color: var(--ff-brand-dark, #1d4e39); box-shadow: 0 1px 4px rgba(16, 40, 30, 0.12); }
 .ail__badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--ff-brand, #2f7d5b); color: #fff; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
@@ -115,9 +104,7 @@ function openCmd() { store.cmdOpen = true }
 
 @media (max-width: 900px) {
   .ail { padding: 0 14px 30px; }
-  .ail__title { font-size: 19px; }
   .ail__model-name { display: none; }
-  .ail__nav { overflow-x: auto; }
-  .ail__tab { white-space: nowrap; padding: 7px 12px; }
+  .ail__model { padding: 4px 10px; }
 }
 </style>

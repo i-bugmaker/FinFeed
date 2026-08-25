@@ -22,6 +22,12 @@ export const useAiStore = defineStore('ai', {
     pollTimer: null,
     pollActive: false,
     cmdOpen: false, // Ctrl+K 命令面板
+    // 分析默认配置（scope/window/focus）：设置页保存，工作台/生成任务读取
+    config: {
+      scope: 'all',
+      window: 24,
+      focus: '',
+    },
     // 会话级上下文（分析师页）
     contextStock: null, // { name, code, price, change, ... }
     contextReport: null, // { id, title, section }
@@ -38,10 +44,36 @@ export const useAiStore = defineStore('ai', {
     runningTasks(state) {
       return state.tasks.filter((t) => t.status === 'running' || t.status === 'pending')
     },
+    scopeLabel(state) {
+      return (key) => {
+        const hit = state.scopeOptions.find((s) => s.key === key)
+        return hit ? hit.label : key === 'all' ? '全部' : key || '全部'
+      }
+    },
+    windowLabel(state) {
+      return (hours) => `${hours || 24} 小时`
+    },
   },
 
   actions: {
     // ---------- 基础加载 ----------
+    // 读取本地保存的分析默认值（设置页写入）
+    loadConfig() {
+      try {
+        const raw = localStorage.getItem('finfeed_ai_config')
+        if (!raw) return
+        const c = JSON.parse(raw)
+        if (c.scope) this.config.scope = c.scope
+        if (c.window) this.config.window = Number(c.window) || 24
+        if (c.focus !== undefined) this.config.focus = c.focus
+      } catch (e) {}
+    },
+    saveConfig(patch = {}) {
+      this.config = { ...this.config, ...patch }
+      try {
+        localStorage.setItem('finfeed_ai_config', JSON.stringify(this.config))
+      } catch (e) {}
+    },
     async loadStatus() {
       try {
         this.status = await api.llm('/status')

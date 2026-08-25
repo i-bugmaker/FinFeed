@@ -2,7 +2,7 @@
 /**
  * SettingsView — AI 设置中心
  * 左导航（模型管理 / Prompt 模板 / 分析默认值）＋ 右表单
- * 模型 CRUD 保留原有交互，升级为卡片列表 + 抽屉表单；Prompt 默认折叠为高级区。
+ * 模型添加/编辑统一使用 ModelConfigDialog（与工作台一致的居中弹窗交互）。
  */
 import { ref, computed, onMounted } from 'vue'
 import { useAiStore } from '../../store/ai'
@@ -10,7 +10,7 @@ import { api } from '../../api/client'
 import AppIcon from '../../ui/AppIcon.vue'
 import AppInput from '../../ui/AppInput.vue'
 import AppSelect from '../../ui/AppSelect.vue'
-import AppCheckbox from '../../ui/AppCheckbox.vue'
+import OnboardWizard from '../../components/ai/OnboardWizard.vue'
 
 const store = useAiStore()
 
@@ -22,89 +22,25 @@ const sections = [
 ]
 
 // ---------- 模型 ----------
-const showForm = ref(false)
-const editingId = ref(null)
-const busy = ref(false)
-const msg = ref('')
-const testResult = ref('')
+const modelDialogOpen = ref(false)
+const editingProvider = ref(null) // null=新增，对象=编辑
 const testingIds = ref(new Set()) // 自动连通性测试中的模型 id
 const autoTesting = ref(false)
-const form = ref(blankProvider())
-const PRESETS = [
-  { key: 'openai', label: 'OpenAI', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  { key: 'deepseek', label: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  { key: 'dashscope', label: '阿里通义千问', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { key: 'moonshot', label: '月之暗面 Kimi', base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-32k' },
-  { key: 'zhipu', label: '智谱 GLM', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-plus' },
-  { key: 'siliconflow', label: '硅基流动', base_url: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-32B-Instruct' },
-  { key: 'volcengine', label: '火山方舟豆包', base_url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-pro-32k' },
-  { key: 'ollama', label: '本地 Ollama', base_url: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:14b' },
-  { key: 'lmstudio', label: '本地 LM Studio', base_url: 'http://127.0.0.1:1234/v1', model: 'local-model' },
-  { key: 'custom', label: '自定义', base_url: '', model: '' },
-]
-const presetOptions = computed(() => PRESETS.map((p) => ({ label: p.label, value: p.key })))
-const testOk = computed(() => testResult.value && testResult.value.includes('连通正常'))
-const testBad = computed(() => testResult.value && (testResult.value.includes('失败') || testResult.value.includes('连通失败')))
 
-function blankProvider() {
-  return { id: null, name: '', base_url: '', model: '', api_key: '', preset: 'custom', temperature: 0.3, max_tokens: 4096, timeout: 120, is_default: false, enabled: true }
-}
 function openAdd() {
-  editingId.value = null
-  form.value = blankProvider()
-  testResult.value = ''
-  showForm.value = true
+  editingProvider.value = null
+  modelDialogOpen.value = true
 }
 function openEdit(p) {
-  editingId.value = p.id
-  form.value = { ...blankProvider(), ...p, api_key: '' }
-  testResult.value = ''
-  showForm.value = true
+  editingProvider.value = p
+  modelDialogOpen.value = true
 }
-function applyPreset() {
-  const pre = PRESETS.find((x) => x.key === form.value.preset)
-  if (pre && pre.key !== 'custom') {
-    form.value.base_url = pre.base_url
-    form.value.model = pre.model
-  }
-}
-async function saveProvider() {
-  busy.value = true
-  msg.value = ''
-  try {
-    const f = { ...form.value }
-    if (!f.api_key) delete f.api_key
-    const r = await api.llmPost('/provider/save', f)
-    if (r && r.success) {
-      msg.value = '模型已保存'
-      showForm.value = false
-      await store.loadProviders()
-      await store.loadStatus()
-    } else {
-      msg.value = '保存失败：' + (r.error || '未知错误')
-    }
-  } catch (e) {
-    msg.value = '保存失败：' + e.message
-  } finally {
-    busy.value = false
-    setTimeout(() => (msg.value = ''), 3000)
-  }
-}
-async function testProvider() {
-  busy.value = true
-  testResult.value = '测试中…'
-  try {
-    const f = { ...form.value }
-    const payload = editingId.value && !f.api_key ? { id: editingId.value, use_saved: true } : f
-    const r = await api.llmPost('/provider/test', payload)
-    testResult.value = r && r.ok
-      ? `连通正常（${r.model || ''}）${r.latency_ms ? ' · ' + Math.round(r.latency_ms) + 'ms' : ''}`
-      : (r.message || '连通失败')
-  } catch (e) {
-    testResult.value = '测试失败：' + e.message
-  } finally {
-    busy.value = false
-  }
+async function onModelSaved() {
+  modelDialogOpen.value = false
+  await store.loadProviders()
+  await store.loadStatus()
+  // 新添加的模型无测试记录 → 立即自动测试并开始计时；已有模型仍遵守各自冷却
+  autoTestAll()
 }
 async function setDefault(id) {
   await api.llmPost('/provider/default', { id })
@@ -112,17 +48,32 @@ async function setDefault(id) {
   await store.loadStatus()
 }
 
-// 进入页面时自动逐个测试所有已保存模型的连通性（串行，避免并发风暴）
+const AUTO_TEST_COOLDOWN = 60 * 60 * 1000 // 单个模型自动测试冷却 1 小时
+const TEST_MAP_KEY = 'finfeed_ai_auto_test_map' // {providerId: 上次自动测试时间戳}
+
+// 进入页面时自动测试到期模型：按单个模型各自冷却（无记录=新模型 立即测试），
+// 1 小时内已测过的模型跳过；手动测试（弹窗内）不受任何冷却限制
 async function autoTestAll() {
   const providers = [...store.providers]
   if (!providers.length || autoTesting.value) return
+  let map = {}
+  try { map = JSON.parse(localStorage.getItem(TEST_MAP_KEY) || '{}') } catch (e) {}
+  const now = Date.now()
+  // 过滤出需要测试的模型：从未测过（新添加）或距上次超过 1 小时
+  const due = providers.filter((p) => {
+    const last = Number(map[p.id] || 0)
+    return now - last >= AUTO_TEST_COOLDOWN
+  })
+  if (!due.length) return
   autoTesting.value = true
   const ids = new Set()
-  for (const p of providers) {
+  for (const p of due) {
     ids.add(p.id)
     testingIds.value = new Set(ids)
     try {
       await api.llmPost('/provider/test', { id: p.id, use_saved: true })
+      map[p.id] = Date.now()
+      localStorage.setItem(TEST_MAP_KEY, JSON.stringify(map))
     } catch (e) {
       // 单个失败不中断整体流程
     }
@@ -179,10 +130,12 @@ const defaults = ref({ scope: 'all', window: 24, focus: '' })
 const scopeOptions = computed(() => store.scopeOptions.map((s) => ({ label: s.label, value: s.key })))
 const windowOptions = computed(() => store.windowOptions.map((w) => ({ label: `${w} 小时`, value: w })))
 function saveDefaults() {
-  try {
-    localStorage.setItem('finfeed_ai_config', JSON.stringify(defaults.value))
-    window.alert('默认值已保存到本地')
-  } catch (e) {}
+  store.saveConfig({
+    scope: defaults.value.scope,
+    window: Number(defaults.value.window) || 24,
+    focus: defaults.value.focus || '',
+  })
+  window.alert('默认值已保存，生成报告时将使用该范围与窗口')
 }
 
 onMounted(() => {
@@ -190,16 +143,11 @@ onMounted(() => {
   store.loadStatus()
   store.loadInit()
   loadPrompts()
-  // 恢复本地默认值
-  try {
-    const raw = localStorage.getItem('finfeed_ai_config')
-    if (raw) {
-      const c = JSON.parse(raw)
-      if (c.scope) defaults.value.scope = c.scope
-      if (c.window) defaults.value.window = c.window
-      if (c.focus !== undefined) defaults.value.focus = c.focus
-    }
-  } catch (e) {}
+  // 恢复本地默认值（与 store 单一数据源同步）
+  store.loadConfig()
+  defaults.value.scope = store.config.scope
+  defaults.value.window = store.config.window
+  defaults.value.focus = store.config.focus
   // 等待 providers 加载完成后自动测试连通性
   setTimeout(() => {
     if (store.providers.length) autoTestAll()
@@ -256,40 +204,15 @@ onMounted(() => {
             <button class="sv__add" @click="openAdd">添加第一个模型</button>
           </div>
 
-          <!-- 表单抽屉 -->
-          <Teleport to="body">
-            <Transition name="sv-fade">
-              <div v-if="showForm" class="sv__mask" @click.self="showForm = false">
-                <div class="sv__drawer">
-                  <div class="sv__drawer-head">
-                    <span>{{ editingId ? '编辑模型' : '添加模型' }}</span>
-                    <button class="sv__drawer-x" @click="showForm = false"><AppIcon name="x" size="sm" /></button>
-                  </div>
-                  <div class="sv__drawer-body">
-                    <AppInput v-model="form.name" label="名称" placeholder="如：我的 DeepSeek" />
-                    <AppSelect v-model="form.preset" label="预设" :options="presetOptions" @change="applyPreset" />
-                    <AppInput v-model="form.base_url" label="接口地址 (Base URL)" placeholder="https://..." />
-                    <AppInput v-model="form.model" label="模型名称" placeholder="如：deepseek-chat" />
-                    <AppInput v-model="form.api_key" type="password" label="API Key" :placeholder="editingId ? '留空则保留原密钥' : 'sk-...'" />
-                    <div class="sv__grid2">
-                      <AppInput v-model.number="form.temperature" type="number" label="温度 (0–2)" />
-                      <AppInput v-model.number="form.max_tokens" type="number" label="最大 Token" />
-                    </div>
-                    <AppInput v-model.number="form.timeout" type="number" label="超时 (秒)" />
-                    <AppCheckbox v-model="form.is_default" label="设为默认模型" />
-                    <AppCheckbox v-model="form.enabled" label="启用该模型" />
-                    <p v-if="testResult" class="sv__test" :class="{ err: testBad, ok: testOk }">{{ testResult }}</p>
-                  </div>
-                  <div class="sv__drawer-foot">
-                    <button class="sv__btn sv__btn--ghost" @click="showForm = false">取消</button>
-                    <button class="sv__btn" :disabled="busy" @click="testProvider">{{ busy ? '测试中…' : '测试连接' }}</button>
-                    <button class="sv__btn sv__btn--primary" :disabled="busy" @click="saveProvider">保存</button>
-                  </div>
-                  <p v-if="msg" class="sv__msg">{{ msg }}</p>
-                </div>
-              </div>
-            </Transition>
-          </Teleport>
+          <!-- 模型配置弹窗（与工作台一致的交互） -->
+          <OnboardWizard
+            :open="modelDialogOpen"
+            :presets="store.presets"
+            :provider="editingProvider"
+            mode="form"
+            @close="modelDialogOpen = false"
+            @done="onModelSaved"
+          />
         </div>
 
         <!-- Prompt -->
@@ -365,20 +288,8 @@ onMounted(() => {
 .sv__op--danger:hover { color: var(--ff-down, #e5484d); border-color: #f5c6c8; }
 .sv__empty { text-align: center; padding: 40px 10px; color: var(--ff-text-3, #9ca3af); }
 .sv__empty p { margin: 10px 0 14px; font-size: 13.5px; }
-.sv__mask { position: fixed; inset: 0; z-index: 950; background: rgba(15, 25, 20, 0.35); display: flex; justify-content: flex-end; }
-.sv__drawer { width: 440px; max-width: 92vw; height: 100%; background: var(--ff-bg-surface, #fff); display: flex; flex-direction: column; box-shadow: -8px 0 24px rgba(10, 30, 22, 0.15); }
-.sv__drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--ff-border, #e5e7eb); font-size: 15px; font-weight: 700; }
-.sv__drawer-x { border: none; background: var(--ff-bg-subtle, #f3f6f4); border-radius: 8px; width: 30px; height: 30px; cursor: pointer; color: var(--ff-text-2, #6b7280); }
-.sv__drawer-body { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; }
-.sv__grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.sv__drawer-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--ff-border, #e5e7eb); }
 .sv__btn { border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-surface, #fff); border-radius: 9px; padding: 8px 16px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; }
 .sv__btn--primary { background: var(--ff-brand, #2f7d5b); color: #fff; border-color: var(--ff-brand, #2f7d5b); }
-.sv__btn--ghost { border-color: transparent; background: none; }
-.sv__btn:disabled { opacity: 0.5; }
-.sv__test { font-size: 12px; margin: 0; }
-.sv__test.ok { color: var(--ff-brand, #2f7d5b); }
-.sv__test.err { color: var(--ff-down, #e5484d); }
 .sv__msg { font-size: 12.5px; color: var(--ff-down, #e5484d); padding: 0 20px 12px; margin: 0; }
 .sv__adv-toggle { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-subtle, #f9fafb); border-radius: 9px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; }
 .sv__prompts { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }

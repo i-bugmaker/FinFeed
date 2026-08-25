@@ -208,8 +208,8 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
         </div>
         <div class="rr__card">
           <div class="rr__card-label">元信息</div>
-          <div class="rr__kv"><span>范围</span><b>{{ report.scope || 'all' }}</b></div>
-          <div class="rr__kv"><span>窗口</span><b>{{ report.window_hours || 24 }}h</b></div>
+          <div class="rr__kv"><span>范围</span><b>{{ store.scopeLabel(report.scope) }}</b></div>
+          <div class="rr__kv"><span>窗口</span><b>{{ report.window_hours || 24 }} 小时</b></div>
           <div class="rr__kv"><span>资讯</span><b>{{ report.news_count || 0 }} 条</b></div>
           <div class="rr__kv"><span>耗时</span><b>{{ report.elapsed ? report.elapsed.toFixed(1) + 's' : '—' }}</b></div>
         </div>
