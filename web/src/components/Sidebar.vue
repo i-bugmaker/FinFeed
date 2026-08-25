@@ -35,7 +35,20 @@ const groups = [
     title: '投研分析',
     items: [
       { to: '/dashboard', label: '仪表盘', icon: 'dashboard' },
-      { to: '/ai', label: 'AI 投研', icon: 'sparkles' },
+      // AI 投研为可展开子菜单：进入 /ai 相关页面时自动展开
+      {
+        to: '/ai',
+        label: 'AI 投研',
+        icon: 'sparkles',
+        submenu: true,
+        children: [
+          { to: '/ai', label: '投研工作台', icon: 'dashboard', exact: true },
+          { to: '/ai/analyst', label: '分析师', icon: 'chatter' },
+          { to: '/ai/reports', label: '研究报告', icon: 'file-text' },
+          { to: '/ai/tasks', label: '任务中心', icon: 'activity' },
+          { to: '/ai/settings', label: '设置', icon: 'settings' },
+        ],
+      },
       { to: '/favorites', label: '自选收藏', icon: 'star' },
     ],
   },
@@ -50,8 +63,12 @@ const groups = [
 
 function isActive(item) {
   if (item.external) return false
+  if (item.exact) return route.path === item.to
   return route.path === item.to || route.path.startsWith(item.to + '/')
 }
+
+// AI 投研子菜单：命中 /ai 前缀时自动展开
+const aiExpanded = computed(() => route.path.startsWith('/ai'))
 </script>
 
 <template>
@@ -81,6 +98,35 @@ function isActive(item) {
                 <span class="ff-sidebar__label">{{ item.label }}</span>
                 <AppIcon name="external-link" size="xs" class="ff-sidebar__ext-icon" />
               </a>
+
+              <!-- 可展开子菜单（AI 投研）：父项 + 子项 -->
+              <template v-else-if="item.submenu">
+                <router-link
+                  :to="item.to"
+                  class="ff-sidebar__item ff-sidebar__item--submenu"
+                  :class="{ 'ff-sidebar__item--active': isActive(item) }"
+                  @click="mobile && emit('close')"
+                >
+                  <div class="ff-sidebar__icon-wrap">
+                    <AppIcon :name="item.icon" size="md" />
+                  </div>
+                  <span class="ff-sidebar__label">{{ item.label }}</span>
+                  <AppIcon :name="aiExpanded ? 'chevron-down' : 'chevron-right'" size="xs" class="ff-sidebar__caret" />
+                </router-link>
+                <div v-if="aiExpanded" class="ff-sidebar__children">
+                  <router-link
+                    v-for="c in item.children"
+                    :key="c.to"
+                    :to="c.to"
+                    class="ff-sidebar__child"
+                    :class="{ 'ff-sidebar__child--active': isActive(c) }"
+                    @click="mobile && emit('close')"
+                  >
+                    <AppIcon :name="c.icon" size="xs" />
+                    <span>{{ c.label }}</span>
+                  </router-link>
+                </div>
+              </template>
 
               <router-link
                 v-else
@@ -254,5 +300,43 @@ function isActive(item) {
   background: var(--ff-up);
   color: var(--ff-up-fg);
   animation: ff-scale-in var(--ff-dur-fast) var(--ff-ease-spring);
+}
+
+/* AI 投研子菜单 */
+.ff-sidebar__caret {
+  opacity: 0.45;
+  margin-left: auto;
+  transition: transform var(--ff-dur-fast);
+}
+.ff-sidebar__children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 6px 16px;
+  margin-left: 15px;
+  border-left: 1px solid var(--ff-border);
+}
+.ff-sidebar__child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--ff-text-secondary);
+  text-decoration: none;
+  transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
+}
+.ff-sidebar__child:hover {
+  background: var(--ff-bg-hover);
+  color: var(--ff-text-primary);
+}
+.ff-sidebar__child--active {
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-brand-dark);
+  font-weight: 600;
+}
+.ff-sidebar__child--active svg {
+  color: var(--ff-icon-brand);
 }
 </style>

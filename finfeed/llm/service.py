@@ -58,6 +58,7 @@ class TaskState:
     report_id: int = 0
     error: str = ""
     error_kind: str = ""
+    options: Dict[str, Any] = field(default_factory=dict)
     created_ts: float = field(default_factory=time.time)
     started_ts: float = 0.0
     finished_ts: float = 0.0
@@ -114,6 +115,28 @@ class AnalysisService:
             t.message = "正在取消…"
         return True
 
+    def retry(self, task_id: str) -> Dict[str, Any]:
+        """重试失败/已取消的任务：复用原提交参数重新入队。"""
+        with self._lock:
+            t = self._tasks.get(task_id)
+            if not t:
+                return {"ok": False, "error": "任务不存在或已过期"}
+            if t.status in (STATUS_PENDING, STATUS_RUNNING):
+                return {"ok": False, "error": "任务仍在运行中"}
+            options = dict(t.options or {})
+            provider_name = t.provider_name
+        # 释放锁后再提交（submit 自身会加锁）
+        if provider_name and not options.get("provider_id"):
+            with self._lock:
+                for p in cfg.list_providers():
+                    if p.name == provider_name:
+                        options["provider_id"] = p.id
+                        break
+        result = self.submit(options)
+        if result.get("ok"):
+            result["retried_from"] = task_id
+        return result
+
     def submit(self, options: Dict[str, Any]) -> Dict[str, Any]:
         """提交分析任务。返回 {ok, task_id, error}"""
         if self.is_busy():
@@ -151,6 +174,7 @@ class AnalysisService:
             scope=scope,
             provider_name=provider.name,
             model=provider.model,
+            options=dict(options),
         )
         with self._lock:
             self._tasks[task_id] = state

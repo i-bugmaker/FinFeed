@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinFeed · AI 投研模块界面重构方案 v1.0</title>
+<style>
+  :root{
+    --brand:#2f7d5b; --brand-light:#4f9e76; --brand-dark:#1d4e39; --brand-subtle:#eaf4ef;
+    --up:#e5484d; --down:#12a150; --neutral:#9ca3af;
+    --text:#1f2937; --text-2:#6b7280; --text-3:#9ca3af;
+    --border:#e5e7eb; --bg:#f6f8f7; --card:#ffffff;
+    --radius:12px; --mono:'JetBrains Mono','SFMono-Regular',Consolas,monospace;
+    --sans:-apple-system,'Inter','PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--sans);color:var(--text);background:var(--bg);font-size:15px;line-height:1.65}
+  a{color:var(--brand);text-decoration:none}
+  .wrap{display:flex;max-width:1440px;margin:0 auto}
+  /* ===== TOC ===== */
+  .toc{width:250px;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;padding:28px 20px;border-right:1px solid var(--border);background:var(--card)}
+  .toc h1{font-size:15px;line-height:1.4;margin-bottom:4px}
+  .toc .ver{font-size:12px;color:var(--text-3);margin-bottom:18px}
+  .toc a{display:block;font-size:13px;color:var(--text-2);padding:5px 8px;border-radius:6px;margin-bottom:2px}
+  .toc a:hover{background:var(--brand-subtle);color:var(--brand-dark)}
+  .toc a.l2{padding-left:20px;font-size:12.5px}
+  .toc .grp{font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.08em;margin:14px 8px 6px;text-transform:uppercase}
+  /* ===== MAIN ===== */
+  .main{flex:1;min-width:0;padding:40px 48px 80px}
+  section{margin-bottom:56px}
+  h2{font-size:24px;font-weight:700;margin-bottom:8px;letter-spacing:-.01em}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px}
+  h4{font-size:15px;font-weight:600;margin:18px 0 8px;color:var(--brand-dark)}
+  p{margin-bottom:10px;color:#374151}
+  .lead{font-size:16.5px;color:var(--text-2);margin-bottom:20px}
+  .tag{display:inline-block;font-size:12px;font-weight:600;color:var(--brand-dark);background:var(--brand-subtle);padding:2px 10px;border-radius:20px;margin-bottom:14px}
+  ul,ol{padding-left:22px;margin-bottom:12px}
+  li{margin-bottom:6px}
+  strong{color:var(--text)}
+  .kbd{font-family:var(--mono);font-size:12px;background:#f3f4f6;border:1px solid #d1d5db;border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+  /* ===== cards / tables ===== */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;margin:16px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:1100px){.grid2,.grid3{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0;background:var(--card)}
+  th{background:#f3f6f4;text-align:left;font-weight:600;padding:9px 12px;border:1px solid var(--border);font-size:12.5px;color:var(--text-2)}
+  td{padding:9px 12px;border:1px solid var(--border);vertical-align:top}
+  tr:nth-child(even) td{background:#fafbfa}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:12px}
+  .p-bad{background:#fdecec;color:var(--up)}
+  .p-warn{background:#fef7e6;color:#b45309}
+  .p-good{background:#e8f7ee;color:var(--down)}
+  .p-brand{background:var(--brand-subtle);color:var(--brand-dark)}
+  /* ===== wireframes ===== */
+  .wf{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:18px 0 8px;box-shadow:0 1px 3px rgba(16,40,30,.06)}
+  .wf-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#f3f6f4;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-2)}
+  .wf-bar .dot{width:9px;height:9px;border-radius:50%;background:#d1d5db}
+  .wf-bar .nm{font-weight:600;color:var(--text)}
+  .wf-bar .hint{margin-left:auto}
+  .wf-body{position:relative;padding:14px;background:var(--bg)}
+  .wf-note{font-size:12.5px;color:var(--text-2);padding:10px 16px 14px;border-top:1px dashed var(--border)}
+  .wf-note b{color:var(--text)}
+  .frame{background:#e9eeeb;border:1px solid #cfd8d3;border-radius:10px;overflow:hidden;position:relative}
+  .frame::after{content:'';position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(47,125,91,.10)}
+  /* ui atoms */
+  .ui-topbar{display:flex;align-items:center;gap:8px;background:#fff;border-bottom:1px solid #d8dfdb;padding:7px 10px}
+  .ui-burger{width:18px;height:12px;position:relative}
+  .ui-burger::before,.ui-burger::after,.ui-burger i{content:'';position:absolute;left:0;right:0;height:2px;background:#94a3a8;border-radius:2px}
+  .ui-burger::before{top:0}.ui-burger i{top:5px}.ui-burger::after{bottom:0}
+  .ui-logo{width:16px;height:16px;border-radius:5px;background:var(--brand);position:relative}
+  .ui-logo::after{content:'';position:absolute;left:3px;right:3px;top:6px;height:2px;background:#fff;border-radius:2px;transform:rotate(-14deg)}
+  .ui-title{font-size:11px;font-weight:600;color:var(--text)}
+  .ui-sp{flex:1}
+  .ui-search{width:150px;height:16px;border:1px solid #d8dfdb;border-radius:8px;background:#f6f8f7}
+  .ui-ic{width:16px;height:16px;border-radius:5px;background:#e5e9e7}
+  .ui-avatar{width:16px;height:16px;border-radius:50%;background:var(--brand-light)}
+  .ui-sb{width:56px;border-right:1px solid #d8dfdb;background:#fff;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0}
+  .ui-sb i{width:26px;height:26px;border-radius:8px;background:#eef2f0}
+  .ui-sb i.on{background:var(--brand-subtle);box-shadow:inset 0 0 0 2px var(--brand)}
+  .ui-sb i.logo{width:22px;height:22px;background:var(--brand);border-radius:7px;position:relative;margin-bottom:6px}
+  .ui-sb i.logo::after{content:'';position:absolute;left:5px;right:5px;top:9px;height:2px;background:#fff;border-radius:2px}
+  .ui-sb .grow{flex:1}
+  .ui-row{display:flex;gap:8px}
+  .ui-col{display:flex;flex-direction:column;gap:8px}
+  .ui-card{background:#fff;border:1px solid #d8dfdb;border-radius:9px;padding:9px 11px}
+  .ui-card.tint{background:#fbfdfc}
+  .ui-btn{height:17px;border-radius:7px;font-size:9px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 9px}
+  .ui-btn.p{background:var(--brand);color:#fff}
+  .ui-btn.g{background:#f1f4f2;color:var(--text-2);border:1px solid #d8dfdb}
+  .ui-btn.r{background:#fdecec;color:var(--up);border:1px solid #f5c6c8}
+  .ui-btn.d{background:#fff;color:var(--text-2);border:1px dashed #c3cdc8}
+  .ui-badge{font-size:8px;font-weight:700;padding:1px 5px;border-radius:7px;background:var(--brand-subtle);color:var(--brand-dark)}
+  .ui-badge.up{background:#fdecec;color:var(--up)}
+  .ui-badge.dn{background:#e8f7ee;color:var(--down)}
+  .ui-badge.mu{background:#f1f4f2;color:var(--text-3)}
+  .ui-t{font-size:10.5px;color:#455a52;font-weight:500}
+  .ui-t.s{font-size:8.5px;color:#8aa096}
+  .ui-t.b{font-weight:700;font-size:12px}
+  .ui-t.up{color:var(--up)} .ui-t.dn{color:var(--down)} .ui-t.mu{color:var(--text-3)}
+  .ui-line{height:5px;border-radius:3px;background:#e8edea}
+  .ui-line.w50{width:50%}.ui-line.w70{width:70%}.ui-line.w90{width:90%}.ui-line.w30{width:30%}
+  .ui-input{height:16px;border:1px solid #d8dfdb;border-radius:7px;background:#fff;display:flex;align-items:center;padding:0 7px;font-size:8.5px;color:#9db3aa}
+  .ui-label{font-size:8px;font-weight:700;color:#8aa096;letter-spacing:.05em;margin-bottom:3px}
+  .ui-kpi{font-size:16px;font-weight:700;font-family:var(--mono)}
+  .ui-kpi small{font-size:9px;color:#8aa096;font-weight:500;margin-left:3px}
+  .ui-progress{height:5px;border-radius:3px;background:#e8edea;position:relative;overflow:hidden}
+  .ui-progress i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--brand)}
+  .ui-chat-a{display:flex;gap:6px;align-items:flex-start}
+  .ui-chat-a .av{width:15px;height:15px;border-radius:50%;background:var(--brand-subtle);box-shadow:inset 0 0 0 1px var(--brand-light);flex-shrink:0;margin-top:2px}
+  .ui-chat-a .bub{background:#fff;border:1px solid #d8dfdb;border-radius:4px 9px 9px 9px;padding:5px 8px;font-size:9px;color:#455a52;max-width:78%}
+  .ui-chat-a .bub .hl{color:var(--brand-dark);font-weight:700}
+  .ui-chat-a.me{flex-direction:row-reverse}
+  .ui-chat-a.me .av{background:var(--brand)}
+  .ui-chat-a.me .bub{background:var(--brand);color:#fff;border:none;border-radius:9px 4px 9px 9px}
+  .ui-pill{display:inline-block;font-size:8px;font-weight:600;border:1px solid #c3cdc8;color:#6b7f76;border-radius:8px;padding:1px 6px;margin:0 3px 3px 0;background:#fff}
+  .ui-table{width:100%;border-collapse:collapse;font-size:8.5px}
+  .ui-table th{background:#f3f6f4;color:#8aa096;font-weight:600;border:1px solid #e3e9e6;padding:4px 6px;text-align:left;font-size:8px}
+  .ui-table td{border:1px solid #e3e9e6;padding:4px 6px;color:#455a52}
+  .ui-tab{font-size:9.5px;font-weight:600;color:#8aa096;padding:3px 10px;border-radius:6px}
+  .ui-tab.on{background:#fff;color:var(--brand-dark);box-shadow:0 0 0 1px #d8dfdb}
+  .ui-context{font-size:8.5px;border:1px dashed #c9d8d1;background:#fbfdfc;border-radius:8px;padding:6px 8px;color:#6b7f76}
+  .ui-context b{color:var(--brand-dark)}
+  /* flow diagram */
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 0}
+  .fnode{border:1.5px solid var(--brand);border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--brand-dark);background:#fff}
+  .fnode.gray{border-color:#c3cdc8;color:var(--text-2);background:#fff}
+  .fnode.alt{background:var(--brand-subtle)}
+  .farrow{color:#9db3aa;font-size:14px;font-weight:700}
+  .fnote{font-size:11px;color:var(--text-3);width:100%;margin-left:4px}
+  /* arch tree */
+  .arch{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:18px 0}
+  @media(max-width:1000px){.arch{grid-template-columns:repeat(2,1fr)}}
+  .anode{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px}
+  .anode .at{font-size:12.5px;font-weight:700;color:var(--brand-dark);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .anode .at .ic{width:18px;height:18px;border-radius:6px;background:var(--brand-subtle);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--brand)}
+  .anode ul{list-style:none;padding:0;margin:0}
+  .anode li{font-size:11.5px;color:var(--text-2);padding:3px 0 3px 14px;position:relative}
+  .anode li::before{content:'';position:absolute;left:2px;top:10px;width:6px;height:6px;border-radius:2px;background:#d7e4dd}
+  .anode li b{color:var(--text);font-weight:600}
+  .anode.hot{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-subtle)}
+  /* phase roadmap */
+  .phase{border-left:3px solid var(--brand);padding:4px 0 4px 18px;margin:18px 0;position:relative}
+  .phase::before{content:'';position:absolute;left:-8px;top:6px;width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid var(--brand)}
+  .phase .ph{font-size:13px;font-weight:700;color:var(--brand-dark)}
+  .phase .pd{font-size:12px;color:var(--text-3);margin-bottom:6px}
+  .phase.soon{border-left-color:#c3cdc8}
+  .phase.soon::before{border-color:#c3cdc8}
+  .callout{border-left:4px solid var(--brand);background:var(--brand-subtle);padding:14px 18px;border-radius:0 10px 10px 0;margin:16px 0}
+  .callout.warn{border-left-color:#d97706;background:#fef7e6}
+  .callout b{color:var(--brand-dark)}
+  .callout.warn b{color:#b45309}
+  code{font-family:var(--mono);font-size:12.5px;background:#f3f4f6;border-radius:4px;padding:1px 5px;color:#1d4e39}
+  .figcap{font-size:12px;color:var(--text-3);margin:6px 2px 14px}
+  .divider{height:1px;background:var(--border);margin:34px 0}
+  .backtop{position:fixed;right:22px;bottom:22px;width:36px;height:36px;border-radius:10px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 4px 12px rgba(47,125,91,.3);cursor:pointer}
+  .hid{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  @media(max-width:900px){.toc{display:none}.main{padding:24px 18px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc">
+    <h1>AI 投研模块<br>界面重构方案</h1>
+    <div class="ver">FinFeed · v1.0 · 2026-08-26</div>
+    <div class="grp">方案</div>
+    <a href="#overview">0. 方案摘要</a>
+    <a href="#audit">1. 现状诊断</a>
+    <a href="#ia">2. 信息架构</a>
+    <a href="#layout">3. 布局设计</a>
+    <a href="#lw-workbench" class="l2">3.1 投研工作台</a>
+    <a href="#lw-analyst" class="l2">3.2 分析师工作区</a>
+    <a href="#lw-report" class="l2">3.3 报告阅读器</a>
+    <a href="#lw-task" class="l2">3.4 任务中心</a>
+    <a href="#lw-settings" class="l2">3.5 设置中心</a>
+    <a href="#lw-mobile" class="l2">3.6 移动端</a>
+    <a href="#visual">4. 视觉与图表规范</a>
+    <a href="#flows">5. 交互流程</a>
+    <a href="#states">6. 状态体系</a>
+    <a href="#onboarding">7. 新手引导与效率</a>
+    <a href="#rationale">8. 合理性评估</a>
+    <a href="#roadmap">9. 渐进式实施</a>
+    <a href="#appendix">10. 组件清单</a>
+  </nav>
+
+  <main class="main">
+
+  <!-- ================= 0. 摘要 ================= -->
+  <section id="overview">
+    <span class="tag">方案总览 · EXECUTIVE SUMMARY</span>
+    <h2>0. 方案摘要</h2>
+    <p class="lead">将 AI 投研从「单页堆叠的功能面板」重构为「以任务与报告为中心的分析工作台」：配置下沉、阅读升级、任务可视化、对话带上下文。</p>
+    <div class="grid3">
+      <div class="card">
+        <h4>① 结构分层</h4>
+        <p style="font-size:13.5px;color:var(--text-2)">1 个入口页 + 4 个职能页（工作台 / 分析师 / 报告 / 任务），设置独立成区。普通用户与高级用户各取所需，互不干扰。</p>
+      </div>
+      <div class="card">
+        <h4>② 阅读升级</h4>
+        <p style="font-size:13.5px;color:var(--text-2)">报告由 <code>&lt;pre&gt;</code> 纯文本升级为「结构化报告阅读器」：Markdown 渲染、结论摘要卡、数据表格、ECharts 图表、目录导航。</p>
+      </div>
+      <div class="card">
+        <h4>③ 任务可见</h4>
+        <p style="font-size:13.5px;color:var(--text-2)">引入任务模型：排队 → 分阶段执行（采集/映射/成文）→ 完成/失败，全程进度可视化，可取消、可重试。</p>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h4>④ 对话带上下文</h4>
+        <p style="font-size:13.5px;color:var(--text-2)">分析师工作区引入「上下文面板」：会话内 @ 标的、引用报告，右侧实时显示标的卡片与数据快照，减少记忆负担。</p>
+      </div>
+      <div class="card">
+        <h4>⑤ 状态体系完备</h4>
+        <p style="font-size:13.5px;color:var(--text-2)">骨架屏 / 空状态 / 错误恢复 / 分阶段加载提示全覆盖；新手引导 + 快捷键 + 批量操作兼顾两类用户。</p>
+      </div>
+      <div class="card">
+        <h4>⑥ 渐进式落地</h4>
+        <p style="font-size:13.5px;color:var(--text-2)">4 个阶段（约 6-8 周），每阶段独立可发布、可回滚，先结构后视觉再体验，风险可控。</p>
+      </div>
+    </div>
+    <div class="callout"><b>核心设计原则：</b>「分析是任务，报告是资产，对话是手段，配置是支撑」——四个词定义 AI 投研的全部信息，页面结构由此导出，而非把功能平铺在一个滚动页上。</div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 1. 现状诊断 ================= -->
+  <section id="audit">
+    <span class="tag">现状诊断 · CODE AUDIT</span>
+    <h2>1. 现状诊断</h2>
+    <p class="lead">基于 <code>web/src/views/AiView.vue</code>（1,034 行）与全局布局（<code>App.vue / Sidebar.vue</code>）的代码审查，确认 8 项核心问题。</p>
+
+    <table>
+      <tr><th style="width:180px">问题</th><th style="width:380px">现状证据（源码）</th><th>影响</th></tr>
+      <tr><td><b>① 单页堆叠</b></td><td>状态卡、分析配置、Prompt 编辑、模型管理、对话、历史报告 6 类职责全部纵向堆叠于一个滚动页</td><td>滚动路径长（>1000 行模板），核心操作「生成复盘」被压在报告卡右上角，认知负担重</td></tr>
+      <tr><td><b>② 配置与使用混层</b></td><td>5 个 Prompt 编辑 textarea（<code>map_system / map_user / …</code>）直接平铺在页面上，与对话同级</td><td>普通用户暴露 Prompt 工程细节；开发者配置与消费场景无区分，两种用户都体验受损</td></tr>
+      <tr><td><b>③ 报告纯文本</b></td><td>报告详情用 <code>&lt;pre&gt;</code> 渲染原始内容，展示于模态弹窗；无 Markdown 渲染、无图表、无目录</td><td>长报告（复盘类可达数千字）不可导航、不可快速定位，信息消费效率低；弹窗限制深度阅读</td></tr>
+      <tr><td><b>④ 无任务模型</b></td><td>提交分析后仅弹一条 alert「已提交分析任务」，无进度、无阶段、无队列、无失败原因定位</td><td>LLM 分析是分钟级异步任务，用户无从感知进度；失败后只能盲试</td></tr>
+      <tr><td><b>⑤ 对话上下文割裂</b></td><td>聊天历史仅存于内存 <code>chatLog</code>，无会话持久化；无法在对话中引用报告或 @ 标的</td><td>刷新即丢上下文；「针对某报告追问」只能复制粘贴，核心投研闭环断裂</td></tr>
+      <tr><td><b>⑥ 无引导与空状态</b></td><td>无报告时仅一行「暂无报告」；无首次使用引导、无示例问题、无快捷入口</td><td>新用户面对配置表单无从下手；功能发现成本高</td></tr>
+      <tr><td><b>⑦ 状态反馈单一</b></td><td>仅 alert 文案 + 按钮 loading；无骨架屏、无进度条、错误无恢复路径</td><td>弱网/慢模型场景下体验停滞感明显</td></tr>
+      <tr><td><b>⑧ 移动端弱</b></td><td>对话/报告仅 <code>lg</code> 断点分栏；配置区 flex 换行；无移动端专项布局与手势</td><td>窄屏下内容堆叠、操作区拥挤，移动查阅报告不可用</td></tr>
+    </table>
+
+    <div class="callout"><b>诊断结论：</b>现有实现功能完整（对话、生成、模型管理均已打通），问题集中在<b>「信息组织方式」与「内容呈现深度」</b>——属于结构性与体验性问题，不涉及功能缺失。这决定了重构策略是<b>「重新组织 + 升级呈现」而非推倒重来</b>，后端 API 与既有组件体系可全部复用。</div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 2. 信息架构 ================= -->
+  <section id="ia">
+    <span class="tag">信息架构 · INFORMATION ARCHITECTURE</span>
+    <h2>2. 信息架构重构</h2>
+    <p class="lead">按「任务 → 报告 → 对话 → 配置」的认知层级，将原单页拆分为 5 个页面。入口收敛、职责单一、层级清晰。</p>
+
+    <h3>2.1 架构总览</h3>
+    <div class="arch">
+      <div class="anode hot">
+        <div class="at"><span class="ic">⌂</span> 投研工作台 <code>/ai</code></div>
+        <ul>
+          <li><b>服务状态</b>（常驻、轻量）</li>
+          <li><b>快捷入口</b>：生成复盘 / 继续上次分析 / 追问热点</li>
+          <li><b>最近报告</b>（Top 5）</li>
+          <li><b>今日洞察</b>：AI 摘要卡</li>
+          <li><b>运行中任务</b>实时预览</li>
+        </ul>
+      </div>
+      <div class="anode hot">
+        <div class="at"><span class="ic">◈</span> 分析师 <code>/ai/analyst</code></div>
+        <ul>
+          <li>会话列表（持久化、分组）</li>
+          <li>对话流（Markdown 渲染）</li>
+          <li><b>上下文面板</b>：@标的 / 引用报告</li>
+          <li>快捷指令：<code>/复盘 /解读 /筛选</code></li>
+        </ul>
+      </div>
+      <div class="anode hot">
+        <div class="at"><span class="ic">▤</span> 研究报告 <code>/ai/reports</code></div>
+        <ul>
+          <li>报告列表（筛选/搜索/批量）</li>
+          <li><b>报告阅读器</b>（全屏、目录）</li>
+          <li>结论摘要卡 + 数据图表</li>
+          <li>导出 / 分享 / 追问</li>
+        </ul>
+      </div>
+      <div class="anode">
+        <div class="at"><span class="ic">⇅</span> 任务中心 <code>/ai/tasks</code></div>
+        <ul>
+          <li>任务队列（排队/运行/完成/失败）</li>
+          <li>分阶段进度（采集→映射→成文）</li>
+          <li>取消 / 重试 / 批量重试</li>
+          <li>执行日志</li>
+        </ul>
+      </div>
+      <div class="anode">
+        <div class="at"><span class="ic">⚙</span> 设置 <code>/ai/settings</code></div>
+        <ul>
+          <li>模型管理（Provider CRUD）</li>
+          <li>Prompt 配置（5 个模板）</li>
+          <li>分析默认值（范围/窗口/焦点）</li>
+          <li>数据与通知</li>
+        </ul>
+      </div>
+    </div>
+    <p class="figcap">图 2-1 · 五区结构。加粗边框为高频使用区（工作台为入口，分析师与报告为核心工作区），任务与设置为支撑区。</p>
+
+    <h3>2.2 导航结构</h3>
+    <div class="grid2">
+      <div class="card">
+        <h4>页面级导航（Sidebar）</h4>
+        <ul>
+          <li>侧边栏「投研分析」组内：<b>仪表盘 → 保留</b>；<b>AI 投研 → 改为可展开子菜单</b>（工作台 / 分析师 / 研究报告 / 任务中心）；设置移出导航主链路（入口放工作台卡片内）。</li>
+          <li>子菜单命中态：<code>/ai/*</code> 前缀高亮「AI 投研」父级，避免五页平铺挤压侧边栏。</li>
+          <li>「自选收藏」保持独立，与投研模块互链（报告/对话可一键加入自选）。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>页内导航（三级）</h4>
+        <ul>
+          <li><b>工作台</b>：顶部页头 + 卡片分区，滚动锚点。</li>
+          <li><b>分析师</b>：左会话列表（可折叠）+ 中对话 + 右上下文（可折叠）——三栏，桌面默认展开中栏。</li>
+          <li><b>报告</b>：列表视图 ↔ 阅读器视图切换；阅读器内左侧目录锚点。</li>
+          <li><b>任务/设置</b>：列表 + 详情、左侧设置分节导航。</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>2.3 内容优先级</h3>
+    <table>
+      <tr><th>优先级</th><th>内容</th><th>理由</th></tr>
+      <tr><td><span class="pill p-brand">P0 核心</span></td><td>生成任务入口、报告阅读、对话追问</td><td>用户完成「分析—阅读—追问」闭环的主路径</td></tr>
+      <tr><td><span class="pill p-good">P1 支撑</span></td><td>任务进度、上下文面板、最近报告</td><td>异步场景的状态安全感与记忆辅助</td></tr>
+      <tr><td><span class="pill p-warn">P2 配置</span></td><td>模型管理、Prompt 编辑</td><td>低频且面向高级用户，独立成页、入口下沉</td></tr>
+      <tr><td><span class="pill p-bad">P3 装饰</span></td><td>今日洞察摘要、状态详情</td><td>增强体验，不阻塞主流程</td></tr>
+    </table>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 3. 布局设计 ================= -->
+  <section id="layout">
+    <span class="tag">布局设计 · LAYOUT WIREFRAMES</span>
+    <h2>3. 布局设计（高保真线框）</h2>
+    <p class="lead">以下 6 组线框图为方案的界面示意：结构、层级与主要控件位置均可直接作为开发参照。配色沿用现有 v3.0 设计系统（主色 <code>#2f7d5b</code>，红涨 <code>#e5484d</code> / 绿跌 <code>#12a150</code>）。</p>
+
+    <!-- ===== 3.1 工作台 ===== -->
+    <h3 id="lw-workbench">3.1 投研工作台 <code style="font-weight:400">/ai</code> —— 入口与总览</h3>
+    <div class="wf">
+      <div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm">投研工作台</span><span class="hint">桌面 1440px · 三区纵排</span></div>
+      <div class="wf-body">
+        <div class="frame" style="padding:10px;background:#fff">
+          <div class="ui-topbar">
+            <span class="ui-burger"><i></i></span><span class="ui-logo"></span><span class="ui-title">AI 投研</span>
+            <span class="ui-sp"></span>
+            <span class="ui-search"></span>
+            <span class="ui-badge">服务正常 · DeepSeek</span>
+            <span class="ui-avatar"></span>
+          </div>
+          <div class="ui-row" style="margin-top:10px">
+            <!-- 左主区 2/3 -->
+            <div style="flex:2" class="ui-col">
+              <div class="ui-card" style="display:flex;align-items:center;gap:10px">
+                <div>
+                  <div class="ui-t b">AI 投研工作台</div>
+                  <div class="ui-t s">以任务与报告为中心的投研助手</div>
+                </div>
+                <div class="ui-sp"></div>
+                <span class="ui-btn g">继续上次分析</span>
+                <span class="ui-btn p" style="height:20px;padding:0 14px;font-size:10px">＋ 生成每日复盘</span>
+              </div>
+              <!-- KPI -->
+              <div class="ui-row">
+                <div class="ui-card" style="flex:1"><div class="ui-label">今日报告</div><div class="ui-kpi">3 <small>篇</small></div><div class="ui-t s">较昨日 +1</div></div>
+                <div class="ui-card" style="flex:1"><div class="ui-label">运行中任务</div><div class="ui-kpi">1 <small>个</small></div><div class="ui-t s">预计 40s 完成</div></div>
+                <div class="ui-card" style="flex:1"><div class="ui-label">模型</div><div class="ui-kpi" style="font-size:13px">DeepSeek<small>chat</small></div><div class="ui-t s">连通 · 480ms</div></div>
+                <div class="ui-card" style="flex:1"><div class="ui-label">数据窗口</div><div class="ui-kpi" style="font-size:13px">24h <small>全市场</small></div><div class="ui-t s">可修改</div></div>
+              </div>
+              <!-- 运行中任务条 -->
+              <div class="ui-card tint" style="display:flex;align-items:center;gap:10px">
+                <span class="ui-badge">进行中</span>
+                <div style="flex:1"><div class="ui-t" style="font-size:9.5px">生成每日复盘 · 正在汇总成文（阶段 3/3）</div>
+                <div class="ui-progress" style="margin-top:3px"><i style="width:72%"></i></div></div>
+                <span class="ui-t s">72%</span><span class="ui-btn g">查看</span>
+              </div>
+              <!-- 快捷指令 -->
+              <div class="ui-card">
+                <div class="ui-label">快捷指令</div>
+                <div class="ui-row">
+                  <div class="ui-card tint" style="flex:1;text-align:center;cursor:pointer"><div class="ui-t b" style="color:var(--brand-dark)">📄 生成复盘</div><div class="ui-t s">一键产出当日复盘报告</div></div>
+                  <div class="ui-card tint" style="flex:1;text-align:center;cursor:pointer"><div class="ui-t b" style="color:var(--brand-dark)">🔍 解读个股</div><div class="ui-t s">@ 标的深度分析</div></div>
+                  <div class="ui-card tint" style="flex:1;text-align:center;cursor:pointer"><div class="ui-t b" style="color:var(--brand-dark)">💬 追问行情</div><div class="ui-t s">基于快讯问答</div></div>
+                  <div class="ui-card tint" style="flex:1;text-align:center;cursor:pointer"><div class="ui-t b" style="color:var(--brand-dark)">⚙ 设置</div><div class="ui-t s">模型与 Prompt</div></div>
+                </div>
+              </div>
+              <!-- 最近报告 -->
+              <div class="ui-card">
+                <div class="ui-row" style="align-items:center"><div class="ui-label" style="margin:0">最近报告</div><div class="ui-sp"></div><a class="ui-t s" style="color:var(--brand-dark)">全部 →</a></div>
+                <div class="ui-col" style="margin-top:8px;gap:6px">
+                  <div class="ui-row" style="align-items:center"><span class="ui-t" style="font-size:10px">8/26 每日复盘 · 全市场</span><span class="ui-badge">完成</span><div class="ui-sp"></div><span class="ui-t s">09:32</span></div>
+                  <div class="ui-row" style="align-items:center"><span class="ui-t" style="font-size:10px">8/25 半导体板块异动解读</span><span class="ui-badge">完成</span><div class="ui-sp"></div><span class="ui-t s">昨天</span></div>
+                  <div class="ui-row" style="align-items:center"><span class="ui-t" style="font-size:10px">8/25 新能源车产业链跟踪</span><span class="ui-badge up">失败</span><span class="ui-t s" style="color:var(--up)">重试</span><div class="ui-sp"></div><span class="ui-t s">昨天</span></div>
+                </div>
+              </div>
+            </div>
+            <!-- 右栏 1/3 -->
+            <div style="flex:1" class="ui-col">
+              <div class="ui-card" style="border-color:#cfe0d7">
+                <div class="ui-label" style="color:var(--brand-dark)">今日洞察 · AI 摘要</div>
+                <div class="ui-line w90"></div><div class="ui-line w70" style="margin-top:4px"></div><div class="ui-line w30" style="margin-top:4px"></div>
+                <div class="ui-t s" style="margin-top:6px">↑ 半导体 3.2% 领涨 · 北向净流入 42 亿</div>
+                <div class="ui-row" style="margin-top:8px"><span class="ui-btn g">查看详情</span></div>
+              </div>
+              <div class="ui-card">
+                <div class="ui-label">热门标的 · 问询榜</div>
+                <div class="ui-col" style="gap:5px;margin-top:5px">
+                  <div class="ui-row"><span class="ui-t" style="font-size:10px">中芯国际</span><span class="ui-sp"></span><span class="ui-t up">+3.2%</span></div>
+                  <div class="ui-row"><span class="ui-t" style="font-size:10px">宁德时代</span><span class="ui-sp"></span><span class="ui-t up">+1.8%</span></div>
+                  <div class="ui-row"><span class="ui-t" style="font-size:10px">贵州茅台</span><span class="ui-sp"></span><span class="ui-t dn">-0.6%</span></div>
+                </div>
+              </div>
+              <div class="ui-card tint">
+                <div class="ui-label">未读洞察</div>
+                <div class="ui-t s">3 条待读</div>
+                <div class="ui-row" style="margin-top:8px"><span class="ui-btn g">全部标记已读</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-note"><b>设计要点：</b>① 页头主按钮「生成每日复盘」恒定可见，是最高频动作；② 运行中任务以进度条常驻，随时可跳转任务中心；③ 失败报告就地提供「重试」，不要求用户去任务中心；④ 右栏为轻量辅助（洞察/问询榜），不承载关键操作。</div>
+    </div>
+
+    <!-- ===== 3.2 分析师 ===== -->
+    <h3 id="lw-analyst">3.2 分析师工作区 <code style="font-weight:400">/ai/analyst</code> —— 三栏对话</h3>
+    <div class="wf">
+      <div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm">分析师工作区</span><span class="hint">桌面 1440px · 三栏：会话列表 / 对话 / 上下文</span></div>
+      <div class="wf-body">
+        <div class="frame" style="padding:10px;background:#fff">
+          <div class="ui-topbar">
+            <span class="ui-burger"><i></i></span><span class="ui-logo"></span><span class="ui-title">分析师</span>
+            <span class="ui-sp"></span>
+            <span class="ui-pill">当前上下文：中芯国际 688981</span>
+            <span class="ui-avatar"></span>
+          </div>
+          <div class="ui-row" style="margin-top:10px;align-items:stretch;min-height:330px">
+            <!-- 左：会话列表 -->
+            <div style="width:150px;flex-shrink:0" class="ui-col">
+              <div class="ui-btn d" style="justify-content:center">＋ 新建会话</div>
+              <div class="ui-label">今天</div>
+              <div class="ui-card tint" style="border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-subtle)"><div class="ui-t" style="font-size:9.5px">半导体资金流向</div><div class="ui-t s">3 分钟前</div></div>
+              <div class="ui-card"><div class="ui-t" style="font-size:9.5px">复盘追问：8/26</div><div class="ui-t s">1 小时前</div></div>
+              <div class="ui-label">本周</div>
+              <div class="ui-card"><div class="ui-t" style="font-size:9.5px">宁德时代财报解读</div><div class="ui-t s">周一</div></div>
+              <div class="ui-card"><div class="ui-t" style="font-size:9.5px">北向资金异动</div><div class="ui-t s">周日</div></div>
+            </div>
+            <!-- 中：对话 -->
+            <div style="flex:1" class="ui-col">
+              <div class="ui-card" style="flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+                <div class="ui-chat-a"><span class="av"></span><span class="bub">根据快讯，<span class="hl">半导体</span>板块今日资金净流入居前，其中中芯国际（688981）放量上涨 3.2%。需要我生成一份标的分析吗？</span></div>
+                <div class="ui-chat-a me"><span class="av"></span><span class="bub">分析中芯国际的资金流向和近期催化</span></div>
+                <div class="ui-chat-a"><span class="av"></span><span class="bub">
+                  <div class="ui-t b" style="font-size:9.5px">中芯国际 · 资金流向快照</div>
+                  <div class="ui-t s">主力净流入 2.4 亿（+3.2%）· 北向 +0.9 亿 · 换手 1.8%</div>
+                  <div class="ui-row" style="margin-top:5px"><span class="ui-pill">查看完整报告</span><span class="ui-pill">加入自选</span></div>
+                </span></div>
+                <div class="ui-sp"></div>
+              </div>
+              <!-- 输入区 -->
+              <div class="ui-card tint">
+                <div class="ui-row" style="gap:4px;flex-wrap:wrap"><span class="ui-pill">/复盘</span><span class="ui-pill">/解读</span><span class="ui-pill">@标的</span><span class="ui-pill">引用报告</span></div>
+                <div class="ui-row" style="margin-top:6px;align-items:center">
+                  <div style="flex:1;height:18px;border:1px solid #d8dfdb;border-radius:7px;background:#fff;display:flex;align-items:center;padding:0 8px" class="ui-t s">@中芯国际 的资金流向和近期催化… <span style="margin-left:6px;color:var(--brand-dark);font-weight:700">▍</span></div>
+                  <span class="ui-btn g">发送 ↵</span>
+                </div>
+              </div>
+            </div>
+            <!-- 右：上下文 -->
+            <div style="width:190px;flex-shrink:0" class="ui-col">
+              <div class="ui-row" style="align-items:center"><span class="ui-t b" style="font-size:10px">上下文</span><span class="ui-sp"></span><span class="ui-badge mu">折叠</span></div>
+              <div class="ui-context">
+                <b>标的 · 中芯国际</b>
+                <div class="ui-line w90" style="margin:5px 0"></div>
+                <div class="ui-t s">688981 · 半导体 · 55.2 元</div>
+                <div class="ui-t up" style="font-weight:700">+3.2%</div>
+                <div class="ui-row" style="margin-top:5px"><span class="ui-badge">主力流入</span><span class="ui-badge dn">高波动</span></div>
+              </div>
+              <div class="ui-context"><b>引用 · 8/26 复盘报告</b><div class="ui-t s">第 3 节 · 半导体板块</div></div>
+              <div class="ui-context"><b>数据快照</b><div class="ui-t s">窗口 24h · 快讯 128 条</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-note"><b>设计要点：</b>① 三栏均可折叠：窄屏自动折叠左右栏，进入纯对话模式；② 输入框上方的指令胶囊降低学习成本（点击即插入 <code>@标的</code> 语法）；③ 上下文面板随对话实时更新，回答中可直接点「查看完整报告」跳转阅读器；④ 会话持久化到后端，刷新不丢。</div>
+    </div>
+
+    <!-- ===== 3.3 报告阅读器 ===== -->
+    <h3 id="lw-report">3.3 报告阅读器 <code style="font-weight:400">/ai/reports/:id</code> —— 结构化阅读</h3>
+    <div class="wf">
+      <div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm">报告阅读器</span><span class="hint">全屏沉浸 · 左目录 / 中正文 / 右操作</span></div>
+      <div class="wf-body">
+        <div class="frame" style="padding:10px;background:#fff">
+          <div class="ui-topbar">
+            <span class="ui-burger"><i></i></span><span class="ui-logo"></span>
+            <span class="ui-t" style="font-size:11px;font-weight:600">8/26 每日复盘 · 全市场</span>
+            <span class="ui-sp"></span>
+            <span class="ui-badge">完成 · 09:32</span>
+            <span class="ui-btn g">导出</span><span class="ui-btn g">分享</span><span class="ui-btn p">追问此报告</span>
+          </div>
+          <div class="ui-row" style="margin-top:10px;align-items:stretch;min-height:340px">
+            <div style="width:140px;flex-shrink:0" class="ui-col">
+              <div class="ui-card tint">
+                <div class="ui-label">目录</div>
+                <div class="ui-t" style="font-size:9px;color:var(--brand-dark);font-weight:700">① 摘要结论</div>
+                <div class="ui-t s" style="font-size:9px">② 指数与大盘</div>
+                <div class="ui-t s" style="font-size:9px">③ 板块轮动</div>
+                <div class="ui-t s" style="font-size:9px">④ 涨跌停分析</div>
+                <div class="ui-t s" style="font-size:9px">⑤ 资金流向</div>
+                <div class="ui-t s" style="font-size:9px">⑥ 风险提示</div>
+              </div>
+              <div class="ui-card"><div class="ui-label">元信息</div><div class="ui-t s">窗口 24h · 范围全市场 · 生成 38s</div></div>
+            </div>
+            <div style="flex:1" class="ui-col">
+              <div class="ui-card" style="border-color:#cfe0d7;background:var(--brand-subtle)">
+                <div class="ui-label" style="color:var(--brand-dark)">摘要结论</div>
+                <div class="ui-t" style="font-size:10px">今日市场震荡上行，<b>半导体领涨 +3.2%</b>，北向净流入 42 亿。关注三个信号：…</div>
+                <div class="ui-row" style="margin-top:6px"><span class="ui-badge">半导体</span><span class="ui-badge">北向流入</span><span class="ui-badge">高切低</span></div>
+              </div>
+              <div class="ui-card">
+                <div class="ui-label">② 指数与大盘</div>
+                <div class="ui-row" style="align-items:center">
+                  <div style="flex:1">
+                    <div class="ui-table">
+                      <table class="ui-table"><tr><th>指数</th><th>收盘</th><th>涨跌幅</th></tr>
+                      <tr><td>上证指数</td><td>3,432</td><td class="ui-t up">+0.8%</td></tr>
+                      <tr><td>深证成指</td><td>10,875</td><td class="ui-t up">+1.1%</td></tr>
+                      <tr><td>创业板指</td><td>2,240</td><td class="ui-t up">+1.6%</td></tr></table>
+                    </div>
+                  </div>
+                  <div style="width:150px;height:70px;display:flex;align-items:flex-end;gap:3px;padding:4px;background:#f6f8f7;border-radius:7px">
+                    <span style="flex:1;height:38%;background:var(--down)"></span><span style="flex:1;height:52%;background:var(--down)"></span><span style="flex:1;height:44%;background:var(--down)"></span><span style="flex:1;height:60%;background:var(--down)"></span><span style="flex:1;height:55%;background:var(--down)"></span><span style="flex:1;height:72%;background:var(--up)"></span><span style="flex:1;height:80%;background:var(--up)"></span><span style="flex:1;height:88%;background:var(--up)"></span><span style="flex:1;height:76%;background:var(--up)"></span><span style="flex:1;height:92%;background:var(--up)"></span>
+                    <span style="flex:1;height:100%;background:var(--up)"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="ui-card">
+                <div class="ui-label">③ 板块轮动 · 涨幅 Top5</div>
+                <div class="ui-table"><table class="ui-table">
+                  <tr><th>板块</th><th>涨幅</th><th>资金</th><th>AI 解读</th></tr>
+                  <tr><td>半导体</td><td class="ui-t up">+3.2%</td><td>+18.6 亿</td><td class="ui-t s">国产替代催化</td></tr>
+                  <tr><td>消费电子</td><td class="ui-t up">+2.1%</td><td>+9.2 亿</td><td class="ui-t s">新机发布预期</td></tr>
+                </table></div>
+              </div>
+            </div>
+            <div style="width:150px;flex-shrink:0" class="ui-col">
+              <div class="ui-card tint"><div class="ui-label">AI 结论卡</div><div class="ui-t s">多空倾向</div><div class="ui-t up" style="font-weight:700;font-size:13px">偏多 ▲</div><div class="ui-progress" style="margin:5px 0"><i style="width:62%"></i></div><div class="ui-t s">置信度 62%</div></div>
+              <div class="ui-card"><div class="ui-label">关联</div><div class="ui-t s">3 篇相关报告</div><div class="ui-t s">5 只相关标的</div></div>
+              <div class="ui-card"><div class="ui-label">操作</div>
+                <div class="ui-col" style="gap:4px"><span class="ui-btn g">加入自选</span><span class="ui-btn g">导出 Markdown</span><span class="ui-btn g">复制链接</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-note"><b>设计要点：</b>① 摘要结论卡置顶——用户 10 秒内拿到核心结论，再按需深入；② 表格与图表同区块（图表随数据渲染，遵守红涨绿跌）；③ 右栏「AI 结论卡」将模型的定性判断量化展示（多空倾向 + 置信度），并给出关联资产；④ 全屏阅读替代原弹窗，支持浏览器滚动与目录锚点；⑤ 「追问此报告」一键携带 <code>report_id</code> 跳转分析师。</div>
+    </div>
+
+    <!-- ===== 3.4 任务中心 ===== -->
+    <h3 id="lw-task">3.4 任务中心 <code style="font-weight:400">/ai/tasks</code> —— 异步可视化</h3>
+    <div class="wf">
+      <div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm">任务中心</span><span class="hint">列表 + 详情抽屉</span></div>
+      <div class="wf-body">
+        <div class="frame" style="padding:10px;background:#fff">
+          <div class="ui-topbar"><span class="ui-logo"></span><span class="ui-title">任务中心</span><span class="ui-sp"></span><span class="ui-btn g">批量重试失败</span></div>
+          <div class="ui-row" style="margin-top:10px;gap:6px">
+            <span class="ui-tab on">全部</span><span class="ui-tab">进行中</span><span class="ui-tab">已完成</span><span class="ui-tab">失败</span>
+          </div>
+          <div class="ui-col" style="margin-top:10px;gap:8px">
+            <div class="ui-card" style="border-color:#cfe0d7">
+              <div class="ui-row" style="align-items:center">
+                <span class="ui-badge">运行中</span>
+                <span class="ui-t" style="font-size:10.5px;font-weight:600">生成每日复盘 · 全市场</span>
+                <span class="ui-sp"></span>
+                <span class="ui-btn r">取消</span>
+              </div>
+              <div class="ui-row" style="margin-top:7px;align-items:center;gap:10px">
+                <div style="flex:1;display:flex;gap:4px">
+                  <span style="flex:1;height:5px;border-radius:3px;background:var(--brand)"></span>
+                  <span style="flex:1;height:5px;border-radius:3px;background:var(--brand)"></span>
+                  <span style="flex:1;height:5px;border-radius:3px;background:var(--brand)"></span>
+                  <span style="flex:1;height:5px;border-radius:3px;background:#e8edea"></span>
+                </div>
+                <span class="ui-t s">阶段 3/4 · 汇总成文</span>
+              </div>
+              <div class="ui-t s" style="margin-top:5px">已用 26s · 预计剩余 15s · 数据窗口 24h</div>
+            </div>
+            <div class="ui-card">
+              <div class="ui-row" style="align-items:center"><span class="ui-badge up">失败</span><span class="ui-t" style="font-size:10.5px;font-weight:600">8/25 新能源车产业链跟踪</span><span class="ui-sp"></span><span class="ui-btn g">重试</span><span class="ui-btn g">查看日志</span></div>
+              <div class="ui-t s" style="margin-top:5px">错误：LLM 响应超时（120s）· 失败于「汇总成文」阶段</div>
+            </div>
+            <div class="ui-card"><div class="ui-row" style="align-items:center"><span class="ui-badge">完成</span><span class="ui-t" style="font-size:10.5px;font-weight:600">8/25 半导体板块异动解读</span><span class="ui-sp"></span><span class="ui-t s">耗时 41s</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-note"><b>设计要点：</b>① 阶段化进度（采集 → 映射 → 成文）比单一百分比更可信——用户能判断「卡在哪一步」；② 失败任务就地展示错误摘要与重试入口，日志抽屉给出详细堆栈；③ 支持批量重试，供自动化场景（定时复盘失败后一键补跑）；④ 与工作台进度条、报告列表状态三处联动，单一数据源。</div>
+    </div>
+
+    <!-- ===== 3.5 设置 ===== -->
+    <h3 id="lw-settings">3.5 设置中心 <code style="font-weight:400">/ai/settings</code> —— 配置下沉</h3>
+    <div class="wf">
+      <div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm">设置中心</span><span class="hint">左导航 / 右表单 · 模型管理独立卡片</span></div>
+      <div class="wf-body">
+        <div class="frame" style="padding:10px;background:#fff">
+          <div class="ui-topbar"><span class="ui-logo"></span><span class="ui-title">AI 设置</span><span class="ui-sp"></span><span class="ui-btn p">保存全部</span></div>
+          <div class="ui-row" style="margin-top:10px;align-items:stretch">
+            <div style="width:130px;flex-shrink:0" class="ui-col">
+              <span class="ui-tab on" style="width:100%;text-align:left">模型管理</span>
+              <span class="ui-tab" style="width:100%;text-align:left">Prompt 模板</span>
+              <span class="ui-tab" style="width:100%;text-align:left">分析默认值</span>
+              <span class="ui-tab" style="width:100%;text-align:left">数据与通知</span>
+            </div>
+            <div style="flex:1" class="ui-col">
+              <div class="ui-card">
+                <div class="ui-row" style="align-items:center"><div class="ui-label" style="margin:0">模型管理</div><div class="ui-sp"></div><span class="ui-btn d">＋ 添加模型</span></div>
+                <div class="ui-col" style="margin-top:8px;gap:6px">
+                  <div class="ui-row" style="align-items:center;border:1px solid #e3e9e6;border-radius:8px;padding:7px 9px">
+                    <span class="ui-badge">默认</span><span class="ui-t" style="font-size:10px;font-weight:600">DeepSeek</span><span class="ui-t s">deepseek-chat · 已连通 480ms</span><span class="ui-sp"></span><span class="ui-btn g">测试</span><span class="ui-btn g">编辑</span>
+                  </div>
+                  <div class="ui-row" style="align-items:center;border:1px solid #e3e9e6;border-radius:8px;padding:7px 9px">
+                    <span class="ui-t" style="font-size:10px;font-weight:600">本地 Ollama</span><span class="ui-t s">qwen2.5:14b · 未测试</span><span class="ui-sp"></span><span class="ui-btn g">测试</span><span class="ui-btn g">编辑</span>
+                  </div>
+                </div>
+              </div>
+              <div class="ui-card tint">
+                <div class="ui-label">分析默认值</div>
+                <div class="ui-row" style="margin-top:5px"><div style="flex:1" class="ui-input">范围：全市场 ▾</div><div style="flex:1" class="ui-input">窗口：24 小时 ▾</div></div>
+                <div class="ui-row" style="margin-top:6px"><div style="flex:1" class="ui-input">自定义焦点：如半导体与新能源…</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-note"><b>设计要点：</b>① 设置独立成页后，核心工作区不再被配置表单污染；② Prompt 模板收起为「高级」折叠区，默认不展开，避免普通用户误触；③ 模型新增/测试/设默认的交互保留原逻辑，仅重构为抽屉式表单；④ 保存策略由「手动保存」改为「节流自动保存 + 手动批量保存」双保险。</div>
+    </div>
+
+    <!-- ===== 3.6 移动端 ===== -->
+    <h3 id="lw-mobile">3.6 移动端适配 —— 底部 Tab + 折叠</h3>
+    <div class="wf">
+      <div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm">移动端 · 分析师</span><span class="hint">375px · 单栏 + 底部操作条</span></div>
+      <div class="wf-body">
+        <div class="frame" style="padding:10px;max-width:340px;margin:0 auto;background:#fff">
+          <div class="ui-topbar"><span class="ui-burger"><i></i></span><span class="ui-title">分析师 · 半导体资金流向</span><span class="ui-sp"></span><span class="ui-avatar"></span></div>
+          <div class="ui-col" style="margin-top:10px;min-height:230px">
+            <div class="ui-chat-a"><span class="av"></span><span class="bub">半导体板块今日资金净流入居前…</span></div>
+            <div class="ui-chat-a me"><span class="av"></span><span class="bub">分析中芯国际</span></div>
+            <div class="ui-chat-a"><span class="av"></span><span class="bub"><b>中芯国际</b> · 主力净流入 2.4 亿 <span class="ui-t up" style="font-size:9px">+3.2%</span></span></div>
+          </div>
+          <div class="ui-card tint">
+            <div class="ui-row" style="margin-top:2px">
+              <div style="flex:1;height:18px;border:1px solid #d8dfdb;border-radius:7px;background:#fff;display:flex;align-items:center;padding:0 8px" class="ui-t s">输入问题… @标的 / 引用报告</div>
+              <span class="ui-btn p">发送</span>
+            </div>
+          </div>
+          <div class="ui-row" style="margin-top:8px;gap:4px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="width:16px;height:16px;border-radius:5px;background:var(--brand)"></span><span class="ui-t s" style="color:var(--brand-dark);font-weight:700">工作台</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="width:16px;height:16px;border-radius:5px;background:#e5e9e7"></span><span class="ui-t s">分析师</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="width:16px;height:16px;border-radius:5px;background:#e5e9e7"></span><span class="ui-t s">报告</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="width:16px;height:16px;border-radius:5px;background:#e5e9e7"></span><span class="ui-t s">任务</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="width:16px;height:16px;border-radius:5px;background:#e5e9e7"></span><span class="ui-t s">我的</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-note"><b>设计要点：</b>① 移动端采用底部 Tab（工作台/分析师/报告/任务/我的），替代侧边栏，拇指可达；② 三栏降为单栏：会话列表→顶部下拉或抽屉，上下文→「⌾ 上下文」浮层按钮；③ 报告阅读器保留目录（折叠为抽屉）与摘要卡，表格横向滚动或转卡片式；④ 长按消息可复制/收藏；⑤ 报告生成类长任务在移动端显示系统级通知。</div>
+    </div>
+
+    <h3>3.7 响应式断点策略</h3>
+    <table>
+      <tr><th>断点</th><th>布局</th><th>关键调整</th></tr>
+      <tr><td><b>&gt; 1440px</b>（xl 大屏）</td><td>工作台内容最大宽 1280px 居中</td><td>分析师三栏全展开；报告阅读器三栏</td></tr>
+      <tr><td><b>1024–1440px</b>（lg 桌面）</td><td>侧边栏常驻</td><td>分析师右上下文默认折叠，点击展开（悬浮）</td></tr>
+      <tr><td><b>768–1024px</b>（md 平板）</td><td>侧边栏收起为汉堡抽屉</td><td>分析师降为两栏：会话列表折叠为顶部抽屉</td></tr>
+      <tr><td><b>&lt; 768px</b>（移动）</td><td>底部 Tab</td><td>单栏对话；上下文为浮层；表格卡片化</td></tr>
+    </table>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 4. 视觉与图表规范 ================= -->
+  <section id="visual">
+    <span class="tag">视觉与数据可视化 · VISUAL &amp; CHART</span>
+    <h2>4. 视觉与 UI 设计规范</h2>
+    <p class="lead">在现有 v3.0 设计系统（<code>tokens.css</code>）之上做<b>增量扩展</b>，不推翻既有令牌体系，仅新增 AI 投研专属组件令牌与图表规范。</p>
+
+    <h3>4.1 色彩语义扩展</h3>
+    <div class="grid3">
+      <div class="card"><h4>品牌/功能色（沿用）</h4>
+        <ul style="font-size:13.5px">
+          <li>主色 <code>#2f7d5b</code> / 浅 <code>#4f9e76</code> / 深 <code>#1d4e39</code></li>
+          <li>品牌底纹 <code>#eaf4ef</code>（摘要卡、激活态）</li>
+          <li>风险/警告 <code>#d97706</code>（Prompt 高级区、超时提示）</li>
+        </ul>
+      </div>
+      <div class="card"><h4>市场语义色（沿用）</h4>
+        <ul style="font-size:13.5px">
+          <li>涨/利好 <span class="pill p-bad" style="font-size:11px">#e5484d 红</span>，跌/利空 <span class="pill p-good" style="font-size:11px">#12a150 绿</span></li>
+          <li>仅用于<b>行情数据</b>（价格、涨跌幅、资金流向）</li>
+          <li>AI 定性判断（多空倾向/置信度）用品牌色表达，避免语义混淆</li>
+        </ul>
+      </div>
+      <div class="card"><h4>AI 结论语义（新增）</h4>
+        <ul style="font-size:13.5px">
+          <li>偏多：品牌绿系 <code>#2f7d5b</code>；偏空：<code>#d97706</code>（琥珀，区别于行情红绿）</li>
+          <li>置信度刻度：低 &lt;50% / 中 50–75% / 高 &gt;75%，对应中性/琥珀/品牌色</li>
+          <li>证据标注一律 <code>#9ca3af</code> 灰，注明「AI 生成，仅供参考」</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>4.2 报告排版规范（Markdown → 结构化渲染）</h3>
+    <table>
+      <tr><th>内容类型</th><th>呈现方式</th><th>规范</th></tr>
+      <tr><td>一级标题</td><td>章节大标题</td><td><code>ff-h2</code> 19px/600，左侧品牌色竖线装饰</td></tr>
+      <tr><td>摘要结论</td><td>置顶摘要卡</td><td>品牌底纹卡片，AI 提炼 2–4 条要点 + 标签，10 秒可读</td></tr>
+      <tr><td>数据表格</td><td>结构化表格</td><td>复用 <code>.ff-table</code>；涨跌幅列红涨绿跌；数字 <code>tabular-nums</code></td></tr>
+      <tr><td>行情图表</td><td>ECharts 内嵌</td><td>K 线/柱状：红涨绿跌；面积图：品牌绿渐变；统一图表高度 240px</td></tr>
+      <tr><td>关键结论</td><td>结论卡</td><td>白卡 + 品牌色左边框 + 「依据」引用序号（可点击回跳到正文）</td></tr>
+      <tr><td>风险提示</td><td>警示区</td><td>琥珀色底纹 + ⚠ 图标，置于报告末尾</td></tr>
+      <tr><td>长段落</td><td>正文</td><td><code>ff-body</code> 15px/1.6，段间距 16px</td></tr>
+    </table>
+    <div class="callout"><b>关键决策：</b>引入轻量 Markdown 渲染器（如 <code>marked</code> + 白名单 sanitize，或后端渲染）而非直接输出 HTML——<b>风险是 XSS 与样式失控</b>，故必须：① 服务端或构建期渲染；② 只允许白名单标签；③ 表格/标题/列表/引用四类语法优先支持，满足复盘报告 95% 的格式需求。</div>
+
+    <h3>4.3 图表规范（数据可视化）</h3>
+    <div class="grid2">
+      <div class="card">
+        <h4>图表类型选择</h4>
+        <table style="font-size:12.5px">
+          <tr><th>场景</th><th>推荐图表</th></tr>
+          <tr><td>指数走势</td><td>面积/折线（叠加涨跌分色）</td></tr>
+          <tr><td>板块涨跌对比</td><td>横向条形（红涨绿跌）</td></tr>
+          <tr><td>资金流向</td><td>堆叠条形（主力/北向/散户）</td></tr>
+          <tr><td>涨跌停分布</td><td>漏斗/占比条</td></tr>
+          <tr><td>多标的分时</td><td>多线对比（复用 sector-minute 能力）</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h4>图表交互原则</h4>
+        <ul style="font-size:13.5px">
+          <li>所有图表可 <b>tooltip 悬停</b>、<b>点击数据点跳转</b>（标的一键进分析师）</li>
+          <li>图表与下方表格<b>联动高亮</b>（hover 行 ↔ 高亮数据点）</li>
+          <li>数据来源标注在图表角落（快讯/行情接口 + 时间戳）</li>
+          <li>加载中显示骨架柱；无数据时显示空态而非空白坐标轴</li>
+          <li>移动端图表简化：只保留主图，图例折叠</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>4.4 组件与尺寸</h3>
+    <ul>
+      <li><b>新增组件</b>：<code>ReportReader</code>（阅读器）、<code>ReportSummaryCard</code>（摘要卡）、<code>TaskProgress</code>（阶段进度条）、<code>ContextPanel</code>（上下文面板）、<code>SessionList</code>（会话列表）、<code>PromptEditor</code>（高级配置）、<code>MarkdownView</code>（安全渲染）。</li>
+      <li><b>间距</b>：区块间距统一 <code>--ff-space-5</code>（20px）；卡片内边距 <code>--ff-space-4</code>（16px）；对话气泡间距 <code>--ff-space-3</code>（12px）。</li>
+      <li><b>圆角</b>：卡片 12px（<code>--ff-radius-lg</code>）；对话气泡 10px + 单侧小角；标签胶囊 12px。</li>
+      <li><b>动效</b>：进入 150ms 淡入；抽屉 220ms 滑入；任务进度更新 300ms 缓动；禁用 <code>prefers-reduced-motion</code> 时全部关闭。</li>
+      <li><b>深浅模式</b>：全部新增令牌同时提供 <code>[data-theme="dark"]</code> 值，报告阅读器深色下图表自动切换深底浅字。</li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 5. 交互流程 ================= -->
+  <section id="flows">
+    <span class="tag">交互流程 · USER FLOWS</span>
+    <h2>5. 核心交互流程</h2>
+    <p class="lead">三条主路径 + 一条配置路径。每条路径目标明确、步骤 ≤ 4 步、可随时中断恢复。</p>
+
+    <h3>5.1 流程 A · 新建研报（生成每日复盘）</h3>
+    <div class="flow">
+      <div class="fnode alt">工作台<br><span style="font-size:10px;font-weight:400">点「生成每日复盘」</span></div><span class="farrow">→</span>
+      <div class="fnode">参数确认<br><span style="font-size:10px;font-weight:400">范围/窗口/焦点（默认值可直发）</span></div><span class="farrow">→</span>
+      <div class="fnode">任务入队<br><span style="font-size:10px;font-weight:400">页面进入任务态</span></div><span class="farrow">→</span>
+      <div class="fnode">分阶段执行<br><span style="font-size:10px;font-weight:400">采集→映射→成文</span></div><span class="farrow">→</span>
+      <div class="fnode alt">完成通知<br><span style="font-size:10px;font-weight:400">Toast + 列表置顶</span></div><span class="farrow">→</span>
+      <div class="fnode gray">阅读报告<br><span style="font-size:10px;font-weight:400">跳转阅读器 / 就地展开</span></div>
+      <div class="fnote">设计依据：默认参数直发降低启动成本；异步任务不阻塞页面，用户可边等边做其他事；完成后一键直达阅读器。</div>
+    </div>
+
+    <h3>5.2 流程 B · 查看标的分析</h3>
+    <div class="flow">
+      <div class="fnode alt">分析师<br><span style="font-size:10px;font-weight:400">输入 <code>@中芯国际</code></span></div><span class="farrow">→</span>
+      <div class="fnode">标的解析<br><span style="font-size:10px;font-weight:400">模糊匹配 + 候选确认</span></div><span class="farrow">→</span>
+      <div class="fnode">上下文注入<br><span style="font-size:10px;font-weight:400">右栏出现标的卡片</span></div><span class="farrow">→</span>
+      <div class="fnode alt">流式回答<br><span style="font-size:10px;font-weight:400">结论 + 证据链接</span></div><span class="farrow">→</span>
+      <div class="fnode gray">后续动作<br><span style="font-size:10px;font-weight:400">生成报告 / 加入自选 / 追问</span></div>
+      <div class="fnote">设计依据：@ 语法是 IM 与编辑器通用心智模型，零学习成本；标的卡片实时确认「AI 理解的是哪个标的」，防止歧义（如多市场同名证券需弹候选）。</div>
+    </div>
+
+    <h3>5.3 流程 C · 基于报告追问</h3>
+    <div class="flow">
+      <div class="fnode alt">阅读器<br><span style="font-size:10px;font-weight:400">点「追问此报告」</span></div><span class="farrow">→</span>
+      <div class="fnode">进入分析师<br><span style="font-size:10px;font-weight:400">自动携带 report_id + 章节锚点</span></div><span class="farrow">→</span>
+      <div class="fnode">上下文注入<br><span style="font-size:10px;font-weight:400">引用卡显示报告章节</span></div><span class="farrow">→</span>
+      <div class="fnode alt">对话追问<br><span style="font-size:10px;font-weight:400">回答可回链报告原文</span></div>
+      <div class="fnote">设计依据：把「读完报告后的问题」直接变成对话输入，形成 <b>阅读→追问→再阅读</b> 的研究闭环；引用可精确到章节，降低模型幻觉与用户核对成本。</div>
+    </div>
+
+    <h3>5.4 流程 D · 首次配置（新手路径）</h3>
+    <div class="flow">
+      <div class="fnode alt">首次进入<br><span style="font-size:10px;font-weight:400">检测无可用模型</span></div><span class="farrow">→</span>
+      <div class="fnode">引导弹层<br><span style="font-size:10px;font-weight:400">选择预设（DeepSeek 等 9 选 1）</span></div><span class="farrow">→</span>
+      <div class="fnode">填 Key + 测试<br><span style="font-size:10px;font-weight:400">一步到位</span></div><span class="farrow">→</span>
+      <div class="fnode alt">回到工作台<br><span style="font-size:10px;font-weight:400">出现「生成复盘」主按钮</span></div>
+      <div class="fnote">设计依据：配置是「使用的前提」但非「使用的乐趣」——用向导式 3 步收敛，完成后立即引导用户产出第一份报告，建立价值感。</div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 6. 状态体系 ================= -->
+  <section id="states">
+    <span class="tag">状态体系 · STATES</span>
+    <h2>6. 加载 / 错误 / 空状态设计</h2>
+
+    <h3>6.1 加载状态</h3>
+    <table>
+      <tr><th>场景</th><th>方案</th><th>说明</th></tr>
+      <tr><td>页面首载</td><td>骨架屏</td><td>复用 <code>AppSkeleton</code>，按目标布局形状占位（卡片/行/图表区）</td></tr>
+      <tr><td>报告生成中</td><td>阶段进度条</td><td>「采集数据 → 生成映射 → 汇总成文」三段，每段附时间与已用耗时</td></tr>
+      <tr><td>对话回答中</td><td>打字指示 + 流式输出</td><td>保留现有 <code>typing-dots</code>，升级为 SSE/流式逐字渲染（后端支持时）</td></tr>
+      <tr><td>图表加载</td><td>骨架柱 + 百分比</td><td>图表区显示占位柱与「数据加载中 67%」</td></tr>
+      <tr><td>发送消息</td><td>按钮内联 spinner</td><td>同时禁止重复提交（现有逻辑保留）</td></tr>
+    </table>
+
+    <h3>6.2 错误状态</h3>
+    <table>
+      <tr><th>错误类型</th><th>呈现</th><th>恢复动作</th></tr>
+      <tr><td>模型未配置/Key 失效</td><td>工作台顶部横幅 + 状态点变红</td><td>「去配置」直达设置页（引导流程 D）</td></tr>
+      <tr><td>LLM 超时（生成任务）</td><td>任务卡片标失败 + 错误摘要</td><td>「重试」/「查看日志」抽屉；提示可增大 timeout 或换模型</td></tr>
+      <tr><td>LLM 超时（对话）</td><td>气泡内联错误（保留现有）</td><td>「重发」按钮直接重新请求；上下文不丢失</td></tr>
+      <tr><td>接口 5xx / 网络断</td><td>页面级错误卡</td><td>「重试加载」+ 保留本地缓存数据；断网时展示「离线模式」角标</td></tr>
+      <tr><td>数据缺失（快讯为空）</td><td>生成任务提示「数据窗口内快讯不足」</td><td>引导扩大窗口（24h→48h）后重试</td></tr>
+    </table>
+
+    <h3>6.3 空状态</h3>
+    <div class="grid3">
+      <div class="card"><h4>无会话</h4><p style="font-size:13px;color:var(--text-2)">插画 + 3 个示例问题（「帮我复盘今日行情」「解读宁德时代财报」「筛选半导体异动」），点击即发送——用示例降低空页恐惧。</p></div>
+      <div class="card"><h4>无报告</h4><p style="font-size:13px;color:var(--text-2)">「还没有研究报告」+ 主按钮「生成第一份复盘」+ 说明生成耗时约 1 分钟。</p></div>
+      <div class="card"><h4>任务无记录</h4><p style="font-size:13px;color:var(--text-2)">「暂无任务」+ 历史自动归档提示（超过 30 天自动清理）。</p></div>
+    </div>
+    <div class="callout warn"><b>统一原则：</b>每个空状态必须回答三问——<b>「这里是什么、为什么为空、下一步做什么」</b>，且至少要有一个可点击的动作，绝不出现「暂无数据」四字了事。</div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 7. 新手引导与效率 ================= -->
+  <section id="onboarding">
+    <span class="tag">引导与效率 · ONBOARDING &amp; POWER USER</span>
+    <h2>7. 新手引导与高级效率</h2>
+
+    <h3>7.1 新手引导（首次进入 ≤ 3 步）</h3>
+    <ol>
+      <li><b>配置引导</b>：检测无模型 → 向导式 3 步配置（选预设 → 填 Key → 测试连通），完成后自动回到工作台。</li>
+      <li><b>首次生成</b>：工作台出现高亮引导卡「先生成一份复盘看看」，完成后引导进入阅读器，讲解摘要卡与目录。</li>
+      <li><b>功能发现</b>：分析师输入框上方展示指令胶囊提示（<code>/复盘</code> <code>@标的</code>），第二次访问后自动收起为「？」帮助入口。</li>
+    </ol>
+    <p style="font-size:13.5px;color:var(--text-2)">引导全部采用「情境触发」（contextual），不做一次性强制弹层 tour——符合投研用户「尽早开始干活」的心理。</p>
+
+    <h3>7.2 高级用户效率</h3>
+    <table>
+      <tr><th>能力</th><th>实现</th></tr>
+      <tr><td>快捷键</td><td><span class="kbd">Ctrl</span>+<span class="kbd">↵</span> 发送；<span class="kbd">Ctrl</span>+<span class="kbd">N</span> 新建会话；<span class="kbd">Ctrl</span>+<span class="kbd">K</span> 全局命令面板；<span class="kbd">/</span> 唤起指令；<span class="kbd">Esc</span> 关闭抽屉；<span class="kbd">Ctrl</span>+<span class="kbd">O</span> 跳转最近报告（可在设置中自定义/关闭）</td></tr>
+      <tr><td>命令面板</td><td><span class="kbd">Ctrl</span>+<span class="kbd">K</span> 模糊搜索：页面跳转、生成复盘、打开最近报告、切换模型——键盘流用户全程不离手</td></tr>
+      <tr><td>批量操作</td><td>报告列表多选：批量导出 / 批量删除 / 批量加入自选；任务中心：批量重试失败任务（定时复盘补跑场景）</td></tr>
+      <tr><td>模板化输入</td><td>指令模板：<code>/复盘 半导体 48h</code>、<code>/解读 600519</code> 直接生成任务，支持 Tab 补全参数</td></tr>
+      <tr><td>深度链接</td><td>报告/会话/标的均有可复制链接（<code>#/ai/reports/123</code>），支持跨设备打开与分享</td></tr>
+      <tr><td>导出</td><td>报告导出 Markdown / PDF（服务端生成），保留表格与图表图片</td></tr>
+    </table>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 8. 合理性评估 ================= -->
+  <section id="rationale">
+    <span class="tag">合理性评估 · RATIONALE</span>
+    <h2>8. 设计依据与权衡说明</h2>
+    <p class="lead">对每个核心决策给出依据与取舍，便于评审时逐条质询。</p>
+
+    <table>
+      <tr><th style="width:170px">决策</th><th>设计依据</th><th style="width:280px">权衡 / 备选</th></tr>
+      <tr><td><b>五页拆分（工作台/分析师/报告/任务/设置）</b></td><td>对应五个独立的心智任务：入口决策、交互对话、内容消费、异步跟踪、系统配置。符合「任务导向 IA」原则；每页职责单一，便于后续独立迭代与按需懒加载。</td><td>备选：维持单页 + 锚点分区——缺点已由现状证明（滚动过长、配置干扰）。拆分代价是路由与状态管理成本增加，但可复用现有组件，净收益为正。</td></tr>
+      <tr><td><b>对话三栏布局</b></td><td>投研对话的核心障碍是「AI 引用的标的是哪个、基于什么数据」——上下文面板把隐式上下文显性化，符合工作记忆外化原则（cognitive offloading）；会话列表支持多线程并行研究。</td><td>备选：单栏 + 气泡内引用卡片——移动端采用；桌面保留三栏，因多屏工作流（对照行情看对话）是量化用户高频习惯。右栏默认折叠以减少干扰，按需展开。</td></tr>
+      <tr><td><b>报告结构化渲染（非纯文本）</b></td><td>复盘报告信息密度高（多指数/板块/涨跌停），纯文本阅读耗时约 3–5 分钟；摘要卡 + 表格 + 图表将「定位关键信息」压缩到 10–30 秒，符合投研信息消费的扫描式阅读习惯。</td><td>风险：结构化渲染可能丢失原文细节——通过「原文段落」与「结构化区块」双模式切换（阅读器右上角）兜底；Markdown 渲染安全风险见 4.2 callout。</td></tr>
+      <tr><td><b>任务模型 + 阶段进度</b></td><td>LLM 分析是 30–90 秒的异步过程，心理学上「明确剩余步骤」比「百分比」更能降低等待焦虑（progress certainty 效应）；失败定位到阶段可指导用户自救（如换模型/扩窗口）。</td><td>代价：后端需暴露任务状态与阶段字段（现有 <code>task_id</code> 已有基础，扩展即可）；若后端暂不支持，前端可先用「乐观进度 + 轮询完成」降级。</td></tr>
+      <tr><td><b>设置独立成页 + Prompt 高级折叠</b></td><td>Prompt 工程是 1% 用户的诉求，若与日常功能同层，则 99% 用户被无关复杂度打扰；设置页同时满足「想折腾的人能找到」，符合 progressive disclosure（渐进披露）。</td><td>风险：高级用户入口变深——通过工作台「⚙」卡片入口 + 命令面板跳转补偿，两步可达，可接受。</td></tr>
+      <tr><td><b>红涨绿跌与 AI 结论色分离</b></td><td>行情数据遵循中国市场惯例（红涨绿跌）；AI 定性结论（多空/置信度）若沿用红绿会与行情混淆，故用品牌绿/琥珀——避免「AI 判断」被误读为「市场事实」。</td><td>备选：AI 结论也用红绿——省一套色但语义污染，否决。</td></tr>
+      <tr><td><b>移动端底部 Tab + 单栏</b></td><td>移动端核心场景是「查报告、看进度、随手追问」，三栏在 375px 不可用；底部 Tab 符合单手操作惯例，报告阅读在移动端以摘要卡 + 表格卡片化保证可读性。</td><td>权衡：移动端不做「生成任务的高级参数调整」（保留默认值 + 焦点输入），重操作引导回桌面——符合移动优先内容消费的定位。</td></tr>
+      <tr><td><b>空状态三问原则</b></td><td>空状态是产品首次体验的「第一次见面」，引导动作直接决定转化；提供示例问题同时承担了「功能演示」作用，降低 LLM 产品常见的「不知道该问什么」门槛。</td><td>成本：需要维护示例文案与插画资源，收益远大于成本。</td></tr>
+    </table>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 9. 渐进式实施 ================= -->
+  <section id="roadmap">
+    <span class="tag">实施路线图 · ROADMAP</span>
+    <h2>9. 渐进式实施路线图</h2>
+    <p class="lead">4 个阶段，每阶段独立可发布、可回滚、可验收。先拆结构（低风险高收益），再升级呈现（核心体验），后增强交互（锦上添花）。</p>
+
+    <div class="phase">
+      <div class="ph">Phase 0 · 结构拆分（约 1 周）</div>
+      <div class="pd">只做路由与组件搬迁，零功能改动</div>
+      <ul style="font-size:13.5px">
+        <li><code>/ai</code> 拆为工作台；<code>/ai/analyst</code>、<code>/ai/reports</code>、<code>/ai/tasks</code>、<code>/ai/settings</code> 四个子路由，原功能原样迁入对应页</li>
+        <li>Sidebar「AI 投研」改可展开子菜单；工作台组装已有卡片</li>
+        <li>验收：五个路由均可访问，原对话/生成/模型管理功能回归通过</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph">Phase 1 · 报告阅读升级（约 1–1.5 周）</div>
+      <div class="pd">核心价值跃升：纯文本 → 结构化阅读</div>
+      <ul style="font-size:13.5px">
+        <li>引入 Markdown 安全渲染（<code>marked</code> + sanitize / 后端渲染），报告详情从弹窗迁移到全屏阅读器路由</li>
+        <li>摘要卡提取（先按规则截取「摘要」章节，后续接入 LLM 提炼）、表格样式、目录锚点</li>
+        <li>ECharts 图表接入：先实现「指数走势」「板块涨跌」两个高频图表（数据来自现有行情接口）</li>
+        <li>验收：打开历史报告即可见结构化视图；新旧报告均兼容；阅读器深色模式通过</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph">Phase 2 · 分析师工作区（约 2 周）</div>
+      <div class="pd">对话升级为完整研究工作台</div>
+      <ul style="font-size:13.5px">
+        <li>会话持久化（后端新增会话表 + CRUD；<code>chatLog</code> 迁移）</li>
+        <li>三栏布局：会话列表 + 对话 + 上下文面板；@ 标的解析（复用现有标的代码表）+ 引用报告（携带 <code>report_id</code> 与章节）</li>
+        <li>输入区指令胶囊 + 示例问题空状态；回答支持 Markdown 渲染</li>
+        <li>验收：多会话并行、@ 标的候选确认、引用报告回链三项通过</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph">Phase 3 · 任务体系与效率增强（约 2 周）</div>
+      <div class="pd">异步可见性 + 高级效率</div>
+      <ul style="font-size:13.5px">
+        <li>任务中心：状态字段（排队/运行/完成/失败）+ 阶段进度 + 日志 + 重试/批量重试；工作台进度条与报告列表状态联动</li>
+        <li>状态体系铺开：骨架屏、错误恢复、空状态三问、断网横幅</li>
+        <li>快捷键 + 命令面板 + 首次配置向导 + 批量操作</li>
+        <li>验收：全场景状态走查表逐项通过；新手路径（无模型→配置→首份报告）完整可走</li>
+      </ul>
+    </div>
+
+    <div class="phase soon">
+      <div class="ph">Phase 4 · 移动端与打磨（持续）</div>
+      <div class="pd">作为横切优化随各阶段同步进行，专项收尾</div>
+      <ul style="font-size:13.5px">
+        <li>底部 Tab、单栏对话、上下文浮层、表格卡片化</li>
+        <li>图表交互打磨（联动高亮、点击跳转）、动效与无障碍（<code>prefers-reduced-motion</code>、键盘可达性、ARIA）</li>
+        <li>数据埋点：入口转化、任务成功率、报告阅读时长——指导后续迭代</li>
+      </ul>
+    </div>
+
+    <div class="callout"><b>风险预案：</b>① 后端任务阶段字段若短期不可扩展 → Phase 3 拆出，先用「乐观进度 + 轮询」；② Markdown 渲染若存在安全顾虑 → 先做后端渲染或降级为受限渲染器；③ 会话持久化涉及后端新表 → 与现有 <code>news_monitor.db</code> 迁移并行，不影响前序阶段发布。</div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ================= 10. 附录 ================= -->
+  <section id="appendix">
+    <span class="tag">附录 · APPENDIX</span>
+    <h2>10. 新增组件与改动清单</h2>
+
+    <h3>10.1 新增组件</h3>
+    <table>
+      <tr><th>组件</th><th>归属路由</th><th>职责</th></tr>
+      <tr><td><code>WorkbenchView</code></td><td>/ai</td><td>工作台：状态 + KPI + 快捷入口 + 最近报告 + 运行中任务</td></tr>
+      <tr><td><code>AnalystView</code> + <code>SessionList</code> + <code>ContextPanel</code></td><td>/ai/analyst</td><td>三栏对话工作区</td></tr>
+      <tr><td><code>ReportsView</code> + <code>ReportReader</code> + <code>ReportSummaryCard</code> + <code>MarkdownView</code></td><td>/ai/reports[/:id]</td><td>报告列表与结构化阅读器</td></tr>
+      <tr><td><code>TasksView</code> + <code>TaskProgress</code> + <code>TaskLogDrawer</code></td><td>/ai/tasks</td><td>任务中心</td></tr>
+      <tr><td><code>SettingsView</code> + <code>PromptEditor</code></td><td>/ai/settings</td><td>模型 / Prompt / 默认值 / 通知</td></tr>
+      <tr><td><code>CommandPalette</code></td><td>全局</td><td>Ctrl+K 命令面板</td></tr>
+      <tr><td><code>OnboardWizard</code></td><td>全局</td><td>首次配置 3 步向导</td></tr>
+    </table>
+
+    <h3>10.2 后端扩展点（对齐现状，非重写）</h3>
+    <ul style="font-size:13.5px">
+      <li><code>/llm/tasks</code>：任务列表与状态（新增）；<code>/llm/tasks/:id</code>：阶段与日志（新增）；现有 <code>/analyze</code> 返回的 <code>task_id</code> 直接关联</li>
+      <li><code>/llm/sessions</code>：会话 CRUD（新增，存储于现有 DB 体系）</li>
+      <li><code>/llm/report/:id</code>：扩展返回结构化字段（summary / sections / tables），向后兼容纯文本 <code>content</code></li>
+      <li>Markdown 渲染建议后端完成（<code>markdown</code> 库 + 白名单清理），前端仅展示 sanitized HTML</li>
+    </ul>
+
+    <h3>10.3 验收清单（走查表摘要）</h3>
+    <ul style="font-size:13.5px">
+      <li>主路径：工作台一键生成 → 任务进度 → 报告阅读 → 追问 → 回链，全流程 ≤ 4 次点击</li>
+      <li>降级路径：无模型配置、LLM 超时、数据窗口为空、断网——各有明确恢复动作</li>
+      <li>移动端 375px：单栏对话可完成「追问 + 查看摘要」；无横向溢出</li>
+      <li>深浅模式：全部页面与图表双主题通过；红涨绿跌语义在两种模式下一致</li>
+      <li>无障碍：键盘可完成全部导航；命令面板可达所有动作；动效可关闭</li>
+    </ul>
+
+    <div class="card" style="margin-top:26px;border-left:4px solid var(--brand)">
+      <b style="color:var(--brand-dark)">一句话总结：</b>本次重构不新增任何业务能力，而是把已有的「对话 + 生成 + 模型管理」重新组织成<b>「工作台发现任务、分析师推进研究、阅读器消费结论、任务中心掌握进度、设置承载配置」</b>的清晰结构，并用结构化阅读、上下文面板、任务可视化与完整状态体系，把 AI 投研从「能用的工具」提升为「可信赖的分析工作台」。
+    </div>
+  </section>
+
+  </main>
+</div>
+<div class="backtop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</div>
+</body>
+</html>

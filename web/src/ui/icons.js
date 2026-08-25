@@ -331,6 +331,19 @@ export const ICONS = {
   zap: '<polygon points="13.2 2.4 4.6 13.6 11.2 13.6 10.8 21.6 19.4 10.4 12.8 10.4"/>',
 
   dot: '<circle cx="12" cy="12" r="3.4" fill="currentColor" stroke="none"/>',
+
+  command:
+    '<path d="M9 9V6.8a3.3 3.3 0 1 0-3 3.3H9z"/>' +
+    '<path d="M9 9v6.2a3.3 3.3 0 1 0 3-3.3V9z"/>' +
+    '<path d="M15 9h2.2a3.3 3.3 0 1 0-3-3.3V9z"/>' +
+    '<path d="M15 9v6.2a3.3 3.3 0 1 0 3-3.3H15z"/>' +
+    '<line x1="9" y1="9" x2="15" y2="9"/>' +
+    '<line x1="9" y1="15" x2="15" y2="15"/>',
+
+  target:
+    '<circle cx="12" cy="12" r="8.4"/>' +
+    '<circle cx="12" cy="12" r="4.6"/>' +
+    '<circle cx="12" cy="12" r="0.9" fill="currentColor" stroke="none"/>',
 }
 
 /** 可用图标名列表（供样式指南枚举） */

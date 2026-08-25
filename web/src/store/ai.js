@@ -1,0 +1,208 @@
+import { defineStore } from 'pinia'
+import { api } from '../api/client'
+
+/**
+ * AI 投研模块共享状态
+ * 工作台 / 分析师 / 报告 / 任务 / 设置 五个页面共用的数据源与轮询逻辑。
+ * 单一数据源：任务状态在 TasksView 变更后，工作台与报告列表实时联动。
+ */
+export const useAiStore = defineStore('ai', {
+  state: () => ({
+    status: null, // /llm/status
+    providers: [],
+    presets: [], // 模型预设（向导用）
+    scopeOptions: [],
+    windowOptions: [24, 48, 72],
+    reports: [], // 最近报告（工作台 + 报告页共用，报告页可加载更多）
+    reportsTotal: 0,
+    reportsLoading: false,
+    tasks: [], // 任务列表
+    sessions: [], // 会话列表
+    activeTask: null, // 运行中任务（供工作台进度条）
+    pollTimer: null,
+    pollActive: false,
+    cmdOpen: false, // Ctrl+K 命令面板
+    // 会话级上下文（分析师页）
+    contextStock: null, // { name, code, price, change, ... }
+    contextReport: null, // { id, title, section }
+  }),
+
+  getters: {
+    modelAvailable(state) {
+      const s = state.status
+      if (!s) return false
+      if (typeof s.available === 'boolean') return s.available
+      const dp = s.default_provider
+      return !!(dp && dp.enabled && (dp.has_api_key || dp.test_status === 1))
+    },
+    runningTasks(state) {
+      return state.tasks.filter((t) => t.status === 'running' || t.status === 'pending')
+    },
+  },
+
+  actions: {
+    // ---------- 基础加载 ----------
+    async loadStatus() {
+      try {
+        this.status = await api.llm('/status')
+      } catch (e) {
+        this.status = { error: e.message }
+      }
+    },
+    async loadInit() {
+      try {
+        const init = await api.llm('/init')
+        this.providers = init.providers || []
+        this.presets = init.presets || []
+        this.scopeOptions = init.scopes || []
+        if (init.windows && init.windows.length) this.windowOptions = init.windows
+        if (init.status) this.status = init.status
+      } catch (e) {}
+    },
+    async loadProviders() {
+      try {
+        const r = await api.llm('/providers')
+        this.providers = r.providers || []
+      } catch (e) {
+        this.providers = []
+      }
+    },
+    async loadReports(params = {}) {
+      this.reportsLoading = true
+      try {
+        const r = await api.llm('/reports', params)
+        this.reports = r.items || []
+        this.reportsTotal = r.total || 0
+      } catch (e) {
+        // 保留旧数据
+      } finally {
+        this.reportsLoading = false
+      }
+    },
+    async loadTasks() {
+      try {
+        const r = await api.llm('/tasks', { limit: 20 })
+        this.tasks = r.tasks || []
+        this.activeTask =
+          this.tasks.find((t) => t.status === 'running' || t.status === 'pending') || null
+      } catch (e) {}
+    },
+    async loadSessions() {
+      try {
+        const r = await api.llm('/sessions', { limit: 100 })
+        this.sessions = r.sessions || []
+      } catch (e) {
+        this.sessions = []
+      }
+    },
+
+    // ---------- 轮询 ----------
+    startPolling(interval = 4000) {
+      if (this.pollActive) return
+      this.pollActive = true
+      this.pollTimer = setInterval(async () => {
+        // 仅在存在运行中任务时高频刷新任务；报告/会话低频刷新
+        await Promise.all([this.loadTasks(), this.loadStatus()])
+      }, interval)
+    },
+    stopPolling() {
+      this.pollActive = false
+      if (this.pollTimer) {
+        clearInterval(this.pollTimer)
+        this.pollTimer = null
+      }
+    },
+
+    // ---------- 任务动作 ----------
+    async submitAnalysis(cfg) {
+      const r = await api.llmPost('/analyze', {
+        provider_id: cfg.provider_id ? Number(cfg.provider_id) : undefined,
+        scope: cfg.scope,
+        hours: Number(cfg.window),
+        focus: cfg.focus || undefined,
+        min_importance: 0,
+      })
+      await this.loadTasks()
+      return r
+    },
+    async cancelTask(taskId) {
+      try {
+        await api.llmPost('/task/cancel', { task_id: taskId })
+      } catch (e) {}
+      await this.loadTasks()
+    },
+    async retryTask(taskId) {
+      const r = await api.llmPost('/task/retry', { task_id: taskId })
+      await this.loadTasks()
+      return r
+    },
+
+    // ---------- 会话动作 ----------
+    async createSession(title = '新会话') {
+      const r = await api.llmPost('/sessions', { title })
+      await this.loadSessions()
+      return r.session || null
+    },
+    async renameSession(id, title) {
+      try {
+        await api.llmPost('/sessions/rename', { id, title })
+      } catch (e) {}
+      await this.loadSessions()
+    },
+    async deleteSession(id) {
+      try {
+        await api.llmPost('/sessions/delete', { id })
+      } catch (e) {}
+      await this.loadSessions()
+    },
+    async saveMessage(id, role, content) {
+      try {
+        await api.llmPost('/sessions/messages', { id, role, content })
+      } catch (e) {}
+    },
+
+    // ---------- 报告动作 ----------
+    async deleteReport(id) {
+      try {
+        await api.llmPost('/report/delete', { id })
+      } catch (e) {}
+      await this.loadReports()
+      await this.loadTasks()
+    },
+    async deleteReports(ids) {
+      for (const id of ids) {
+        try {
+          await api.llmPost('/report/delete', { id })
+        } catch (e) {}
+      }
+      await this.loadReports()
+      await this.loadTasks()
+    },
+    async pinReport(id, pinned) {
+      try {
+        await api.llmPost('/report/pin', { id, pinned })
+      } catch (e) {}
+      await this.loadReports()
+    },
+    async pinReports(ids, pinned) {
+      for (const id of ids) {
+        try {
+          await api.llmPost('/report/pin', { id, pinned })
+        } catch (e) {}
+      }
+      await this.loadReports()
+    },
+
+    // ---------- 上下文 ----------
+    setContextStock(stock) {
+      this.contextStock = stock || null
+    },
+    setContextReport(report) {
+      this.contextReport = report || null
+    },
+    clearContext() {
+      this.contextStock = null
+      this.contextReport = null
+    },
+  },
+})

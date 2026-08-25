@@ -17,6 +17,7 @@ from finfeed.utils.time_utils import now_bj
 
 from . import collector, store
 from . import config as cfg
+from . import sessions as _sessions
 from .client import LLMClient, LLMError, build_chat_url, build_client, build_models_url
 from .schema import ensure_tables
 from .service import get_service
@@ -115,6 +116,18 @@ def handle_get(path: str, qs: Dict[str, List[str]]) -> Response:
         if path == "/api/llm/tasks":
             return 200, {"tasks": get_service().list_tasks(limit=_qi(qs, "limit", 10))}
 
+        if path == "/api/llm/task/retry":
+            tid = _q(qs, "id")
+            result = get_service().retry(tid)
+            return (200, result) if result.get("ok") else (409, result)
+
+        if path == "/api/llm/sessions":
+            return 200, {"sessions": _sessions.list_sessions(limit=_qi(qs, "limit", 100))}
+
+        if path == "/api/llm/sessions/messages":
+            sid = _qi(qs, "id")
+            return 200, {"messages": _sessions.list_messages(sid) if sid else []}
+
         if path == "/api/llm/reports":
             kw = _q(qs, "q", "").strip()
             if kw:
@@ -186,6 +199,31 @@ def handle_post(path: str, data: Dict[str, Any]) -> Response:
             tid = str(data.get("task_id") or "")
             ok = get_service().cancel(tid)
             return (200, {"success": True}) if ok else (404, {"error": "任务不存在或已结束"})
+
+        if path == "/api/llm/task/retry":
+            tid = str(data.get("task_id") or "")
+            result = get_service().retry(tid)
+            return (200, result) if result.get("ok") else (409, result)
+
+        if path == "/api/llm/sessions":
+            return 200, {"success": True, "session": _sessions.create_session(
+                str(data.get("title") or "新会话"))}
+
+        if path == "/api/llm/sessions/rename":
+            ok = _sessions.rename_session(int(data.get("id", 0)), str(data.get("title") or ""))
+            return (200, {"success": True}) if ok else (404, {"error": "会话不存在"})
+
+        if path == "/api/llm/sessions/delete":
+            ok = _sessions.delete_session(int(data.get("id", 0)))
+            return (200, {"success": True}) if ok else (404, {"error": "会话不存在"})
+
+        if path == "/api/llm/sessions/messages":
+            sid = int(data.get("id", 0))
+            msg = _sessions.add_message(sid, str(data.get("role") or "user"),
+                                        str(data.get("content") or ""))
+            if msg is None:
+                return 400, {"error": "消息内容不能为空"}
+            return 200, {"success": True, "message": msg}
 
         if path == "/api/llm/report/delete":
             ok = store.delete_report(int(data.get("id", 0)))

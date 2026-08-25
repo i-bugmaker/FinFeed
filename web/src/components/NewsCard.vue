@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '../store/app'
 import { api } from '../api/client'
 import AppIcon from '../ui/AppIcon.vue'
@@ -10,6 +11,7 @@ const props = defineProps({
   mode: { type: String, default: 'news' }, // 'news' | 'sentiment'
 })
 const store = useAppStore()
+const router = useRouter()
 const copied = ref(false)
 
 const sentClass = computed(() => {
@@ -42,6 +44,16 @@ async function copyNews() {
     copied.value = true
     setTimeout(() => { copied.value = false }, 2000)
   } catch (e) {}
+}
+
+/* 提交当前快讯到 AI 投研分析 */
+function aiAnalyze() {
+  const q = [
+    props.item.title,
+    props.item.source ? `（来源：${props.item.source}）` : '',
+    props.item.publish_time ? `｜${props.item.publish_time}` : '',
+  ].join('')
+  router.push({ path: '/ai/analyst', query: { q } })
 }
 </script>
 
@@ -80,6 +92,15 @@ async function copyNews() {
     </div>
 
     <div class="ff-newscard__actions">
+      <button
+        class="ff-newscard__ai"
+        title="提交到 AI 投研分析"
+        aria-label="提交到 AI 投研分析"
+        @click.stop="aiAnalyze"
+      >
+        <AppIcon name="sparkles" size="sm" tone="brand" />
+      </button>
+
       <button
         class="ff-newscard__btn"
         :title="copied ? '已复制' : '复制内容'"
@@ -264,5 +285,32 @@ async function copyNews() {
 
 .ff-newscard__fav--active {
   color: var(--ff-icon-warn);
+}
+
+/* AI 分析按钮：默认隐藏，卡片 hover 时显示（独立样式，不依赖 ff-newscard__btn） */
+.ff-newscard__ai {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ff-radius-md);
+  background: transparent;
+  color: var(--ff-icon-muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity var(--ff-dur-fast), transform var(--ff-dur-fast), background var(--ff-dur-fast), color var(--ff-dur-fast);
+}
+.ff-newscard:hover .ff-newscard__ai {
+  opacity: 1;
+  transform: scale(1);
+}
+.ff-newscard__ai:hover {
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-brand);
 }
 </style>

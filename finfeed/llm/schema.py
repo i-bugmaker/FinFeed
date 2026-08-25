@@ -77,6 +77,27 @@ CREATE TABLE IF NOT EXISTS llm_settings (
 )
 """
 
+_DDL_SESSIONS = """
+CREATE TABLE IF NOT EXISTS llm_sessions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT NOT NULL DEFAULT '新会话',
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT '',
+    created_ts INTEGER DEFAULT 0,
+    updated_ts INTEGER DEFAULT 0
+)
+"""
+
+_DDL_MESSAGES = """
+CREATE TABLE IF NOT EXISTS llm_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    role       TEXT NOT NULL DEFAULT 'user',
+    content    TEXT DEFAULT '',
+    created_ts INTEGER DEFAULT 0
+)
+"""
+
 
 def ensure_tables(force: bool = False) -> None:
     """幂等创建 LLM 模块所需数据表"""
@@ -92,6 +113,8 @@ def ensure_tables(force: bool = False) -> None:
                 c.execute(_DDL_PROVIDERS)
                 c.execute(_DDL_REPORTS)
                 c.execute(_DDL_SETTINGS)
+                c.execute(_DDL_SESSIONS)
+                c.execute(_DDL_MESSAGES)
                 c.execute(
                     "CREATE INDEX IF NOT EXISTS idx_llm_reports_ts "
                     "ON llm_reports(created_ts DESC, id DESC)"
@@ -99,6 +122,10 @@ def ensure_tables(force: bool = False) -> None:
                 c.execute(
                     "CREATE INDEX IF NOT EXISTS idx_llm_reports_task "
                     "ON llm_reports(task_id)"
+                )
+                c.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_llm_messages_session "
+                    "ON llm_messages(session_id, id)"
                 )
                 _migrate(c)
             _initialized = True
