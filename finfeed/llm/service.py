@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from . import analyzer, collector, store
 from . import config as cfg
@@ -80,6 +80,23 @@ class AnalysisService:
         self._order: List[str] = []
         self._active_id: Optional[str] = None
         self._cancel_flags: Dict[str, bool] = {}
+        # 任务事件发布器：fn(task_id, payload)，由传输层（SSE）注入；领域层不感知 UI。
+        self._publisher: Optional[Callable[[str, Dict[str, Any]], None]] = None
+
+    # ---------- 事件发布 ----------
+    def set_event_publisher(self, fn: Optional[Callable[[str, Dict[str, Any]], None]]) -> None:
+        """注入/移除任务事件发布器（线程安全；None 表示关闭发布）。"""
+        with self._lock:
+            self._publisher = fn
+
+    def _publish(self, task_id: str, **payload: Any) -> None:
+        fn = self._publisher
+        if fn is None:
+            return
+        try:
+            fn(task_id, {"task_id": task_id, **payload})
+        except Exception as e:  # noqa: BLE001 —— 订阅方异常绝不影响分析主流程
+            logger.debug(f"LLM 任务事件发布失败: {e}")
 
     # ---------- 查询 ----------
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -193,7 +210,9 @@ class AnalysisService:
             name=f"llm-analysis-{task_id}",
         )
         thread.start()
-        logger.info(f"LLM 分析任务已提交: {task_id} 窗口={hours}h 范围={scope} 模型={provider.model}")
+        logger.info(
+            f"LLM 分析任务已提交: {task_id} 窗口={hours}h 范围={scope} 模型={provider.model}"
+        )
         return {"ok": True, "task_id": task_id, "task": state.to_dict()}
 
     # ---------- 执行 ----------
@@ -213,8 +232,14 @@ class AnalysisService:
             return bool(self._cancel_flags.get(task_id))
 
     def _run(self, task_id: str, provider, options: Dict[str, Any]) -> None:
-        self._update(task_id, status=STATUS_RUNNING, started_ts=time.time(),
-                     stage="collect", progress=1, message="任务启动中…")
+        self._update(
+            task_id,
+            status=STATUS_RUNNING,
+            started_ts=time.time(),
+            stage="collect",
+            progress=1,
+            message="任务启动中…",
+        )
 
         def _num(key, cast, default, lo=None, hi=None):
             try:
@@ -232,6 +257,23 @@ class AnalysisService:
 
             def on_progress(stage: str, pct: float, msg: str):
                 self._update(task_id, stage=stage, progress=round(pct, 1), message=msg)
+                self._publish(
+                    task_id,
+                    event="stage",
+                    stage=stage,
+                    stage_label=STAGE_LABELS.get(stage, stage),
+                    progress=round(pct, 1),
+                    message=msg,
+                )
+
+            def on_delta(piece: str):
+                # "" 为「清空缓冲」信号（流式回退非流式时由 analyzer 发出）
+                if piece:
+                    self._publish(task_id, event="delta", text=piece)
+                else:
+                    self._publish(task_id, event="reset")
+
+            self._publish(task_id, event="status", status=STATUS_RUNNING)
 
             result = analyzer.run_analysis(
                 client,
@@ -245,51 +287,93 @@ class AnalysisService:
                 focus=str(options.get("focus") or ""),
                 progress=on_progress,
                 should_cancel=lambda: self._should_cancel(task_id),
+                on_delta=on_delta,
             )
 
-            report_id = store.save_report({
-                "task_id": task_id,
-                "title": result["title"],
-                "provider_name": provider.name,
-                "model": result["model"],
-                "window_hours": result["window_hours"],
-                "scope": result["scope"],
-                "news_count": result["news_count"],
-                "scanned_count": result["scanned_count"],
-                "start_ts": result["start_ts"],
-                "end_ts": result["end_ts"],
-                "status": "success",
-                "content": result["content"],
-                "stats": result["stats"],
-                "chunk_count": result["chunk_count"],
-                "prompt_tokens": result["prompt_tokens"],
-                "completion_tokens": result["completion_tokens"],
-                "elapsed": result["elapsed"],
-            })
+            report_id = store.save_report(
+                {
+                    "task_id": task_id,
+                    "title": result["title"],
+                    "provider_name": provider.name,
+                    "model": result["model"],
+                    "window_hours": result["window_hours"],
+                    "scope": result["scope"],
+                    "news_count": result["news_count"],
+                    "scanned_count": result["scanned_count"],
+                    "start_ts": result["start_ts"],
+                    "end_ts": result["end_ts"],
+                    "status": "success",
+                    "content": result["content"],
+                    "stats": result["stats"],
+                    "chunk_count": result["chunk_count"],
+                    "prompt_tokens": result["prompt_tokens"],
+                    "completion_tokens": result["completion_tokens"],
+                    "elapsed": result["elapsed"],
+                }
+            )
 
             self._update(
-                task_id, status=STATUS_SUCCESS, stage="done", progress=100,
+                task_id,
+                status=STATUS_SUCCESS,
+                stage="done",
+                progress=100,
                 message=f"分析完成，共归纳 {result['news_count']} 条资讯",
-                news_count=result["news_count"], scanned_count=result["scanned_count"],
-                chunk_count=result["chunk_count"], report_id=report_id,
+                news_count=result["news_count"],
+                scanned_count=result["scanned_count"],
+                chunk_count=result["chunk_count"],
+                report_id=report_id,
                 finished_ts=time.time(),
+            )
+            self._publish(
+                task_id,
+                event="done",
+                status=STATUS_SUCCESS,
+                report_id=report_id,
+                news_count=result["news_count"],
             )
             logger.info(f"LLM 分析任务完成: {task_id} report_id={report_id}")
 
         except AnalysisCancelled:
-            self._update(task_id, status=STATUS_CANCELLED, stage="done", progress=100,
-                         message="任务已取消", finished_ts=time.time())
+            self._update(
+                task_id,
+                status=STATUS_CANCELLED,
+                stage="done",
+                progress=100,
+                message="任务已取消",
+                finished_ts=time.time(),
+            )
+            self._publish(task_id, event="done", status=STATUS_CANCELLED)
             logger.info(f"LLM 分析任务被取消: {task_id}")
         except LLMError as e:
-            self._update(task_id, status=STATUS_FAILED, stage="done", progress=100,
-                         message=e.message, error=e.message, error_kind=e.kind,
-                         finished_ts=time.time())
+            self._update(
+                task_id,
+                status=STATUS_FAILED,
+                stage="done",
+                progress=100,
+                message=e.message,
+                error=e.message,
+                error_kind=e.kind,
+                finished_ts=time.time(),
+            )
+            self._publish(
+                task_id, event="done", status=STATUS_FAILED, error=e.message, error_kind=e.kind
+            )
             logger.warning(f"LLM 分析任务失败: {task_id} - {e.message}")
         except Exception as e:
             msg = f"{type(e).__name__}: {str(e)[:200]}"
-            self._update(task_id, status=STATUS_FAILED, stage="done", progress=100,
-                         message=msg, error=msg, error_kind="unknown",
-                         finished_ts=time.time())
+            self._update(
+                task_id,
+                status=STATUS_FAILED,
+                stage="done",
+                progress=100,
+                message=msg,
+                error=msg,
+                error_kind="unknown",
+                finished_ts=time.time(),
+            )
+            self._publish(
+                task_id, event="done", status=STATUS_FAILED, error=msg, error_kind="unknown"
+            )
             logger.error(f"LLM 分析任务异常: {task_id} - {msg}", exc_info=True)
         finally:
             with self._lock:

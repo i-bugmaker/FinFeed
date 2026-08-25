@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
@@ -25,6 +25,14 @@ logger = logging.getLogger("news_monitor")
 
 DEFAULT_TEST_TIMEOUT = 20.0
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504, 529}
+
+
+def estimate_tokens(text: str) -> int:
+    """按字数粗估 token 数（中文场景约 2 字符 / token）。
+
+    仅用于流式响应缺少 usage 时的近似统计；报告页脚本就标注「token 约」。
+    """
+    return max(1, round(len(text or "") / 2))
 
 
 class LLMError(Exception):
@@ -38,7 +46,12 @@ class LLMError(Exception):
         self.detail = detail
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"message": self.message, "kind": self.kind, "status": self.status, "detail": self.detail}
+        return {
+            "message": self.message,
+            "kind": self.kind,
+            "status": self.status,
+            "detail": self.detail,
+        }
 
 
 @dataclass
@@ -155,15 +168,25 @@ class LLMClient:
     @staticmethod
     def _classify_transport_error(e: Exception) -> LLMError:
         if isinstance(e, httpx.ConnectTimeout):
-            return LLMError("连接超时：无法在限定时间内建立连接，请检查地址、端口与网络代理", kind="timeout")
+            return LLMError(
+                "连接超时：无法在限定时间内建立连接，请检查地址、端口与网络代理", kind="timeout"
+            )
         if isinstance(e, httpx.ReadTimeout):
-            return LLMError("读取超时：服务端未在超时时间内返回，建议调大超时或减小单次输入", kind="timeout")
+            return LLMError(
+                "读取超时：服务端未在超时时间内返回，建议调大超时或减小单次输入", kind="timeout"
+            )
         if isinstance(e, httpx.ConnectError):
             msg = str(e)
             if "getaddrinfo" in msg or "Name or service not known" in msg or "nodename" in msg:
-                return LLMError("域名解析失败：主机名不存在或 DNS 不可达", kind="dns", detail=msg[:300])
+                return LLMError(
+                    "域名解析失败：主机名不存在或 DNS 不可达", kind="dns", detail=msg[:300]
+                )
             if "Connection refused" in msg or "10061" in msg:
-                return LLMError("连接被拒绝：目标端口未监听（本地模型服务是否已启动？）", kind="refused", detail=msg[:300])
+                return LLMError(
+                    "连接被拒绝：目标端口未监听（本地模型服务是否已启动？）",
+                    kind="refused",
+                    detail=msg[:300],
+                )
             if "certificate" in msg.lower() or "ssl" in msg.lower():
                 return LLMError("TLS/SSL 握手失败：证书校验不通过", kind="tls", detail=msg[:300])
             return LLMError(f"网络连接失败：{msg[:160]}", kind="network", detail=msg[:300])
@@ -171,7 +194,9 @@ class LLMClient:
             return LLMError("请求超时", kind="timeout", detail=str(e)[:300])
         if isinstance(e, httpx.ProxyError):
             return LLMError("代理错误：请检查系统代理设置", kind="proxy", detail=str(e)[:300])
-        return LLMError(f"请求异常：{type(e).__name__}: {str(e)[:160]}", kind="unknown", detail=str(e)[:300])
+        return LLMError(
+            f"请求异常：{type(e).__name__}: {str(e)[:160]}", kind="unknown", detail=str(e)[:300]
+        )
 
     @staticmethod
     def _classify_http_status(status: int, body_text: str) -> LLMError:
@@ -191,20 +216,41 @@ class LLMClient:
         tail = f"（服务端提示：{api_msg[:200]}）" if api_msg else ""
 
         if status == 401:
-            return LLMError(f"鉴权失败 401：API Key 无效或未被接受{tail}", kind="auth", status=status, detail=snippet)
+            return LLMError(
+                f"鉴权失败 401：API Key 无效或未被接受{tail}",
+                kind="auth",
+                status=status,
+                detail=snippet,
+            )
         if status == 403:
-            return LLMError(f"访问被拒 403：Key 无该模型权限或来源受限{tail}", kind="auth", status=status, detail=snippet)
+            return LLMError(
+                f"访问被拒 403：Key 无该模型权限或来源受限{tail}",
+                kind="auth",
+                status=status,
+                detail=snippet,
+            )
         if status == 404:
             return LLMError(
                 f"端点不存在 404：Base URL 路径可能不对（是否缺少 /v1），或模型名不存在{tail}",
-                kind="endpoint", status=status, detail=snippet,
+                kind="endpoint",
+                status=status,
+                detail=snippet,
             )
         if status == 422 or status == 400:
-            return LLMError(f"请求参数不被接受 {status}{tail}", kind="param", status=status, detail=snippet)
+            return LLMError(
+                f"请求参数不被接受 {status}{tail}", kind="param", status=status, detail=snippet
+            )
         if status == 429:
-            return LLMError(f"触发限流 429：请求过于频繁或余额/配额不足{tail}", kind="ratelimit", status=status, detail=snippet)
+            return LLMError(
+                f"触发限流 429：请求过于频繁或余额/配额不足{tail}",
+                kind="ratelimit",
+                status=status,
+                detail=snippet,
+            )
         if 500 <= status < 600:
-            return LLMError(f"服务端错误 {status}{tail}", kind="server", status=status, detail=snippet)
+            return LLMError(
+                f"服务端错误 {status}{tail}", kind="server", status=status, detail=snippet
+            )
         return LLMError(f"HTTP {status} 异常响应{tail}", kind="http", status=status, detail=snippet)
 
     # ---------- 公开方法 ----------
@@ -214,7 +260,9 @@ class LLMClient:
         if not url:
             return False, [], "无法推导模型列表端点"
         try:
-            with httpx.Client(timeout=timeout or DEFAULT_TEST_TIMEOUT, follow_redirects=True) as client:
+            with httpx.Client(
+                timeout=timeout or DEFAULT_TEST_TIMEOUT, follow_redirects=True
+            ) as client:
                 resp = client.get(url, headers=self._headers())
             if resp.status_code != 200:
                 return False, [], f"HTTP {resp.status_code}"
@@ -271,19 +319,26 @@ class LLMClient:
                     err = self._classify_http_status(resp.status_code, resp.text)
                     if resp.status_code in _RETRYABLE_STATUS and attempt < retries:
                         last_err = err
-                        time.sleep(min(2 ** attempt, 5))
+                        time.sleep(min(2**attempt, 5))
                         continue
                     raise err
 
                 try:
                     data = resp.json()
                 except Exception:
-                    raise LLMError("响应不是合法 JSON，目标可能不是 OpenAI 兼容接口",
-                                   kind="protocol", detail=resp.text[:300])
+                    raise LLMError(
+                        "响应不是合法 JSON，目标可能不是 OpenAI 兼容接口",
+                        kind="protocol",
+                        detail=resp.text[:300],
+                    )
 
                 content, finish = _extract_content(data)
                 if not content:
-                    raise LLMError("模型返回内容为空", kind="empty", detail=json.dumps(data, ensure_ascii=False)[:300])
+                    raise LLMError(
+                        "模型返回内容为空",
+                        kind="empty",
+                        detail=json.dumps(data, ensure_ascii=False)[:300],
+                    )
 
                 usage = data.get("usage") or {}
                 return ChatResult(
@@ -302,11 +357,115 @@ class LLMClient:
                 err = self._classify_transport_error(e)
                 if err.kind in ("timeout", "network", "server") and attempt < retries:
                     last_err = err
-                    time.sleep(min(2 ** attempt, 5))
+                    time.sleep(min(2**attempt, 5))
                     continue
                 raise err
 
         raise last_err or LLMError("调用失败", kind="unknown")
+
+    def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        """流式对话补全（OpenAI SSE chunk 协议）。
+
+        产出事件：
+          {"type": "delta", "text": str}   —— 正文增量（可能为空串，调用方需容忍）
+          {"type": "usage", "prompt_tokens": int, "completion_tokens": int}
+                                           —— 终止前若服务端携带 usage 则产出一次
+
+        错误语义：
+          - 首字节之前失败（连接/鉴权/参数）-> 抛 LLMError，调用方可安全回退非流式；
+          - 已输出增量后流中断           -> 抛 LLMError(kind="stream_broken")，
+            此时增量已不可信，调用方同样应回退非流式重取完整结果。
+        """
+        url = build_chat_url(self.base_url)
+        if not url:
+            raise LLMError("接口地址无效", kind="param")
+        if not self.model:
+            raise LLMError("未指定模型名称", kind="param")
+
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature if temperature is None else temperature,
+            "max_tokens": self.max_tokens if max_tokens is None else max_tokens,
+            "stream": True,
+        }
+
+        emitted = False
+        try:
+            with httpx.Client(
+                timeout=float(timeout or self.timeout), follow_redirects=True
+            ) as client:
+                with client.stream("POST", url, headers=self._headers(), json=payload) as resp:
+                    if resp.status_code != 200:
+                        body_text = resp.read().decode("utf-8", errors="replace")
+                        raise self._classify_http_status(resp.status_code, body_text)
+
+                    for line in resp.iter_lines():
+                        line = (line or "").strip()
+                        if not line or line.startswith(":"):
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                        except Exception:
+                            continue
+                        if not isinstance(chunk, dict):
+                            continue
+
+                        usage = chunk.get("usage")
+                        if isinstance(usage, dict) and (
+                            usage.get("total_tokens") or usage.get("completion_tokens")
+                        ):
+                            yield {
+                                "type": "usage",
+                                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                                "completion_tokens": int(usage.get("completion_tokens") or 0),
+                            }
+
+                        choices = chunk.get("choices")
+                        if not isinstance(choices, list) or not choices:
+                            continue
+                        delta = (choices[0] or {}).get("delta") or {}
+                        piece = ""
+                        if isinstance(delta, dict):
+                            content = delta.get("content")
+                            if isinstance(content, str):
+                                piece = content
+                            elif isinstance(content, list):
+                                piece = "".join(
+                                    seg.get("text", "") if isinstance(seg, dict) else str(seg)
+                                    for seg in content
+                                )
+                            # 注意：思考型模型（如 DeepSeek-R1）的 reasoning_content
+                            # 刻意不采集——流式正文将作为报告权威内容，混入思考文本会污染结果。
+                        text_field = (choices[0] or {}).get("text")
+                        if not piece and isinstance(text_field, str):
+                            piece = text_field
+                        if piece:
+                            emitted = True
+                            yield {"type": "delta", "text": piece}
+        except LLMError:
+            raise
+        except Exception as e:
+            err = self._classify_transport_error(e)
+            if emitted:
+                raise LLMError(
+                    f"流式输出中断：{err.message}",
+                    kind="stream_broken",
+                    detail=err.detail,
+                ) from e
+            raise err
 
     def test_connection(self) -> Dict[str, Any]:
         """连通性检测：地址校验 -> 模型列表 -> 最小对话
@@ -346,15 +505,24 @@ class LLMClient:
             result["kind"] = "param"
             return result
 
-        ok_models, names, note = self.list_models(timeout=min(float(self.timeout), DEFAULT_TEST_TIMEOUT))
+        ok_models, names, note = self.list_models(
+            timeout=min(float(self.timeout), DEFAULT_TEST_TIMEOUT)
+        )
         if ok_models:
             result["models"] = names[:200]
             listed = self.model in names
             result["model_listed"] = listed
-            step("模型列表", True,
-                 f"返回 {len(names)} 个模型；目标模型 {'已在列表中' if listed else '不在列表中（部分服务不暴露全部模型，可忽略）'}")
+            step(
+                "模型列表",
+                True,
+                f"返回 {len(names)} 个模型；目标模型 {'已在列表中' if listed else '不在列表中（部分服务不暴露全部模型，可忽略）'}",
+            )
         else:
-            step("模型列表", False, f"未能拉取模型列表（{note}），部分服务不提供该端点，继续进行对话测试")
+            step(
+                "模型列表",
+                False,
+                f"未能拉取模型列表（{note}），部分服务不提供该端点，继续进行对话测试",
+            )
 
         t0 = time.time()
         try:
@@ -373,8 +541,12 @@ class LLMClient:
             result["latency_ms"] = round(latency, 1)
             result["reply"] = res.content.strip()[:100]
             result["message"] = f"连通正常，往返 {round(latency)} ms，模型回复「{result['reply']}」"
-            step("对话测试", True, result["message"],
-                 {"prompt_tokens": res.prompt_tokens, "completion_tokens": res.completion_tokens})
+            step(
+                "对话测试",
+                True,
+                result["message"],
+                {"prompt_tokens": res.prompt_tokens, "completion_tokens": res.completion_tokens},
+            )
         except LLMError as e:
             result["ok"] = False
             result["message"] = e.message

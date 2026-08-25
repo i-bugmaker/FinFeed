@@ -12,6 +12,7 @@
 小数据量（单块可容纳）时自动走单次调用，省一轮开销。
 """
 
+import json
 import logging
 import time
 from collections import Counter, defaultdict
@@ -22,7 +23,7 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 from . import collector, prompts
 from .cleanup import clean_report_body
-from .client import LLMClient, LLMError
+from .client import LLMClient, LLMError, estimate_tokens
 from .collector import NewsRecord
 from .config import get_prompts
 from .decorate import decorate_report_body
@@ -48,7 +49,7 @@ def _stock_names(codes: List[str]) -> Dict[str, str]:
         db = get_db_manager()
         with db.get_db() as c:
             for i in range(0, len(codes), 400):
-                batch = codes[i:i + 400]
+                batch = codes[i : i + 400]
                 ph = ",".join("?" * len(batch))
                 c.execute(f"SELECT code, name FROM stock_meta WHERE code IN ({ph})", batch)
                 for r in c.fetchall():
@@ -138,18 +139,20 @@ def stats_to_prompt_block(stats: Dict[str, Any]) -> str:
     """压缩成提示词里的统计片段"""
     lines = [
         f"- 样本条数：{stats['total']} 条（窗口内命中 {stats['scanned']} 条"
-        + ("，已按重要性截断" if stats.get("truncated") else "") + "）",
+        + ("，已按重要性截断" if stats.get("truncated") else "")
+        + "）",
         f"- 覆盖信源：{stats['source_total']} 家，"
         + "、".join(f"{s['name']}{s['count']}条" for s in stats["sources"][:8]),
         f"- 情绪分布：正面 {stats['sentiment']['positive']} / 中性 {stats['sentiment']['neutral']} "
         f"/ 负面 {stats['sentiment']['negative']}（正面占多空比 {stats['bull_ratio']}%）",
-        "- 重要性分布："
-        + "、".join(f"{k} {v}条" for k, v in stats["importance_buckets"].items()),
+        "- 重要性分布：" + "、".join(f"{k} {v}条" for k, v in stats["importance_buckets"].items()),
     ]
     if stats["top_stocks"]:
         lines.append(
             "- 提及最多个股："
-            + "、".join(f"{s['name']}({s['code']}) {s['count']}次" for s in stats["top_stocks"][:12])
+            + "、".join(
+                f"{s['name']}({s['code']}) {s['count']}次" for s in stats["top_stocks"][:12]
+            )
         )
     if stats["top_keywords"]:
         lines.append("- 高频关键词：" + "、".join(k["word"] for k in stats["top_keywords"][:15]))
@@ -187,7 +190,9 @@ def stats_to_markdown(stats: Dict[str, Any]) -> str:
         for i, n in enumerate(s["top_news"][:10], 1):
             title = n["title"].replace("|", "／")
             if n.get("url") and n["url"] != "#":
-                md.append(f"{i}. [{title}]({n['url']}) — {n['source']}｜{n['time']}｜重要性 {n['importance']}")
+                md.append(
+                    f"{i}. [{title}]({n['url']}) — {n['source']}｜{n['time']}｜重要性 {n['importance']}"
+                )
             else:
                 md.append(f"{i}. {title} — {n['source']}｜{n['time']}｜重要性 {n['importance']}")
         md.append("")
@@ -220,8 +225,15 @@ def run_analysis(
     focus: str = "",
     progress: Optional[ProgressFn] = None,
     should_cancel: Optional[CancelFn] = None,
+    on_delta: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
-    """执行一次完整分析，返回报告 payload"""
+    """执行一次完整分析，返回报告 payload
+
+    on_delta: REDUCE（含单批直出）阶段的正文增量回调，用于 SSE 渐进输出。
+      - 每收到一段模型增量调用一次 on_delta(piece)；
+      - 流式中断回退非流式重取时，先以 on_delta("") 作为「清空缓冲」信号，
+        再整段补发完整正文——前端据此避免拼接重复内容。
+    """
     # 生效提示词（内置默认 + 用户自定义覆盖）；占位符缺失时回退内置默认
     P = get_prompts()
     t_start = time.time()
@@ -239,8 +251,11 @@ def run_analysis(
 
     _p("collect", 3, "正在从新闻库检索时间窗口内的数据…")
     records, meta = collector.collect(
-        hours=hours, scope=scope, min_importance=min_importance,
-        max_items=max_items, order=order,
+        hours=hours,
+        scope=scope,
+        min_importance=min_importance,
+        max_items=max_items,
+        order=order,
     )
     if not records:
         raise LLMError(
@@ -259,31 +274,92 @@ def run_analysis(
     total_chunks = len(chunks)
     _p("chunk", 14, f"已切分为 {total_chunks} 个批次，准备调用模型")
 
-    focus_note = f"\n\n【本次特别关注】{focus.strip()}\n请在报告中显著体现该关注点。" if focus.strip() else ""
+    focus_note = (
+        f"\n\n【本次特别关注】{focus.strip()}\n请在报告中显著体现该关注点。"
+        if focus.strip()
+        else ""
+    )
 
     prompt_tokens = 0
     completion_tokens = 0
+
+    def _safe_delta(piece: str) -> None:
+        if not on_delta:
+            return
+        try:
+            on_delta(piece)
+        except Exception:  # noqa: BLE001 —— 前端回调异常不影响分析主流程
+            pass
+
+    def _consume_stream(stream, est_messages: List[Dict[str, str]]) -> str:
+        """消费流式事件，累计正文与 token；返回完整正文。"""
+        nonlocal prompt_tokens, completion_tokens
+        buf: List[str] = []
+        usage_seen = False
+        for ev in stream:
+            if ev.get("type") == "usage":
+                prompt_tokens += int(ev.get("prompt_tokens") or 0)
+                completion_tokens += int(ev.get("completion_tokens") or 0)
+                usage_seen = True
+            elif ev.get("type") == "delta":
+                piece = ev.get("text") or ""
+                if piece:
+                    buf.append(piece)
+                    _safe_delta(piece)
+        content = "".join(buf).strip()
+        if not usage_seen:
+            # 服务端未回传 usage：按字数近似（页脚已标注「token 约」）
+            prompt_tokens += estimate_tokens(json.dumps(est_messages, ensure_ascii=False))
+            completion_tokens += estimate_tokens(content)
+        return content
+
+    def _generate_final(system_prompt: str, user_prompt: str, cap: Optional[int]) -> str:
+        """生成最终报告正文：流式优先，任何失败回退一次性调用保证结果完整性。"""
+        nonlocal prompt_tokens, completion_tokens
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        max_tok = min(client.max_tokens, cap) if cap else None
+
+        try:
+            stream = client.chat_stream(messages, max_tokens=max_tok)
+            content = _consume_stream(stream, messages)
+            if content:
+                return content
+            logger.warning("LLM 流式返回空内容，回退非流式重取")
+        except LLMError as e:
+            logger.warning(f"LLM 流式失败，回退非流式: {e.message}")
+
+        # 回退：通知前端清空半成品缓冲，再整段补发权威正文
+        _safe_delta("")
+        res = client.chat(messages, max_tokens=max_tok)
+        prompt_tokens += res.prompt_tokens
+        completion_tokens += res.completion_tokens
+        text = res.content.strip()
+        if not text:
+            raise LLMError("模型返回内容为空", kind="empty")
+        _safe_delta(text)
+        return text
 
     # ---------- 单批：直接一次成文 ----------
     if total_chunks == 1:
         _check()
         _p("reduce", 30, "数据量适中，单次调用生成报告…")
-        user = _safe_format(
-            P["single_user"], prompts.SINGLE_PASS_USER_TEMPLATE,
-            window_label=win_label,
-            start_str=meta["start_str"],
-            end_str=meta["end_str"],
-            news_count=len(records),
-            stats_block=stats_block,
-            payload="\n".join(chunks[0]),
-        ) + focus_note
-        res = client.chat(
-            [{"role": "system", "content": P["reduce_system"]},
-             {"role": "user", "content": user}]
+        user = (
+            _safe_format(
+                P["single_user"],
+                prompts.SINGLE_PASS_USER_TEMPLATE,
+                window_label=win_label,
+                start_str=meta["start_str"],
+                end_str=meta["end_str"],
+                news_count=len(records),
+                stats_block=stats_block,
+                payload="\n".join(chunks[0]),
+            )
+            + focus_note
         )
-        prompt_tokens += res.prompt_tokens
-        completion_tokens += res.completion_tokens
-        body = res.content
+        body = _generate_final(P["reduce_system"], user, cap=None)
         _p("reduce", 92, "报告生成完成")
     else:
         # ---------- MAP ----------
@@ -293,14 +369,20 @@ def run_analysis(
             pct = 14 + (i - 1) / total_chunks * 62
             _p("map", pct, f"正在压缩第 {i}/{total_chunks} 批（{len(chunk)} 条）…")
             user = _safe_format(
-                P["map_user"], prompts.MAP_USER_TEMPLATE,
-                window_label=win_label, index=i, total=total_chunks,
-                count=len(chunk), payload="\n".join(chunk),
+                P["map_user"],
+                prompts.MAP_USER_TEMPLATE,
+                window_label=win_label,
+                index=i,
+                total=total_chunks,
+                count=len(chunk),
+                payload="\n".join(chunk),
             )
             try:
                 res = client.chat(
-                    [{"role": "system", "content": P["map_system"]},
-                     {"role": "user", "content": user}],
+                    [
+                        {"role": "system", "content": P["map_system"]},
+                        {"role": "user", "content": user},
+                    ],
                     max_tokens=min(client.max_tokens, 2048),
                 )
                 prompt_tokens += res.prompt_tokens
@@ -320,22 +402,20 @@ def run_analysis(
         digest_text = "\n\n".join(digests)
         if len(digest_text) > chunk_chars * 3:
             digest_text = digest_text[: chunk_chars * 3] + "\n（要点过长，已截断）"
-        user = _safe_format(
-            P["reduce_user"], prompts.REDUCE_USER_TEMPLATE,
-            window_label=win_label,
-            start_str=meta["start_str"],
-            end_str=meta["end_str"],
-            news_count=len(records),
-            stats_block=stats_block,
-            digests=digest_text,
-        ) + focus_note
-        res = client.chat(
-            [{"role": "system", "content": P["reduce_system"]},
-             {"role": "user", "content": user}]
+        user = (
+            _safe_format(
+                P["reduce_user"],
+                prompts.REDUCE_USER_TEMPLATE,
+                window_label=win_label,
+                start_str=meta["start_str"],
+                end_str=meta["end_str"],
+                news_count=len(records),
+                stats_block=stats_block,
+                digests=digest_text,
+            )
+            + focus_note
         )
-        prompt_tokens += res.prompt_tokens
-        completion_tokens += res.completion_tokens
-        body = res.content
+        body = _generate_final(P["reduce_system"], user, cap=None)
         _p("reduce", 92, "报告生成完成")
 
     _p("assemble", 96, "正在拼装报告…")
@@ -343,23 +423,27 @@ def run_analysis(
     generated_at = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     title = f"FinFeed 近{meta['hours']}小时资讯复盘 · {generated_at[:16]}"
 
-    header = "\n".join([
-        f"# {title}",
-        "",
-        f"> 生成时间：{generated_at}　|　分析模型：{client.model}　|　"
-        f"覆盖区间：{meta['start_str']} — {meta['end_str']}",
-        "",
-        "---",
-        "",
-    ])
-    footer = "\n".join([
-        "",
-        "---",
-        "",
-        f"*本报告由 FinFeed AI 分析模块生成。样本 {len(records)} 条 / 分 {total_chunks} 批处理 / "
-        f"耗时 {elapsed:.1f} 秒 / token 约 {prompt_tokens + completion_tokens}。"
-        "结论由大语言模型基于库内公开资讯归纳，不构成投资建议。*",
-    ])
+    header = "\n".join(
+        [
+            f"# {title}",
+            "",
+            f"> 生成时间：{generated_at}　|　分析模型：{client.model}　|　"
+            f"覆盖区间：{meta['start_str']} — {meta['end_str']}",
+            "",
+            "---",
+            "",
+        ]
+    )
+    footer = "\n".join(
+        [
+            "",
+            "---",
+            "",
+            f"*本报告由 FinFeed AI 分析模块生成。样本 {len(records)} 条 / 分 {total_chunks} 批处理 / "
+            f"耗时 {elapsed:.1f} 秒 / token 约 {prompt_tokens + completion_tokens}。"
+            "结论由大语言模型基于库内公开资讯归纳，不构成投资建议。*",
+        ]
+    )
 
     body = decorate_report_body(clean_report_body(body))
     content = header + stats_to_markdown(stats) + "\n---\n\n" + body.strip() + "\n" + footer
