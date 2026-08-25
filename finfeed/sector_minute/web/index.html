@@ -80,10 +80,11 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 18px;
+    align-content: flex-start;
+    gap: 6px 18px;
     flex-wrap: wrap;
-    padding: 0 18px;
-    height: 64px;
+    padding: 8px 18px;
+    min-height: 64px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -1337,16 +1338,19 @@ function buildChartOption(c) {
     animation: false,
     axisPointer: { link: [{ xAxisIndex: "all" }], label: { backgroundColor: "#202939" } },
     tooltip: {
-      trigger: "axis", confine: true, backgroundColor: "#ffffff", borderColor: "#e2e6ec",
-      textStyle: { color: "#1f2530", fontSize: 12 },
+      trigger: "axis", confine: true,
+      backgroundColor: "rgba(255,255,255,0.86)", borderColor: "rgba(226,230,236,0.9)", borderWidth: 1,
+      padding: [4, 8],
+      textStyle: { color: "#1f2530", fontSize: 11 },
+      extraCssText: "box-shadow:none;line-height:1.4;border-radius:6px;",
       formatter(params) {
         const i = params[0] ? params[0].dataIndex : 0;
         const p = points[i]; if (!p) return "";
         const pct = pre_close > 0 ? ((p.price - pre_close) / pre_close) * 100 : 0;
         const dir = pct > 0 ? "#e5484d" : pct < 0 ? "#18a058" : "#5b6675";
         const sign = pct > 0 ? "+" : "";
-        const lines = ["<div style='font-weight:600;margin-bottom:4px'>" + p.time + "</div>",
-          `价格 <b style="color:${dir}">${fmtNum(p.price)}</b>  <span style="color:${dir}">${sign}${pct.toFixed(2)}%</span>`];
+        const lines = ["<b>" + p.time + "</b>",
+          `价 <span style="color:${dir}">${fmtNum(p.price)} ${sign}${pct.toFixed(2)}%</span>`];
         if (p.avg) lines.push(`均价 ${fmtNum(p.avg)}`);
         lines.push(`量 ${fmtVol(p.vol * 100)}`);
         return lines.join("<br/>");

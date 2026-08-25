@@ -96,13 +96,13 @@
   /* ---------- 顶栏 ---------- */
   header {
     display: flex; align-items: center; gap: 14px;
-    height: 58px; flex: 0 0 58px;
+    min-height: 58px; flex: none;
     padding: 0 14px;
     background: var(--header-bg);
     border: 1px solid var(--panel-border);
     border-radius: 10px;
     box-shadow: 0 4px 24px rgba(0,0,0,.18);
-    position: relative; overflow: hidden;
+    position: relative; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
     white-space: nowrap;              /* 顶栏文字禁止竖排/换行 */
     transition: background-color .3s ease, border-color .3s ease;
   }
