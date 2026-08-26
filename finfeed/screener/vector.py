@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from .boards import classify_board
+from .normalize import orthogonalize_dimensions
 
 
 def _vec_sigmoid(x: pd.Series, mid: float, scale: float) -> pd.Series:
@@ -179,14 +180,65 @@ def _neutralize_groups(df: pd.DataFrame, boards: pd.Series, cfg) -> pd.Series:
     return group
 
 
-def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg) -> pd.DataFrame:
+def assign_tier(total: pd.Series, fail_mask: pd.Series, cfg) -> pd.Series:
+    """由综合分 + 护栏掩码计算评级（strong/watch/observe/none）。
+
+    与 assemble_vec 内的评级逻辑完全一致：绝对阈值优先；动态评级启用时，
+    「绝对达标者少于下限」才用截面分位兜底放宽（弱市防入选=0、强市不过度泛滥）。
+    抽出为独立函数，便于混合层（ML/blend）在复算综合分后复用同一套评级。
+    """
+    t = cfg.tiers
+    g = t["guardrails"]
+    dyn_cfg = t.get("dynamic") or {}
+    dyn = bool(dyn_cfg.get("enabled", False))
+    idx = total.index
+    rank_frac = total.rank(method="max", pct=True) if dyn else None
+    tier = pd.Series("none", index=idx)
+
+    def _dynamic_ok(rank_ge: float, floor: int, abs_ok: pd.Series) -> pd.Series:
+        n_abs = int(abs_ok.sum())
+        if n_abs >= floor:
+            return abs_ok
+        return abs_ok | (rank_frac >= rank_ge)
+
+    if dyn:
+        strong_abs = (total >= t["strong"]) & ~fail_mask
+        watch_abs = (((total >= t["watch"]) | ((total >= t["strong"]) & fail_mask)))
+        observe_abs = total >= t["observe"]
+        strong_ok = _dynamic_ok(
+            1.0 - float(dyn_cfg.get("rank_top_strong", 0.08)),
+            int(dyn_cfg.get("min_strong_floor", 10)), strong_abs)
+        watch_ok = _dynamic_ok(
+            1.0 - float(dyn_cfg.get("rank_top_watch", 0.25)),
+            int(dyn_cfg.get("min_strong_floor", 10)) * 2, watch_abs) & ~strong_ok
+        observe_ok = _dynamic_ok(
+            1.0 - float(dyn_cfg.get("rank_top_observe", 0.50)),
+            int(dyn_cfg.get("min_strong_floor", 10)) * 4, observe_abs) & ~strong_ok & ~watch_ok
+        tier[strong_ok] = "strong"
+        tier[watch_ok] = "watch"
+        tier[observe_ok] = "observe"
+    else:
+        strong_ok = (total >= t["strong"]) & ~fail_mask
+        watch_ok = ((total >= t["watch"]) | ((total >= t["strong"]) & fail_mask)) & ~strong_ok
+        tier[strong_ok] = "strong"   # strong 优先于 watch
+        tier[watch_ok] = "watch"
+        tier[total < t["observe"]] = "none"
+    return tier
+
+
+def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg,
+                 weights: dict | None = None, orthogonalize: bool = False) -> pd.DataFrame:
     """中性化 + 加权总分 + 动态护栏 + 评级，输出数值字段 DataFrame。
 
     返回列：code/name/market/board/price/change_pct/pe_ttm/amplitude/amount/
     capital_score/momentum_score/valuation_score/liquidity_score/quality_score/
     total_score/tier/eligible/guardrail_failures(空列表占位)。
+
+    weights: 维度权重覆盖（默认用 cfg.weights）。IC 加权引擎通过 resolve_weights
+             产出后传入，实现「客观赋权」而不改动默认经验权重路径。
+    orthogonalize: 是否对维度子分做横截面正交化（去冗余，提升 ICIR 稳定性）。
     """
-    w = cfg.weights
+    w = weights if weights is not None else cfg.weights
     t = cfg.tiers
     g = t["guardrails"]
     nb = float((cfg.neutralize or {}).get("blend", 0.0))
@@ -209,6 +261,11 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg) -> pd.DataFr
         pct = dim_df.groupby(groups).rank(method="max", pct=True) * 100.0
         blended = ((1.0 - nb) * dim_df + nb * pct).clip(0.0, 100.0)
 
+    # 维度正交化（可选）：剔除维度间冗余信息，提升合成 ICIR 稳定性
+    # （engine.orthogonalize=True 时启用；残差重缩放回 0~100，不改变量纲）
+    if orthogonalize:
+        blended = orthogonalize_dimensions(blended)
+
     _DIMS = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment")
     total = sum(w[d] * blended[d] for d in _DIMS if d in blended)
     total = total.clip(0.0, 100.0)
@@ -227,40 +284,8 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg) -> pd.DataFr
     fail_mask = pd.concat(list(failures.values()), axis=1).any(axis=1)
 
     # 动态评级：绝对阈值优先；仅当绝对达标者低于下限（弱市）时，
-    # 用截面分位作为兜底放宽，避免「入选=0」；强市不因分位泛滥。
-    dyn_cfg = t.get("dynamic") or {}
-    dyn = bool(dyn_cfg.get("enabled", False))
-    rank_frac = total.rank(method="max", pct=True) if dyn else None
-    tier = pd.Series("none", index=idx)
-
-    def _dynamic_ok(rank_ge: float, floor: int, abs_ok: pd.Series) -> pd.Series:
-        n_abs = int(abs_ok.sum())
-        if n_abs >= floor:
-            return abs_ok  # 绝对阈值已足够，分位不启用
-        return abs_ok | (rank_frac >= rank_ge)  # 弱市兜底：分位放宽
-
-    if dyn:
-        strong_abs = (total >= t["strong"]) & ~fail_mask
-        watch_abs = (((total >= t["watch"]) | ((total >= t["strong"]) & fail_mask)))
-        observe_abs = total >= t["observe"]
-        strong_ok = _dynamic_ok(
-            1.0 - float(dyn_cfg.get("rank_top_strong", 0.08)),
-            int(dyn_cfg.get("min_strong_floor", 10)), strong_abs)
-        watch_ok = _dynamic_ok(
-            1.0 - float(dyn_cfg.get("rank_top_watch", 0.25)),
-            int(dyn_cfg.get("min_strong_floor", 10)) * 2, watch_abs) & ~strong_ok
-        observe_ok = _dynamic_ok(
-            1.0 - float(dyn_cfg.get("rank_top_observe", 0.50)),
-            int(dyn_cfg.get("min_strong_floor", 10)) * 4, observe_abs) & ~strong_ok & ~watch_ok
-        tier[strong_ok] = "strong"
-        tier[watch_ok] = "watch"
-        tier[observe_ok] = "observe"
-    else:
-        strong_ok = (total >= t["strong"]) & ~fail_mask
-        watch_ok = ((total >= t["watch"]) | ((total >= t["strong"]) & fail_mask)) & ~strong_ok
-        tier[strong_ok] = "strong"   # strong 优先于 watch（与标量 if/elif 链一致）
-        tier[watch_ok] = "watch"
-        tier[total < t["observe"]] = "none"
+    # 用截面分位作为兜底放宽（assign_tier 内实现，混合层复用同一逻辑）。
+    tier = assign_tier(total, fail_mask, cfg)
 
     out = pd.DataFrame({
         "code": codes,

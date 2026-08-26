@@ -82,6 +82,10 @@ class StockScore:
     ma_align: bool = False                    # 收盘价 > MA20 > MA60
     drawdown_from_high: float | None = None   # 距52周高点回撤 %
 
+    # 新选股引擎（P5 ML 层 / IC 客观加权预留）
+    ml_prob: float | None = None              # ML 层预测「未来强势」概率（0~1）
+    factor_exposure: dict[str, float] = field(default_factory=dict)  # 各维度标准化暴露(正交化前)
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -103,6 +107,13 @@ class ScreenerResult:
     config_summary: dict[str, Any] = field(default_factory=dict)
     scores: list[StockScore] = field(default_factory=list)
 
+    # 新选股引擎诊断（P2 客观加权 / P5 ML 层）
+    engine_mode: str = "fixed"                       # fixed | ic | auto | ml | blend | degraded
+    engine_weights: dict[str, float] = field(default_factory=dict)   # 实际使用的维度权重
+    engine_diagnostics: dict[str, Any] = field(default_factory=dict)  # IC/ICIR/ML 等诊断
+    model_status: str = "linear"                     # linear | trained | insufficient_history | degraded
+    methodology_version: str = "v2-ic-hybrid"        # 方法论版本标识
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "generated_at": self.generated_at,
@@ -116,5 +127,9 @@ class ScreenerResult:
             "scored_size": self.scored_size,
             "technical_enabled": self.technical_enabled,
             "config_summary": self.config_summary,
+            "engine_mode": self.engine_mode,
+            "engine_weights": self.engine_weights,
+            "engine_diagnostics": self.engine_diagnostics,
+            "methodology_version": self.methodology_version,
             "scores": [s.to_dict() for s in self.scores],
         }

@@ -1,4 +1,4 @@
-// 智能选股全局状态：配置 / 任务 / 结果 / 最近任务
+// 智能选股全局状态：配置 / 任务 / 结果 / 最近任务 / 模板 / 对比 / 评估
 import { defineStore } from 'pinia'
 import screenerApi from '@/features/screener/api/screenerApi'
 
@@ -26,6 +26,13 @@ export const useScreenerStore = defineStore('screener', {
     recent: [],
     pollTimer: null,
     lastSignalAt: 0,
+    // P4：模板 / 对比 / 评估
+    templates: [],
+    compareResult: null,
+    comparing: false,
+    evalResult: null,
+    evaluating: false,
+    evalErr: '',
   }),
 
   getters: {
@@ -48,6 +55,7 @@ export const useScreenerStore = defineStore('screener', {
     async loadConfig() {
       try {
         this.config = await screenerApi.config()
+        this.templates = this.config?.templates || this.templates || []
       } catch (e) {
         this.errMsg = '加载选股配置失败：' + (e.message || e)
       }
@@ -122,6 +130,58 @@ export const useScreenerStore = defineStore('screener', {
         this.running = false
         this.errMsg = '提交失败：' + (e.message || e)
         return false
+      }
+    },
+
+    // ---- P4：模板 ----
+    async loadTemplates() {
+      try {
+        const r = await screenerApi.templates()
+        this.templates = r.templates || []
+      } catch {
+        /* 静默降级 */
+      }
+    },
+
+    async saveTemplate(name, request) {
+      const r = await screenerApi.saveTemplate(name, request)
+      await this.loadTemplates()
+      return r
+    },
+
+    async deleteTemplate(name) {
+      await screenerApi.deleteTemplate(name)
+      await this.loadTemplates()
+    },
+
+    // ---- P4：策略对比 ----
+    async compare(a, b) {
+      this.comparing = true
+      this.compareResult = null
+      this.errMsg = ''
+      try {
+        this.compareResult = await screenerApi.compare(a, b)
+        return this.compareResult
+      } catch (e) {
+        this.errMsg = '对比失败：' + (e.message || e)
+        return null
+      } finally {
+        this.comparing = false
+      }
+    },
+
+    // ---- P6：评估闭环 ----
+    async evaluate(payload = {}) {
+      this.evaluating = true
+      this.evalErr = ''
+      try {
+        this.evalResult = await screenerApi.evaluate(payload)
+        return this.evalResult
+      } catch (e) {
+        this.evalErr = '评估失败：' + (e.message || e)
+        return null
+      } finally {
+        this.evaluating = false
       }
     },
   },

@@ -23,6 +23,7 @@ from . import datasource, scoring
 from . import report as report_mod
 from .config import load_config
 from .models import ScreenerResult
+from .snapshot_store import snapshot_store
 
 logger = logging.getLogger("finfeed.screener.cli")
 
@@ -153,7 +154,9 @@ def cmd_screener(args: argparse.Namespace) -> int:
         df, tech_coverage = datasource.enrich_technical(df, top_n=getattr(args, "top_tech", 200))
 
     universe = len(df)
-    scores = scoring.score_frame(df, cfg, technical_enabled=technical)
+    engine_meta: dict = {}
+    scores = scoring.score_frame(df, cfg, technical_enabled=technical,
+                                store=snapshot_store, meta=engine_meta)
     # score_frame 返回通过硬性过滤并完成评分的全部标的（含 none 评级）
     eligible = len(scores)
     tech_on = technical and enrich
@@ -173,7 +176,11 @@ def cmd_screener(args: argparse.Namespace) -> int:
             "weights": cfg.weights,
             "tiers": cfg.tiers,
             "filters": cfg.filters,
+            "engine": cfg.engine,
         },
+        engine_mode=engine_meta.get("engine_mode", "fixed"),
+        engine_weights=engine_meta.get("engine_weights", {}),
+        engine_diagnostics=engine_meta.get("engine_diagnostics", {}),
         scores=scores,
     )
 

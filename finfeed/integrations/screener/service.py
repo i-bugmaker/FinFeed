@@ -28,7 +28,9 @@ from finfeed.screener import (
     load_config,
     score_frame,
 )
+from finfeed.screener import request as request_mod
 from finfeed.screener.models import ScreenerResult
+from finfeed.screener.snapshot_store import snapshot_store
 from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("screener_service")
@@ -265,7 +267,16 @@ def _run(task: dict) -> None:
     top_tech = max(50, min(int(params.get("top_tech", 200)), 500))
 
     cfg = load_config()
-    # 板块白名单覆盖（前端传参优先于默认配置）
+    # 结构化请求（ScreenerRequest）：用户自定义股票池 / 策略 / 输出
+    req_dict = params.get("request")
+    if isinstance(req_dict, dict):
+        try:
+            cfg = request_mod.build_config(
+                request_mod.ScreenerRequest.from_dict(req_dict), load_config())
+            _log(task, "已应用结构化选股请求（ScreenerRequest）")
+        except Exception as exc:  # noqa: BLE001
+            _log(task, f"解析选股请求失败，回退默认配置：{exc}", level="WARN")
+    # 板块白名单覆盖（向后兼容旧版 RunRequest.boards 参数）
     boards = params.get("boards")
     if isinstance(boards, dict):
         cfg.filters["boards"] = {k: bool(v) for k, v in boards.items()}
@@ -290,7 +301,9 @@ def _run(task: dict) -> None:
             _progress(task, 60)
 
         _log(task, "开始五维加权评分…")
-        scores = score_frame(df, cfg, technical_enabled=technical)
+        engine_meta: dict = {}
+        scores = score_frame(df, cfg, technical_enabled=technical,
+                             store=snapshot_store, meta=engine_meta)
         _progress(task, 95)
 
         screened_size = len(scores)
@@ -311,7 +324,12 @@ def _run(task: dict) -> None:
                 "weights": cfg.weights,
                 "filters": cfg.filters,
                 "tiers": cfg.tiers,
+                "engine": cfg.engine,
             },
+            engine_mode=engine_meta.get("engine_mode", "fixed"),
+            engine_weights=engine_meta.get("engine_weights", {}),
+            engine_diagnostics=engine_meta.get("engine_diagnostics", {}),
+            model_status=engine_meta.get("model_status", "linear"),
             scores=scores,
         )
         payload = result.to_dict()
@@ -344,8 +362,34 @@ def _run(task: dict) -> None:
         pass
 
 
+def run_evaluation(cfg: ScreenerConfig | None = None, end_date: str | None = None,
+                   horizon: int | None = None, step: int = 1) -> dict[str, Any]:
+    """P6 评估闭环：对当前引擎配置做无未来函数的 walk-forward 评估。
+
+    返回复合/分维度 RankIC、ICIR、五分位分层收益、多空价差与 IR，以及
+    因子失效监控与重算触发建议（见 finfeed.screener.evaluation）。
+    """
+    from finfeed.screener.evaluation import evaluate_engine
+
+    cfg = cfg or load_config()
+    return evaluate_engine(cfg, snapshot_store, end_date=end_date, horizon=horizon, step=step)
+
+
+# ---- 模板包装（路由层直接调用，委托 request_mod）----
+def list_templates() -> list[dict]:
+    return request_mod.list_templates()
+
+
+def save_template(name: str, req_dict: dict) -> dict:
+    return request_mod.save_template(name, req_dict)
+
+
+def delete_template(name: str) -> bool:
+    return request_mod.delete_template(name)
+
+
 def get_config() -> dict[str, Any]:
-    """返回选股方法论与配置，供前端展示。"""
+    """返回选股方法论与配置，供前端展示与配置面板渲染。"""
     cfg = load_config()
     return {
         "weights": cfg.weights,
@@ -353,8 +397,79 @@ def get_config() -> dict[str, Any]:
         "params": cfg.params,
         "tiers": cfg.tiers,
         "neutralize": cfg.neutralize,
+        "engine": cfg.engine,
+        "dims": ["capital", "momentum", "valuation", "liquidity", "quality", "sentiment"],
+        "dim_labels": {
+            "capital": "资金面", "momentum": "动量趋势", "valuation": "估值",
+            "liquidity": "量价活跃", "quality": "质量稳定", "sentiment": "情绪/事件",
+        },
+        "templates": request_mod.list_templates(),
+        "request_schema": {
+            "modes": ["linear", "ic", "auto", "ml", "blend"],
+            "universe_keys": ["boards", "exclude_st", "exclude_suspended", "min_amount",
+                              "min_turnover", "price_range", "pe_ttm_range", "float_cap_range",
+                              "exclude_new_days"],
+            "strategy_keys": ["mode", "auto_weight", "dim_weights", "orthogonalize",
+                              "blend_alpha", "ml"],
+            "output_keys": ["top", "tiers", "with_technical", "with_factor_exposure"],
+        },
         "methodology": cfg.explain(),
     }
+
+
+def _execute_once(cfg: ScreenerConfig, df: pd.DataFrame, technical: bool,
+                  top_n: int = 200) -> ScreenerResult:
+    """单次评分 + 结果封装（供 compare 复用，不写任务状态）。"""
+    engine_meta: dict = {}
+    scores = score_frame(df, cfg, technical_enabled=technical,
+                         store=snapshot_store, meta=engine_meta)
+    scores = scores[:top_n]
+    return ScreenerResult(
+        generated_at=now_bj().strftime("%Y-%m-%d %H:%M:%S"),
+        data_source="compare",
+        snapshot_time="",
+        as_of_kind="local",
+        fallback_chain=[],
+        coverage=1.0,
+        universe_size=len(df),
+        screened_size=len(scores),
+        scored_size=len(scores),
+        technical_enabled=technical,
+        config_summary={"weights": cfg.weights, "engine": cfg.engine},
+        engine_mode=engine_meta.get("engine_mode", "fixed"),
+        engine_weights=engine_meta.get("engine_weights", {}),
+        engine_diagnostics=engine_meta.get("engine_diagnostics", {}),
+        model_status=engine_meta.get("model_status", "linear"),
+        scores=scores,
+    )
+
+
+def run_compare(req_a: dict, req_b: dict, technical: bool = False,
+                top_n: int = 200) -> dict[str, Any]:
+    """策略对比：同一快照下跑两套规则，返回结果与差异摘要。"""
+    cfg_a = request_mod.build_config(request_mod.ScreenerRequest.from_dict(req_a or {}), load_config())
+    cfg_b = request_mod.build_config(request_mod.ScreenerRequest.from_dict(req_b or {}), load_config())
+    bundle = fetch_snapshot(count=12000)
+    df = bundle.df
+    if technical:
+        df, _ = enrich_technical(df, top_n=top_n, kline_count=120)
+    ra = _execute_once(cfg_a, df, technical, top_n)
+    rb = _execute_once(cfg_b, df, technical, top_n)
+    sa = {s.code for s in ra.scores if s.tier in ("strong", "watch")}
+    sb = {s.code for s in rb.scores if s.tier in ("strong", "watch")}
+    union = sa | sb
+    return {
+        "a": ra.to_dict(),
+        "b": rb.to_dict(),
+        "delta": {
+            "summary_a": request_mod.summarize_result(ra),
+            "summary_b": request_mod.summarize_result(rb),
+            "overlap_strong_watch": len(sa & sb),
+            "jaccard": round(len(sa & sb) / len(union), 4) if union else None,
+        },
+        "config_diff": request_mod.compare_configs(cfg_a, cfg_b),
+    }
+
 
 
 def _error_code_of(exc: Exception) -> str:

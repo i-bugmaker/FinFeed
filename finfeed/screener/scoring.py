@@ -20,6 +20,8 @@ from . import factors
 from .boards import classify_board
 from .config import ScreenerConfig
 from .models import StockScore
+from . import ic_engine, ml_engine
+from .ic_engine import resolve_weights
 
 _ST_RE = re.compile(r"(ST|\*ST|退)", re.IGNORECASE)
 
@@ -357,7 +359,9 @@ def score_one(row: dict, cfg: ScreenerConfig, technical_enabled: bool = False) -
     return _assemble(row, dims, {}, cfg, technical_enabled)
 
 
-def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> list[StockScore]:
+def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
+               store=None, meta: dict | None = None, end_date: str | None = None
+               ) -> list[StockScore]:
     """对 DataFrame（含原始列）做过滤+评分，返回按综合分降序的 StockScore 列表。
 
     向量化流程（numpy/pandas 批量，见 vector.py）：
@@ -368,9 +372,33 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> lis
         Pass 3  逐行构造 StockScore；解释性文本（rationale/highlights）仅对
                 Top RATIONALE_TOP 生成，其余留空（字符串开销集中收敛）。
     与 factors 标量路径共用同一 config，数值行为一致。
+
+    引擎开关：
+        store  — 快照存储（SnapshotStore 实例）；engine.mode=ic/auto 时用于
+                 读取真实历史计算 RankIC 客观权重；默认 None（fixed 模式不触碰）。
+        meta   — 可选 dict，回填引擎诊断信息（engine_mode / engine_weights /
+                 engine_diagnostics），供调用方写入 ScreenerResult 报告。
     """
     from . import vector
     from .datasource import _add_derived
+
+    # 解析实际维度权重：默认 fixed=经验权重（与重构前完全一致）；
+    # engine.mode=ic/auto/ml/blend 时由真实历史客观赋权（特性开关，向后兼容）。
+    # ml/blend 模式需历史训练 ML，提前加载一次历史（resolve_weights 复用，避免双重 IO）。
+    intended_mode = (cfg.engine or {}).get("mode", "fixed")
+    history = None
+    if intended_mode in ("ml", "blend") and store is not None:
+        history = ic_engine.load_history(store, cfg, end_date=end_date)
+    weights, engine_mode, engine_diag = resolve_weights(
+        cfg, store=store, history=history, end_date=end_date)
+    # 防御：保证权重键集与配置一致（IC 引擎缺失维度时回退经验权重）
+    weights = {d: float(weights.get(d, cfg.weights.get(d, 0.0))) for d in cfg.weights}
+    ortho = bool((cfg.engine or {}).get("orthogonalize", False))
+    if isinstance(meta, dict):
+        meta["engine_mode"] = engine_mode
+        meta["engine_weights"] = weights
+        meta["engine_diagnostics"] = engine_diag
+        meta["model_status"] = "linear"
 
     df = _add_derived(df)
 
@@ -386,8 +414,35 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> lis
 
     sub = pd.DataFrame(keep_recs)
     dims = vector.dimension_scores_vec(sub, cfg)
-    assembled = vector.assemble_vec(sub, dims, cfg)
+    assembled = vector.assemble_vec(sub, dims, cfg, weights=weights, orthogonalize=ortho)
     assembled = assembled.sort_values("total_score", ascending=False)
+
+    # ---- ML 层（P5）：engine.mode=ml/blend 时叠加非线性预测 ----
+    # ml   : 综合分直接取 P(未来强势)×100
+    # blend: Score = α·线性分 + (1-α)·P(未来强势)×100，α 默认 0.5
+    # 复算后重新排序与评级，保证 tier 与最终综合分一致。无未来函数：
+    # 训练只用历史截面，当前截面仅作推理。
+    if engine_mode in ("ml", "blend"):
+        mlp, ml_diag, ml_status = ml_engine.run_ml_layer(
+            cfg, store=store, current_df=sub, end_date=None, history=history)
+        if mlp is not None and len(mlp) == len(assembled):
+            alpha = float((cfg.engine or {}).get("blend_alpha", 0.5))
+            if engine_mode == "ml":
+                assembled["total_score"] = (100.0 * mlp).clip(0.0, 100.0)
+            else:
+                assembled["total_score"] = (
+                    alpha * assembled["total_score"] + (1.0 - alpha) * 100.0 * mlp
+                ).clip(0.0, 100.0)
+            assembled["tier"] = vector.assign_tier(
+                assembled["total_score"], assembled["guardrail_mask"], cfg)
+            assembled = assembled.sort_values("total_score", ascending=False)
+            assembled["ml_prob"] = mlp
+            if isinstance(meta, dict):
+                engine_diag.update(ml_diag)
+                meta["engine_diagnostics"] = engine_diag
+                meta["model_status"] = ml_status
+        elif isinstance(meta, dict):
+            meta["model_status"] = ml_status
 
     rationale_top = 200
     top_idx = set(assembled.index[:rationale_top])
@@ -395,6 +450,7 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> lis
     scores: list[StockScore] = []
     raw_records = sub.to_dict("records")
     raw_by_pos = {i: rec for i, rec in zip(sub.index, raw_records)}
+    _DIMS_SCORES = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment")
     for i, rec in assembled.iterrows():
         raw = raw_by_pos.get(i, {})
         failures: list[str] = []
@@ -427,6 +483,17 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> lis
             highlights = []
             rationale = ""
 
+        # ML 概率与因子暴露（ml/blend 模式下由 ML 层填充）
+        mlpv = rec.get("ml_prob", None)
+        ml_prob = (
+            float(mlpv)
+            if (mlpv is not None and not (isinstance(mlpv, float) and math.isnan(mlpv)))
+            else None
+        )
+        factor_exposure = {
+            d: float(rec[f"{d}_score"]) for d in _DIMS_SCORES if f"{d}_score" in rec
+        }
+
         rv = raw.get("realized_vol_ann")
         dd = raw.get("drawdown_from_high")
         scores.append(StockScore(
@@ -451,6 +518,8 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False) -> lis
             rationale=rationale,
             highlights=highlights,
             guardrail_failures=failures,
+            ml_prob=ml_prob,
+            factor_exposure=factor_exposure,
             realized_vol_ann=(float(rv)
                               if rv is not None and math.isfinite(float(rv)) else None),
             ma_align=bool(raw.get("ma_align", False)),

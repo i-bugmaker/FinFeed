@@ -2,20 +2,24 @@
 # -*- coding: utf-8 -*-
 """选股评分框架配置（唯一真相源）。
 
-本模块集中定义五维加权评分模型的全部参数：维度权重、硬性过滤阈值、
-各类因子的归一化锚点、评级分层与入选护栏。所有取值均经过经验校准，
-并附带说明，保证「权重与阈值合理、可解释」。
+本模块集中定义六维加权评分模型的全部参数：维度权重、硬性过滤阈值、
+各类因子的归一化锚点、评级分层与入选护栏、以及选股引擎特性开关。
+默认权重经过经验校准并附说明，保证「权重与阈值合理、可解释」；
+同时 engine.mode 可切换为基于滚动 RankIC 的**客观加权**（见 ic_engine.py），
+默认 fixed 模式与重构前行为完全一致。
 
 评分维度与默认权重（合计 100）：
-    资金面 Capital Flow      30%  —— 主力资金净流入（短+中周期），A 股最可靠的短期 alpha 之一
+    资金面 Capital Flow      20%  —— 主力资金净流入（短+中周期），A 股短线 alpha
     动量趋势 Momentum/Trend  25%  —— 中期动量 + 多周期动量有序（上升趋势结构）
-    估值 Valuation          20%  —— 市盈率 TTM 落在合理区间（规避高估值与亏损陷阱）
+    估值 Valuation          18%  —— 市盈率 TTM 落在合理区间（规避高估值与亏损陷阱）
     量价活跃 Liquidity       15%  —— 成交额与换手率处于「活跃但不疯狂」的健康带
-    质量稳定 Quality/Stab.   10%  —— 波动率（振幅/已实现波动）适中，非妖股、非僵尸
+    质量稳定 Quality/Stab.   12%  —— 波动率（振幅/已实现波动）适中，非妖股、非僵尸
+    情绪/事件 Sentiment      10%  —— 涨停基因/连涨/大单动向/量速，A 股微观结构信号
 
 权重设定逻辑：资金面与动量趋势对短期收益的解释力最强（学术与实战均支持），
-故合计 55%；估值提供安全边际，量价保证可交易性，质量稳定控制回撤风险。
-各维度内部子因子的相对重要性亦在本文件声明。
+故合计 45%；估值提供安全边际，量价保证可交易性，质量稳定控制回撤，
+情绪捕捉短线微观结构 alpha。各维度内部子因子的相对重要性亦在本文件声明。
+engine.mode="ic"/"auto" 时，维度权重由真实历史 RankIC 客观赋权覆盖本默认值。
 """
 
 from __future__ import annotations
@@ -170,6 +174,32 @@ def _default_neutralize() -> dict[str, Any]:
     }
 
 
+def _default_engine() -> dict[str, Any]:
+    """选股引擎特性开关（新选股方法的核心开关）。
+
+    默认 mode="fixed"：沿用经验固定权重，与重构前行为完全一致（零风险、零外部依赖）。
+    启用 IC 客观加权（2026-08 新增）：
+        mode="ic"   ：用真实快照历史的滚动 RankIC 半衰期权重（需 ≥ min_history_days 天）
+        mode="auto"  ：有历史则 IC 加权，历史不足自动降级 fixed（标注 degraded）
+        min_history_days：最少所需历史交易日（IC 需要回看窗口 + 前瞻期）
+        horizon     ：前瞻收益期限（交易日），用于计算 RankIC（默认 20 日）
+        ic_halflife ：IC 半衰期（交易日），越小近期权重越高（默认 60）
+        scheme      ：加权方案 halflife_ic（半衰期权重）/ icir（ICIR 加权）
+        orthogonalize：是否对维度子分做横截面正交化（去冗余，提升 ICIR 稳定性）
+    """
+    return {
+        "mode": "fixed",          # fixed | ic | auto | ml | blend | degraded
+        "min_history_days": 120,  # IC 窗口(≈120) + 前瞻(20)
+        "horizon": 20,            # 前瞻收益期限
+        "ic_halflife": 60,        # IC 半衰期
+        "scheme": "halflife_ic",  # halflife_ic | icir
+        "orthogonalize": False,   # 维度正交化开关
+        "blend_alpha": 0.5,       # 混合模式线性权重 α（ml 概率权重 1-α）
+        "top_quantile": 0.3,      # ML 标签分位（前/后 30%）
+        "ml_min_history_days": 60,  # ML 训练所需最少历史交易日（低于 IC 要求，更快可用）
+    }
+
+
 def _default_tiers() -> dict[str, Any]:
     return {
         # 综合分阈值（0~100）
@@ -212,6 +242,7 @@ class ScreenerConfig:
     params: dict[str, Any] = field(default_factory=_default_params)
     tiers: dict[str, Any] = field(default_factory=_default_tiers)
     neutralize: dict[str, Any] = field(default_factory=_default_neutralize)
+    engine: dict[str, Any] = field(default_factory=_default_engine)
 
     # ---- 序列化 ----
     def to_dict(self) -> dict[str, Any]:
@@ -237,6 +268,8 @@ class ScreenerConfig:
                 cfg.tiers["guardrails"].update(d["tiers"]["guardrails"])
         if isinstance(d.get("neutralize"), dict):
             cfg.neutralize.update(d["neutralize"])
+        if isinstance(d.get("engine"), dict):
+            cfg.engine.update(d["engine"])
         return cfg
 
     @classmethod
@@ -358,6 +391,46 @@ class ScreenerConfig:
             )
         else:
             lines.append("截面中性化已关闭（blend=0），评分为全市场统一绝对分。")
+        lines.append("")
+        lines.append("### 选股引擎（权重来源）")
+        lines.append("")
+        eng = self.engine or {}
+        emode = eng.get("mode", "fixed")
+        if emode in ("ml", "blend"):
+            scheme_label = "半衰期权重" if eng.get("scheme", "halflife_ic") == "halflife_ic" else "ICIR 加权"
+            blend_note = (
+                f"线性层（IC 客观加权）占 α={eng.get('blend_alpha', 0.5)}，"
+                f"ML 层（P(未来强势)）占 1-α；"
+                if emode == "blend" else
+                "综合分直接取 ML 层预测的「未来强势」概率；"
+            )
+            lines.append(f"- **权重模式：{emode.upper()}（IC 线性层 + ML 分类层 混合框架）**。"
+                         f"{blend_note}")
+            lines.append(f"  - 线性层：维度权重由真实历史快照的滚动 RankIC {scheme_label} 动态决定"
+                         f"（horizon={eng.get('horizon', 20)} 日，ic_halflife={eng.get('ic_halflife', 60)} 日）。")
+            lines.append(f"  - ML 层：六维度子分为特征，训练用历史截面 t、标签用 t+{eng.get('horizon', 20)} 日前瞻收益"
+                         f"截面前 {eng.get('top_quantile', 0.3):.0%} 分位（0/1 分类）；"
+                         f"需 ≥ {eng.get('ml_min_history_days', 60)} 个交易日历史快照。")
+            lines.append(f"  - 后端：本环境 lightgbm/sklearn 缺失时自动使用依赖免费 NumPy 逻辑回归"
+                         f"（带 L2 正则），保证可运行；安装 lightgbm 后自动切换梯度提升。")
+            lines.append("  - 严谨性：训练仅用历史、当前截面仅推理，无未来函数；"
+                         "walk-forward 切分产出 OOS 的 RankIC / AUC 诊断，用于评估 ML 增量。")
+        elif emode == "fixed":
+            lines.append("- **权重模式：经验固定权重（默认）**。六维权重由上方表格给出，"
+                         "经历史回测与维度扩展校准，**不依赖任何外部数据**，与重构前行为一致，零风险。")
+        else:
+            scheme_label = "半衰期权重" if eng.get("scheme", "halflife_ic") == "halflife_ic" else "ICIR 加权"
+            lines.append(f"- **权重模式：{emode.upper()}（IC 客观加权）**。维度权重不再由人工设定，"
+                         f"而由真实历史快照的**滚动 RankIC {scheme_label}** 动态决定：")
+            lines.append(f"  - 前瞻收益期限 `horizon={eng.get('horizon', 20)}` 日；IC 半衰期 `ic_halflife={eng.get('ic_halflife', 60)}` 日（近期 IC 权重更高）")
+            lines.append(f"  - 需 ≥ `min_history_days={eng.get('min_history_days', 120)}` 个交易日的历史快照；"
+                         f"不足时自动降级为固定权重（mode 标注 `degraded`）。")
+            lines.append(f"  - 正交化开关 `orthogonalize={eng.get('orthogonalize', False)}`：开启后对维度子分做横截面正交化，"
+                         "去除冗余、提升合成 ICIR 稳定性。")
+            lines.append("  - 负 IC 维度权重置 0（多头选股不做空）；全负时退化为等权。")
+            lines.append("> 客观加权依据：海通证券 IC 加权 + 正交化（ICIR 2.29→3.30）、"
+                         "半衰期 IC 加权 + XGBoost 选股（沪深300 年化 26.86% vs 基准 2.05%）、"
+                         "Gu-Kelly-Xiu(2020) 秩标准化。前膽收益严格用 t+1..t+h，杜绝未来函数。")
         lines.append("")
         lines.append("> 说明：本模型为系统化量化筛选工具，因子基于公开市场微观结构规律"
                      "（动量、价值、流动性、聪明钱）设计，用于缩小研究范围，不构成投资建议。"
