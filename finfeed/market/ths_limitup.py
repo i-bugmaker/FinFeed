@@ -185,6 +185,8 @@ async def _get_dataapi_pool(kind: str, td: str) -> Dict[str, Any]:
     """dataapi 涨停/炸板/跌停池。返回 {total, list}。
 
     dataapi 限制 limit<=200，故单页上限 200，必要时分页拉取（上限 5 页 / 1000 只）。
+    实测返回结构为 {"page": {"total": N, "count": M, ...}, "info": [...]}：
+    total 须从 page.total 读取、个股列表从 info 读取（此前误读 list/data 导致恒为空）。
     """
     out: List[Dict[str, Any]] = []
     total = 0
@@ -193,12 +195,15 @@ async def _get_dataapi_pool(kind: str, td: str) -> Dict[str, Any]:
         params = {
             "page": page, "limit": 200, "field": _POOL_FIELDS,
             "filter": "HS,GEM2STAR", "order_field": "330324", "order_type": 0,
-            "_": int(time.time() * 1000),
+            "date": _ymd(td), "_": int(time.time() * 1000),
         }
         data = _data_of(await _request(f"/limit_up/{kind}", params, mobile=False))
         if isinstance(data, dict):
-            page_total = data.get("total") or data.get("count") or 0
-            lst = data.get("list") or data.get("data") or []
+            pg = data.get("page") or {}
+            page_total = (pg.get("total") or data.get("total")
+                          or pg.get("count") or data.get("count") or 0)
+            lst = (data.get("info") or data.get("list") or data.get("data")
+                   or pg.get("info") or [])
         else:
             page_total = 0
             lst = data if isinstance(data, list) else []
@@ -280,12 +285,27 @@ async def _get_trade_status() -> Dict[str, Any]:
 # 字段规整
 # ---------------------------------------------------------------------------
 def _norm_dataapi_pool_item(it: Dict[str, Any]) -> Dict[str, Any]:
-    """把 dataapi 数字字段 ID 的个股行规整为命名结构。"""
+    """把 dataapi 涨停/炸板/跌停池个股行规整为命名结构。
+
+    实测 dataapi 直接返回命名字段（code / name / latest / change_rate /
+    reason_type），非文档所述数字字段 ID；为兼容接口切换，两种形态都处理：
+    数字 ID 走 _POOL_FIELD_MAP 映射，命名字段直通覆盖。
+    """
     out: Dict[str, Any] = {}
     for k, v in (it or {}).items():
         name = _POOL_FIELD_MAP.get(str(k))
         if name:
             out[name] = v
+    if "code" in it:
+        out["code"] = it["code"]
+    if "name" in it:
+        out["name"] = it["name"]
+    if "latest" in it:
+        out["price"] = it["latest"]
+    if "change_rate" in it:
+        out["change_pct"] = it["change_rate"]
+    if "reason_type" in it:
+        out["reason"] = it["reason_type"]
     return out
 
 
@@ -573,15 +593,30 @@ def _build_ladder_from_db(td: str) -> Optional[Dict[str, Any]]:
     rows = store.get_ths_limitup_ladder(td)
     if not rows:
         return None
+    # 用当日涨停池富化：价格 / 涨跌幅 / 原因 / 封板时间 / 主力净额 / 换手率
+    try:
+        pool_items = {p["code"]: _row_to_pool_item(p)
+                      for p in store.get_ths_limitup_pool(td, "up")}
+    except Exception:  # noqa: BLE001
+        pool_items = {}
     by_height: Dict[int, Dict[str, Any]] = {}
     max_height = 0
     for r in rows:
         h = r["height"]
         max_height = max(max_height, h)
         by_height.setdefault(h, {"height": h, "number": r["number"], "stocks": []})
+        pool = pool_items.get(r["code"]) or {}
         by_height[h]["stocks"].append({
             "code": r["code"], "name": r["name"],
             "market_id": r["market_id"], "continue_num": r["continue_num"],
+            "price": pool.get("price", 0),
+            "change_pct": pool.get("change_pct", 0),
+            "reason": pool.get("reason", ""),
+            "board": pool.get("board", ""),
+            "limit_up_time": pool.get("limit_up_time", ""),
+            "main_net_amount": pool.get("main_net_amount", 0),
+            "effective_circulation": pool.get("effective_circulation", 0),
+            "turnover_ratio": pool.get("turnover_ratio", 0),
         })
     ladder = [by_height[h] for h in sorted(by_height, reverse=True)]
     return {"date": td, "ladder": ladder, "max_height": max_height, "source": "db"}

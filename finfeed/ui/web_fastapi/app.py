@@ -39,6 +39,9 @@ from finfeed.ecal import fetcher as calendar_fetcher
 # easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
 from finfeed.integrations.easytdx.router import router as easytdx_router
 
+# easy-tdx 盘面复盘仪表盘快捷数据接口（同步 + 缓存）
+from finfeed.integrations.easytdx.dashboard import router as easytdx_dashboard_router
+
 # 智能选股模块（五维加权评分）
 from finfeed.integrations.screener.router import router as screener_router
 from finfeed.market import alerting as market_alerting
@@ -101,6 +104,9 @@ app.include_router(create_calendar_router())
 
 # 注册 easy-tdx 集成路由（/api/easytdx/*）
 app.include_router(easytdx_router)
+
+# 注册 easy-tdx 盘面复盘仪表盘路由（/api/easytdx/dashboard/*）
+app.include_router(easytdx_dashboard_router)
 
 # 注册智能选股路由（/api/screener/*）
 app.include_router(screener_router)

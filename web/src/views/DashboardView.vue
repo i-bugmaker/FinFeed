@@ -1,8 +1,16 @@
 <script setup>
+/**
+ * DashboardView — 盘面复盘主控台
+ *
+ * 以行情 / 盘面数据为核心：
+ *   · 全市场涨跌统计、涨停聚焦、板块排行榜、个股榜单、异动监控（easy-tdx 通达信行情）
+ *   · 指数 K 线（多周期 + 分时）
+ *   · 实时行情推送（WebSocket，含采集告警）
+ * 新闻舆情降为辅助区（可折叠）；数据源健康以紧凑平铺展示。
+ */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api/client'
 import { useAppStore } from '../store/app'
-import StatCard from '../components/StatCard.vue'
 import ChartPanel from '../components/ChartPanel.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
@@ -11,12 +19,33 @@ import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 import IndexKlineCard from '../components/IndexKlineCard.vue'
-import AppBadge from '../ui/AppBadge.vue'
 import { useMarketSocket } from '../composables/useMarketSocket'
+
+// ─── 盘面复盘卡片（easy-tdx 行情） ───
+import MarketOverviewCard from '../components/review/MarketOverviewCard.vue'
+import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
+import BoardRankingCard from '../components/review/BoardRankingCard.vue'
+import StockRankingCard from '../components/review/StockRankingCard.vue'
+import UnusualAlertCard from '../components/review/UnusualAlertCard.vue'
 
 const store = useAppStore()
 const stats = ref(null)
 const loading = ref(true)
+
+// 盘面面板刷新：递增 refreshKey，各复盘卡片 watch 后重新取数
+const panelRefreshKey = ref(0)
+const refreshing = ref(false)
+async function refreshPanel() {
+  refreshing.value = true
+  panelRefreshKey.value += 1
+  try {
+    stats.value = await api.stats()
+  } catch (e) {
+    console.error(e)
+  } finally {
+    refreshing.value = false
+  }
+}
 
 // ECharts 走 canvas 渲染，无法解析 var()，须取具体色值
 function chartVar(name) {
@@ -220,10 +249,12 @@ function healthText(s) {
   return '正常'
 }
 
-// 数据源健康明细：桌面默认展开，移动端默认收起（健康度信息始终可见）
+// 新闻舆情区（辅助区）与数据源健康：桌面默认展开，移动端默认收起
 const mqMobile = window.matchMedia('(max-width: 767px)')
+const newsOpen = ref(!mqMobile.matches)
 const healthOpen = ref(!mqMobile.matches)
 function onMqChange() {
+  newsOpen.value = !mqMobile.matches
   healthOpen.value = !mqMobile.matches
 }
 onMounted(() => {
@@ -236,58 +267,18 @@ onUnmounted(() => {
 // 统计更新时间提示
 const updateTime = computed(() => stats.value?.update_time || '')
 
-// ─── 实时行情推送（WebSocket）：作为仪表盘的一部分提供实时行情与采集告警 ───
+// ─── 实时行情推送（WebSocket）：仅保留头部连接状态指示灯 ───
 const {
   connected: liveConnected,
   connecting: liveConnecting,
-  data: liveData,
-  alerts: liveAlerts,
-  lastUpdate: liveLastUpdate,
-  error: liveError,
-  reconnectAttempts: liveReconnects,
 } = useMarketSocket({ autoConnect: true })
 
-const liveSentiment = computed(() => liveData.value && liveData.value.sentiment)
-const liveOverview = computed(() => liveData.value && liveData.value.overview)
-const liveLimitUp = computed(() => (liveData.value ? liveData.value.limit_up : null))
-const liveTradeDate = computed(() => (liveData.value ? liveData.value.trade_date : null))
-
-const liveLastUpdateText = computed(() => {
-  if (!liveLastUpdate.value) return '—'
-  const d = new Date(liveLastUpdate.value)
-  const p = (n) => String(n).padStart(2, '0')
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-})
 const liveConnTone = computed(() =>
   liveConnected.value ? 'success' : liveConnecting.value ? 'warn' : 'danger',
 )
 const liveConnText = computed(() =>
   liveConnected.value ? '推送已连接' : liveConnecting.value ? '连接中…' : '已断开（自动重连）',
 )
-
-const LIVE_KIND_LABEL = { exception: '异常', timeout: '超时', empty: '空数据', exhausted: '重试耗尽' }
-function liveKindLabel(k) {
-  return LIVE_KIND_LABEL[k] || k
-}
-function liveFmtTs(ts) {
-  if (!ts) return ''
-  const d = new Date(ts * 1000)
-  const p = (n) => String(n).padStart(2, '0')
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-}
-
-const liveMetrics = computed(() => {
-  const s = liveSentiment.value
-  if (!s) return []
-  return [
-    { label: '交易日', value: s.trade_date || '—', tone: '' },
-    { label: '涨跌家数', value: s.breadth ?? '—', tone: '' },
-    { label: '涨停家数', value: s.up_limit ?? '—', tone: 'up' },
-    { label: '跌停家数', value: s.down_limit ?? '—', tone: 'down' },
-    { label: '情绪指数', value: s.sentiment_index ?? '—', tone: '' },
-    { label: '涨停池', value: liveLimitUp.value ?? '—', tone: 'up' },
-  ]
-})
 
 onMounted(async () => {
   try {
@@ -313,55 +304,123 @@ onMounted(async () => {
         <span class="ff-dashboard-view__live-dot"></span>
         {{ liveConnText }}
       </span>
+      <span class="ff-dashboard-view__header-spacer"></span>
+      <AppButton
+        variant="tonal"
+        size="sm"
+        icon="refresh"
+        :loading="refreshing"
+        @click="refreshPanel"
+      >
+        刷新
+      </AppButton>
     </div>
 
-    <AppSkeleton v-if="loading" variant="text" :lines="8" />
-    <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
-
-    <template v-else>
-      <!-- ═══ L1 核心指标（首要）═══ -->
-      <div class="ff-dashboard-view__kpis">
-        <StatCard
-          label="新闻总量"
-          :value="stats.total_news?.toLocaleString()"
-          sub="全部已入库"
-          icon="newspaper"
-          to="/flash"
-        />
-        <StatCard
-          label="近 24h"
-          :value="stats.total_24h?.toLocaleString()"
-          sub="24 小时内新增"
-          tone="up"
-          icon="activity"
-          to="/flash"
-        />
-        <StatCard
-          label="未读"
-          :value="stats.unread_count?.toLocaleString()"
-          sub="待阅读"
-          icon="inbox"
-          to="/flash"
-        />
-        <StatCard
-          label="收藏"
-          :value="stats.favorite_count?.toLocaleString()"
-          sub="我的收藏"
-          icon="star"
-          to="/favorites"
-        />
+    <!-- ═══ 盘面复盘主控台（核心）═══ -->
+    <div class="ff-dashboard-view__panel">
+      <div class="ff-dashboard-view__panel-head">
+        <h2 class="ff-dashboard-view__panel-title">
+          <AppIcon name="dashboard" size="sm" /> 盘面复盘主控台
+        </h2>
+        <span class="ff-dashboard-view__panel-sub">通达信实时行情 · 盘面核心数据</span>
       </div>
 
-      <!-- ═══ L2 运行状态 + 数据源健康（紧凑单条）═══ -->
+      <div class="ff-dashboard-view__grid">
+        <div class="ff-dashboard-view__cell ff-dashboard-view__cell--full">
+          <AppCard title="全市场涨跌统计" subtitle="涨跌家数 / 涨停跌停 / 成交额">
+            <MarketOverviewCard :refresh-key="panelRefreshKey" />
+          </AppCard>
+        </div>
+        <div class="ff-dashboard-view__cell ff-dashboard-view__cell--full">
+          <AppCard title="涨停聚焦" subtitle="强度指标 + 连板个股">
+            <LimitUpSummaryCard :refresh-key="panelRefreshKey" />
+          </AppCard>
+        </div>
+        <div class="ff-dashboard-view__cell">
+          <AppCard title="板块排行榜" subtitle="行业 / 概念 · 涨幅 / 主力资金">
+            <BoardRankingCard :refresh-key="panelRefreshKey" />
+          </AppCard>
+        </div>
+        <div class="ff-dashboard-view__cell">
+          <AppCard title="个股榜单" subtitle="涨幅 / 跌幅 / 成交额">
+            <StockRankingCard :refresh-key="panelRefreshKey" />
+          </AppCard>
+        </div>
+        <div class="ff-dashboard-view__cell ff-dashboard-view__cell--full">
+          <AppCard title="异动监控" subtitle="盘口异动实时捕捉">
+            <UnusualAlertCard :refresh-key="panelRefreshKey" />
+          </AppCard>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 指数 K 线（上证 / 深证，多周期 + 分时）═══ -->
+    <div class="ff-dashboard-view__kline">
+      <AppCard title="上证指数">
+        <IndexKlineCard code="000001" name="上证指数" />
+      </AppCard>
+      <AppCard title="深证成指">
+        <IndexKlineCard code="399001" name="深证成指" />
+      </AppCard>
+    </div>
+
+    <!-- ═══ 新闻舆情（辅助区，可折叠）═══ -->
+    <div class="ff-dashboard-view__news">
+      <div class="ff-dashboard-view__news-head">
+        <h2 class="ff-dashboard-view__news-title">
+          <AppIcon name="chatter" size="sm" /> 新闻舆情分析
+        </h2>
+        <span class="ff-dashboard-view__news-sub">已入库新闻的统计辅助视图</span>
+        <span class="ff-dashboard-view__news-spacer"></span>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          :icon="newsOpen ? 'chevron-up' : 'chevron-down'"
+          @click="newsOpen = !newsOpen"
+        >
+          {{ newsOpen ? '收起' : '展开' }}
+        </AppButton>
+      </div>
+
+      <AppSkeleton v-if="loading" variant="text" :lines="6" />
+      <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
+
+      <Transition name="ff-fade">
+        <div v-if="!loading && stats && newsOpen" class="ff-dashboard-view__news-body">
+          <div class="ff-dashboard-view__charts">
+            <AppCard title="情绪分布">
+              <ChartPanel :option="sentimentOption" height="220px" />
+            </AppCard>
+            <AppCard title="来源 TOP10">
+              <ChartPanel :option="sourceOption" height="220px" />
+            </AppCard>
+            <AppCard title="近 24h 趋势">
+              <ChartPanel :option="trendOption" height="220px" />
+            </AppCard>
+          </div>
+          <div class="ff-dashboard-view__dist">
+            <AppCard title="重要性分布">
+              <ChartPanel :option="importanceOption" height="220px" />
+            </AppCard>
+            <AppCard title="分类分布">
+              <ChartPanel :option="categoryOption" height="220px" />
+            </AppCard>
+          </div>
+        </div>
+      </Transition>
+    </div>
+
+    <!-- ═══ 数据源健康（紧凑平铺）═══ -->
+    <div class="ff-dashboard-view__health">
       <div class="ff-dashboard-view__statusbar ff-glass">
         <span class="ff-dashboard-view__statusbar-label">
           <AppIcon name="server" size="sm" /> 运行状态
         </span>
-        <AppStatus :text="stats.status || '运行中'" :tone="(stats.status || '运行中') === '运行中' ? 'success' : 'danger'" />
+        <AppStatus :text="stats?.status || '运行中'" :tone="(stats?.status || '运行中') === '运行中' ? 'success' : 'danger'" />
         <span class="ff-dashboard-view__sep" aria-hidden="true"></span>
-        <span class="ff-dashboard-view__kv-mini">轮次 <strong class="ff-num">{{ stats.cycle ?? 0 }}</strong></span>
-        <span class="ff-dashboard-view__kv-mini">本轮 <strong class="ff-num ff-t-up">{{ stats.new_count ?? 0 }}</strong></span>
-        <span class="ff-dashboard-view__kv-mini">数据源 <strong class="ff-num">{{ stats.source_count ?? 0 }}</strong></span>
+        <span class="ff-dashboard-view__kv-mini">轮次 <strong class="ff-num">{{ stats?.cycle ?? 0 }}</strong></span>
+        <span class="ff-dashboard-view__kv-mini">本轮 <strong class="ff-num ff-t-up">{{ stats?.new_count ?? 0 }}</strong></span>
+        <span class="ff-dashboard-view__kv-mini">数据源 <strong class="ff-num">{{ stats?.source_count ?? 0 }}</strong></span>
         <span class="ff-dashboard-view__statusbar-spacer"></span>
         <span class="ff-dashboard-view__statusbar-label">
           <AppIcon name="database" size="sm" /> 健康
@@ -380,133 +439,27 @@ onMounted(async () => {
         </AppButton>
       </div>
 
-      <!-- ═══ L3 数据洞察（三图等宽并列）═══ -->
-      <div class="ff-dashboard-view__charts">
-        <AppCard title="情绪分布">
-          <ChartPanel :option="sentimentOption" height="220px" />
-        </AppCard>
-        <AppCard title="来源 TOP10">
-          <ChartPanel :option="sourceOption" height="220px" />
-        </AppCard>
-        <AppCard title="近 24h 趋势">
-          <ChartPanel :option="trendOption" height="220px" />
-        </AppCard>
-      </div>
-
-      <!-- ═══ L4 结构分布（两图并列，补全缺失数据）═══ -->
-      <div class="ff-dashboard-view__dist">
-        <AppCard title="重要性分布">
-          <ChartPanel :option="importanceOption" height="220px" />
-        </AppCard>
-        <AppCard title="分类分布">
-          <ChartPanel :option="categoryOption" height="220px" />
-        </AppCard>
-      </div>
-
-      <!-- ═══ L4.5 指数 K 线（上证 / 深证，多周期 + 分时）═══ -->
-      <div class="ff-dashboard-view__kline">
-        <AppCard title="上证指数">
-          <IndexKlineCard code="000001" name="上证指数" />
-        </AppCard>
-        <AppCard title="深证成指">
-          <IndexKlineCard code="399001" name="深证成指" />
-        </AppCard>
-      </div>
-
-      <!-- ═══ L4.5 实时行情推送（WebSocket，作为仪表盘一部分）═══ -->
-      <div class="ff-dashboard-view__live">
-        <div class="ff-dashboard-view__live-head">
-          <div>
-            <h2 class="ff-dashboard-view__live-title">
-              <AppIcon name="activity" size="sm" /> 实时行情推送
-            </h2>
-          </div>
-          <div class="ff-dashboard-view__live-meta">
-            <span class="ff-dashboard-view__live-meta-item">
-              <AppIcon name="clock" size="xs" /> 最近推送 <strong class="ff-num">{{ liveLastUpdateText }}</strong>
-            </span>
-            <span class="ff-dashboard-view__live-meta-item">
-              交易日 <strong>{{ liveTradeDate || '—' }}</strong>
-            </span>
-            <AppStatus :text="liveConnText" :tone="liveConnTone" :pulse="liveConnected" />
-            <span v-if="liveReconnects" class="ff-dashboard-view__live-retry">第 {{ liveReconnects }} 次重连</span>
-          </div>
-        </div>
-
-        <div v-if="liveError" class="ff-dashboard-view__live-err">
-          <AppIcon name="alert-triangle" size="sm" /> {{ liveError }}
-        </div>
-
-        <div class="ff-dashboard-view__live-grid">
-          <AppCard title="行情快照">
-            <div v-if="liveMetrics.length" class="ff-dashboard-view__live-metrics">
-              <div
-                v-for="m in liveMetrics"
-                :key="m.label"
-                class="ff-dashboard-view__live-metric"
-                :class="m.tone && `ff-t-${m.tone}`"
-              >
-                <span class="ff-dashboard-view__live-metric-label">{{ m.label }}</span>
-                <span class="ff-dashboard-view__live-metric-value ff-num">{{ m.value }}</span>
-              </div>
-            </div>
-            <div v-if="liveOverview" class="ff-dashboard-view__live-ov">
-              数据表 <strong>{{ liveOverview.tables }}</strong> · 板块 <strong>{{ liveOverview.boards }}</strong>
-            </div>
-            <div v-if="!liveData" class="ff-dashboard-view__live-empty">
-              <AppIcon name="activity" size="lg" />
-              <span>等待行情数据推送{{ liveConnected ? '…' : '（未连接）' }}</span>
-            </div>
-          </AppCard>
-
-          <AppCard title="采集失败告警">
-            <div v-if="liveAlerts.length" class="ff-dashboard-view__live-alerts">
-              <div
-                v-for="(a, i) in liveAlerts"
-                :key="i"
-                class="ff-dashboard-view__live-alert"
-              >
-                <AppBadge :text="liveKindLabel(a.kind)" variant="warn" />
-                <span class="ff-dashboard-view__live-alert-task">{{ a.task }}</span>
-                <span class="ff-dashboard-view__live-alert-time ff-num">{{ liveFmtTs(a.ts) }}</span>
-                <span class="ff-dashboard-view__live-alert-msg">{{ a.error }}</span>
-              </div>
-            </div>
-            <div v-else class="ff-dashboard-view__live-empty">
-              <AppIcon name="check-circle" size="lg" />
-              <span>暂无告警，采集运行正常</span>
-            </div>
-          </AppCard>
-        </div>
-      </div>
-
-      <!-- ═══ L5 数据源健康明细（按需展开）═══ -->
       <Transition name="ff-fade">
-        <div v-if="healthOpen" class="ff-dashboard-view__sources-wrap">
-          <div v-if="stats.source_health?.length" class="ff-dashboard-view__sources">
-            <div class="ff-dashboard-view__sources-head">
-              <span></span>
-              <span>名称</span>
-              <span class="ff-dashboard-view__cell-status">状态</span>
-              <span class="ff-dashboard-view__num">成功率</span>
-              <span class="ff-dashboard-view__num">今日</span>
-            </div>
-            <div
-              v-for="s in stats.source_health"
-              :key="s.name"
-              class="ff-dashboard-view__source"
-            >
+        <div v-if="healthOpen && stats" class="ff-dashboard-view__tiles">
+          <div
+            v-for="s in stats.source_health || []"
+            :key="s.name"
+            class="ff-dashboard-view__tile"
+          >
+            <div class="ff-dashboard-view__tile-head">
               <AppStatus :tone="healthTone(s)" />
-              <span class="ff-dashboard-view__name">{{ s.name }}</span>
-              <span class="ff-dashboard-view__status">{{ healthText(s) }}</span>
-              <span class="ff-dashboard-view__num ff-num">{{ s.success_rate }}%</span>
-              <span class="ff-dashboard-view__num ff-num">{{ s.today_count }} 条</span>
+              <span class="ff-dashboard-view__tile-name" :title="s.name">{{ s.name }}</span>
+              <span class="ff-dashboard-view__tile-status" :class="`is-${healthTone(s)}`">{{ healthText(s) }}</span>
+            </div>
+            <div class="ff-dashboard-view__tile-meta">
+              <span>成功率 <strong class="ff-num">{{ s.success_rate }}%</strong></span>
+              <span>今日 <strong class="ff-num">{{ s.today_count }} 条</strong></span>
             </div>
           </div>
-          <EmptyState v-else text="暂无数据源信息" icon="database" />
+          <EmptyState v-if="!stats.source_health?.length" text="暂无数据源信息" icon="database" />
         </div>
       </Transition>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -527,55 +480,133 @@ onMounted(async () => {
   color: var(--ff-text-tertiary);
   white-space: nowrap;
 }
-
-/* L1 核心指标：移动 2 列 / 桌面 4 列 */
-.ff-dashboard-view__kpis {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--ff-space-3);
+.ff-dashboard-view__header-spacer {
+  flex: 1 1 auto;
 }
 
-/* L3 图区：移动 1 列 / 桌面 3 列 */
-.ff-dashboard-view__charts {
+/* ═══ 盘面复盘主控台 ═══ */
+.ff-dashboard-view__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+.ff-dashboard-view__panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ff-space-2);
+  flex-wrap: wrap;
+}
+.ff-dashboard-view__panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin: 0;
+  font-size: var(--ff-fs-h3);
+  font-weight: 700;
+  color: var(--ff-text-primary);
+}
+.ff-dashboard-view__panel-title :deep(.ff-icon) {
+  color: var(--ff-brand-text);
+}
+.ff-dashboard-view__panel-sub {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+
+/* 复盘网格：移动 1 列 / 桌面 2 列，全宽卡片横跨两列 */
+.ff-dashboard-view__grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--ff-space-3);
-  row-gap: var(--ff-space-3);
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .ff-dashboard-view__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ff-dashboard-view__cell--full {
+    grid-column: 1 / -1;
+  }
 }
 
-/* L4 分布区：移动 1 列 / 桌面 2 列 */
-.ff-dashboard-view__dist {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--ff-space-3);
-  row-gap: var(--ff-space-3);
-}
-
-/* L4.5 指数 K 线：移动 1 列 / 桌面 2 列 */
+/* 指数 K 线 */
 .ff-dashboard-view__kline {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--ff-space-3);
-  row-gap: var(--ff-space-3);
+}
+@media (min-width: 1024px) {
+  .ff-dashboard-view__kline {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
+/* 新闻舆情（辅助区） */
+.ff-dashboard-view__news {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-3) var(--ff-space-4);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  background: var(--ff-bg-surface);
+  box-shadow: var(--ff-shadow-xs);
+}
+.ff-dashboard-view__news-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  flex-wrap: wrap;
+}
+.ff-dashboard-view__news-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin: 0;
+  font-size: var(--ff-fs-h3);
+  font-weight: 700;
+  color: var(--ff-text-primary);
+}
+.ff-dashboard-view__news-title :deep(.ff-icon) {
+  color: var(--ff-brand-text);
+}
+.ff-dashboard-view__news-sub {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__news-spacer {
+  flex: 1 1 auto;
+}
+.ff-dashboard-view__news-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+.ff-dashboard-view__charts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-3);
+}
+.ff-dashboard-view__dist {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ff-space-3);
+}
 @media (min-width: 1024px) {
-  .ff-dashboard-view__kpis {
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--ff-space-4);
-  }
   .ff-dashboard-view__charts {
     grid-template-columns: repeat(3, 1fr);
   }
   .ff-dashboard-view__dist {
     grid-template-columns: repeat(2, 1fr);
   }
-  .ff-dashboard-view__kline {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
-/* L2 状态条 */
+/* 数据源健康：紧凑平铺 */
+.ff-dashboard-view__health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
 .ff-dashboard-view__statusbar {
   display: flex;
   align-items: center;
@@ -657,71 +688,72 @@ onMounted(async () => {
   border-color: var(--ff-border);
 }
 
-/* 数据源健康明细 */
-.ff-dashboard-view__sources-wrap {
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-lg);
-  background: var(--ff-bg-surface);
-  box-shadow: var(--ff-shadow-xs);
-}
-.ff-dashboard-view__sources {
-  max-height: 280px;
-  overflow-y: auto;
-  overflow-x: auto;
-  padding: var(--ff-space-2) var(--ff-space-4) var(--ff-space-4);
-}
-.ff-dashboard-view__sources-head {
+/* 数据源健康：紧凑平铺网格 */
+.ff-dashboard-view__tiles {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 64px 72px 72px;
-  align-items: center;
-  gap: var(--ff-space-3);
-  padding: var(--ff-space-2) 0;
-  font-size: var(--ff-fs-caption);
-  font-weight: 600;
-  color: var(--ff-text-tertiary);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--ff-border-subtle);
-  position: sticky;
-  top: 0;
-  background: var(--ff-bg-surface);
-  z-index: 1;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--ff-space-2);
 }
-.ff-dashboard-view__cell-status {
-  text-align: left;
+.ff-dashboard-view__tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-1-5);
+  padding: var(--ff-space-2-5) var(--ff-space-3);
+  border: 1px solid var(--ff-border-subtle);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-subtle);
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.ff-dashboard-view__source {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 64px 72px 72px;
-  align-items: center;
-  gap: var(--ff-space-3);
-  padding: var(--ff-space-2);
-  font-size: var(--ff-fs-body-sm);
-  border-radius: var(--ff-radius-sm);
-  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard);
-}
-.ff-dashboard-view__source:hover {
+.ff-dashboard-view__tile:hover {
   background: var(--ff-bg-hover);
+  border-color: var(--ff-border);
 }
-.ff-dashboard-view__name {
+.ff-dashboard-view__tile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-1-5);
+  min-width: 0;
+}
+.ff-dashboard-view__tile-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: var(--ff-fs-body-sm);
+  font-weight: 500;
   color: var(--ff-text-primary);
-  font-weight: 500;
 }
-.ff-dashboard-view__status {
+.ff-dashboard-view__tile-status {
+  margin-left: auto;
+  flex: 0 0 auto;
   font-size: var(--ff-fs-caption);
-  color: var(--ff-text-secondary);
   font-weight: 500;
   white-space: nowrap;
 }
-.ff-dashboard-view__num {
-  text-align: right;
+.ff-dashboard-view__tile-status.is-success {
+  color: var(--ff-down-text);
+}
+.ff-dashboard-view__tile-status.is-warn {
+  color: var(--ff-warn-text);
+}
+.ff-dashboard-view__tile-status.is-danger {
+  color: var(--ff-danger-text);
+}
+.ff-dashboard-view__tile-status.is-neutral {
   color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__tile-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ff-space-3);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__tile-meta strong {
+  color: var(--ff-text-secondary);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  font-weight: 600;
 }
 
 /* 头部实时推送指示灯 */
@@ -774,152 +806,5 @@ onMounted(async () => {
 @keyframes ff-live-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
-}
-
-/* L4.5 实时行情推送 */
-.ff-dashboard-view__live {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ff-space-3);
-  padding: var(--ff-space-4);
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-lg);
-  background: var(--ff-bg-surface);
-  box-shadow: var(--ff-shadow-xs);
-}
-.ff-dashboard-view__live-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--ff-space-3);
-}
-.ff-dashboard-view__live-title {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  margin: 0;
-  font-size: var(--ff-fs-h3);
-  font-weight: 700;
-  color: var(--ff-text-primary);
-}
-.ff-dashboard-view__live-sub {
-  margin: var(--ff-space-1) 0 0;
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
-}
-.ff-dashboard-view__live-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--ff-space-2) var(--ff-space-3);
-}
-.ff-dashboard-view__live-meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-secondary);
-  white-space: nowrap;
-}
-.ff-dashboard-view__live-meta-item strong {
-  color: var(--ff-text-primary);
-  font-weight: 600;
-  margin-left: 2px;
-}
-.ff-dashboard-view__live-retry {
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-warn-text);
-}
-.ff-dashboard-view__live-err {
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  padding: var(--ff-space-2) var(--ff-space-3);
-  border-radius: var(--ff-radius-md);
-  background: var(--ff-danger-subtle);
-  color: var(--ff-text-down);
-  font-size: var(--ff-fs-sm);
-}
-.ff-dashboard-view__live-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--ff-space-3);
-}
-@media (max-width: 880px) {
-  .ff-dashboard-view__live-grid {
-    grid-template-columns: 1fr;
-  }
-}
-.ff-dashboard-view__live-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--ff-space-3);
-}
-.ff-dashboard-view__live-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--ff-space-3);
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-md);
-  background: var(--ff-bg-surface);
-}
-.ff-dashboard-view__live-metric-label {
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
-}
-.ff-dashboard-view__live-metric-value {
-  font-size: var(--ff-fs-lg);
-  font-weight: var(--ff-fw-semibold);
-  color: var(--ff-text-primary);
-}
-.ff-dashboard-view__live-ov {
-  margin-top: var(--ff-space-3);
-  font-size: var(--ff-fs-sm);
-  color: var(--ff-text-secondary);
-}
-.ff-dashboard-view__live-ov strong {
-  color: var(--ff-text-primary);
-}
-.ff-dashboard-view__live-alerts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ff-space-2);
-  max-height: 360px;
-  overflow-y: auto;
-}
-.ff-dashboard-view__live-alert {
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  padding: var(--ff-space-2) var(--ff-space-3);
-  border-radius: var(--ff-radius-sm);
-  background: var(--ff-bg-subtle);
-  font-size: var(--ff-fs-sm);
-}
-.ff-dashboard-view__live-alert-task {
-  font-weight: var(--ff-fw-medium);
-  color: var(--ff-text-primary);
-}
-.ff-dashboard-view__live-alert-time {
-  color: var(--ff-text-tertiary);
-  font-size: var(--ff-fs-xs);
-}
-.ff-dashboard-view__live-alert-msg {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ff-text-secondary);
-}
-.ff-dashboard-view__live-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--ff-space-2);
-  padding: var(--ff-space-6) 0;
-  color: var(--ff-text-tertiary);
-  font-size: var(--ff-fs-sm);
 }
 </style>
