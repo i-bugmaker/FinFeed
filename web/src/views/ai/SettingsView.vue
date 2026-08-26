@@ -93,13 +93,40 @@ async function deleteProvider(id) {
 // ---------- Prompt ----------
 const showPrompts = ref(true) // 默认展开，便于直接查看与编辑模板
 const prompts = ref({ map_system: '', map_user: '', reduce_system: '', reduce_user: '', single_user: '' })
-const promptLabels = {
-  map_system: '分析映射 · 系统提示',
-  map_user: '分析映射 · 用户模板',
-  reduce_system: '汇总成文 · 系统提示',
-  reduce_user: '汇总成文 · 用户模板',
-  single_user: '单轮分析 · 用户模板',
+const promptDefaults = ref({ map_system: '', map_user: '', reduce_system: '', reduce_user: '', single_user: '' })
+
+// 按流水线阶段分组：同屏只展示当前阶段的模板，降低视觉密度。
+// MAP=分批压缩要点；REDUCE=汇总成分章报告；SINGLE=一次性生成报告。
+const PROMPT_STAGES = [
+  { key: 'map', label: '① 分析映射', desc: '对每批新闻做要点压缩：抽事件、去噪、保留主体与量化信息', keys: ['map_system', 'map_user'] },
+  { key: 'reduce', label: '② 汇总成文', desc: '汇总全部分块要点，产出结构化复盘报告', keys: ['reduce_system', 'reduce_user'] },
+  { key: 'single', label: '③ 单轮分析', desc: '跳过分批压缩，一次性基于原始资讯生成报告', keys: ['single_user'] },
+]
+const activeStage = ref('map')
+const currentStage = computed(() => PROMPT_STAGES.find((s) => s.key === activeStage.value) || PROMPT_STAGES[0])
+
+// 每个模板的名称与一句话用途说明；compact=true 表示较短的系统提示，用更小的编辑区
+const promptMeta = {
+  map_system: { name: '系统提示', desc: '设定分析师角色与事实边界，约束模型不引入材料之外的信息、不编造数据', compact: true },
+  map_user: { name: '用户模板', desc: '每批资讯的压缩指令与输出格式，含 {payload} 运行时占位符' },
+  reduce_system: { name: '系统提示', desc: '设定首席策略分析师角色与排版规范（emoji 图标、加粗、要点化）', compact: true },
+  reduce_user: { name: '用户模板', desc: '九章节复盘简报的结构指令，含 {stats_block} / {digests} 运行时占位符' },
+  single_user: { name: '用户模板', desc: '单次调用直接生成完整报告的指令，含 {stats_block} / {payload} 运行时占位符' },
 }
+
+const isCustom = (key) => prompts.value[key] !== promptDefaults.value[key]
+const dirtyCount = computed(() => Object.keys(prompts.value).filter(isCustom).length)
+const fmtCount = (key) => (prompts.value[key] || '').length.toLocaleString()
+
+function resetPrompt(key) {
+  if (!window.confirm('确认恢复该模板为默认内容？')) return
+  prompts.value[key] = promptDefaults.value[key] || ''
+}
+function resetAllPrompts() {
+  if (!window.confirm('确认将全部模板恢复为默认内容？（仍需点击「保存模板」才会生效）')) return
+  for (const k of Object.keys(prompts.value)) prompts.value[k] = promptDefaults.value[k] || ''
+}
+
 const saveMsg = ref('')
 async function loadPrompts() {
   try {
@@ -107,6 +134,7 @@ async function loadPrompts() {
     const defaults = p.defaults || {}
     const custom = p.custom || {}
     for (const k of Object.keys(prompts.value)) {
+      promptDefaults.value[k] = defaults[k] || ''
       const saved = custom[k]
       prompts.value[k] = saved != null && saved !== '' ? saved : defaults[k] || ''
     }
@@ -219,21 +247,71 @@ onMounted(() => {
         <div v-else-if="section === 'prompts'" class="sv__panel">
           <div class="sv__head">
             <h3 class="sv__h3">Prompt 模板</h3>
-            <button class="sv__add" @click="savePrompts"><AppIcon name="save" size="sm" /> 保存模板</button>
           </div>
           <div class="sv__adv">
-            <button class="sv__adv-toggle" @click="showPrompts = !showPrompts">
+            <button class="sv__disclose" @click="showPrompts = !showPrompts">
               <AppIcon :name="showPrompts ? 'chevron-down' : 'chevron-right'" size="sm" />
-              {{ showPrompts ? '收起高级配置' : '展开高级配置（面向高级用户）' }}
+              <span>{{ showPrompts ? '收起高级配置' : '展开高级配置（面向高级用户）' }}</span>
+              <span v-if="!showPrompts && dirtyCount" class="sv__disclose-badge">{{ dirtyCount }} 个已修改</span>
             </button>
             <Transition name="sv-fade">
               <div v-if="showPrompts" class="sv__prompts">
-                <p class="sv__hint">这些模板决定了 AI 分析报告的质量。修改后需保存，修改前请先阅读默认模板理解各环节作用。</p>
-                <label v-for="(lbl, key) in promptLabels" :key="key" class="sv__pfld">
-                  <span>{{ lbl }}</span>
-                  <textarea v-model="prompts[key]" rows="5" :placeholder="lbl"></textarea>
-                </label>
+                <p class="sv__hint">
+                  <AppIcon name="info" size="xs" tone="muted" />
+                  <span>模板决定 AI 分析报告的质量与结构。花括号占位符（如 {payload}）由程序在运行时注入，请勿删除；修改后需点击下方「保存模板」。</span>
+                </p>
+
+                <!-- 阶段分组 Tab：一次只编辑一个环节 -->
+                <div class="sv__stages">
+                  <button
+                    v-for="st in PROMPT_STAGES"
+                    :key="st.key"
+                    class="sv__stage-tab"
+                    :class="{ on: activeStage === st.key }"
+                    @click="activeStage = st.key"
+                  >
+                    {{ st.label }}
+                    <span class="sv__stage-n">{{ st.keys.length }}</span>
+                  </button>
+                </div>
+                <p class="sv__stage-desc">{{ currentStage.desc }}</p>
+
+                <!-- 当前阶段的模板卡片 -->
+                <div v-for="key in currentStage.keys" :key="key" class="sv__pcard" :class="{ custom: isCustom(key) }">
+                  <div class="sv__pcard-head">
+                    <div class="sv__pcard-title">
+                      {{ promptMeta[key].name }}
+                      <span v-if="isCustom(key)" class="sv__badge sv__badge--brand">已自定义</span>
+                      <span v-else class="sv__badge sv__badge--muted">默认</span>
+                    </div>
+                    <div class="sv__pcard-tools">
+                      <span class="sv__pcard-count">{{ fmtCount(key) }} 字</span>
+                      <button v-if="isCustom(key)" class="sv__op" @click="resetPrompt(key)">
+                        <AppIcon name="refresh" size="sm" /> 恢复默认
+                      </button>
+                    </div>
+                  </div>
+                  <p class="sv__pcard-desc">{{ promptMeta[key].desc }}</p>
+                  <textarea
+                    v-model="prompts[key]"
+                    class="sv__ptext"
+                    :class="{ compact: promptMeta[key].compact }"
+                    :aria-label="currentStage.label + ' · ' + promptMeta[key].name"
+                    spellcheck="false"
+                  ></textarea>
+                </div>
+
                 <p v-if="saveMsg" class="sv__msg" style="color:var(--ff-brand, #2f7d5b)">{{ saveMsg }}</p>
+
+                <!-- 底部操作条：未保存状态 + 全局操作 -->
+                <div class="sv__pbar">
+                  <span v-if="dirtyCount" class="sv__pbar-state warn">有 {{ dirtyCount }} 个模板已修改，尚未保存</span>
+                  <span v-else class="sv__pbar-state">所有模板均为默认内容</span>
+                  <div class="sv__pbar-actions">
+                    <button class="sv__btn" @click="resetAllPrompts">全部恢复默认</button>
+                    <button class="sv__add" @click="savePrompts"><AppIcon name="save" size="sm" /> 保存模板</button>
+                  </div>
+                </div>
               </div>
             </Transition>
           </div>
@@ -291,13 +369,34 @@ onMounted(() => {
 .sv__btn { border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-surface, #fff); border-radius: 9px; padding: 8px 16px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; }
 .sv__btn--primary { background: var(--ff-brand, #2f7d5b); color: #fff; border-color: var(--ff-brand, #2f7d5b); }
 .sv__msg { font-size: 12.5px; color: var(--ff-down, #e5484d); padding: 0 20px 12px; margin: 0; }
-.sv__adv-toggle { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-subtle, #f9fafb); border-radius: 9px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; }
-.sv__prompts { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
-.sv__hint { grid-column: 1 / -1; font-size: 12px; color: var(--ff-text-3, #9ca3af); }
-.sv__pfld { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-secondary, #4b5563); }
-.sv__pfld textarea { border: 1px solid var(--ff-border, #d1d5db); border-left: 3px solid var(--ff-brand, #2f7d5b); border-radius: 9px; padding: 10px 12px; font-size: 13.5px; line-height: 1.7; background: var(--ff-bg-surface, #fff); color: var(--ff-text-primary, #1f2937); resize: vertical; font-family: var(--ff-sans, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif); -webkit-font-smoothing: antialiased; outline: none; }
-.sv__pfld textarea::placeholder { color: var(--ff-text-3, #9ca3af); }
-.sv__pfld textarea:focus { border-color: var(--ff-border-focus, #4f9e76); box-shadow: 0 0 0 3px rgba(47, 125, 91, 0.12); }
+.sv__disclose { display: flex; align-items: center; gap: 7px; width: 100%; border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-subtle, #f9fafb); border-radius: 9px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; text-align: left; }
+.sv__disclose:hover { border-color: var(--ff-border-brand, #9fc3b1); color: var(--ff-brand-dark, #1d4e39); }
+.sv__disclose-badge { margin-left: auto; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 8px; background: var(--ff-bg-brand-subtle, #eaf4ef); color: var(--ff-brand-dark, #1d4e39); }
+/* 阶段分组：分段式 Tab */
+.sv__stages { display: flex; gap: 4px; background: var(--ff-bg-subtle, #f1f4f2); border-radius: 10px; padding: 4px; }
+.sv__stage-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; background: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--ff-text-2, #6b7280); cursor: pointer; white-space: nowrap; }
+.sv__stage-tab:hover { color: var(--ff-brand-dark, #1d4e39); }
+.sv__stage-tab.on { background: var(--ff-bg-surface, #fff); color: var(--ff-brand-dark, #1d4e39); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.sv__stage-n { font-size: 10.5px; font-weight: 700; min-width: 17px; height: 17px; line-height: 17px; text-align: center; border-radius: 8px; background: rgba(47, 125, 91, 0.12); color: inherit; }
+.sv__stage-desc { margin: -4px 2px 0; font-size: 12px; color: var(--ff-text-3, #9ca3af); }
+.sv__prompts { margin-top: 14px; display: flex; flex-direction: column; gap: 13px; }
+.sv__hint { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 1.6; color: var(--ff-text-3, #9ca3af); margin: 0; }
+/* 模板卡片 */
+.sv__pcard { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--ff-border, #e5e7eb); border-radius: 11px; padding: 13px 15px; background: var(--ff-bg-surface, #fff); }
+.sv__pcard.custom { border-color: var(--ff-border-brand, #9fc3b1); box-shadow: inset 3px 0 0 0 var(--ff-brand, #2f7d5b); }
+.sv__pcard-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sv__pcard-title { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: var(--ff-text-primary, #1f2937); }
+.sv__pcard-tools { display: flex; align-items: center; gap: 10px; }
+.sv__pcard-count { font-size: 11.5px; color: var(--ff-text-3, #9ca3af); font-variant-numeric: tabular-nums; }
+.sv__pcard-desc { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ff-text-3, #9ca3af); }
+.sv__ptext { border: 1px solid var(--ff-border, #d1d5db); border-radius: 9px; padding: 11px 13px; min-height: 230px; font-size: 13px; line-height: 1.65; background: var(--ff-bg-surface, #fff); color: var(--ff-text-primary, #1f2937); resize: vertical; outline: none; font-family: ui-monospace, 'Cascadia Code', Consolas, 'PingFang SC', 'Microsoft YaHei', monospace; -webkit-font-smoothing: antialiased; }
+.sv__ptext.compact { min-height: 150px; }
+.sv__ptext:focus { border-color: var(--ff-border-focus, #4f9e76); box-shadow: 0 0 0 3px rgba(47, 125, 91, 0.12); }
+/* 底部操作条：随滚动吸底，状态与操作同屏可见 */
+.sv__pbar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 6px -18px -18px; padding: 11px 18px; border-top: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-subtle, #f9fafb); border-radius: 0 0 13px 13px; }
+.sv__pbar-state { font-size: 12.5px; color: var(--ff-text-3, #9ca3af); }
+.sv__pbar-state.warn { color: var(--ff-warn, #b45309); font-weight: 600; }
+.sv__pbar-actions { display: flex; align-items: center; gap: 8px; }
 .sv__defaults { display: flex; flex-direction: column; gap: 13px; max-width: 420px; }
 .sv-fade-enter-active, .sv-fade-leave-active { transition: opacity 160ms; }
 .sv-fade-enter-from, .sv-fade-leave-to { opacity: 0; }
@@ -305,6 +404,7 @@ onMounted(() => {
 @media (max-width: 768px) {
   .sv__layout { grid-template-columns: 1fr; }
   .sv__nav { flex-direction: row; overflow-x: auto; }
-  .sv__prompts { grid-template-columns: 1fr; }
+  .sv__stages { overflow-x: auto; }
+  .sv__stage-tab { flex: none; }
 }
 </style>
