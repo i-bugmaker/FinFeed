@@ -40,6 +40,9 @@ MAX_TARGETS: int = int(os.environ.get("SECTOR_MIN_MAX_TARGETS", "50"))
 # 串行刷新时相邻两个标的的请求间隔（秒），错峰避免瞬间集中请求触发风控。
 SLEEP_BETWEEN_REQUESTS: float = float(os.environ.get("SECTOR_MIN_SLEEP", "0.3"))
 
+# 连续「整轮全部抓取失败」达到该轮次时，强制重建 TDX 连接（连接自愈）。
+CONSECUTIVE_FAIL_RESET: int = int(os.environ.get("SECTOR_MIN_FAIL_RESET", "3"))
+
 # 分时简图：单次懒加载抓取数量上限。仅对「未命中缓存」的标的按需抓取，
 # 命中 store 缓存时秒回不触网；上限用于控制一次请求的抓取压力。
 MAX_LAZY_SPARKS: int = int(os.environ.get("SECTOR_MIN_MAX_LAZY_SPARKS", "12"))

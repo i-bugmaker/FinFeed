@@ -81,6 +81,7 @@ class SectorStore:
         self._last_refresh_ts: float = 0.0
         self._last_error: str = ""
         self._refresh_count: int = 0
+        self._fail_streak: int = 0  # 连续「整轮全部抓取失败」的轮次（供连接自愈/健康检查）
         # 历史日期分时缓存：date_str("YYYY-MM-DD") -> {sub_key -> TickChart}
         self._hist_ticks: dict[str, dict[str, TickChart]] = {}
         self._hist_order: list[str] = []       # LRU 顺序（尾部最新）
@@ -122,16 +123,22 @@ class SectorStore:
             return list(self._subscriptions)
 
     # -- 写（RefreshWorker 调用） ------------------------------------------
-    def update_tick(self, sub: Subscription, chart: Optional[TickChart]) -> None:
+    def update_tick(self, sub: Subscription, chart: Optional[TickChart]) -> bool:
+        """写入单标的分时缓存，返回是否成功更新。
+
+        抓取失败（chart 为 None）时**保留旧缓存**（stale-while-revalidate）：
+        瞬时网络抖动/超时不应清空已有分时，否则前端图表会闪回「加载中」，
+        且用户无法区分「后端在失败」与「数据没变化」。
+        """
         with self._lock:
             if chart is None:
-                self._ticks.pop(sub.key, None)
-                return
+                return False
             chart.kind = sub.kind
             chart.board_type = sub.board_type
             chart.name = sub.name or chart.name
             chart.ts = _ts_label()
             self._ticks[sub.key] = chart
+            return True
 
     def get_tick(self, key: str) -> Optional[TickChart]:
         """按缓存 key 取分时（key 形如 board:hy:1:000883 / stock:1:600000）。"""
@@ -235,6 +242,15 @@ class SectorStore:
             self._last_refresh_ts = time.time()
             self._refresh_count += 1
 
+    def note_round_result(self, success: bool) -> None:
+        """记录一轮采集的成败，维护连续失败轮次计数（连接自愈 / 健康检查用）。"""
+        with self._lock:
+            self._fail_streak = 0 if success else self._fail_streak + 1
+
+    def fail_streak(self) -> int:
+        with self._lock:
+            return self._fail_streak
+
     def set_error(self, msg: str) -> None:
         with self._lock:
             self._last_error = msg
@@ -290,6 +306,7 @@ class SectorStore:
                 "trading": is_trading_time(),
                 "server_date": datetime.now().strftime("%Y-%m-%d"),
                 "hist_dates": list(self._hist_order),
+                "fetch_fail_streak": self._fail_streak,
             }
 
 
@@ -376,18 +393,37 @@ class RefreshWorker(threading.Thread):
                 list(subs) if trading else [s for s in subs if not self.store.has_tick(s)]
             )
         if targets:
+            ok = 0
             for i, sub in enumerate(targets):
                 if self._stop_evt.is_set():
                     break
                 chart = fetch_tick_chart(sub.market, sub.code)
-                self.store.update_tick(sub, chart)
+                if self.store.update_tick(sub, chart):
+                    ok += 1
                 # 错峰：相邻标的串行间隔，避免集中请求触发风控
                 if i < len(targets) - 1:
                     time.sleep(config.SLEEP_BETWEEN_REQUESTS)
-            self.store.mark_refreshed()
-            logger.info(
-                "板块分时刷新完成 标的=%d", len(targets),
-            )
+            if ok:
+                # 至少一个标的成功才推进刷新时间戳；全部失败时保持旧 ts，
+                # 前端据此可感知后端未在刷新并自动触发兜底唤醒
+                self.store.mark_refreshed()
+                self.store.note_round_result(True)
+                logger.info("板块分时刷新完成 标的=%d 成功=%d", len(targets), ok)
+            else:
+                self.store.note_round_result(False)
+                logger.warning("板块分时本轮全部失败（%d 个标的），保留旧缓存", len(targets))
+                if self.store.fail_streak() >= config.CONSECUTIVE_FAIL_RESET:
+                    logger.warning(
+                        "连续 %d 轮全部抓取失败，强制重建 TDX 连接",
+                        config.CONSECUTIVE_FAIL_RESET,
+                    )
+                    from finfeed.capital_dashboard.tdx import ensure_alive
+
+                    try:
+                        ensure_alive()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self.store.note_round_result(True)  # 重置失败计数，避免每轮重复重建
 
     def ensure_stock_pool(self) -> None:
         """按 TTL 刷新个股池（供个股搜索使用，仅首次/过期时触网）。"""

@@ -225,6 +225,7 @@ async function loadCharts() {
     if (data.ts) {
       lastUpdateLabel.value = new Date(data.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })
     }
+    return data
   } catch (e) {
     errorMsg.value = e.message || String(e)
   }
@@ -480,10 +481,23 @@ async function init() {
   startPolling()
 }
 
+// 轮询 + 自动保活：轮询周期内若后端刷新时间戳连续 2 轮未前进（后台刷新线程停滞），
+// 自动触发一次 refresh 唤醒后台，等效于自动点「刷新」，避免分时图停住不更新。
 function startPolling() {
   stopPolling()
-  pollTimer = setInterval(() => {
-    loadCharts()
+  let lastTs = -1
+  let staleRounds = 0
+  pollTimer = setInterval(async () => {
+    const data = await loadCharts()
+    if (!data || data.is_hist || !isTodaySel()) return
+    const ts = data.ts || 0
+    if (ts > lastTs) {
+      lastTs = ts
+      staleRounds = 0
+    } else if (++staleRounds >= 2) {
+      staleRounds = 0
+      sectorMinuteApi.refresh().catch(() => {})
+    }
   }, refreshInterval.value * 1000)
 }
 
@@ -498,11 +512,23 @@ watch(refreshInterval, () => startPolling())
 watch(sortByPct, () => loadCharts())
 watch(stockMarket, () => loadStocks())
 
-onMounted(init)
+onMounted(() => {
+  init()
+  // 从后台标签切回前台时立即拉取一次：浏览器会节流后台标签的 setInterval
+  onVisible = () => {
+    if (document.visibilityState === 'visible') {
+      loadCharts()
+      loadHealth()
+    }
+  }
+  document.addEventListener('visibilitychange', onVisible)
+})
+let onVisible = null
 onUnmounted(() => {
   stopPolling()
   stopCatchUp()
   if (stockSearchTimer) clearTimeout(stockSearchTimer)
+  if (onVisible) document.removeEventListener('visibilitychange', onVisible)
 })
 
 // ---------------- 过滤后的展示列表 ----------------

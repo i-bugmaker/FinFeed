@@ -658,6 +658,7 @@ async function loadCharts() {
       updateCharts();
     }
     syncStatus();
+    return data;
   } catch (e) { toast((e.message || String(e)), true); }
 }
 
@@ -1776,9 +1777,23 @@ $("#focusOverlay").addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFocus(); });
 
 /* ---------------- 轮询 ---------------- */
+// 轮询 + 自动保活：除按档位周期拉取数据外，若后端刷新时间戳连续 2 轮未前进
+// （说明后台刷新线程未在正常推进），自动 POST /refresh 唤醒一轮，等效于自动点「刷新」，
+// 避免「分时图停住、必须手动刷新才更新」。
 function startPolling() {
   stopPolling();
-  pollTimer = setInterval(() => loadCharts(), state.refreshInterval * 1000);
+  let lastTs = -1, staleRounds = 0;
+  pollTimer = setInterval(async () => {
+    const data = await loadCharts();
+    // 仅实时模式（今天）参与保活；历史日期为静态快照，无需唤醒
+    if (!data || data.is_hist || !isTodaySel() || dragActive) return;
+    const ts = data.ts || 0;
+    if (ts > lastTs) { lastTs = ts; staleRounds = 0; }
+    else if (++staleRounds >= 2) {
+      staleRounds = 0;
+      fetchJson(API.refresh, { method: "POST" }, 1).catch(() => {});
+    }
+  }, state.refreshInterval * 1000);
 }
 function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
@@ -1818,6 +1833,14 @@ async function init() {
   window.addEventListener("resize", () => {
     Object.values(charts).forEach((c) => c.resize());
     if (focusIns) focusIns.resize();
+  });
+  // 从后台标签切回前台时立即拉取一次：浏览器会节流后台标签的 setInterval，
+  // 避免切回时看到的仍是旧数据
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      loadCharts();
+      loadHealth();
+    }
   });
 }
 init();
