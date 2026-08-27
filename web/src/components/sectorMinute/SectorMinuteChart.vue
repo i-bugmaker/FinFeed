@@ -6,7 +6,7 @@
  *       Y 轴双模式（绝对价格 / 涨跌幅归一化）· 午间休市标记 · 悬停联动。
  */
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/shared/lib/echarts'
 import AppIcon from '../../ui/AppIcon.vue'
 
 const props = defineProps({

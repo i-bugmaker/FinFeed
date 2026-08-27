@@ -171,7 +171,6 @@ class ZhihuHotParser(BaseJsonForumParser):
                     rank += 1
                     detail = item.get("detail_text", "") or target.get("excerpt", "") or ""
                     detail = re.sub(r"<[^>]+>", "", str(detail)).strip()
-                    tid = target.get("id", "") or item.get("id", "")
                     url = target.get("url", "") or f"https://www.zhihu.com/search?type=content&q={urlquote(title)}"
                     if not url.startswith("http"):
                         url = "https://www.zhihu.com" + url

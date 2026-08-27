@@ -243,7 +243,6 @@ async def process_and_store(raw_items: List[NewsItem], source_name: str = "") ->
     if inserted:
         engine.update_after_insert(inserted)
 
-    total_dup = stats.get("duplicate", 0)
     if count > 0 or merged_count > 0:
         logger.debug(
             f"[{source_name}] 处理完成: 新增 {count} 条, 合并重复 {merged_count} 条 "

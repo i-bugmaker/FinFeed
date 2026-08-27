@@ -411,8 +411,8 @@ class ScreenerConfig:
             lines.append(f"  - ML 层：六维度子分为特征，训练用历史截面 t、标签用 t+{eng.get('horizon', 20)} 日前瞻收益"
                          f"截面前 {eng.get('top_quantile', 0.3):.0%} 分位（0/1 分类）；"
                          f"需 ≥ {eng.get('ml_min_history_days', 60)} 个交易日历史快照。")
-            lines.append(f"  - 后端：本环境 lightgbm/sklearn 缺失时自动使用依赖免费 NumPy 逻辑回归"
-                         f"（带 L2 正则），保证可运行；安装 lightgbm 后自动切换梯度提升。")
+            lines.append("  - 后端：本环境 lightgbm/sklearn 缺失时自动使用依赖免费 NumPy 逻辑回归"
+                         "（带 L2 正则），保证可运行；安装 lightgbm 后自动切换梯度提升。")
             lines.append("  - 严谨性：训练仅用历史、当前截面仅推理，无未来函数；"
                          "walk-forward 切分产出 OOS 的 RankIC / AUC 诊断，用于评估 ML 增量。")
         elif emode == "fixed":

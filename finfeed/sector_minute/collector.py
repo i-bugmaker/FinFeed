@@ -14,6 +14,7 @@ TDX 连接复用 ``finfeed.capital_dashboard.tdx`` 的进程级单例，
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Optional
 
 from easy_tdx import BoardType, MacClient
@@ -114,7 +115,7 @@ def fetch_board_list(board_type: str, client: MacClient | None = None) -> list[B
 def fetch_tick_chart(
     market: int,
     code: str,
-    query_date: Optional["date"] = None,
+    query_date: Optional[date] = None,
     client: MacClient | None = None,
 ) -> Optional[TickChart]:
     """获取单个标的单日分时图。

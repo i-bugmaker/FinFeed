@@ -11,13 +11,10 @@
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-import pytest
-
-from finfeed.screener.config import ScreenerConfig
 from finfeed.screener import evaluation
-from test_ml_engine import _make_history, _FakeStore
+from finfeed.screener.config import ScreenerConfig
+
+from test_ml_engine import _FakeStore, _make_history
 
 
 def test_evaluate_engine_produces_metrics():

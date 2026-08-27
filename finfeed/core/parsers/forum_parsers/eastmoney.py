@@ -39,12 +39,12 @@ class EastMoneyStockBarParser(BaseHtmlForumParser):
         link = None
         for sel in self.link_selectors:
             try:
-                l = item.select_one(sel)
-                if l and l.get("href"):
-                    href = l.get("href", "")
-                    text = l.get_text(strip=True)
+                el = item.select_one(sel)
+                if el and el.get("href"):
+                    href = el.get("href", "")
+                    text = el.get_text(strip=True)
                     if text and len(text) >= 4 and "javascript:" not in href:
-                        link = l
+                        link = el
                         break
             except Exception:
                 continue
@@ -268,9 +268,6 @@ class XueqiuHotParser(BaseJsonForumParser):
                         name = stock_info.get("name", "")
                         if code and len(code) == 6:
                             extra_stocks.append({"code": code, "name": name, "market": ""})
-                    reply_count = item.get("reply_count", 0)
-                    retweet_count = item.get("retweet_count", 0)
-                    like_count = item.get("like_count", 0)
                     news = self._build_news_item(
                         title=title, url=url, publish_ts=int(ts) if ts else 0,
                         intro=desc[:200], extra_stocks=extra_stocks,
@@ -392,7 +389,6 @@ class SinaStockBarParser(BaseHtmlForumParser):
         if ts <= 0:
             ts = now_ts - idx * 30
         extra_stocks = []
-        bid_m = re.search(r'bid=(\d+)', href)
         code_m = re.search(r'(\d{6})', href)
         if code_m:
             code = code_m.group(1)
@@ -1043,7 +1039,6 @@ class THSNewsParser(BaseJsonForumParser):
                             name = s.get("name", "")
                             if code and len(code) == 6 and code.startswith(("60", "688", "00", "30")):
                                 extra_stocks.append({"code": code, "name": name, "market": ""})
-                    tag = item.get("tag", "")
                     source = item.get("source", "")
                     intro_parts = []
                     if source:

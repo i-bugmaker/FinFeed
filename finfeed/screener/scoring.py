@@ -16,12 +16,11 @@ from typing import Any
 
 import pandas as pd
 
-from . import factors
+from . import factors, ic_engine, ml_engine
 from .boards import classify_board
 from .config import ScreenerConfig
-from .models import StockScore
-from . import ic_engine, ml_engine
 from .ic_engine import resolve_weights
+from .models import StockScore
 
 _ST_RE = re.compile(r"(ST|\*ST|退)", re.IGNORECASE)
 

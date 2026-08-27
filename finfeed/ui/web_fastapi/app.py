@@ -36,11 +36,11 @@ from finfeed.config.sources import get_enabled_sources
 from finfeed.core.health import get_health_monitor
 from finfeed.ecal import fetcher as calendar_fetcher
 
-# easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
-from finfeed.integrations.easytdx.router import router as easytdx_router
-
 # easy-tdx 盘面复盘仪表盘快捷数据接口（同步 + 缓存）
 from finfeed.integrations.easytdx.dashboard import router as easytdx_dashboard_router
+
+# easy-tdx 集成模块（FinFeed × 通达信行情）：分组导航 / 参数表单 / 任务执行与进度
+from finfeed.integrations.easytdx.router import router as easytdx_router
 
 # 智能选股模块（五维加权评分）
 from finfeed.integrations.screener.router import router as screener_router

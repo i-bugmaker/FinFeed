@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
-
 from finfeed.screener import ml_engine, scoring
 from finfeed.screener.config import ScreenerConfig
 from finfeed.screener.ml_engine import _NumpyLogistic

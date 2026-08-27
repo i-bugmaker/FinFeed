@@ -3,7 +3,7 @@
 // 左侧：策略配置面板（引擎/权重/过滤/输出/模板/对比）；右侧：结果/图表/评估 三个页签。
 // 引擎支持：线性固定 / IC 客观加权 / 自动 / ML / 混合（后端 engine.mode 特性开关）。
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/shared/lib/echarts'
 import { useScreenerStore } from '../store/screener'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'

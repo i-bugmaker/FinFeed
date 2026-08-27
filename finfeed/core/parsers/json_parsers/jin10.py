@@ -32,7 +32,6 @@ class Jin10Parser(BaseParser):
         content = data_content.get("content", "") or ""
         if content.startswith("<a href="):
             return True
-        title = data_content.get("title", "") or ""
         source = data_content.get("source", "") or ""
         pic = data_content.get("pic", "") or ""
         channel = item.get("channel", [])

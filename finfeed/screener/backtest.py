@@ -232,9 +232,6 @@ def run_backtest_from_snapshots(pool_size: int = 200, n_cross: int = 8,
     cfg.filters["turnover_missing_tolerant"] = True
     rows: list[dict] = []
     t0 = time.time()
-    fwd_dfs: dict[int, pd.DataFrame] = {}
-    for h in (5, 20):
-        pass
     for k in range(n_cross):
         asof_idx = k * step
         asof_date = dates[asof_idx]

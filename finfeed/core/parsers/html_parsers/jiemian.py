@@ -3,13 +3,12 @@
 """界面新闻 解析器"""
 
 import re
-from datetime import timedelta, timezone
 
 import httpx
 from bs4 import BeautifulSoup
 
 from finfeed.storage.models import NewsItem
-from finfeed.utils.time_utils import bj_str_from_ts, now_bj, parse_relative_time
+from finfeed.utils.time_utils import bj_str_from_ts, parse_relative_time
 
 from ..base import BaseParser
 
@@ -22,8 +21,6 @@ class JiemianParser(BaseParser):
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
         soup = BeautifulSoup(response.text, "lxml")
-        today_str = now_bj().strftime("%Y-%m-%d")
-        bj_tz = timezone(timedelta(hours=8))
 
         news_items = {}
 

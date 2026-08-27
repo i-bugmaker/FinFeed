@@ -27,7 +27,7 @@ _PARSER_REGISTRY: Dict[str, type] = {}
 
 def register_parser(parser_type: str):
     """解析器注册装饰器
-    
+
     使用方法:
         @register_parser("sina")
         class SinaParser(BaseParser):

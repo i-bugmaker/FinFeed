@@ -69,7 +69,7 @@ class HexunParser(BaseParser):
             if not m:
                 continue
 
-            year, month, day, news_id = int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)
+            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
 
             title = item.get_text(strip=True)
             if not title or len(title) < 4:

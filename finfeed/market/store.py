@@ -654,9 +654,11 @@ def get_daily_bar(code: str, start: Optional[str] = None, end: Optional[str] = N
         cond = ["code = ?", "fq_type = 1"]
         params: List[Any] = [code]
         if start:
-            cond.append("trade_date >= ?"); params.append(start)
+            cond.append("trade_date >= ?")
+            params.append(start)
         if end:
-            cond.append("trade_date <= ?"); params.append(end)
+            cond.append("trade_date <= ?")
+            params.append(end)
         c.execute(
             f"SELECT * FROM daily_bar WHERE {' AND '.join(cond)} ORDER BY trade_date",
             params,
@@ -1109,9 +1111,11 @@ def get_ipo_calendar(start: Optional[str] = None, end: Optional[str] = None,
     cond: List[str] = []
     params: List[Any] = []
     if start:
-        cond.append("apply_date >= ?"); params.append(start)
+        cond.append("apply_date >= ?")
+        params.append(start)
     if end:
-        cond.append("apply_date <= ?"); params.append(end)
+        cond.append("apply_date <= ?")
+        params.append(end)
     where = f"WHERE {' AND '.join(cond)}" if cond else ""
     params.append(int(limit))
     with db.get_db() as c:

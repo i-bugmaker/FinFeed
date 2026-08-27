@@ -12,9 +12,9 @@ import json
 import logging
 
 from finfeed.storage.database import get_db
+from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
-from finfeed.utils.time_utils import now_bj
 
 # ============================================================
 # 自选股管理

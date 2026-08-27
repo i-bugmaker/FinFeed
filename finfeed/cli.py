@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# ruff: noqa: E402 —— 下方包内 import 依赖 sys.path 注入（见第 28 行）
 """
 FinFeed 实时新闻监控 - 主入口
 ===============================

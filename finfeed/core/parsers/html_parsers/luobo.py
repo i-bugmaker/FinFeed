@@ -103,11 +103,6 @@ class LuoBoParser(BaseParser):
         if content:
             intro = re.sub(r"<[^>]+>", "", str(content)).strip()[:150]
 
-        author = ""
-        robo_column = item.get("roboColumn", {})
-        if isinstance(robo_column, dict):
-            author = robo_column.get("name", "")
-
         news = self._make_news(
             title=title[:80],
             url=url,

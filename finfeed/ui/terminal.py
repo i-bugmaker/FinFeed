@@ -9,14 +9,12 @@ from typing import Dict, List, Optional
 from rich import box
 from rich.align import Align
 from rich.console import Console, Group
+from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
-
-logger = logging.getLogger("news_monitor")
-from rich.layout import Layout
 
 from finfeed.config.settings import (
     DEFAULT_WEB_PORT,
@@ -25,6 +23,8 @@ from finfeed.config.settings import (
 from finfeed.config.sources import get_flash_display_names
 from finfeed.storage.models import NewsItem
 from finfeed.utils.time_utils import now_bj
+
+logger = logging.getLogger("news_monitor")
 
 # 快讯类来源的展示名集合（7×24 实时短消息源）。
 # TUI 终端仅展示快讯内容：文章类（长文/深度内容）与舆情论坛类一律过滤。

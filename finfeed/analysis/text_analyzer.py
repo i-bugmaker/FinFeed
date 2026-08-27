@@ -198,10 +198,10 @@ def extract_keywords(text: str, top_n: int = 10) -> list[tuple[str, float]]:
 
     # 长度加权：2-4字的词权重最高
     def length_weight(word: str) -> float:
-        l = len(word)
-        if 2 <= l <= 4:
+        wl = len(word)
+        if 2 <= wl <= 4:
             return 1.2
-        elif 5 <= l <= 6:
+        elif 5 <= wl <= 6:
             return 1.0
         else:
             return 0.8
@@ -257,7 +257,6 @@ def classify_news(title: str, intro: str = "") -> str:
     Returns:
         分类名称
     """
-    text = f"{title} {intro}"
     scores = {}
 
     for category, keywords in CATEGORY_KEYWORDS.items():

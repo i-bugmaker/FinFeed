@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
 from finfeed.screener.config import ScreenerConfig
 from finfeed.screener.ic_engine import (
-    resolve_weights,
+    DIMS,
+    compute_engine_weights,
     halflife_weights,
     icir_by_dim,
-    compute_engine_weights,
-    DIMS,
+    resolve_weights,
 )
 
 

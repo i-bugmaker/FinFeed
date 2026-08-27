@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/shared/lib/echarts'
 
 const props = defineProps({
   option: { type: Object, required: true },

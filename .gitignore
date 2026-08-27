@@ -77,8 +77,10 @@ build/
 develop-eggs/
 downloads/
 eggs/
-lib/
-lib64/
+# 注：lib/ 仅忽略根目录 Python 打包产物（锚定 /lib/），
+# 避免误伤 web/src/shared/lib/ 等源码目录（如 echarts.js 按需引入模块）
+/lib/
+/lib64/
 parts/
 sdist/
 var/

@@ -188,7 +188,6 @@ def assign_tier(total: pd.Series, fail_mask: pd.Series, cfg) -> pd.Series:
     抽出为独立函数，便于混合层（ML/blend）在复算综合分后复用同一套评级。
     """
     t = cfg.tiers
-    g = t["guardrails"]
     dyn_cfg = t.get("dynamic") or {}
     dyn = bool(dyn_cfg.get("enabled", False))
     idx = total.index

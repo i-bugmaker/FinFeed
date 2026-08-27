@@ -10,15 +10,14 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
 from finfeed.screener.normalize import (
     fill_missing_median,
-    winsorize,
     neutralize,
-    rank_standardize,
-    zscore,
-    preprocess_factor,
     orthogonalize_dimensions,
+    preprocess_factor,
+    rank_standardize,
+    winsorize,
+    zscore,
 )
 
 

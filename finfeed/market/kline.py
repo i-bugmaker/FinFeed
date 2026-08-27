@@ -26,6 +26,8 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from finfeed.utils.time_utils import now_bj
+
 from . import store
 from .client import RateLimited, cooldown_remaining, get_json
 from .endpoints import (
@@ -48,7 +50,6 @@ INDEX_SECID = {"000001": "1.000001", "399001": "0.399001"}
 def _resolve_secid(code: str) -> str:
     """代码 -> 东财 secid，指数走显式映射，其余回退通用规则。"""
     return INDEX_SECID.get((code or "").strip()) or secid_of(code)
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 

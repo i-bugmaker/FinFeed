@@ -112,9 +112,7 @@ class EntityRecognizer:
             node = node.goto[ch]
             for code in node.output:
                 # 记录命中（按首次出现顺序，去重）
-                if code not in result:
-                    start = i - 0  # 名称长度未知，仅记录 code
-                    result[code] = ch
+                result[code] = ch
         return result
 
 
@@ -260,10 +258,14 @@ def calibrate_sentiment(lookback_days: int = 180) -> Dict:
         sample += 1
         lab = (r["sentiment"] or "neutral")
         s = by_label[lab]
-        s["n"] += 1; s["ret_sum"] += pct; s["win"] += 1 if pct > 0 else 0
+        s["n"] += 1
+        s["ret_sum"] += pct
+        s["win"] += 1 if pct > 0 else 0
         src = (r["source"] or "unknown")
         s2 = by_source[src]
-        s2["n"] += 1; s2["ret_sum"] += pct; s2["win"] += 1 if pct > 0 else 0
+        s2["n"] += 1
+        s2["ret_sum"] += pct
+        s2["win"] += 1 if pct > 0 else 0
 
     def finalize(d):
         return {

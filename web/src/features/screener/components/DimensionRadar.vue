@@ -1,7 +1,7 @@
 <script setup>
 // 六维子分雷达图（ECharts），用于个股下钻：维度画像可视化。
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/shared/lib/echarts'
 
 const props = defineProps({
   dims: { type: Object, default: () => ({}) },

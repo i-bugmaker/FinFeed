@@ -33,5 +33,18 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // 把体积大、更新频率低的第三方库拆成独立 chunk：
+        // ① 命中浏览器长期缓存，改业务代码时无需重新下载；
+        // ② 与业务代码并行加载，降低首屏等待。
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('echarts') || id.includes('zrender')) return 'echarts'
+          if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) return 'vue-vendor'
+          return 'vendor'
+        },
+      },
+    },
   },
 })
