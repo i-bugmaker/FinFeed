@@ -122,48 +122,44 @@ onMounted(load)
         </div>
       </div>
 
-      <!-- 连板个股卡片（全梯队） -->
-      <div v-if="tiers.length" class="lu-sum__stocks">
-        <div class="lu-sum__stocks-head">
-          <span class="lu-sum__stocks-title">
-            <AppIcon name="columns" size="sm" /> 连板个股
+      <!-- 连板天梯（梯队列表行，全量） -->
+      <div v-if="tiers.length" class="lu-sum__ladder">
+        <div class="lu-sum__ladder-head">
+          <span class="lu-sum__ladder-title">
+            <AppIcon name="columns" size="sm" /> 连板天梯
           </span>
-          <span class="lu-sum__stocks-count">共 <b class="ff-num">{{ totalStockCount }}</b> 只</span>
+          <span class="lu-sum__ladder-count">共 <b class="ff-num">{{ totalStockCount }}</b> 只</span>
         </div>
         <div
           v-for="t in tiers"
           :key="'g' + t.height"
-          class="lu-sum__tier-group"
+          class="lu-sum__tier"
           :class="{ 'is-hot': t.height >= 4 }"
         >
-          <div class="lu-sum__tier-ghead">
-            <span class="lu-sum__tier-gbadge ff-num">{{ t.height }}板</span>
-            <span class="lu-sum__tier-gcount ff-num">{{ (t.stocks || []).length }} 只</span>
+          <div class="lu-sum__tier-head">
+            <span class="lu-sum__tier-badge ff-num">{{ t.height }}板</span>
+            <span class="lu-sum__tier-count ff-num">{{ (t.stocks || []).length }} 只</span>
           </div>
-          <div class="lu-sum__stock-grid">
+          <div class="lu-sum__tier-rows">
             <div
               v-for="(s, i) in t.stocks"
               :key="(s.code || '') + '-' + i"
-              class="lu-sum__stock-card"
+              class="lu-sum__row"
               :title="`${s.name} ${s.code} · ${s.continue_num} 连板`"
             >
-              <div class="lu-sum__sc-top">
-                <span class="lu-sum__sc-badge ff-num">{{ s.continue_num }}连板</span>
-                <span class="lu-sum__sc-name">{{ s.name }}</span>
-                <span class="lu-sum__sc-code ff-num">{{ s.code }}</span>
-              </div>
-              <div class="lu-sum__sc-mid">
-                <span class="lu-sum__sc-price ff-num">{{ fmtPrice(s.price) }}</span>
-                <span class="lu-sum__sc-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
-              </div>
-              <div class="lu-sum__sc-reason" :title="s.reason">{{ s.reason || '—' }}</div>
-              <div v-if="s.limit_up_time || s.main_net_amount || s.turnover_ratio" class="lu-sum__sc-foot">
-                <span v-if="s.limit_up_time" class="lu-sum__sc-tag">封板 {{ s.limit_up_time }}</span>
-                <span v-if="s.main_net_amount" class="lu-sum__sc-tag" :class="chgClass(s.main_net_amount)">
+              <span class="lu-sum__row-badge ff-num">{{ s.continue_num }}连板</span>
+              <span class="lu-sum__row-name">{{ s.name }}</span>
+              <span class="lu-sum__row-code ff-num">{{ s.code }}</span>
+              <span class="lu-sum__row-price ff-num">{{ fmtPrice(s.price) }}</span>
+              <span class="lu-sum__row-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
+              <span class="lu-sum__row-reason" :title="s.reason || ''">{{ s.reason || '—' }}</span>
+              <span class="lu-sum__row-tags">
+                <span v-if="s.limit_up_time" class="lu-sum__row-tag">封板 {{ s.limit_up_time }}</span>
+                <span v-if="s.main_net_amount" class="lu-sum__row-tag" :class="chgClass(s.main_net_amount)">
                   主力 {{ fmtSignedAmount(s.main_net_amount) }}
                 </span>
-                <span v-if="s.turnover_ratio" class="lu-sum__sc-tag">换手 {{ fmtRatio(s.turnover_ratio) }}%</span>
-              </div>
+                <span v-if="s.turnover_ratio" class="lu-sum__row-tag">换手 {{ fmtRatio(s.turnover_ratio) }}%</span>
+              </span>
             </div>
           </div>
         </div>
@@ -265,21 +261,21 @@ onMounted(load)
   color: var(--ff-warn-text);
 }
 
-/* 连板个股（全梯队卡片） */
-.lu-sum__stocks {
+/* ================= 连板天梯：梯队分组 + 列表行 ================= */
+.lu-sum__ladder {
   display: flex;
   flex-direction: column;
   gap: var(--ff-space-3);
   padding-top: var(--ff-space-3);
   border-top: 1px solid var(--ff-border-subtle);
 }
-.lu-sum__stocks-head {
+.lu-sum__ladder-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--ff-space-2);
 }
-.lu-sum__stocks-title {
+.lu-sum__ladder-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -287,31 +283,31 @@ onMounted(load)
   font-weight: var(--ff-fw-semibold);
   color: var(--ff-text-primary);
 }
-.lu-sum__stocks-title :deep(.ff-icon) {
+.lu-sum__ladder-title :deep(.ff-icon) {
   color: var(--ff-brand-text);
 }
-.lu-sum__stocks-count {
+.lu-sum__ladder-count {
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
 }
-.lu-sum__stocks-count b {
+.lu-sum__ladder-count b {
   font-weight: var(--ff-fw-semibold);
   color: var(--ff-text-secondary);
 }
 
-/* 梯队分组：徽章 + 卡片网格 */
-.lu-sum__tier-group {
+/* 梯队分组 */
+.lu-sum__tier {
   display: flex;
   flex-direction: column;
   gap: var(--ff-space-2);
 }
-.lu-sum__tier-ghead {
+.lu-sum__tier-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--ff-space-2);
 }
-.lu-sum__tier-gbadge {
+.lu-sum__tier-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -325,54 +321,44 @@ onMounted(load)
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
 }
-.lu-sum__tier-group.is-hot .lu-sum__tier-gbadge {
+.lu-sum__tier.is-hot .lu-sum__tier-badge {
   background: linear-gradient(90deg, #ff8a3d, #ff2d55);
 }
-.lu-sum__tier-gcount {
+.lu-sum__tier-count {
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
   font-variant-numeric: tabular-nums;
 }
 
-.lu-sum__stock-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-  gap: var(--ff-space-2);
-}
-@media (max-width: 480px) {
-  .lu-sum__stock-grid {
-    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  }
-}
-.lu-sum__stock-card {
+/* 梯队行列表 */
+.lu-sum__tier-rows {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: var(--ff-space-2-5) var(--ff-space-2-5) var(--ff-space-2);
+  gap: var(--ff-space-1-5);
+}
+.lu-sum__row {
+  display: flex;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 7px 12px;
   border-radius: var(--ff-radius-md);
   border: 1px solid var(--ff-border-subtle);
   border-left: 3px solid var(--ff-up);
   background: var(--ff-bg-subtle);
-  cursor: default;
   min-width: 0;
+  overflow: hidden;
+  cursor: default;
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
     border-color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.lu-sum__tier-group.is-hot .lu-sum__stock-card {
+.lu-sum__tier.is-hot .lu-sum__row {
   border-left-color: #ff2d55;
 }
-.lu-sum__stock-card:hover {
+.lu-sum__row:hover {
   background: var(--ff-bg-hover);
   border-color: var(--ff-border);
 }
-
-.lu-sum__sc-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-.lu-sum__sc-badge {
+.lu-sum__row-badge {
   flex-shrink: 0;
   padding: 0 6px;
   border-radius: var(--ff-radius-sm);
@@ -384,65 +370,62 @@ onMounted(load)
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
 }
-.lu-sum__tier-group.is-hot .lu-sum__sc-badge {
+.lu-sum__tier.is-hot .lu-sum__row-badge {
   color: #ff2d55;
   background: #fff1f0;
   border-color: #ffd6d0;
 }
-.lu-sum__sc-name {
+.lu-sum__row-name {
+  flex-shrink: 0;
+  max-width: 140px;
   font-size: var(--ff-fs-body-sm);
   font-weight: var(--ff-fw-semibold);
   color: var(--ff-text-primary);
-  line-height: 1.4;
-  min-width: 0;
-  flex: 1;
-  /* 名称单行完整显示，不换行、不截断 */
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.lu-sum__sc-code {
-  margin-left: auto;
+.lu-sum__row-code {
   flex-shrink: 0;
   font-size: var(--ff-fs-overline);
   color: var(--ff-text-tertiary);
   font-variant-numeric: tabular-nums;
 }
-
-.lu-sum__sc-mid {
-  display: flex;
-  align-items: baseline;
-  gap: var(--ff-space-2);
-}
-.lu-sum__sc-price {
-  font-size: var(--ff-fs-h4);
+.lu-sum__row-price {
+  flex-shrink: 0;
+  min-width: 52px;
+  font-size: var(--ff-fs-body-sm);
   font-weight: var(--ff-fw-bold);
   color: var(--ff-text-up);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
 }
-.lu-sum__sc-chg {
+.lu-sum__row-chg {
+  flex-shrink: 0;
+  min-width: 58px;
   font-size: var(--ff-fs-body-sm);
   font-weight: var(--ff-fw-semibold);
   font-variant-numeric: tabular-nums;
 }
 
-.lu-sum__sc-reason {
-  position: relative;
-  z-index: 1;
+/* 归因：独占弹性宽度，占满行内剩余空间；超长省略，完整内容见 title */
+.lu-sum__row-reason {
+  flex: 1 1 200px;
+  min-width: 0;
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-secondary);
-  line-height: var(--ff-lh-body-sm);
-  /* 涨停归因单行完整显示，不换行、不截断；溢出时浮于相邻卡片之上保证可见 */
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.lu-sum__sc-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ff-space-1);
+/* 标签组：靠右 */
+.lu-sum__row-tags {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.lu-sum__sc-tag {
+.lu-sum__row-tag {
   padding: 0 6px;
   border-radius: var(--ff-radius-sm);
   font-size: var(--ff-fs-overline);
@@ -451,6 +434,26 @@ onMounted(load)
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
+}
+
+/* 窄屏：归因独占一行、标签换行 */
+@media (max-width: 640px) {
+  .lu-sum__row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 8px 10px;
+  }
+  .lu-sum__row-reason {
+    flex-basis: 100%;
+    order: 1;
+  }
+  .lu-sum__row-tags {
+    order: 2;
+    margin-left: auto;
+  }
+  .lu-sum__row-name {
+    max-width: 96px;
+  }
 }
 
 .is-up {
