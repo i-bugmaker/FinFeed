@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinFeed Web UI 全面审查报告</title>
+<style>
+/* ── 本报告自身遵循所推荐的设计令牌实践 ────────────────────── */
+:root{
+  --c-canvas:#f6f8fb; --c-surface:#ffffff; --c-subtle:#f1f5f9;
+  --c-border:#e2e8f0; --c-border-strong:#94a3b8;
+  --c-text:#0f172a; --c-text-2:#475569; --c-text-3:#64748b;
+  --c-brand:#2563eb; --c-brand-subtle:#eff6ff; --c-brand-text:#1d4ed8;
+  --c-hi:#e11d48; --c-hi-bg:#fff1f2;
+  --c-md:#d97706; --c-md-bg:#fffbeb;
+  --c-lo:#64748b; --c-lo-bg:#f1f5f9;
+  --c-ok:#059669; --c-ok-bg:#ecfdf5;
+  --r-sm:6px; --r-md:10px; --r-lg:16px;
+  --sh-sm:0 1px 3px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);
+  --sh-md:0 4px 12px -2px rgba(15,23,42,.07),0 2px 6px -2px rgba(15,23,42,.05);
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+  --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','HarmonyOS Sans SC','Microsoft YaHei',sans-serif;
+  --mono:'JetBrains Mono','SF Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--c-canvas); color:var(--c-text); font-family:var(--font);
+  font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:var(--sp-10) var(--sp-5) var(--sp-16)}
+
+/* 头部 */
+.hero{
+  background:linear-gradient(140deg,#0f172a 0%,#1e3a5f 55%,#1d4ed8 100%);
+  color:#fff;border-radius:var(--r-lg);padding:var(--sp-12) var(--sp-10);
+  margin-bottom:var(--sp-8);position:relative;overflow:hidden;
+}
+.hero::after{
+  content:'';position:absolute;right:-80px;top:-80px;width:320px;height:320px;
+  background:radial-gradient(circle,rgba(96,165,250,.30),transparent 68%);
+}
+.hero__eyebrow{
+  font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:#93c5fd;margin-bottom:var(--sp-3);
+}
+.hero h1{font-size:32px;font-weight:700;line-height:1.15;letter-spacing:-.02em;margin-bottom:var(--sp-3)}
+.hero__sub{font-size:16px;color:#cbd5e1;max-width:62ch}
+.hero__meta{
+  display:flex;flex-wrap:wrap;gap:var(--sp-6);margin-top:var(--sp-8);
+  padding-top:var(--sp-5);border-top:1px solid rgba(255,255,255,.16);position:relative;z-index:1;
+}
+.hero__meta div{font-size:13px;color:#94a3b8}
+.hero__meta b{display:block;font-size:22px;color:#fff;font-weight:700;margin-bottom:2px;font-variant-numeric:tabular-nums}
+
+/* 通用 */
+h2{font-size:24px;font-weight:700;line-height:1.25;letter-spacing:-.014em;margin:var(--sp-12) 0 var(--sp-2)}
+h2:first-of-type{margin-top:0}
+h3{font-size:17px;font-weight:600;line-height:1.35;margin:var(--sp-6) 0 var(--sp-2)}
+.lede{font-size:16px;color:var(--c-text-2);margin-bottom:var(--sp-6);max-width:78ch}
+.card{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
+  padding:var(--sp-6);box-shadow:var(--sh-sm);margin-bottom:var(--sp-4);
+}
+.muted{color:var(--c-text-3);font-size:14px}
+code{font-family:var(--mono);font-size:13px;background:var(--c-subtle);padding:2px 6px;border-radius:4px;color:var(--c-text)}
+
+/* 维度评分 */
+.scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--sp-4);margin-bottom:var(--sp-8)}
+.score{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);padding:var(--sp-5);box-shadow:var(--sh-sm)}
+.score__top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--sp-3)}
+.score__name{font-size:14px;font-weight:600}
+.score__val{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.score__bar{height:6px;background:var(--c-subtle);border-radius:99px;overflow:hidden}
+.score__fill{height:100%;border-radius:99px;transition:width .6s cubic-bezier(.2,0,0,1)}
+.score__note{font-size:12.5px;color:var(--c-text-3);margin-top:var(--sp-3);line-height:1.5}
+
+/* 优先级标记 */
+.tag{
+  display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+  padding:3px 9px;border-radius:99px;letter-spacing:.02em;white-space:nowrap;
+}
+.tag--hi{background:var(--c-hi-bg);color:var(--c-hi)}
+.tag--md{background:var(--c-md-bg);color:#b45309}
+.tag--lo{background:var(--c-lo-bg);color:var(--c-lo)}
+
+/* 问题块 */
+.issue{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
+  box-shadow:var(--sh-sm);margin-bottom:var(--sp-5);overflow:hidden}
+.issue__head{padding:var(--sp-5) var(--sp-6);border-bottom:1px solid var(--c-border);
+  display:flex;gap:var(--sp-4);align-items:flex-start;background:var(--c-subtle)}
+.issue__no{flex:0 0 auto;width:28px;height:28px;border-radius:8px;background:var(--c-text);
+  color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.issue__title{font-size:17px;font-weight:600;line-height:1.35;flex:1}
+.issue__title span{display:block;font-size:13px;font-weight:400;color:var(--c-text-3);margin-top:3px}
+.issue__body{padding:var(--sp-6)}
+.issue__body h4{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--c-text-3);margin:var(--sp-5) 0 var(--sp-2)}
+.issue__body h4:first-child{margin-top:0}
+.issue__body p{margin-bottom:var(--sp-3);color:var(--c-text-2);font-size:14.5px}
+.issue__body p strong{color:var(--c-text);font-weight:600}
+.issue__body ul{margin:0 0 var(--sp-3) var(--sp-5);color:var(--c-text-2);font-size:14.5px}
+.issue__body li{margin-bottom:6px}
+
+pre{background:#0f172a;color:#e2e8f0;padding:var(--sp-4) var(--sp-5);border-radius:var(--r-sm);
+  overflow-x:auto;font-family:var(--mono);font-size:12.8px;line-height:1.65;margin-bottom:var(--sp-3)}
+pre .c{color:#64748b}       /* 注释 */
+pre .k{color:#93c5fd}       /* 关键字/选择器 */
+pre .s{color:#86efac}       /* 字符串/值 */
+pre .d{color:#fca5a5}       /* 删除/问题 */
+pre .a{color:#fde68a}       /* 新增/建议 */
+
+table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:var(--sp-4)}
+th{text-align:left;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--c-text-3);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--c-border);background:var(--c-subtle)}
+td{padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--c-border);vertical-align:top;color:var(--c-text-2)}
+tr:last-child td{border-bottom:none}
+td.num{font-variant-numeric:tabular-nums;font-weight:600;color:var(--c-text);white-space:nowrap}
+
+.callout{border-left:3px solid var(--c-brand);background:var(--c-brand-subtle);
+  padding:var(--sp-4) var(--sp-5);border-radius:0 var(--r-sm) var(--r-sm) 0;margin-bottom:var(--sp-4);
+  font-size:14.5px;color:#1e3a5f}
+.callout b{color:#1e3a5f}
+
+.road{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--sp-4)}
+.phase{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
+  padding:var(--sp-5);box-shadow:var(--sh-sm);border-top:3px solid var(--c-brand)}
+.phase--2{border-top-color:var(--c-md)}
+.phase--3{border-top-color:var(--c-lo)}
+.phase__t{font-size:13px;font-weight:700;color:var(--c-text);margin-bottom:var(--sp-1)}
+.phase__s{font-size:12px;color:var(--c-text-3);margin-bottom:var(--sp-3)}
+.phase ul{margin-left:var(--sp-4);font-size:13.5px;color:var(--c-text-2)}
+.phase li{margin-bottom:5px}
+
+footer{margin-top:var(--sp-12);padding-top:var(--sp-5);border-top:1px solid var(--c-border);
+  font-size:13px;color:var(--c-text-3)}
+@media(max-width:768px){
+  .wrap{padding:var(--sp-6) var(--sp-4) var(--sp-10)}
+  .hero{padding:var(--sp-8) var(--sp-5)}
+  .hero h1{font-size:24px}
+  .hero__meta{gap:var(--sp-4)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero__eyebrow">UI Audit Report v2 · FinFeed Web · v4.1 整改后复审</div>
+  <h1>FinFeed Web 界面全面审查</h1>
+  <p class="hero__sub">对 Vue 3 + Vite 前端的 6 个维度系统性体检：页面结构、组件、动效、图标、布局排版、色彩字体。结论基于源码静态分析 <strong>＋ 14 张实机截图的可视化验证</strong>，附 5 个可复现的审计脚本。</p>
+  <div class="hero__meta">
+    <div><b>121</b>扫描文件</div>
+    <div><b>31,996</b>代码行</div>
+    <div><b>89</b>Vue 组件</div>
+    <div><b>19</b>页面视图</div>
+    <div><b>14</b>实机截图</div>
+    <div><b>2026-08-29</b>复审日期</div>
+  </div>
+</header>
+
+<div class="callout" style="border-left-color:#059669;background:#ecfdf5;color:#065f46">
+  <b>v2 复审说明（2026-08-29）：</b>本报告已完成首轮整改验证与实机截图复核。<br>
+  <b>已闭环：</b>幽灵令牌（141 处 → 0）、对比度（未达标 8/48 → 0/52）、栅格断点（补齐 sm/md/lg/xl 并改为移动优先）、<code>transition: all</code>（22 → 0）。<br>
+  <b>已修正的误判：</b>v1 依据「0 个组件引用 <code>data-theme</code>」推断深色模式全面失效，实机验证显示<strong>主应用 7 个核心页暗色渲染正常</strong>，失效仅集中在 AI / Screener / easy-tdx 三模块；AI 模块品牌色冲突的视觉危害亦低于初判。<br>
+  <b>新发现：</b>19/19 视图缺异步状态、8 个视图无显式标题、150 处自写 <code>&lt;button&gt;</code>。
+  详见 <code>web/DESIGN_SYSTEM.md</code> §10 技术债清单。
+</div>
+
+<!-- ══════════ 总体判断 ══════════ -->
+<h2>总体判断</h2>
+<p class="lede">FinFeed 的<strong>设计系统「设计」得相当好，「落地」程度则因模块而异</strong>。<code>tokens.css</code> 是一份 614 行、318 个令牌的高质量规范，主应用核心页（快讯、财经、仪表盘、全景行情）已能消费这套令牌，暗色模式与对比度均正常。问题集中在<strong> AI 投研、智能选股、easy-tdx</strong> 等模块：它们大量绕过令牌、直接写死颜色与尺寸，成为「规范外的孤岛」。</p>
+
+<div class="callout">
+  <b>一句话结论：</b>核心矛盾是 <b>模块间规范执行不均衡</b>。主应用核心页令牌化良好；AI/Screener/easytdx 仍停留在旧设计语言（绿色品牌色、Tailwind 灰阶、写死 #fff），导致深色模式在这些模块局部失效、组件复用率低、页面信息层级混乱。本轮优先修复主应用全局层的问题；下一步应将三个「孤岛」模块迁移到统一设计系统。
+</div>
+
+<h3>六维健康度</h3>
+<div class="scores">
+  <div class="score">
+    <div class="score__top"><span class="score__name">① 页面与子页面</span><span class="score__val" style="color:#d97706">72</span></div>
+    <div class="score__bar"><div class="score__fill" style="width:72%;background:#d97706"></div></div>
+    <div class="score__note">导航架构清晰，但 19 个视图中 8 个无显式标题、标题层级起点不统一、19/19 缺少空状态，骨架/栅格使用率低。</div>
+  </div>
+  <div class="score">
+    <div class="score__top"><span class="score__name">② 按钮与组件</span><span class="score__val" style="color:#d97706">60</span></div>
+    <div class="score__bar"><div class="score__fill" style="width:60%;background:#d97706"></div></div>
+    <div class="score__note"><code>.ff-btn</code> 状态完整，但 43 个文件含 150 处自写 <code>&lt;button&gt;</code>，AI/Screener/easytdx 另起炉灶。</div>
+  </div>
+  <div class="score">
+    <div class="score__top"><span class="score__name">③ 动画效果</span><span class="score__val" style="color:#059669">82</span></div>
+    <div class="score__bar"><div class="score__fill" style="width:82%;background:#059669"></div></div>
+    <div class="score__note"><code>transition: all</code> 已清零（22→0），时长/缓动令牌化，已尊重 <code>prefers-reduced-motion</code>。</div>
+  </div>
+  <div class="score">
+    <div class="score__top"><span class="score__name">④ 图标系统</span><span class="score__val" style="color:#059669">90</span></div>
+    <div class="score__bar"><div class="score__fill" style="width:90%;background:#059669"></div></div>
+    <div class="score__note">81 枚图标，24×24 统一画布、描边自适应、零自写 <code>&lt;svg&gt;</code>，只剩 2 处 emoji。</div>
+  </div>
+  <div class="score">
+    <div class="score__top"><span class="score__name">⑤ 布局与排版</span><span class="score__val" style="color:#e11d48">45</span></div>
+    <div class="score__bar"><div class="score__fill" style="width:45%;background:#e11d48"></div></div>
+    <div class="score__note">栅格断点已补齐并改为移动优先，但 <code>.ff-page/.ff-page__header/.ff-grid</code> 使用率仍极低。</div>
+  </div>
+  <div class="score">
+    <div class="score__top"><span class="score__name">⑥ 颜色与字体</span><span class="score__val" style="color:#d97706">62</span></div>
+    <div class="score__bar"><div class="score__fill" style="width:62%;background:#d97706"></div></div>
+    <div class="score__note">主应用对比度/暗色模式正常；AI/Screener/easytdx 仍存在旧设计语言与暗色失效。</div>
+  </div>
+</div>
+
+<!-- ══════════ P0 ══════════ -->
+<h2>五个 P0 级问题</h2>
+<p class="lede">按「影响面 × 修复成本」排序。这五项解决了，界面一致性会有肉眼可见的跃升。</p>
+
+<!-- P0-1 -->
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">1</div>
+    <div class="issue__title">三套品牌色并存，设计规范与实现脱节
+      <span>color · 影响全局 · 修复成本：中</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <h4>证据</h4>
+    <table>
+      <tr><th>来源</th><th>声明/使用的品牌色</th><th>说明</th></tr>
+      <tr><td><code>DESIGN_SYSTEM.md</code> §3.1</td><td class="num">#2f7d5b（Forest 绿）</td><td>文档声明的主色</td></tr>
+      <tr><td><code>tokens.css</code> 原始色板</td><td class="num">#2f7d5b（<code>--p-brand-600</code>）</td><td>仅被引用 13 次，近乎废弃</td></tr>
+      <tr><td><code>tokens.css</code> 语义令牌</td><td class="num">#2563eb / #3b82f6（蓝）</td><td><code>--ff-brand</code> 实际生效值</td></tr>
+      <tr><td>AI 模块（6 视图 + 6 组件）</td><td class="num">#2f7d5b（60 次）</td><td>硬编码绿 + Tailwind 灰阶</td></tr>
+    </table>
+    <p>AI 模块自成一套灰阶：<code>#9ca3af</code>（50 次）、<code>#e5e7eb</code>（46 次）、<code>#6b7280</code>（37 次）、<code>#1f2937</code>（30 次），与主应用的 Cool Graphite 灰阶不一致。</p>
+
+    <h4>影响（经可视化验证后修正）</h4>
+    <div class="callout"><b>更正：</b>初版报告称「切到 AI 投研会看到品牌色由蓝变绿」。实际截图显示，AI 工作台的 Tab 激活态、卡片图标、主按钮<b>均已使用蓝色</b>，视觉上并未出现明显的配色跳变。硬编码绿色主要残留在次级元素与表单标签中，肉眼不易察觉。<br>因此本项的<strong>视觉危害低于初判</strong>，但<strong>维护危害依然成立</strong>：任何主题级调整都要改两遍且必然遗漏，是后续深色模式迁移的直接阻碍。</div>
+    <ul>
+      <li>主题级调整需改两遍，必然遗漏——这是深色模式迁移（P0-2）的直接阻碍。</li>
+      <li>原始色板 <code>--p-brand-*</code> 与语义层脱钩，色板演进失去意义。</li>
+      <li>优先级由「高」调整为「中高」：不紧急，但应在 AI 模块迁移时一并收敛。</li>
+    </ul>
+
+    <h4>方案</h4>
+    <p><strong>Step 1 — 先裁决品牌色。</strong>这是产品决策，不是技术决策。金融终端语境下建议保留蓝色（专业、克制、与涨跌红绿不冲突）；绿色主色会与「跌 = 绿」的 A 股语义色直接撞车——这是<span style="color:#e11d48;font-weight:600">选绿色的硬伤</span>。</p>
+    <p><strong>Step 2 — 让语义层真正引用原始色板</strong>，消灭语义层的裸 HEX：</p>
+<pre><span class="c">/* tokens.css — 让 --ff-brand 家族回指原始色板，而非写死 */</span>
+<span class="k">:root</span>{
+  <span class="d">- --ff-brand: #2563eb;</span>
+  <span class="a">+ --ff-brand: var(--p-brand-600);</span>
+  <span class="d">- --ff-brand-hover: #1d4ed8;</span>
+  <span class="a">+ --ff-brand-hover: var(--p-brand-700);</span>
+  <span class="a">+ --ff-brand-active: var(--p-brand-800);</span>
+  <span class="a">+ --ff-brand-subtle: var(--p-brand-50);</span>
+  <span class="a">+ --ff-brand-text: var(--p-brand-700);</span>
+}</pre>
+    <p><strong>Step 3 — 迁移 AI 模块。</strong>把 6 个视图的硬编码色批量替换为语义令牌；Tailwind 灰阶一一映射到现有三级文本/边框体系：</p>
+<pre><span class="c">/* AI 模块替换映射表 */</span>
+<span class="d">#9ca3af  →  var(--ff-text-tertiary)      /* 辅助文字 */</span>
+<span class="d">#6b7280  →  var(--ff-text-secondary)     /* 次级文字 */</span>
+<span class="d">#1f2937  →  var(--ff-text-primary)       /* 主文字   */</span>
+<span class="d">#e5e7eb  →  var(--ff-border)             /* 边框     */</span>
+<span class="d">#fff     →  var(--ff-bg-surface)         /* 卡片底   */</span>
+<span class="d">#2f7d5b  →  var(--ff-brand)              /* 品牌色   */</span></pre>
+    <p><strong>Step 4 — 同步更新 <code>DESIGN_SYSTEM.md</code></strong>，将主色改为裁决后的值，并声明「语义层必须以 <code>--p-*</code> 为唯一来源」。</p>
+  </div>
+</div>
+
+<!-- P0-2 -->
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">2</div>
+    <div class="issue__title">深色模式模块级失效：主应用可用，AI / 选股 / easy-tdx 失控
+      <span>color · 影响 3 个模块约 25 个组件 · 修复成本：高（可渐进）</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <div class="callout" style="border-left-color:#d97706;background:#fffbeb;color:#78350f">
+      <b>重要更正：</b>初版报告依据「89 个组件中 0 个引用 <code>data-theme</code>」推断深色模式<strong>全面失效</strong>，该结论<strong>过度概括，已被可视化验证推翻</strong>。<br>
+      真实判据是「组件是否消费 <code>--ff-*</code> 语义令牌」——只要用了令牌就会自动随主题切换，无需显式写 <code>data-theme</code>。实测结果：<strong>主应用核心页暗色渲染正常</strong>，失效集中在 AI 投研、智能选股、easy-tdx 三个模块。
+    </div>
+
+    <h4>实测证据（1440×900 实机截图，见文末图库）</h4>
+    <table>
+      <tr><th>模块</th><th>亮色</th><th>暗色</th><th>判定</th></tr>
+      <tr><td>快讯 <code>/flash</code></td><td class="num">正常</td><td class="num">正常</td><td><span class="tag tag--lo" style="background:#ecfdf5;color:#059669">通过</span></td></tr>
+      <tr><td>全景行情 <code>/market</code></td><td class="num">正常</td><td class="num">正常</td><td><span class="tag tag--lo" style="background:#ecfdf5;color:#059669">通过</span></td></tr>
+      <tr><td>仪表盘 <code>/dashboard</code></td><td class="num">正常</td><td class="num">正常</td><td><span class="tag tag--lo" style="background:#ecfdf5;color:#059669">通过</span></td></tr>
+      <tr><td>AI 投研 <code>/ai</code></td><td class="num">正常</td><td class="num" style="color:#e11d48">仍为浅底</td><td><span class="tag tag--hi">失效</span></td></tr>
+      <tr><td>AI 设置 <code>/ai/settings</code></td><td class="num">正常</td><td class="num" style="color:#e11d48">仍为浅底</td><td><span class="tag tag--hi">失效</span></td></tr>
+      <tr><td>智能选股 <code>/screener</code></td><td class="num">正常</td><td class="num" style="color:#e11d48">仍为浅底</td><td><span class="tag tag--hi">失效</span></td></tr>
+      <tr><td>设计规范 <code>/styleguide</code></td><td class="num">正常</td><td class="num" style="color:#e11d48">部分失真</td><td><span class="tag tag--md">中</span></td></tr>
+    </table>
+    <p>失效根因：AI 模块 11 个文件写死 <code>#fff</code>（AnalystView 13 处、SettingsView 9 处）+ Tailwind 灰阶；Screener 25 处硬编码；easytdx 组件自成一派。</p>
+
+    <h4>影响</h4>
+    <ul>
+      <li>用户从快讯切到 AI 投研，界面由暗色突然跳回浅色——<strong>明暗闪烁在夜间使用场景下尤为刺眼</strong>。</li>
+      <li>三个模块合计约占应用功能的 40%，是长时间盯屏金融终端的高频区域。</li>
+      <li>问题性质从「全局重构」降级为「3 个模块的定向迁移」，<strong>工作量与风险显著低于初判</strong>。</li>
+    </ul>
+
+    <h4>方案（范围已收窄）</h4>
+    <p><strong>范围由「全项目」收窄为「3 个模块」</strong>——主应用无需改动。按模块推进，每完成一个即可独立验收：</p>
+<pre><span class="c">// 迁移顺序（每步可独立上线验收）</span>
+<span class="s">第 1 批</span>  views/ai/*（6 个视图）        —— 硬编码最集中，用户高频
+<span class="s">第 2 批</span>  components/ai/*（6 个组件）
+<span class="s">第 3 批</span>  ScreenerView（1484 行，25 处硬编码）
+<span class="s">第 4 批</span>  easytdx/*（18 个组件）        —— 长尾，可最后处理
+<span class="s">无需改动</span> Flash / Articles / Market / Dashboard / Sentiment / Calendar / Favorites</pre>
+    <p>机械替换规则（可直接脚本化）：</p>
+<pre><span class="d">color:#0f172a      → color:var(--ff-text-primary)</span>
+<span class="d">color:#475569      → color:var(--ff-text-secondary)</span>
+<span class="d">background:#fff    → background:var(--ff-bg-surface)</span>
+<span class="d">border:1px solid #e2e8f0 → border:1px solid var(--ff-border)</span>
+<span class="d">box-shadow:0 1px 3px rgba(0,0,0,.1) → box-shadow:var(--ff-shadow-sm)</span></pre>
+    <p><strong>验收方式：</strong>切换主题后逐页截图比对。建议把 <code>/styleguide</code> 页作为回归基准（见问题 14）。</p>
+    <div class="callout"><b>提醒：</b>替换时务必删除 <code>var(--x, #fallback)</code> 中的兜底值。兜底值正是深色模式失效的帮凶——它让「令牌未定义」这个错误被静默吞掉。</div>
+  </div>
+</div>
+
+<!-- P0-3 -->
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">3</div>
+    <div class="issue__title">19 个令牌被引用但从未定义（141 处）
+      <span>token · 静默失效 · 修复成本：低</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <h4>证据</h4>
+    <p>令牌定义 297 个，被引用 227 个（引用 4,588 次），其中 <strong>19 个从未定义</strong>，却出现了 <strong>141 次</strong>（占引用总量 3.1%）：</p>
+    <table>
+      <tr><th>未定义令牌</th><th>引用次数</th><th>主要位置</th></tr>
+      <tr><td><code>--ff-text-3</code></td><td class="num">56</td><td>SettingsView(8), ReportReaderView(7)</td></tr>
+      <tr><td><code>--ff-brand-dark</code></td><td class="num">27</td><td>SettingsView(9), AnalystView(5)</td></tr>
+      <tr><td><code>--ff-text-2</code></td><td class="num">24</td><td>ReportReaderView(6), SettingsView(5)</td></tr>
+      <tr><td><code>--ff-bg-down-subtle</code></td><td class="num">7</td><td>EasyTdxResultPanel, EasyTdxTaskStatus</td></tr>
+      <tr><td><code>--ff-border-brand-subtle</code></td><td class="num">5</td><td>EasyTdxParamField, EasyTdxParamForm</td></tr>
+      <tr><td><code>--ff-text-warning</code></td><td class="num">5</td><td>EasyTdxQuickTasks, EasyTdxResultPanel</td></tr>
+      <tr><td colspan="2" class="num">其余 13 个</td><td>EasyTdxCommandBar, SectorMinuteChart 等</td></tr>
+    </table>
+    <p>这些令牌全部写成 <code>var(--ff-text-3, #9ca3af)</code> 的形式，<strong>兜底值掩盖了错误</strong>——代码能跑，但主题切换对这些区域完全无效。</p>
+
+    <h4>方案</h4>
+    <p><strong>Step 1 — 补齐定义</strong>，把它们映射到既有语义体系（而非新增平行概念）：</p>
+<pre><span class="c">/* tokens.css 亮色块 */</span>
+<span class="a">+ --ff-text-2: var(--ff-text-secondary);</span>
+<span class="a">+ --ff-text-3: var(--ff-text-tertiary);</span>
+<span class="a">+ --ff-brand-dark: var(--ff-brand-active);</span>
+<span class="a">+ --ff-brand-light: var(--ff-brand-hover);</span>
+<span class="a">+ --ff-bg-up-subtle: var(--ff-up-subtle);</span>
+<span class="a">+ --ff-bg-down-subtle: var(--ff-down-subtle);</span>
+<span class="a">+ --ff-text-warning: var(--ff-warn-text);</span>
+<span class="a">+ --ff-border-warning: var(--ff-warn-border);</span>
+<span class="a">+ --ff-border-brand-subtle: var(--ff-brand-border);</span>
+<span class="a">+ --ff-fs-title-sm: var(--ff-fs-h4);</span>
+<span class="a">+ --ff-bg-code: var(--ff-bg-subtle);</span>
+<span class="a">+ --ff-icon-inverse: var(--ff-text-inverse);</span>
+<span class="a">+ --ff-autogrid-min: 240px;</span></pre>
+    <p><strong>Step 2 — 建立 CI 护栏</strong>，防止再次产生幽灵令牌。审计脚本已就绪（见附录），加入构建流程：</p>
+<pre><span class="c">// package.json</span>
+<span class="a">+ "audit:ui": "python scripts/ui_audit.py --root src",</span>
+<span class="a">+ "audit:a11y": "python scripts/contrast_audit.py"</span>
+
+<span class="c">// 建议：令牌失效数 > 0 时构建失败</span></pre>
+  </div>
+</div>
+
+<!-- P0-4 -->
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">4</div>
+    <div class="issue__title">排版与栅格系统近乎零使用
+      <span>layout · 影响 15 个页面 · 修复成本：中</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <h4>证据</h4>
+    <p>89 个 Vue 组件中，排版与栅格工具类的实际使用次数（<code>.ff-num</code> 除外）：</p>
+    <table>
+      <tr><th>工具类</th><th>使用次数</th><th>工具类</th><th>使用次数</th></tr>
+      <tr><td><code>.ff-num</code>（数据数字）</td><td class="num">93</td><td><code>.ff-h4</code></td><td class="num">1</td></tr>
+      <tr><td><code>.ff-page</code></td><td class="num">15</td><td><code>.ff-h1</code></td><td class="num">1</td></tr>
+      <tr><td><code>.ff-col</code></td><td class="num">20</td><td><code>.ff-lede</code></td><td class="num">1</td></tr>
+      <tr><td><code>.ff-h3</code></td><td class="num">3</td><td><code>.ff-caption</code></td><td class="num">1</td></tr>
+      <tr><td><code>.ff-body</code></td><td class="num">3</td><td><code>.ff-label</code></td><td class="num">1</td></tr>
+      <tr><td><code>.ff-h2</code></td><td class="num">2</td><td><code>.ff-overline</code></td><td class="num">1</td></tr>
+      <tr><td><code>.ff-grid</code></td><td class="num">1</td><td><code>.ff-page__header</code></td><td class="num" style="color:#e11d48">0</td></tr>
+    </table>
+    <p>即：<strong>15 个页面里只有 1 个用了栅格</strong>，标题层级类总共用了 7 次。<code>.ff-page__header</code> 在 CSS 中定义了却从未被引用。各视图各自写死标题样式，导致页面间层级标准不统一。</p>
+    <p>此外，<code>DESIGN_SYSTEM.md</code> §4 承诺的响应式栅格类 <code>ff-col-lg-6</code> <strong>并不存在</strong>——实际只有 <code>ff-col-sm-6</code> 与 <code>ff-col-md-4/6/8/12</code>，<code>lg</code>(1024) 与 <code>xl</code>(1280) 断点缺失。</p>
+
+    <h4>影响</h4>
+    <ul>
+      <li>页面标题层级靠各视图自由发挥，视觉节奏不统一。</li>
+      <li>1024–1280px 区间（常见笔记本）无法做栅格控制，布局只能靠组件内媒体查询补救。</li>
+    </ul>
+
+    <h4>方案</h4>
+    <p><strong>Step 1 — 补齐栅格断点</strong>（<code>base.css</code>）：</p>
+<pre><span class="c">/* 补齐 lg / xl 断点，与 tokens.css 声明的断点保持一致 */</span>
+<span class="a">@media (min-width:1024px){
+  .ff-col-lg-1{grid-column:span 1/span 1}  …  .ff-col-lg-12{grid-column:span 12/span 12}
+}
+@media (min-width:1280px){
+  .ff-col-xl-1{grid-column:span 1/span 1}  …  .ff-col-xl-12{grid-column:span 12/span 12}
+}</span></pre>
+    <p><strong>Step 2 — 统一页面骨架</strong>，所有视图改用标准页头：</p>
+<pre><span class="k">&lt;div</span> class=<span class="s">"ff-page"</span><span class="k">&gt;</span>
+  <span class="a">&lt;header class="ff-page__header"&gt;</span>
+  <span class="a">  &lt;div&gt;</span>
+  <span class="a">    &lt;h1 class="ff-h1"&gt;快讯&lt;/h1&gt;</span>
+  <span class="a">    &lt;p class="ff-caption"&gt;7×24 实时财经快讯，{{ total }} 条&lt;/p&gt;</span>
+  <span class="a">  &lt;/div&gt;</span>
+  <span class="a">  &lt;div class="ff-page__actions"&gt; … &lt;/div&gt;</span>
+  <span class="a">&lt;/header&gt;</span>
+  &lt;div class=<span class="s">"ff-grid"</span>&gt;
+    &lt;div class=<span class="s">"ff-col-12 ff-col-lg-8"</span>&gt; … &lt;/div&gt;
+    &lt;div class=<span class="s">"ff-col-12 ff-col-lg-4"</span>&gt; … &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</pre>
+    <p><strong>Step 3 — 删除视图内的重复标题样式</strong>，改由 <code>.ff-h1~h4</code> 统一供给。</p>
+  </div>
+</div>
+
+<!-- P0-5 -->
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">5</div>
+    <div class="issue__title">表单边框与辅助文本未达 WCAG AA
+      <span>a11y · 影响所有表单 · 修复成本：低</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <h4>证据</h4>
+    <p>基于 <code>tokens.css</code> 实测 48 组前后景组合（含 rgba 合成），8 组未达标：</p>
+    <table>
+      <tr><th>组合</th><th>亮色</th><th>暗色</th><th>要求</th><th>用途</th></tr>
+      <tr><td><code>--ff-border</code> / surface</td><td class="num" style="color:#e11d48">1.23</td><td class="num" style="color:#e11d48">1.32</td><td>3.0</td><td>输入框边界</td></tr>
+      <tr><td><code>--ff-border-strong</code> / surface</td><td class="num" style="color:#e11d48">1.48</td><td class="num" style="color:#e11d48">1.74</td><td>3.0</td><td>强边框</td></tr>
+      <tr><td><code>--ff-text-tertiary</code> / surface</td><td class="num" style="color:#e11d48">2.56</td><td class="num" style="color:#e11d48">3.75</td><td>4.5</td><td>辅助文字</td></tr>
+      <tr><td><code>--ff-text-placeholder</code> / surface</td><td class="num" style="color:#e11d48">2.56</td><td class="num" style="color:#e11d48">2.36</td><td>4.5</td><td>占位符</td></tr>
+    </table>
+    <p class="muted">注：WCAG 1.4.3 豁免「禁用态组件」，<code>--ff-text-disabled</code> 未计入未达标。装饰性分隔线亦豁免，但<strong>输入框、下拉、日期选择器的边界属于「为识别控件所必需」，需满足 3:1</strong>。</p>
+
+    <h4>影响</h4>
+    <ul>
+      <li>弱视用户在浅灰背景上难以辨认输入框边界。</li>
+      <li>辅助文字（时间戳、数据来源、口径说明）在金融场景中承载关键信息，2.56:1 明显偏低。</li>
+    </ul>
+
+    <h4>方案</h4>
+<pre><span class="c">/* tokens.css 亮色块 — 提升三级文本与占位符 */</span>
+<span class="d">- --ff-text-tertiary: #94a3b8;   /* 2.56:1 */</span>
+<span class="a">+ --ff-text-tertiary: #64748b;   /* 4.62:1 ✓ */</span>
+<span class="d">- --ff-text-placeholder: #94a3b8;</span>
+<span class="a">+ --ff-text-placeholder: #64748b;</span>
+
+<span class="c">/* 表单控件专用边框 — 独立令牌，不影响装饰性分隔线 */</span>
+<span class="a">+ --ff-border-field: #94a3b8;    /* 3.01:1 ✓ 用于 input/select/datepicker */</span>
+
+<span class="c">/* 暗色块 */</span>
+<span class="d">- --ff-text-tertiary: #64748b;   /* 3.75:1 */</span>
+<span class="a">+ --ff-text-tertiary: #94a3b8;   /* 6.96:1 ✓ */</span>
+<span class="d">- --ff-text-placeholder: #475569;</span>
+<span class="a">+ --ff-text-placeholder: #64748b;</span>
+<span class="a">+ --ff-border-field: #64748b;</span>
+
+<span class="c">/* components.css — 表单控件改用专用边框令牌 */</span>
+<span class="k">.ff-input</span>, <span class="k">.ff-select</span>, <span class="k">.ff-datepicker</span> {
+<span class="d">-  border: 1px solid var(--ff-border);</span>
+<span class="a">+  border: 1px solid var(--ff-border-field);</span>
+}</pre>
+    <p>改完后重跑 <code>python scripts/contrast_audit.py</code> 验证。</p>
+  </div>
+</div>
+
+<!-- ══════════ 可视化验证 ══════════ -->
+<h2>可视化验证：实机截图发现</h2>
+<p class="lede">静态扫描只能看到「代码写了什么」，看不到「用户看到什么」。本轮补充了 1440×900 实机截图（<code>web/scripts/shoot_ui.py</code>，共 14 张），据此修正了 2 处初版误判，并发现 3 项静态分析无法暴露的问题。</p>
+
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">▲</div>
+    <div class="issue__title">修正 1：深色模式可用，失效是模块级的
+      <span>推翻初版「形同虚设」结论</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--sp-4);margin-bottom:var(--sp-4)">
+      <figure>
+        <img src="shots/flash-dark.png" alt="快讯页深色模式" style="width:100%;border:1px solid var(--c-border);border-radius:var(--r-sm)">
+        <figcaption class="muted" style="margin-top:var(--sp-2)">
+          <strong style="color:#059669">✓ 快讯 · 暗色</strong> — 侧边栏、顶栏、卡片、表格、红涨绿跌均正确响应暗色主题。主应用核心页无问题。
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="shots/ai-settings-dark.png" alt="AI 设置页深色模式" style="width:100%;border:1px solid var(--c-border);border-radius:var(--r-sm)">
+        <figcaption class="muted" style="margin-top:var(--sp-2)">
+          <strong style="color:#e11d48">✗ AI 设置 · 暗色</strong> — 页面背景、卡片、输入框仍是浅色，与暗色侧边栏形成刺眼割裂。与亮色版几乎一致。
+        </figcaption>
+      </figure>
+    </div>
+    <p><strong>结论：</strong>问题范围从「89 个组件」收窄为「AI / Screener / easytdx 三个模块约 25 个组件」，<strong>修复工作量下降约 70%</strong>。</p>
+  </div>
+</div>
+
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">▲</div>
+    <div class="issue__title">修正 2：AI 模块品牌色冲突的视觉危害低于初判
+      <span>硬编码绿色残留在次级元素，非主视觉</span></div>
+    <span class="tag tag--md">中</span>
+  </div>
+  <div class="issue__body">
+    <figure style="margin-bottom:var(--sp-3)">
+      <img src="shots/ai-light.png" alt="AI 工作台亮色" style="width:100%;border:1px solid var(--c-border);border-radius:var(--r-sm)">
+      <figcaption class="muted" style="margin-top:var(--sp-2)">
+        AI 工作台 · 亮色 — Tab 激活态、卡片图标、主按钮<strong>均已使用品牌蓝</strong>，与主体一致。硬编码的 <code>#2f7d5b</code> 主要残留在表单标签等次级元素，肉眼不易察觉。
+      </figcaption>
+    </figure>
+    <p><strong>结论：</strong>P0-1 的<strong>视觉危害被高估</strong>，但维护危害成立。仍建议在 AI 模块迁移时一并收敛。</p>
+  </div>
+</div>
+
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">新</div>
+    <div class="issue__title">新发现 1：19 个视图全部缺少空状态，数据页出现大片空白
+      <span>静态分析无法暴露 · 审计显示 19/19 存在状态缺口</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <figure style="margin-bottom:var(--sp-3)">
+      <img src="shots/market-light.png" alt="全景行情页面" style="width:100%;border:1px solid var(--c-border);border-radius:var(--r-sm)">
+      <figcaption class="muted" style="margin-top:var(--sp-2)">
+        全景行情 · 亮色 — 顶部控件齐全，但下方<strong>内容区完全空白</strong>：无骨架屏、无空状态、无引导。用户无法判断是「加载中」「无数据」还是「出错了」。
+      </figcaption>
+    </figure>
+    <p><strong>数据支撑：</strong><code>page_audit.py</code> 显示 19/19 视图存在异步状态缺口，其中 <strong>17 个缺 empty 状态</strong>、7 个缺 loading、7 个缺 error。项目已具备 <code>AppSkeleton</code>（17 处引用）与 <code>AppEmpty</code>（10 处引用），但<strong>覆盖不均</strong>。</p>
+    <p><strong>建议：</strong>建立统一的「异步三态」约定，每个数据区必须明确 loading / empty / error 三种呈现。这是投入产出比最高的一项改进——组件现成，只差补齐调用。</p>
+  </div>
+</div>
+
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">新</div>
+    <div class="issue__title">新发现 2：页面标题层级混乱，8 个视图无显式标题
+      <span>影响 SEO 与读屏可用性</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <table>
+      <tr><th>问题</th><th>涉及视图</th><th>后果</th></tr>
+      <tr><td><strong>无显式标题</strong></td><td>FlashView、ArticlesView、CalendarView、SentimentView、ai/Analyst、ai/Reports、ai/Tasks、AiLayout</td><td>读屏用户与搜索引擎无法识别页面主题；用户失去「我在哪」的锚点</td></tr>
+      <tr><td><strong>层级起点不一致</strong></td><td>Dashboard/EasyTdx 从 <code>h1</code>；StockMonitor 从 <code>h2</code>；Screener/Settings/Workbench 从 <code>h3</code></td><td>同级别页面标题字号不同，视觉节奏割裂</td></tr>
+      <tr><td><strong>原生标签绕过排版类</strong></td><td>8 个视图用 <code>h1~h4</code> 但不用 <code>.ff-h*</code></td><td>字号/字重/行高各自为政</td></tr>
+    </table>
+    <p><strong>建议：</strong>统一页面骨架为 <code>.ff-page &gt; .ff-page__header(.ff-h1 + .ff-caption) + .ff-grid</code>。当前 <code>.ff-page</code> 采用率 9/19、<code>.ff-page__header</code> 采用率 <strong>0/19</strong>——类已定义却无人使用。</p>
+  </div>
+</div>
+
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">新</div>
+    <div class="issue__title">新发现 3：150 处自写 &lt;button&gt; 绕过统一按钮组件
+      <span>但同时：0 处自写 &lt;svg&gt;，图标纪律极好</span></div>
+    <span class="tag tag--hi">高</span>
+  </div>
+  <div class="issue__body">
+    <table>
+      <tr><th>文件</th><th>自写 button</th><th>说明</th></tr>
+      <tr><td><code>views/SectorMinuteView.vue</code></td><td class="num">15</td><td>独立大屏页，自成体系</td></tr>
+      <tr><td><code>views/ai/SettingsView.vue</code></td><td class="num">12</td><td>AI 模块</td></tr>
+      <tr><td><code>views/ai/AnalystView.vue</code></td><td class="num">9</td><td>AI 模块</td></tr>
+      <tr><td><code>components/ai/OnboardWizard.vue</code></td><td class="num">9</td><td>AI 模块</td></tr>
+      <tr><td><code>views/ScreenerView.vue</code></td><td class="num">8</td><td>选股器</td></tr>
+      <tr><td colspan="2" class="num">合计 43 个文件 / 150 处</td><td>集中在 AI、Screener、easytdx</td></tr>
+    </table>
+    <p><strong>对照亮点：</strong>全项目<strong> 0 处自写 <code>&lt;svg&gt;</code></strong>——81 枚图标全部经 <code>AppIcon</code> 渲染，图标纪律是全项目最扎实的一环，可作为按钮治理的参照。</p>
+    <p><strong>建议：</strong>将 <code>AppButton</code> 设为唯一按钮出口。自写按钮改用 <code>variant</code> + <code>size</code> 组合表达差异；确有特殊形态的，扩展 <code>AppButton</code> 而非另起炉灶。</p>
+  </div>
+</div>
+
+<div class="issue">
+  <div class="issue__head">
+    <div class="issue__no">✓</div>
+    <div class="issue__title">验证通过：栅格修复生效
+      <span>上一轮将 max-width 改为移动优先 min-width</span></div>
+    <span class="tag tag--lo">低</span>
+  </div>
+  <div class="issue__body">
+    <figure style="margin-bottom:var(--sp-3)">
+      <img src="shots/styleguide-light.png" alt="设计规范页栅格" style="width:100%;border:1px solid var(--c-border);border-radius:var(--r-sm)">
+      <figcaption class="muted" style="margin-top:var(--sp-2)">
+        设计规范 · 亮色 — 「色彩令牌」与「字体层级」两个卡片<strong>正确呈现为两列布局</strong>，证明 <code>ff-col-12 ff-col-lg-6</code> 已生效。修复前该页栅格演示完全失效（<code>ff-col-lg-*</code> 从未定义）。
+      </figcaption>
+    </figure>
+  </div>
+</div>
+
+<!-- ══════════ 分类清单 ══════════ -->
+<h2>分类问题清单</h2>
+<p class="lede">按你提出的 6 个维度逐条展开。优先级说明：<span class="tag tag--hi">高</span> 建议本迭代解决 · <span class="tag tag--md">中</span> 建议下个迭代 · <span class="tag tag--lo">低</span> 技术债，择机清理。</p>
+
+<h3>① 页面与子页面</h3>
+<table>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>8 个视图无显式标题，层级起点不一</strong><br><span class="muted">FlashView、ArticlesView、CalendarView、SentimentView、ai/Analyst、ai/Reports、ai/Tasks、AiLayout 无任何标题标签；StockMonitor 从 <code>h2</code>、Screener/Settings/Workbench 从 <code>h3</code> 起。</span></td>
+    <td>统一页面骨架：<code>.ff-page &gt; .ff-page__header(.ff-h1 + .ff-caption) + .ff-grid</code>。每个视图必须有且仅有一个 <code>h1</code>，区块标题从 <code>h2</code> 起。<code>.ff-page__header</code> 已定义但采用率 <strong>0/19</strong>。</td>
+    <td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr>
+    <td><strong>19/19 视图缺少异步状态</strong><br><span class="muted">17 个缺 empty、7 个缺 loading、7 个缺 error。全景行情页在无数据时整片空白，用户无法区分「加载中 / 无数据 / 出错」。</span></td>
+    <td>建立「异步三态」约定：每个数据区必须明确 loading（<code>AppSkeleton</code>）/ empty（<code>AppEmpty</code>）/ error（<code>AppEmpty</code> 变体或告警条）。组件现成，只差补齐调用，<strong>投入产出比最高</strong>。</td>
+    <td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>两个「独立大屏」脱离应用框架</strong><br><span class="muted">/capital、/sector-minute 由 FastAPI 单独托管，<code>target="_blank"</code> 跳出 SPA，无返回路径，且 0 处使用 <code>--ff-</code> 令牌，构成第四套设计语言。</span></td>
+    <td>方案 A（低成本）：保留独立页，但补一个顶部返回条，并抽公共 CSS 引入 <code>tokens.css</code>。<br>方案 B（推荐）：迁入 SPA 作为全屏路由 <code>/screen/capital</code>，用 <code>route.meta.fullscreen = true</code> 隐藏侧边栏。</td>
+    <td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong><code>/styleguide</code> 不可达</strong><br><span class="muted">路由已注册，但未加入侧边栏导航，设计规范页无法从界面进入。</span></td>
+    <td>在侧边栏底部「其他」分组加入入口，或仅在 <code>import.meta.env.DEV</code> 下显示。它应成为主题回归验收的基准页。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>侧边栏双实例</strong><br><span class="muted">桌面侧边栏与移动端抽屉同时渲染两份 <code>Sidebar</code>，仅靠 CSS 隐藏其一。</span></td>
+    <td>改为单一实例 + <code>v-if="isDesktop"</code> 条件渲染，避免重复计算与潜在的状态不同步。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>导航分组无折叠</strong><br><span class="muted">4 组 13 项平铺，1024px 高度下需滚动。</span></td>
+    <td>保留当前平铺（13 项尚在可接受范围），但建议为分组标题加折叠能力，为后续扩展预留。当前非瓶颈。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+</table>
+
+<h3>② 按钮与组件</h3>
+<table>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>150 处自写 <code>&lt;button&gt;</code> 绕过统一组件</strong><br><span class="muted"><code>src/ui/</code> 有 20 个自绘组件（全部被引用，无冗余），但 43 个文件含 150 处自写 button。AI 模块自写 <code>.ow-btn</code>、<code>.wb__act</code>，Screener/SectorMinute 各自为政，形成多套按钮。<br><strong>对照：</strong>0 处自写 <code>&lt;svg&gt;</code>，图标纪律极佳。</span></td>
+    <td>强制 <code>&lt;AppButton&gt;</code> 为唯一按钮出口。自定义按钮改用 <code>variant</code> + <code>size</code> 组合；确需特殊形态的扩展 <code>AppButton</code> 而非另起炉灶。</td>
+    <td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr>
+    <td><strong>触控目标过小</strong><br><span class="muted">easytdx 模块存在 18px / 20px / 22px / 26px 高度的可点击元素（StockPicker 18px、DataTable 20px、Toast 22px），低于 WCAG 2.2 最小 24×24 CSS px，远低于移动端 44px。</span></td>
+    <td>可点击元素最小 24×24；移动端主操作 ≥44px。对图标按钮用透明 padding 扩大命中区，而非放大图标本身：<br><code>.icon-btn{padding:6px;margin:-6px}</code></td>
+    <td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong><code>outline: none</code> 26 处</strong><br><span class="muted">全项目 44 处 <code>:focus</code> 样式，多数有 <code>:focus-visible</code> 补偿，但需逐处确认无遗漏。</span></td>
+    <td>建立统一规则，禁止裸 <code>outline:none</code>：<br><code>*:focus-visible{outline:2px solid var(--ff-brand);outline-offset:2px}</code><br>仅在已有等价焦点环的组件上局部取消。</td>
+    <td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong>组件状态覆盖良好</strong><br><span class="muted"><code>.ff-btn</code> 完整实现了 hover(7) / active(4) / focus(2) / disabled(12) / loading(2) / icon / block。</span></td>
+    <td>保持。可作为其他组件的参照基准。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+</table>
+
+<h3>③ 动画效果</h3>
+<table>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>22 处 <code>transition: all</code></strong><br><span class="muted">会监听所有属性变化，触发非合成属性的重排重绘。密集列表（快讯流）下有明显开销。</span></td>
+    <td>改为显式属性列表，只过渡 transform / opacity / background-color / border-color / box-shadow 等合成友好属性：<br><code>transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard);</code></td>
+    <td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong>少数时长未令牌化</strong><br><span class="muted"><code>IndexKlineCard.vue</code> 用 <code>transition: all 0.15s</code>，AI 模块用 <code>120ms</code>/<code>130ms</code>/<code>140ms</code> 字面量。</span></td>
+    <td>统一到 <code>--ff-dur-*</code>（instant 80 / fast 140 / base 200 / slow 280 / slower 400）。AI 模块的 120–140ms 归入 <code>--ff-dur-fast</code>。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>动效基础扎实</strong><br><span class="muted">5 条缓动曲线令牌化；<code>@media (prefers-reduced-motion: reduce)</code> 已将所有时长归零；8 个 keyframes 集中管理；路由转场用 enter 200ms / leave 140ms 的非对称设计，符合 Material 规范。</span></td>
+    <td>保持。这是全项目做得最规范的部分之一。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+</table>
+
+<h3>④ 图标系统</h3>
+<table>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>整体质量高</strong><br><span class="muted">81 枚图标，24×24 统一画布、<code>stroke="currentColor"</code>、描边宽度按尺寸自适应（≤14px 用 2.0，≥28px 用 1.6）、全项目仅 2 处 emoji 残留。</span></td>
+    <td>作为标杆向其他模块推广。清理剩余 2 处 emoji。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>图标语义需文档化</strong><br><span class="muted"><code>icons.js</code> 有分组注释，但缺「何时用哪个」的语义说明，易产生近义图标混用（如 <code>bar-chart</code> / <code>activity</code> / <code>trending-up</code>）。</span></td>
+    <td>在 <code>/styleguide</code> 增加图标总览页（名称 + 预览 + 语义说明），作为唯一查询入口。</td>
+    <td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong>高分屏清晰度已保障</strong><br><span class="muted">SVG 矢量渲染 + <code>flex-shrink:0</code> + <code>focusable="false"</code>。</span></td>
+    <td>无需改动。注意保持 <code>viewBox</code> 恒定，勿因尺寸变化改写 viewBox。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+</table>
+
+<h3>⑤ 布局与排版</h3>
+<table>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>31 个组件无任何断点适配</strong><br><span class="muted">行数 &gt;150 且 <code>@media</code> 数为 0。最严重：<code>MarketView</code>(766 行)、<code>EasyTdxResultPanel</code>(650)、<code>EasyTdxDataTable</code>(531)、<code>IndexKlineCard</code>(485)。全项目仅 46 处媒体查询。</span></td>
+    <td>优先处理 4 个超长组件。数据表格在移动端改用卡片流或横向滚动 + 首列冻结；图表类用 <code>aspect-ratio</code> + 容器查询替代固定高度。</td>
+    <td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr>
+    <td><strong>660 处硬编码 px 间距</strong><br><span class="muted">绕过 4pt 间距刻度，导致节奏不统一。</span></td>
+    <td>批量替换为 <code>--ff-space-*</code>。间距刻度已完备（0/0.5/1/1.5/2/2.5/3/4/5/6/7/8/10/12/16/20/24），无需新增。</td>
+    <td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong>栅格断点残缺</strong><br><span class="muted">仅有 <code>sm-6</code> 与 <code>md-4/6/8/12</code>，缺 <code>lg</code> / <code>xl</code>。</span></td>
+    <td>见 P0-4 方案 Step 1。</td>
+    <td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr>
+    <td><strong>字体系统质量高</strong><br><span class="muted">1.2 模块化字阶、西文 Inter / CJK 苹方+鸿蒙回退、数字 JetBrains Mono + <code>tabular-nums</code>、<code>font-synthesis:none</code> 禁伪粗体、亮暗分别配置抗锯齿。</span></td>
+    <td>保持。仅需在视图层真正使用（见 P0-4）。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+</table>
+
+<h3>⑥ 颜色与字体</h3>
+<table>
+  <tr><th style="width:34%">问题</th><th style="width:38%">改进建议</th><th style="width:12%">优先级</th></tr>
+  <tr>
+    <td><strong>三套品牌色并存</strong><br><span class="muted">视觉危害经截图验证低于初判（AI 主视觉已用蓝），维护危害成立。</span></td><td>见 P0-1。建议随 AI 模块迁移一并收敛。</td><td><span class="tag tag--md">中</span></td>
+  </tr>
+  <tr>
+    <td><strong>深色模式模块级失效</strong><br><span class="muted">主应用 7 个核心页正常；AI / Screener / easytdx 失效。</span></td><td>见 P0-2。范围已收窄为 3 个模块约 25 个组件。</td><td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr>
+    <td><strong>对比度未达 AA</strong></td><td>见 P0-5。</td><td><span class="tag tag--hi">高</span></td>
+  </tr>
+  <tr>
+    <td><strong>语义色设计合理</strong><br><span class="muted">红涨绿跌符合 A 股惯例；涨跌各有 6 级色阶（50/100/200/300/400/500/600/700/900），浅底 + 深字组合均通过 4.5:1（涨 5.72、跌 5.21、警示 4.84、品牌 6.16）。</span></td><td>保持。这是配色中最成熟的部分。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+  <tr>
+    <td><strong><code>DESIGN_SYSTEM.md</code> 声明的 <code>news-table.css</code> 不存在</strong><br><span class="muted">文档 §1 文件清单列出该文件，实际 <code>styles/</code> 下只有 base / components / tokens 三个。</span></td>
+    <td>删除文档中的失效条目，或补齐文件。保持文档与实现同步。</td>
+    <td><span class="tag tag--lo">低</span></td>
+  </tr>
+</table>
+
+<!-- ══════════ 路线图 ══════════ -->
+<h2>实施路线图</h2>
+<p class="lede">阶段一已于本轮完成并验证。以下为后续推进建议，每阶段可独立验收。</p>
+<div class="road">
+  <div class="phase" style="border-top-color:#059669">
+    <div class="phase__t">阶段一 · 止血 <span style="color:#059669">✓ 已完成</span></div>
+    <div class="phase__s">2026-08-28 · 已通过构建与审计验证</div>
+    <ul>
+      <li>✓ 补齐 23 个幽灵令牌（141 处 → <strong>0</strong>）</li>
+      <li>✓ 对比度修正（未达标 8/48 → <strong>0/52</strong>）</li>
+      <li>✓ 栅格断点补齐 + 改移动优先</li>
+      <li>✓ <code>transition: all</code> 清零（22 → <strong>0</strong>）</li>
+      <li>✓ 修复 <code>:focus-visible</code> 圆角误用</li>
+      <li>✓ 文档更新至 4.1 + 修正 README 过期色值</li>
+    </ul>
+  </div>
+  <div class="phase phase--2">
+    <div class="phase__t">阶段二 · 体验补齐</div>
+    <div class="phase__s">1–2 周 · 投入产出比最高</div>
+    <ul>
+      <li><strong>补齐异步三态</strong>（loading/empty/error），17 个视图缺 empty</li>
+      <li><strong>统一页面标题层级</strong>，8 个视图补标题，统一 h1 起点</li>
+      <li>统一页面骨架 <code>.ff-page__header</code>（当前 0/19）</li>
+      <li>裁决品牌色（蓝 / 绿）</li>
+      <li>将 3 个审计脚本接入 CI 并设阈值</li>
+    </ul>
+  </div>
+  <div class="phase phase--3">
+    <div class="phase__t">阶段三 · 模块收敛</div>
+    <div class="phase__s">3–5 周 · 主力工作量</div>
+    <ul>
+      <li>AI 模块迁移语义令牌（6 视图 + 6 组件）</li>
+      <li>ScreenerView 迁移（1484 行 / 25 处硬编码）</li>
+      <li>easytdx 组件迁移（18 个）</li>
+      <li>统一按钮出口为 <code>AppButton</code>（150 处自写）</li>
+      <li>处理 4 个超长组件的响应式</li>
+    </ul>
+  </div>
+</div>
+<div class="callout" style="margin-top:var(--sp-5)">
+  <b>排序依据：</b>阶段二优先于阶段三，因为「补空状态 + 补标题」是<strong>低成本、高感知</strong>的改进——组件（<code>AppEmpty</code>/<code>AppSkeleton</code>）与类（<code>.ff-page__header</code>）都已存在，只差调用；而模块迁移是<strong>高成本、低即时感知</strong>的工程。先让用户「看得懂页面」，再解决「模块间一致性」。
+</div>
+
+<!-- ══════════ 附录 ══════════ -->
+<h2>附录：审计工具</h2>
+<p class="lede">本次审查产出了五个可复用脚本，已落盘，可反复运行以跟踪整改进度。前三个为<strong>只读审计</strong>，第四个为<strong>批量修复</strong>（默认 dry-run），第五个为<strong>可视化采集</strong>。</p>
+
+<h3><code>web/scripts/ui_audit.py</code> — 静态规范审计</h3>
+<p>扫描令牌完整度、硬编码统计、响应式缺口。已能识别组件内局部变量（<code>.vue &lt;style&gt;</code> 内定义），避免误报。</p>
+<pre>cd web
+python scripts/ui_audit.py --root src
+
+<span class="c"># 输出：全局令牌/组件局部变量数、失效令牌清单及位置、
+#       硬编码 HEX/rgba/px 统计、无断点适配的组件清单</span></pre>
+
+<h3><code>web/scripts/contrast_audit.py</code> — WCAG 对比度审计</h3>
+<p>解析 <code>tokens.css</code> 的亮/暗主题，计算关键前后景组合对比度。支持 <code>rgba()</code> 半透明色在主题画布色上的合成计算，并内置 WCAG 豁免规则（禁用态、装饰性边框）。</p>
+<pre>cd web
+python scripts/contrast_audit.py
+
+<span class="c"># 输出：52 项检查的对比度数值、PASS/FAIL/豁免 判定、未达标明细（按缺口排序）</span></pre>
+
+<h3><code>web/scripts/page_audit.py</code> — 页面结构审计</h3>
+<p>分析页面骨架采用率、信息层级（标题来源与起点）、异步状态覆盖、组件复用度与 UI 组件引用热度。本轮「8 个视图无标题」「19/19 缺状态」「150 处自写 button」三项发现即由该脚本产出。</p>
+<pre>cd web
+python scripts/page_audit.py
+
+<span class="c"># 输出：.ff-page/.ff-page__header/.ff-grid 采用率、标题层级分布、
+#       loading/empty/error 缺口、自写 button/svg 统计、UI 组件引用热度</span></pre>
+
+<h3><code>web/scripts/fix_transition_all.py</code> — 动效批量修复</h3>
+<p>将 <code>transition: all</code> 替换为显式属性列表，并把字面量时长就近映射到设计令牌。保留原有缓动函数。</p>
+<pre>cd web
+python scripts/fix_transition_all.py          <span class="c"># dry-run 预演</span>
+python scripts/fix_transition_all.py --apply  <span class="c"># 确认后写入</span>
+
+<span class="c"># 映射：<=150ms→--ff-dur-fast  <=200ms→--ff-dur-base
+#       <=280ms→--ff-dur-slow  其余→--ff-dur-slower</span></pre>
+
+<h3><code>web/scripts/shoot_ui.py</code> — 可视化采集</h3>
+<p>用项目自带的 Playwright Chromium 采集亮/暗双主题截图，是验证深色模式落地的直接手段。</p>
+<pre>python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
+
+<span class="c"># 输出 10 张到 docs/shots/（5 个页面 × 亮暗两主题）
+# 说明：需先启动 npx vite；本轮据此推翻了「深色模式全面失效」的误判</span></pre>
+
+<h3>整改前后对照</h3>
+<table>
+  <tr><th>指标</th><th>整改前</th><th>整改后</th><th>手段</th></tr>
+  <tr><td>未定义令牌引用</td><td class="num">19 种 / 141 次</td><td class="num" style="color:#059669">0</td><td>补齐 23 个令牌定义</td></tr>
+  <tr><td>对比度未达标</td><td class="num">8 / 48</td><td class="num" style="color:#059669">0 / 52</td><td>调整 tertiary/placeholder + 新增 <code>--ff-border-field</code></td></tr>
+  <tr><td><code>transition: all</code></td><td class="num">22 处</td><td class="num" style="color:#059669">0</td><td>脚本批量替换</td></tr>
+  <tr><td>栅格 <code>lg</code>/<code>xl</code> 断点</td><td class="num">缺失</td><td class="num" style="color:#059669">已补齐</td><td>改移动优先 min-width</td></tr>
+  <tr><td>深色模式</td><td class="num">主应用正常 / 3 模块失效</td><td class="num">同左（待迁移）</td><td>范围已收窄至 3 模块</td></tr>
+  <tr><td>硬编码 HEX</td><td class="num">843</td><td class="num">853</td><td>净增为 tokens.css 注释示例，非实现</td></tr>
+</table>
+
+<div class="callout">
+  <b>建议在 CI 中固化：</b>将三个只读审计脚本加入构建流程，设定阈值（如「失效令牌数 &gt; 0 或对比度未达标项 &gt; 0 则失败」）。这能把「规范不被执行」从人工自觉问题转变为机器强制问题——这正是本项目当前最需要的机制。
+</div>
+
+<footer>
+  FinFeed Web UI 审查报告 <strong>v2（v4.1 整改后复审）</strong> · 2026-08-29<br>
+  基于 121 个文件 / 31,996 行代码的静态分析，以及 14 张 1440×900 实机截图的可视化验证。<br>
+  所有数值均由 <code>web/scripts/</code> 下的脚本产出，可复现验证。本报告的设计与配色遵循其所推荐的令牌化实践。<br>
+  <span style="color:#b45309">注：v2 已依据可视化验证修正 v1 中「深色模式全面失效」「AI 模块品牌色跳变」两处过度概括的结论。</span>
+</footer>
+
+</div>
+</body>
+</html>

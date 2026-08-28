@@ -291,7 +291,8 @@ python main.py --market alerts      # 市场状态告警
 - **健康检查**：`http://127.0.0.1:8866/api/ping`
 - 主要接口：`/api/flash`（快讯）、`/api/articles`（财经文章）、`/api/stats`、`/api/sentiment`（舆情）、`/api/search`、`/api/detail`、`/api/favorites`、`/api/export`、`/api/calendar/export`、`/api/llm/report/export`、`/api/events` 等。
 - 注：原「新闻流」模块已拆分为「快讯」（`/api/flash`）与「财经」（`/api/articles`）两个独立模块，`/api/news` 已移除。
-- 约定沿用旧版：**红涨绿跌**（涨 = 红 `#e5484d`，跌 = 绿 `#16a34a`）。
+- 市场语义色沿用 A 股惯例：**红涨绿跌**。实际色值以 `web/src/styles/tokens.css` 为准（亮色 涨 `#e11d48` / 跌 `#059669`，暗色 涨 `#f43f5e` / 跌 `#10b981`），勿在业务代码中硬编码。
+- 前端设计规范与已知技术债见 [`web/DESIGN_SYSTEM.md`](./web/DESIGN_SYSTEM.md)。
 
 前端开发 / 重新构建：
 
