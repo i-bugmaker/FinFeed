@@ -481,4 +481,11 @@ watch([period, range, customStart, customEnd], load)
   padding: 0;
   margin-top: -8px;
 }
+
+/* ── 移动端适配（D4）── */
+@media (max-width: 768px) {
+  .ff-ikc__chart {
+    min-height: 240px;
+  }
+}
 </style>

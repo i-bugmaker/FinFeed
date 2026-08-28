@@ -194,7 +194,7 @@ async function copyTsv() {
           <span class="etdx-table__th-actions" @click.stop>
             <button
               type="button"
-              class="etdx-table__pin"
+              class="etdx-table__pin ff-hit"
               :class="{ 'is-pinned': isPinned(col) }"
               :title="isPinned(col) ? '取消固定' : '固定该列'"
               @click="togglePin(col)"
@@ -256,7 +256,7 @@ async function copyTsv() {
             <div class="etdx-table__drawer" role="dialog" aria-modal="true">
               <div class="etdx-table__drawer-head">
                 <span class="etdx-table__drawer-title">行详情</span>
-                <button type="button" class="etdx-table__drawer-close" aria-label="关闭" @click="closeDetail">
+                <button type="button" class="etdx-table__drawer-close ff-hit" aria-label="关闭" @click="closeDetail">
                   <AppIcon name="x" size="sm" />
                 </button>
               </div>
@@ -526,5 +526,12 @@ async function copyTsv() {
   font-family: var(--ff-font-mono, monospace);
   word-break: break-all;
   text-align: right;
+}
+
+/* ── 移动端适配（D4）：窄屏表格横向滚动 ── */
+@media (max-width: 768px) {
+  .etdx-table {
+    min-width: 720px;
+  }
 }
 </style>

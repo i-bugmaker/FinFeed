@@ -769,4 +769,18 @@ onBeforeUnmount(() => {
 .ff-market-view__sentcard {
   text-align: center;
 }
+
+/* ── 移动端适配（D4 · 基础断点）── */
+@media (max-width: 768px) {
+  .ff-market-view__toolbar {
+    padding: var(--ff-space-3);
+  }
+  .ff-market-view__field {
+    flex: 1 1 100%;
+  }
+  .ff-market-view__tabs {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+}
 </style>

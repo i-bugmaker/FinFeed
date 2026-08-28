@@ -14,18 +14,20 @@
      1. 原始色板 (Primitive Palette) — 不直接在组件中使用
      ══════════════════════════════════════════════════════════════ */
 
-  /* Brand · Forest（清新自然方案 · 主色 #2f7d5b） */
-  --p-brand-50: #eef6f1;
-  --p-brand-100: #d7ebdf;
-  --p-brand-200: #aed8c2;
-  --p-brand-300: #7cbf9c;
-  --p-brand-400: #4f9e76;
-  --p-brand-500: #3a8a62;
-  --p-brand-600: #2f7d5b;
-  --p-brand-700: #256449;
-  --p-brand-800: #1d4e39;
-  --p-brand-900: #163b2b;
-  --p-brand-950: #0e271c;
+  /* Brand · Ocean Blue（v4.3 定蓝 · 主色 #2563eb）
+     与 A 股「跌 = 绿」语义色正交；3.0 森林绿因撞色被否决，
+     决策记录见 DESIGN_SYSTEM.md §3.1。语义层 --ff-brand 家族回指本组。 */
+  --p-brand-50: #eff6ff;
+  --p-brand-100: #dbeafe;
+  --p-brand-200: #bfdbfe;
+  --p-brand-300: #93c5fd;
+  --p-brand-400: #60a5fa;
+  --p-brand-500: #3b82f6;
+  --p-brand-600: #2563eb;
+  --p-brand-700: #1d4ed8;
+  --p-brand-800: #1e40af;
+  --p-brand-900: #1e3a8a;
+  --p-brand-950: #172554;
 
   /* Neutral · Cool Graphite */
   --p-gray-0: #ffffff;
@@ -319,14 +321,15 @@
   --ff-text-link: #2563eb;
 
   /* 品牌 */
-  --ff-brand: #2563eb;
-  --ff-brand-hover: #1d4ed8;
-  --ff-brand-active: #1e40af;
+  /* 品牌（亮色档位：600/700/800 主色，50/100/200 浅底，回指原始色板） */
+  --ff-brand: var(--p-brand-600);
+  --ff-brand-hover: var(--p-brand-700);
+  --ff-brand-active: var(--p-brand-800);
   --ff-brand-fg: #ffffff;
-  --ff-brand-subtle: #eff6ff;
-  --ff-brand-subtle-hover: #dbeafe;
-  --ff-brand-border: #bfdbfe;
-  --ff-brand-text: #1d4ed8;
+  --ff-brand-subtle: var(--p-brand-50);
+  --ff-brand-subtle-hover: var(--p-brand-100);
+  --ff-brand-border: var(--p-brand-200);
+  --ff-brand-text: var(--p-brand-700);
 
   /* ---- 兼容别名（历史代码引用的旧名称，映射到现行 token；勿删） ---- */
   --ff-bg-brand: var(--ff-brand);
@@ -501,14 +504,15 @@
   --ff-text-link: #60a5fa;
 
   /* 品牌 */
-  --ff-brand: #3b82f6;
-  --ff-brand-hover: #60a5fa;
-  --ff-brand-active: #93c5fd;
+  /* 品牌（暗色档位：500/400/300 亮化，subtle/border 为半透明叠加保持 rgba） */
+  --ff-brand: var(--p-brand-500);
+  --ff-brand-hover: var(--p-brand-400);
+  --ff-brand-active: var(--p-brand-300);
   --ff-brand-fg: #090d16;
   --ff-brand-subtle: rgba(59, 130, 246, 0.15);
   --ff-brand-subtle-hover: rgba(59, 130, 246, 0.25);
   --ff-brand-border: rgba(96, 165, 250, 0.3);
-  --ff-brand-text: #60a5fa;
+  --ff-brand-text: var(--p-brand-400);
 
   /* ---- 兼容别名（暗色） ---- */
   --ff-bg-brand: var(--ff-brand);

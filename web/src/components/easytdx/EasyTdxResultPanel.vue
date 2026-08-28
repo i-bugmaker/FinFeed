@@ -646,4 +646,12 @@ function isPlainDict(v) {
 .etdx-result__file .etdx-result__file-icon {
   color: var(--ff-text-brand);
 }
+
+/* ── 移动端适配（D4）── */
+@media (max-width: 768px) {
+  .etdx-result__file {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 </style>
