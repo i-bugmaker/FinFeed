@@ -173,6 +173,16 @@ CASES = [
 
 
 def main():
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--fail",
+        action="store_true",
+        help="存在对比度未达标项时以非零码退出（供 CI 设阈值失败）",
+    )
+    args = ap.parse_args()
+
     here = os.path.dirname(os.path.abspath(__file__))
     tokens_path = os.path.normpath(os.path.join(here, "..", "src", "styles", "tokens.css"))
     if not os.path.exists(tokens_path):
@@ -222,6 +232,9 @@ def main():
             print(f"  [{label}] {fg} on {bg}: {ratio:.2f} (需 {need}:1, 差 {gap:.2f}) — {usage}")
 
     print("\n判定标准: 正文 4.5:1 / 大字与非文本 UI 组件 3:1 (WCAG 2.1 AA)")
+    if args.fail and fails > 0:
+        print(f"[FAIL] 存在 {fails} 项对比度未达标，CI 门槛未通过", file=sys.stderr)
+        return 1
     return 0
 
 

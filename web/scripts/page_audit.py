@@ -52,10 +52,18 @@ def analyze(path, root):
     typo = re.findall(r'class="[^"]*\bff-(h1|h2|h3|h4|display|lede)\b', tpl)
 
     # 状态覆盖
+    # 注意：本项目除 AppEmpty 外还有一层包装组件 EmptyState（内部即 AppEmpty）。
+    # 只匹配 AppEmpty 会产生假阴性——早期版本因此把「缺空状态」的视图数
+    # 从实际 11 个高估为 17 个。error 同理，需匹配模板中的渲染分支而非脚本变量。
     states = {
         "loading": has(tpl, r"ff-skeleton|AppSkeleton|is-loading|ff-btn--loading|:loading"),
-        "empty": has(tpl, r"AppEmpty|ff-empty|is-empty"),
-        "error": has(tpl, r"is-error|ff-alert|error\.value|\berror\b[^a-z]"),
+        "empty": has(tpl, r"AppEmpty|ff-empty|is-empty|<EmptyState"),
+        "error": has(
+            tpl,
+            r'v-if="(?:err|error|hasError|loadError)"'
+            r'|v-else-if="(?:err|error|hasError|loadError)"'
+            r"|is-error|ff-alert|--danger",
+        ),
     }
 
     # 组件复用（是否使用统一 UI 组件）

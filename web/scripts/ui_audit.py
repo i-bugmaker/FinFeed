@@ -53,6 +53,11 @@ def strip_style_blocks(text):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="src")
+    ap.add_argument(
+        "--fail",
+        action="store_true",
+        help="存在失效令牌引用或深色适配异常时以非零码退出（供 CI 设阈值失败）",
+    )
     args = ap.parse_args()
     root = args.root.rstrip("/")
 
@@ -186,6 +191,13 @@ def main():
     print("\n" + "=" * W)
     print("审计结束（只读，未修改任何文件）")
     print("=" * W)
+
+    if args.fail and total_undef > 0:
+        print(f"[FAIL] 存在 {total_undef} 处失效令牌引用，CI 门槛未通过", file=sys.stderr)
+        return 1
+    if args.fail and any(r["undef_tok"] for r in per_file):
+        print("[FAIL] 存在含失效令牌引用的文件，CI 门槛未通过", file=sys.stderr)
+        return 1
     return 0
 
 
