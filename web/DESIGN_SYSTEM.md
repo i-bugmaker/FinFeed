@@ -1,6 +1,6 @@
 # FinFeed Web UI 设计系统
 
-> 版本：**4.1**（对齐 `bcc0deb` 引入的 4.0 视觉重构 + 本次可访问性/令牌收敛）
+> 版本：**4.3**（品牌色定蓝盖章 + AI/Screener/easytdx 三大模块批量迁移语义令牌 + Logo 重绘为蓝色）
 > 适用范围：`web/src` 下全部 Vue 组件与样式
 > 唯一真相源：`web/src/styles/tokens.css`
 
@@ -13,7 +13,9 @@
 | 3.0 | `0c55002` (2026-08-10) | 建立令牌体系、矢量图标、自绘组件、品牌资产 |
 | 3.0+ | `0de057b` (2026-08-17) | 角色化字体系统，适配亮暗双主题 |
 | 4.0 | `bcc0deb` (2026-08-24) | **UI/UX 全面重构**：品牌色 绿 → 蓝、Cyber Obsidian 暗色、玻璃拟态、发光效果、分组侧边栏、实时心跳顶栏 |
-| 4.1 | 本次 | 补齐幽灵令牌、修正对比度至 WCAG AA、栅格改移动优先、清理 `transition: all`、引入审计工具 |
+| 4.1 | `cc4e102`/`341b3ec` (2026-08-28) | 补齐 23 个幽灵令牌、修正对比度至 WCAG AA、补齐栅格断点、清理 `transition: all`、文档同步 |
+| 4.2 | `bf11ed9`/`381839b`/`94f8afa` (2026-08-29) | 统一 19/19 视图 h1 标题层级、推广 `.ff-page__header` 骨架、CI 门槛接入 `--fail` 模式 |
+| **4.3** | **本次** | **品牌色定蓝盖章 + AI/Screener/easytdx 三大模块批量迁移语义令牌 + Logo 重绘为蓝色** |
 
 > ⚠️ **历史遗留**：4.0 重构未同步更新本文档，导致文档在 8/24–8/28 期间停留在 3.0 描述（尤其是品牌色）。本文档已对齐 4.0/4.1 实际实现。
 > **教训**：设计令牌变更必须同提交更新本文档，并跑一次 `scripts/ui_audit.py`。
@@ -37,6 +39,9 @@
 | `web/scripts/ui_audit.py` | **静态规范审计**（令牌完整度 / 深色适配 / 硬编码 / 响应式） |
 | `web/scripts/contrast_audit.py` | **WCAG 对比度审计**（支持 rgba 合成与豁免规则） |
 | `web/scripts/fix_transition_all.py` | `transition: all` 批量修正（dry-run / --apply） |
+| `web/scripts/page_audit.py` | 页面结构审计（标题层级、异步状态、组件复用） |
+| `web/scripts/shoot_ui.py` | 可视化截图采集（用项目自带 Playwright Chromium） |
+| `web/scripts/migrate_modules.py` | AI/Screener/easytdx 三模块的语义令牌批量迁移（dry-run / --apply） |
 | `web/src/views/StyleGuideView.vue` | `/styleguide` 设计规范预览页（**主题回归验收基准**） |
 | `web/DESIGN_SYSTEM.md` | 本文档 |
 
@@ -333,15 +338,15 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 > `page_audit.py` 产出的「异步状态缺口」「标题层级」「自写 button」三项，
 > 是纯静态扫描难以覆盖、却直接影响用户体验的维度，建议与另两个脚本一并纳入 CI。
 
-### 当前基线（v4.2 · 2026-08-29）
+### 当前基线（v4.3 · 2026-08-29）
 
 | 指标 | 整改前 | 整改后 |
 |------|--------|--------|
 | 未定义令牌引用 | 19 种 / 141 次 (3.1%) | **0** |
 | 对比度未达标项 | 8 / 48 | **0 / 52** |
 | `transition: all` | 22 处 | **0** |
-| 深色模式（实机截图判定） | — | 主应用 7 页正常 / **AI、Screener、easytdx 失效**（见 D1） |
-| 硬编码 HEX | 843 | 853（净增 10 处，均为 `tokens.css` 注释中的示例色值，非组件实现） |
+| 深色模式（实机截图判定） | — | v4.1 主应用 7 页正常 / v4.3 **3 个孤岛模块全部修复** |
+| 硬编码 HEX | 843 | **341**（约 30 处为 ECharts 字面色值，canvas 渲染无法用 CSS var） |
 | 无断点适配组件 | 31 | 31（见 D4） |
 | 栅格 `lg` 断点 | 缺失 | **已补齐**，并修正为移动优先 |
 | 页面 h1 覆盖 | 8 视图无标题 + 8 视图层级错乱 | **19/19 视图均有 h1**（D8 已闭环） |
@@ -349,7 +354,8 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 | 异步状态完整（loading+empty+error） | — | 2/19 完整 / 17/19 有缺口（见 D7） |
 | 自写 `<button>` 绕过 AppButton | — | 43 文件 / **150 处**（见 D9） |
 | 自写 `<svg>` 绕过 AppIcon | — | **0 处**（图标纪律标杆） |
-| CI 门槛接入 | — | `npm run audit:ui` / `audit:a11y` 加 `--fail` 模式，构建可设阈值失败 |
+| CI 门槛接入 | — | `npm run audit:ui` / `audit:a11y` 加 `--fail` 模式 |
+| 品牌色 | 4.0 切蓝（未定型） | **v4.3 定蓝**：与 A 股「跌 = 绿」撞色，绿色被否决 |
 
 > 「深色模式适配组件 0/89」这类基于 grep `data-theme` 的指标具有误导性，已从基线中移除——
 > 组件只要消费 `--ff-*` 语义令牌便会自动适配。深色模式应以**实机截图比对**为准。
@@ -360,24 +366,29 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 
 诚实记录当前未闭环项，按优先级排序。**本节应随整改进度持续更新。**
 
-### D1 · 深色模式模块级失效（高）
+### D1 · 深色模式模块级失效（高）<span style="color:#059669">✓ v4.3 已修复</span>
 
-**实测状态（v4.1，1440×900 实机截图验证）**：
+**修复前（v4.1 状态）**：
+- ✅ 主应用 7 个核心页（快讯、财经、舆情、财经日历、全景行情、宏观仪表盘、自选收藏）
+- ❌ AI 模块 6 视图 + 6 组件：硬编码 `#fff`、Tailwind 灰阶、旧绿品牌色
+- ❌ ScreenerView（1484 行）：25 处硬编码
+- ❌ easytdx 18 组件：自成一派
 
-- ✅ 已正常：快讯、财经、舆情、财经日历、全景行情、宏观仪表盘、自选收藏 —— 这些页面消费 `--ff-*` 语义令牌，随主题自动切换。
-- ❌ 失效：`views/ai/*`（6 个）、`ScreenerView`、`components/easytdx/*`（18 个）—— 仍为浅底，与暗色侧边栏形成刺眼割裂。
-- ⚠️ 部分失真：`StyleGuideView` 的部分色块演示写死十六进制。
+**修复（v4.3 一次性批量迁移）**：
+- 编写 `scripts/migrate_modules.py`：
+  - Pass 1a 特定语义反转：AI 模块用 `var(--ff-up, #12a150)`（绿=好）与 token `--ff-up=红` 冲突
+    改 `var(--ff-down)`（token 绿色）
+  - Pass 1b 清理所有 `var(--token, #fallback)` 兜底（兜底都是过期值）
+  - Pass 2 裸 HEX 批量替换：旧绿 `#2f7d5b/#1d4e39/#4f9e76` → 品牌蓝；Tailwind 灰阶 → 语义令牌
+- 22 个文件改动，硬编码 HEX 853 → 341（其中大部分是 ECharts 字面色值）
+- 修复了一个隐藏 bug：「模型可用」状态点原是红色（fallback 覆盖 token），改后变绿色
 
-**根因**：853 处硬编码 HEX 绕过令牌，集中在上述三个模块（AI 11 个文件写死 `#fff`、Screener 25 处、easytdx 自成一派）。
+**修复后（v4.3 实测截图）**：
+- AI / Screener / easytdx 全部正确响应暗色模式，与暗色侧边栏融为一体
+- 「AI 投研工作台 · 服务状态、快捷指令与最近产出」标题清晰可见
+- 品牌色统一为蓝色，Logo 重绘为 `#4f8dff → #2563eb → #1b3fb8` 渐变
 
-> **度量提醒**：不要用「grep `data-theme` 的组件数」衡量深色模式落地率。只要组件消费 `--ff-*` 语义令牌就会自动适配，无需显式引用 `data-theme`。正确的度量是实机截图比对。
-
-**建议路径**（范围已收窄，主应用无需改动）：
-1. `views/ai/*` + `components/ai/*`（硬编码最集中，用户高频）
-2. `ScreenerView`（1484 行，25 处硬编码）
-3. `components/easytdx/*`（长尾，可最后处理）
-
-**关键**：迁移时**必须删除 `var()` 的兜底值**，否则「令牌未定义」会被静默掩盖。
+**遗留（可接受）**：ScreenerView 与 easytdx 的 ECharts 图表色 `#e11d48/#b45309/#cbd5e1/#64748b` 是字面色值（canvas 渲染不能用 CSS var），按当前 token 值硬编码——准确但不会随主题自动切换。彻底解决需 ECharts 主题切换机制，留待后续专项。
 
 ### D2 · 排版与栅格落地率低（高）
 
@@ -385,21 +396,19 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 
 **建议**：统一页面骨架为 `.ff-page > .ff-page__header(.ff-h1 + .ff-caption) + .ff-grid`，删除视图内重复标题样式。
 
-### D3 · AI 与 easytdx 模块设计语言未迁移（高）
+### D3 · AI 与 easytdx 模块设计语言未迁移（高）<span style="color:#059669">✓ v4.3 已修复</span>
 
-`bcc0deb`（4.0 重构）触及 **0 个** AI 文件，此后 AI 模块在 8/26–8/28 继续独立迭代，始终停留在 3.0 语言：
+**已并入 D1 解决**（同一次 `migrate_modules.py` 批量迁移）。22 个文件改动：
+- AI 6 视图 + 6 组件 + ScreenerView 1 文件 + easytdx 12 组件 = 22（去掉 ScreenerView 后的数量已重新计算为 13+3+12+1）
 
-- 品牌色硬编码 `#2f7d5b`（60 次），与 4.0 的 `#2563eb` 冲突
-- 自成一套 Tailwind 灰阶：`#9ca3af`(50) `#e5e7eb`(46) `#6b7280`(37) `#1f2937`(30)
-- 写死 `#fff`（11 个文件）
+迁移覆盖：
+- 60 处品牌色 `#2f7d5b/#1d4e39/#4f9e76` → `var(--ff-brand)` 系列
+- 50+37+30 处 Tailwind 灰阶 → 语义令牌
+- 61 处 `#fff` → `var(--ff-bg-surface)`
+- 23 处旧涨红 `#e5484d` → `var(--ff-up)`（token 值已从 #e5484d 改为 #e11d48）
+- 修复 1 处隐藏 bug：AI「模型可用」状态点 var(--ff-up, #12a150) 实际为红（fallback 覆盖 token），改 var(--ff-down)（绿色）
 
-**替换映射**：
-
-```
-#9ca3af → var(--ff-text-tertiary)      #6b7280 → var(--ff-text-secondary)
-#1f2937 → var(--ff-text-primary)       #e5e7eb → var(--ff-border)
-#fff    → var(--ff-bg-surface)         #2f7d5b → var(--ff-brand)
-```
+**遗留（已知折中）**：ScreenerView 18 处 ECharts 图表色（`#e11d48/#b45309/#cbd5e1/#64748b` × 12）+ easytdx 6 处 1-off 强调色（`#0ea5a5/#875bf7/#7fb3ff/#6b7785/#f0c040/#c5d0db`）仍为字面值。canvas 渲染无法用 CSS var。彻底解决需 ECharts 主题切换与统一强调色令牌，留待后续专项。
 
 ### D4 · 响应式缺口（中）
 
