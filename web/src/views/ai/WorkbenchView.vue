@@ -95,14 +95,8 @@ onBeforeUnmount(() => store.stopPolling())
 
 <template>
   <div class="wb">
-    <header class="ff-page__header">
-      <div class="ff-page__heading">
-        <h1 class="ff-page__title">AI 投研工作台</h1>
-        <p class="ff-page__desc">
-          服务状态、快捷指令与最近产出
-        </p>
-      </div>
-    </header>
+    <!-- 模块页头按产品要求移除，h1 保留 sr-only 保文档语义 -->
+    <h1 class="ff-sr-only">AI 投研工作台</h1>
 
     <!-- 未配置模型横幅 -->
     <div v-if="!store.modelAvailable" class="wb__banner">

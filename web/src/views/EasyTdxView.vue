@@ -218,13 +218,8 @@ onBeforeUnmount(() => store.stopPolling())
   <div class="etdx-shell">
     <!-- ══════ 顶部命令条 ══════ -->
     <header class="etdx-top">
-      <div class="etdx-top__title">
-        <span class="etdx-top__mark"><AppIcon name="cpu" size="sm" /></span>
-        <div>
-          <h1 class="etdx-top__name">easy-tdx 投研工作台</h1>
-          <p class="etdx-top__sub">通达信行情 · 缠论 · 回测 —— 选标的即查</p>
-        </div>
-      </div>
+      <!-- 模块标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
+      <h1 class="ff-sr-only">easy-tdx 投研工作台</h1>
 
       <div class="etdx-top__search">
         <EasyTdxStockPicker

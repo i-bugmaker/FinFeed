@@ -74,14 +74,8 @@ onMounted(() => {
 
 <template>
   <div class="tv">
-    <header class="ff-page__header">
-      <div class="ff-page__heading">
-        <h1 class="ff-page__title">任务中心</h1>
-        <p class="ff-page__desc">
-          AI 分析任务的执行状态与进度{{ failedCount ? ` · ${failedCount} 个失败可重试` : '' }}
-        </p>
-      </div>
-    </header>
+    <!-- 模块页头按产品要求移除，h1 保留 sr-only 保文档语义 -->
+    <h1 class="ff-sr-only">任务中心</h1>
 
     <div class="tv__bar">
       <div class="tv__tabs">

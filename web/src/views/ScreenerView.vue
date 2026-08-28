@@ -627,12 +627,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="screener-shell">
-    <header class="ff-page__header">
-      <div class="ff-page__heading">
-        <h1 class="ff-page__title">智能选股</h1>
-        <p class="ff-page__desc">五维因子打分与条件筛选引擎</p>
-      </div>
-    </header>
+    <!-- 模块页头按产品要求移除，h1 保留 sr-only 保文档语义 -->
+    <h1 class="ff-sr-only">智能选股</h1>
 
     <!-- ═══════ 顶部 ═══════ -->
     <header class="screener-top ff-glass">

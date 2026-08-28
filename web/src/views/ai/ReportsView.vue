@@ -78,14 +78,8 @@ onMounted(async () => {
 
 <template>
   <div class="rv">
-    <header class="ff-page__header">
-      <div class="ff-page__heading">
-        <h1 class="ff-page__title">研究报告</h1>
-        <p class="ff-page__desc">
-          AI 生成的复盘与分析报告{{ store.reportsTotal ? ` · 共 ${store.reportsTotal} 份` : '' }}
-        </p>
-      </div>
-    </header>
+    <!-- 模块页头按产品要求移除，h1 保留 sr-only 保文档语义 -->
+    <h1 class="ff-sr-only">研究报告</h1>
 
     <div class="rv__bar">
       <AppInput v-model="q" class="rv__search" placeholder="搜索标题 / 模型…" icon="search" />
