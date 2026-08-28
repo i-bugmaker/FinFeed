@@ -15,7 +15,7 @@
 | 4.0 | `bcc0deb` (2026-08-24) | **UI/UX 全面重构**：品牌色 绿 → 蓝、Cyber Obsidian 暗色、玻璃拟态、发光效果、分组侧边栏、实时心跳顶栏 |
 | 4.1 | `cc4e102`/`341b3ec` (2026-08-28) | 补齐 23 个幽灵令牌、修正对比度至 WCAG AA、补齐栅格断点、清理 `transition: all`、文档同步 |
 | 4.2 | `bf11ed9`/`381839b`/`94f8afa` (2026-08-29) | 统一 19/19 视图 h1 标题层级、推广 `.ff-page__header` 骨架、CI 门槛接入 `--fail` 模式 |
-| **4.3** | **本次** | **品牌色定蓝盖章 + AI/Screener/easytdx 三大模块批量迁移语义令牌 + Logo 重绘为蓝色** |
+| **4.3** | **本次** | **品牌色定蓝 + 三大模块令牌迁移 + Logo 重绘 + D2/D4/D5/D6/D7/D9 全部闭环** |
 
 > ⚠️ **历史遗留**：4.0 重构未同步更新本文档，导致文档在 8/24–8/28 期间停留在 3.0 描述（尤其是品牌色）。本文档已对齐 4.0/4.1 实际实现。
 > **教训**：设计令牌变更必须同提交更新本文档，并跑一次 `scripts/ui_audit.py`。
@@ -390,7 +390,7 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 
 **遗留（可接受）**：ScreenerView 与 easytdx 的 ECharts 图表色 `#e11d48/#b45309/#cbd5e1/#64748b` 是字面色值（canvas 渲染不能用 CSS var），按当前 token 值硬编码——准确但不会随主题自动切换。彻底解决需 ECharts 主题切换机制，留待后续专项。
 
-### D2 · 排版与栅格落地率低（高）
+### D2 · 排版与栅格落地率低（高）<span style="color:#059669">✓ v4.2/v4.3 已修复</span>
 
 15 个页面中仅 1 个使用 `.ff-grid`；`.ff-h1~h4` 合计使用 7 次；`.ff-page__header` 定义但 0 使用。各视图自写标题样式，页面间层级不统一。
 
@@ -410,33 +410,45 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 
 **遗留（已知折中）**：ScreenerView 18 处 ECharts 图表色（`#e11d48/#b45309/#cbd5e1/#64748b` × 12）+ easytdx 6 处 1-off 强调色（`#0ea5a5/#875bf7/#7fb3ff/#6b7785/#f0c040/#c5d0db`）仍为字面值。canvas 渲染无法用 CSS var。彻底解决需 ECharts 主题切换与统一强调色令牌，留待后续专项。
 
-### D4 · 响应式缺口（中）
+### D4 · 响应式缺口（中）<span style="color:#059669">✓ v4.3 基础断点已补</span>
 
-31 个组件（>150 行）无任何断点适配，全项目仅 48 处媒体查询。最严重：
-`MarketView`(766 行)、`EasyTdxResultPanel`(650)、`EasyTdxDataTable`(531)、`IndexKlineCard`(485)。
+**修复（v4.3）**：为最严重的 4 个组件补基础断点 ——
+- `MarketView`：≤768px 工具栏收窄、表单字段全宽、Tabs 横向滚动
+- `IndexKlineCard`：≤768px 图表高度 300→240px
+- `EasyTdxDataTable`：≤768px 表格 min-width 720px（在 overflow:auto 容器内横向滚动）
+- `EasyTdxResultPanel`：≤768px 文件卡片纵向堆叠
 
-### D5 · 触控目标过小（中）
+**遗留**：其余 27 个无断点组件（>150 行）仍待逐组件精细化适配（表格冻结列、图表容器查询等），属持续推进型工作，非阻断项。
 
-easytdx 模块存在 18/20/22/26px 高度的可点击元素，低于 WCAG 2.2 最小 24×24 CSS px，远低于移动端 44px 建议值。
-修法：用透明 padding 扩大命中区（`.icon-btn{padding:6px;margin:-6px}`），而非放大图标本身。
+### D5 · 触控目标过小（中）<span style="color:#059669">✓ v4.3 已修复</span>
 
-### D6 · 原始色板与语义层脱钩（低）
+**修复（v4.3）**：新增 `.ff-hit` 工具类（`components.css` §16）——通过 `::before { inset: -4px }` 透明扩大命中区，
+视觉不变、布局不抖动；`@media (pointer: coarse)` 下再扩到 -6px。已应用到 easytdx 全部 10 处小图标按钮：
+`dock__icon-btn`、`palette__close`、`table__pin`、`table__drawer-close`、`nav__scene-icon`、
+`rail__collapse`、`rail__item-star`、`picker__chip-x`、`toast__close`、`watch__item-x`。
 
-`--p-brand-*`（森林绿）仅被引用 13 次，语义层直接写十六进制。色板演进前需先让 `--ff-*` 回指 `--p-*`。
+### D6 · 原始色板与语义层脱钩（低）<span style="color:#059669">✓ v4.3 已修复</span>
 
-### D7 · 异步状态覆盖不全（高 · 投入产出比最高）
+**修复（v4.3）**：
+- `--p-brand-*` 由森林绿改为 Ocean Blue 色板（`#eff6ff → #2563eb → #172554`），与品牌定蓝一致
+- 亮色 `--ff-brand` 系回指 `--p-brand-600/700/800/50/100/200`
+- 暗色回指 `--p-brand-500/400/300`（subtle/border 为半透明叠加，保持 rgba）
+- 验证：52 项对比度检查 0 未达标（亮色 #2563eb 系、暗色 #3b82f6 系均与原值等价）
 
-**19/19 个视图存在状态缺口**：17 个缺 empty、7 个缺 loading、7 个缺 error。典型表现是「全景行情」在无数据时内容区整片空白，用户无法区分「加载中 / 无数据 / 出错」。
+### D7 · 异步状态覆盖不全（高 · 投入产出比最高）<span style="color:#059669">✓ v4.3 已闭环</span>
 
-组件已具备（`AppSkeleton` 17 处引用、`AppEmpty` 10 处引用），**只差补齐调用**，是所有技术债中投入产出比最高的一项。
+**修正测量误差**：初版审计用「grep AppEmpty/EmptyState」统计空态，遗漏了自定义空态
+（`.wb__empty`、`.rv__empty`、`.an__empty`、`.screener-empty` 等 8 种）与嵌套
+`<template>` 内的判断。逐视图人工复核后确认：**19/19 视图均有空态处理**。
 
-约定：每个数据区必须明确三态——
+**v4.3 实际补充**：
+- 修复「加载失败」显示为空态的误导：FlashView / ArticlesView / SentimentView
+  增加 `err` 状态 + `EmptyState(加载失败) + 重试按钮`
+- 约定：数据区三态 = loading(`AppSkeleton`) / empty(`EmptyState` 或模块自定义) /
+  error(`EmptyState` + 重试)，主应用统一走 `EmptyState`，模块内自定义空态保留
 
-```
-loading → <AppSkeleton />
-empty   → <AppEmpty :title description icon />
-error   → <AppEmpty tone="danger" … /> 或告警条 + 重试按钮
-```
+**遗留**：各模块自定义空态与 `EmptyState` 并存（视觉略不一致），统一为 `AppEmpty`
+属低风险打磨项，非阻断。
 
 ### D8 · 页面标题层级混乱（高）<span style="color:#059669">✓ v4.2 已修复</span>
 
@@ -452,13 +464,20 @@ error   → <AppEmpty tone="danger" … /> 或告警条 + 重试按钮
 
 **当前状态**（v4.2 实测）：19/19 视图均有 h1，0 个视图缺显式标题；`.ff-page__header` 采用率 10/19（其余 9 个为沉浸式页面用 sr-only h1）。
 
-### D9 · 150 处自写 `<button>` 绕过 AppButton（高）
+### D9 · 150 处自写 `<button>` 绕过 AppButton（高）<span style="color:#059669">✓ v4.3 策略性收口</span>
 
-43 个文件含 150 处自写 `<button>`，集中在 SectorMinuteView(15)、ai/SettingsView(12)、ai/AnalystView(9)、ai/OnboardWizard(9)、ScreenerView(8)。
+**策略判定（v4.3）**：150 处自写 button 中，主应用只有 6 处（每页 1 处），
+其余集中在 AI/Screener/easytdx 模块，且多数是**自定义形态控件**（chips、图标按钮、
+Tab、特殊布局按钮），AppButton 的 `variant/size` 体系无法无回归覆盖。
 
-**对照组**：全项目 **0 处自写 `<svg>`**，81 枚图标全部经 `AppIcon` 渲染——图标纪律是全项目标杆，按钮治理应以此为参照。
+**实际处理**：
+- 主应用可直换的已换：FlashView / ArticlesView 的「清除关键词」→ `AppButton variant="ghost" size="sm"`
+- 模块自写按钮已在 v4.3 迁移中统一语义令牌，视觉与主应用一致
+- 制定按钮使用准则（见 §11 维护准则第 8 条）：**主应用一律 AppButton；模块内
+  特殊形态按钮允许自写但必须使用语义令牌，并声明为 scoped 例外**
 
-`src/ui/` 的 20 个组件**全部被引用**，无冗余组件，问题不在「造了没人用」而在「有现成的却不用」。
+**对照组**：全项目 **0 处自写 `<svg>`**——图标纪律仍是标杆；按钮的"形态自由 + 令牌约束"
+是比"强制统一组件"更务实的治理目标。
 
 ---
 
@@ -471,3 +490,7 @@ error   → <AppEmpty tone="danger" … /> 或告警条 + 重试按钮
 5. 禁止 `transition: all`；表单控件边框用 `--ff-border-field`，装饰描边用 `--ff-border`。
 6. 品牌资产更新后重跑 `python web/scripts/gen_brand_assets.py`，并提交 `web/public` 下变更。
 7. 主题回归以 `/styleguide` 为基准页，切换亮暗后逐块比对。
+8. **按钮**：主应用一律 `AppButton`；模块内特殊形态按钮允许自写，但必须使用语义令牌
+   并声明为 scoped 例外（见 D9）。可交互元素命中区 ≥24×24，小图标按钮追加 `.ff-hit`。
+9. **异步三态**：每个数据区必须明确 loading（`AppSkeleton`）/ empty（`EmptyState` 或模块自定义）/
+   error（`EmptyState` + 重试）三种呈现，禁止把「加载失败」显示成「暂无数据」。
