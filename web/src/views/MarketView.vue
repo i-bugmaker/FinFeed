@@ -295,12 +295,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ff-page ff-market-view">
-    <header class="ff-page__header">
-      <div class="ff-page__heading">
-        <h1 class="ff-page__title">全景行情</h1>
-        <p class="ff-page__desc">A 股指数、板块与个股全景数据</p>
-      </div>
-    </header>
+    <!-- 页面标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
+    <h1 class="ff-sr-only">全景行情</h1>
 
     <AppCard class="ff-market-view__toolbar ff-glass">
       <div class="ff-market-view__row">

@@ -342,13 +342,8 @@ onMounted(async () => {
   <div class="ff-page ff-dashboard-view">
     <!-- ═══ 顶部状态条 ═══ -->
     <header class="ff-dashboard-view__topbar">
-      <div class="ff-dashboard-view__brand">
-        <AppIcon name="dashboard" size="md" />
-        <div class="ff-dashboard-view__brand-text">
-          <h1 class="ff-dashboard-view__title">盘面复盘</h1>
-          <span class="ff-dashboard-view__title-sub">盘后 · 涨跌 · 晋级 / 断板</span>
-        </div>
-      </div>
+      <!-- 页面标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
+      <h1 class="ff-sr-only">盘面复盘</h1>
       <div class="ff-dashboard-view__topbar-meta">
         <span v-if="updateTime" class="ff-dashboard-view__updated">
           <AppIcon name="refresh" size="xs" /> 更新于 {{ updateTime }}

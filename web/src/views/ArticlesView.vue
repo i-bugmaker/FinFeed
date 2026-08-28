@@ -86,14 +86,8 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-articles-view">
-    <header class="ff-page__header">
-      <div class="ff-page__heading">
-        <h1 class="ff-page__title">财经</h1>
-        <p class="ff-page__desc">
-          深度财经长文与解读{{ total ? ` · 共 ${total} 篇` : '' }}
-        </p>
-      </div>
-    </header>
+    <!-- 页面标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
+    <h1 class="ff-sr-only">财经</h1>
 
     <FilterBar
       v-model="filters"

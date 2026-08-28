@@ -72,10 +72,8 @@ onUnmounted(() => {
 <template>
   <div class="ff-page ff-favorites-view">
     <div class="ff-favorites-view__hero ff-glass">
-      <div class="ff-favorites-view__hero-left">
-        <h1 class="ff-page__title">自选与收藏</h1>
-        <p class="ff-body-sm ff-text-muted">集中管理您标记重点跟踪的快讯、研报与标的动态</p>
-      </div>
+      <!-- 页面标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
+      <h1 class="ff-sr-only">自选与收藏</h1>
 
       <div class="ff-favorites-view__hero-right">
         <AppInput
