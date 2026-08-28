@@ -209,6 +209,12 @@ LLM 供应商配置持久化于主库的 `llm_providers` 表，**推荐通过 We
 ### 启动实时监控
 
 ```bash
+# Windows 一键启动：自动重建前端 web/dist → 安装缺失依赖 → 启动监控
+scripts\start_monitor.bat
+
+# 等效的手动步骤（macOS / Linux 可用）：
+npm run build && python main.py
+
 # 启动实时监控（默认 FastAPI 单轨：8866）
 python main.py
 
@@ -221,6 +227,8 @@ python main.py --once
 # 显式指定 Web 后端（FastAPI 单轨）
 python main.py --web fastapi   # 默认：FastAPI 单轨(8866)；旧版 server.py 已退役
 ```
+
+> 注意：`start_monitor.bat` 每次启动都会**先重建 `web/dist`**。前端源码更新后无需手动 `npm run build`——直接双击脚本即可，避免因 dist 过期看到旧界面（历史教训：曾因未重建 dist 导致生产界面停留在旧设计）。
 
 ### 无浏览器 / 仅预览界面
 

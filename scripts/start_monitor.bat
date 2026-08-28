@@ -26,19 +26,18 @@ if errorlevel 1 (
 
 cls
 
-:: 确保前端构建产物 web/dist 存在（删缓存/构建产物后可能缺失）
-if not exist "%~dp0..\web\dist\index.html" (
-    echo.
-    echo  [INFO] web/dist 缺失，正在构建前端...
-    pushd "%~dp0..\web"
-    call npm run build
-    if errorlevel 1 (
-        echo  [WARN] 前端构建失败，Web 界面可能无法加载（API 仍正常）
-    ) else (
-        echo  [OK] 前端构建完成
-    )
-    popd
+:: 每次启动前重建前端产物 web/dist —— 源码可能已更新而 dist 过期
+:: （历史教训：曾因 dist 未重建导致生产界面停留在旧设计）
+echo.
+echo  [INFO] 正在重建前端 web/dist ...
+pushd "%~dp0..\web"
+call npm run build
+if errorlevel 1 (
+    echo  [WARN] 前端构建失败，Web 界面可能无法加载（API 仍正常）
+) else (
+    echo  [OK] 前端构建完成
 )
+popd
 
 :run
 python "%~dp0..\main.py" %*
