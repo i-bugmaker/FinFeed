@@ -386,7 +386,7 @@ onMounted(() => {
 .sv__stage-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; background: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; white-space: nowrap; }
 .sv__stage-tab:hover { color: var(--ff-brand-dark); }
 .sv__stage-tab.on { background: var(--ff-bg-surface); color: var(--ff-brand-dark); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
-.sv__stage-n { font-size: 10.5px; font-weight: 700; min-width: 17px; height: 17px; line-height: 17px; text-align: center; border-radius: 8px; background: rgba(47, 125, 91, 0.12); color: inherit; }
+.sv__stage-n { font-size: 10.5px; font-weight: 700; min-width: 17px; height: 17px; line-height: 17px; text-align: center; border-radius: 8px; background: rgba(37, 99, 235, 0.12); color: inherit; }
 .sv__stage-desc { margin: -4px 2px 0; font-size: 12px; color: var(--ff-text-3); }
 .sv__prompts { margin-top: 14px; display: flex; flex-direction: column; gap: 13px; }
 .sv__hint { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 1.6; color: var(--ff-text-3); margin: 0; }
@@ -400,7 +400,7 @@ onMounted(() => {
 .sv__pcard-desc { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ff-text-3); }
 .sv__ptext { border: 1px solid var(--ff-border); border-radius: 9px; padding: 11px 13px; min-height: 230px; font-size: 13px; line-height: 1.65; background: var(--ff-bg-surface); color: var(--ff-text-primary); resize: vertical; outline: none; font-family: ui-monospace, 'Cascadia Code', Consolas, 'PingFang SC', 'Microsoft YaHei', monospace; -webkit-font-smoothing: antialiased; }
 .sv__ptext.compact { min-height: 150px; }
-.sv__ptext:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px rgba(47, 125, 91, 0.12); }
+.sv__ptext:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
 /* 底部操作条：随滚动吸底，状态与操作同屏可见 */
 .sv__pbar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 6px -18px -18px; padding: 11px 18px; border-top: 1px solid var(--ff-border); background: var(--ff-bg-subtle); border-radius: 0 0 13px 13px; }
 .sv__pbar-state { font-size: 12.5px; color: var(--ff-text-3); }

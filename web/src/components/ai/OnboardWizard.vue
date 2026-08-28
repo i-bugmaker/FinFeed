@@ -256,7 +256,7 @@ async function save() {
 .ow-field--checks { display: flex; flex-direction: column; gap: 8px; justify-content: flex-end; padding-bottom: 2px; }
 .ow-field--checks label { margin: 0; display: flex; align-items: center; gap: 7px; font-weight: 500; }
 .ow-input { width: 100%; height: 40px; border: 1px solid var(--ff-border); border-radius: 10px; padding: 0 13px; font-size: 13.5px; outline: none; background: var(--ff-bg-surface); color: var(--ff-text-primary); transition: border-color 120ms, box-shadow 120ms; font-family: inherit; }
-.ow-input:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px var(--ff-focus-ring, rgba(47, 125, 91, 0.15)); }
+.ow-input:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px var(--ff-focus-ring); }
 .ow-check { font-size: 13px; color: var(--ff-text-primary); cursor: pointer; }
 .ow-check input { width: 15px; height: 15px; accent-color: var(--ff-brand); }
 .ow-test { font-size: 12.5px; color: var(--ff-brand); margin: 4px 0 10px; }

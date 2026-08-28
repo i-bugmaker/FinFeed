@@ -93,7 +93,7 @@ const wordGap = computed(() => Math.round(markSize.value * 0.28))
 .ff-logo {
   display: inline-flex;
   align-items: center;
-  color: var(--ff-icon-inverse, #fff);
+  color: var(--ff-icon-inverse);
   user-select: none;
 }
 

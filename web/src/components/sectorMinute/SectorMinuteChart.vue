@@ -367,7 +367,7 @@ watch(
 }
 .smic__badge.is-board { background: var(--ff-brand); }
 .smic__badge.is-stock { background: var(--ff-accent-teal); }
-.smic__badge.is-index { background: var(--ff-accent-violet, #7c5cd6); }
+.smic__badge.is-index { background: var(--ff-accent-violet); }
 .smic__name {
   font-weight: 600;
   color: var(--ff-text-primary);

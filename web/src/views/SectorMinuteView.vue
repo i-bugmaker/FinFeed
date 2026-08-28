@@ -1355,8 +1355,8 @@ const visibleStocks = computed(() => {
   gap: 8px;
   padding: 9px 14px;
   border-radius: var(--ff-radius-md);
-  background: var(--ff-bg-down-subtle, #fdecea);
-  color: var(--ff-down-text, #c0392b);
+  background: var(--ff-bg-down-subtle);
+  color: var(--ff-down-text);
   font-size: var(--ff-fs-body-sm);
 }
 .smm__empty-main {

@@ -600,7 +600,7 @@ onBeforeUnmount(() => store.stopPolling())
   border-radius: 10px;
   background: var(--ff-bg-brand);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(47, 125, 91, 0.3);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
 .etdx-top__name {
   font-size: var(--ff-fs-h3);
@@ -638,7 +638,7 @@ onBeforeUnmount(() => store.stopPolling())
   height: 8px;
   border-radius: 50%;
   background: var(--ff-down);
-  box-shadow: 0 0 0 3px rgba(18, 161, 80, 0.15);
+  box-shadow: 0 0 0 3px var(--ff-down-subtle);
   animation: etdx-pulse 2s infinite;
 }
 @keyframes etdx-pulse {
@@ -750,8 +750,8 @@ onBeforeUnmount(() => store.stopPolling())
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
-.etdx-hero__px.is-up { color: var(--ff-up-text, #d02b31); }
-.etdx-hero__px.is-down { color: var(--ff-down-text, #0d8a43); }
+.etdx-hero__px.is-up { color: var(--ff-up-text); }
+.etdx-hero__px.is-down { color: var(--ff-down-text); }
 .etdx-hero__px.is-idle { color: var(--ff-text-tertiary); }
 .etdx-hero__chg {
   font-size: var(--ff-fs-body);
@@ -759,8 +759,8 @@ onBeforeUnmount(() => store.stopPolling())
   font-family: var(--ff-font-mono, monospace);
   font-variant-numeric: tabular-nums;
 }
-.etdx-hero__chg.is-up { color: var(--ff-up-text, #d02b31); }
-.etdx-hero__chg.is-down { color: var(--ff-down-text, #0d8a43); }
+.etdx-hero__chg.is-up { color: var(--ff-up-text); }
+.etdx-hero__chg.is-down { color: var(--ff-down-text); }
 .etdx-hero__hint {
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
@@ -847,8 +847,8 @@ onBeforeUnmount(() => store.stopPolling())
   gap: 4px;
   font-size: var(--ff-fs-caption);
   font-weight: 500;
-  color: var(--ff-text-warning, #b7791f);
-  background: var(--ff-bg-warning-subtle, #fffaeb);
+  color: var(--ff-text-warning);
+  background: var(--ff-bg-warning-subtle);
   border-radius: var(--ff-radius-pill);
   padding: 2px 8px;
 }
@@ -868,12 +868,12 @@ onBeforeUnmount(() => store.stopPolling())
   color: var(--ff-text-brand);
 }
 .etdx-task-chip--success {
-  background: var(--ff-bg-up-subtle, #e6f4ea);
-  color: var(--ff-up-text, #1a7f37);
+  background: var(--ff-bg-up-subtle);
+  color: var(--ff-up-text);
 }
 .etdx-task-chip--error {
-  background: var(--ff-bg-down-subtle, #fdecea);
-  color: var(--ff-down-text, #c0392b);
+  background: var(--ff-bg-down-subtle);
+  color: var(--ff-down-text);
 }
 .etdx-card__body {
   padding: var(--ff-space-3) var(--ff-space-4);
@@ -949,8 +949,8 @@ onBeforeUnmount(() => store.stopPolling())
   margin-bottom: var(--ff-space-3);
 }
 .etdx-alert--danger {
-  background: var(--ff-bg-down-subtle, #fdecea);
-  color: var(--ff-down-text, #c0392b);
+  background: var(--ff-bg-down-subtle);
+  color: var(--ff-down-text);
 }
 
 /* —— 右栏参数面板 —— */
@@ -1051,7 +1051,7 @@ onBeforeUnmount(() => store.stopPolling())
   border-radius: var(--ff-radius-md);
   background: var(--ff-bg-brand);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(47, 125, 91, 0.3);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
   transition: background var(--ff-dur-fast), transform var(--ff-dur-fast);
 }
 .etdx-params__mini-run:hover {
@@ -1092,7 +1092,7 @@ onBeforeUnmount(() => store.stopPolling())
   color: var(--ff-icon-muted);
 }
 .etdx-taskbar__state.is-err > svg {
-  color: var(--ff-up-text, #c0392b);
+  color: var(--ff-up-text);
 }
 .etdx-taskbar__title {
   font-weight: 600;
@@ -1129,7 +1129,7 @@ onBeforeUnmount(() => store.stopPolling())
   font-size: 11.5px;
 }
 .etdx-taskbar__log--err {
-  color: var(--ff-up-text, #c0392b);
+  color: var(--ff-up-text);
 }
 .etdx-taskbar__sp {
   flex: 1;

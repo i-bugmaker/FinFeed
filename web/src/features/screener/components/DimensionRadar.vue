@@ -53,9 +53,9 @@ function render() {
         type: 'radar',
         symbolSize: 3,
         data: [{ value, name: '维度画像' }],
-        areaStyle: { color: 'rgba(47, 125, 91, 0.25)' },
-        lineStyle: { color: '#2f7d5b', width: 2 },
-        itemStyle: { color: '#2f7d5b' },
+        areaStyle: { color: 'rgba(37, 99, 235, 0.25)' },
+        lineStyle: { color: '#2563eb', width: 2 },
+        itemStyle: { color: '#2563eb' },
       },
     ],
   })

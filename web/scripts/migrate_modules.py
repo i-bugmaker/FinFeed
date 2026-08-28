@@ -115,6 +115,7 @@ def main():
         "views/ai", "components/ai",
         "views/ScreenerView.vue",
         "components/easytdx",
+        "features",  # v4.3.1 补充：features/ 目录此前漏扫
     ])
 
     changed = []
