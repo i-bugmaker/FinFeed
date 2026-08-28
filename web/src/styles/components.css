@@ -2171,3 +2171,26 @@
   color: var(--ff-text-primary);
   font-variant-numeric: tabular-nums;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   16. 触控目标 · .ff-hit 扩大命中区
+   ═══════════════════════════════════════════════════════════════════════
+   WCAG 2.2 2.5.8 Target Size（Minimum）：可交互元素命中区 ≥ 24×24 CSS px。
+   对于视觉尺寸较小（18–22px）的图标按钮，用本工具类通过 ::before 透明
+   扩大命中区（上下左右各 4px），不改变视觉大小、不影响布局。
+   用法：在 <button class="... ff-hit"> 上追加即可。
+   ------------------------------------------------------------------ */
+.ff-hit {
+  position: relative;
+}
+.ff-hit::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+}
+@media (pointer: coarse) {
+  .ff-hit::before {
+    inset: -6px; /* 触屏设备命中区更大 */
+  }
+}

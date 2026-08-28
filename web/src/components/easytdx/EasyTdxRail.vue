@@ -81,7 +81,7 @@ function onFavClick(id) {
     <div class="etdx-rail__head">
       <button
         type="button"
-        class="etdx-rail__collapse"
+        class="etdx-rail__collapse ff-hit"
         :title="store.ui.railCollapsed ? '展开导航' : '收起导航'"
         @click="store.toggleRailCollapsed()"
       >
@@ -141,7 +141,7 @@ function onFavClick(id) {
                   <span class="etdx-rail__item-label">{{ f.label }}</span>
                   <span v-if="f.tag" class="etdx-rail__item-tag">{{ f.tag }}</span>
                   <span
-                    class="etdx-rail__item-star"
+                    class="etdx-rail__item-star ff-hit"
                     :class="{ 'is-fav': store.isFavorite(f.id) }"
                     title="收藏"
                     @click.stop="onFavClick(f.id)"
@@ -177,7 +177,7 @@ function onFavClick(id) {
                 <span class="etdx-rail__item-label">{{ f.label }}</span>
                 <span class="etdx-rail__item-tag">{{ clientLabel(f.client) }}</span>
                 <span
-                  class="etdx-rail__item-star is-fav"
+                  class="etdx-rail__item-star is-fav ff-hit"
                   title="取消收藏"
                   @click.stop="onFavClick(f.id)"
                 >

@@ -21,7 +21,7 @@ const ICONS = { success: 'check-circle', error: 'alert-circle', info: 'info' }
           >
             {{ t.action }}
           </button>
-          <button type="button" class="etdx-toast__close" aria-label="关闭" @click="dismiss(t.id)">
+          <button type="button" class="etdx-toast__close ff-hit" aria-label="关闭" @click="dismiss(t.id)">
             <AppIcon name="x" size="xs" />
           </button>
         </div>

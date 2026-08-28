@@ -19,6 +19,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 30
 const loading = ref(false)
+const err = ref('')
 const finished = ref(false)
 const sources = ref([])
 const sentinel = ref(null)
@@ -29,7 +30,8 @@ let observer = null
 async function loadFirst() {
   page.value = 1
   finished.value = false
-  list.value = []
+  err.value = ''
+list.value = []
   await fetchPage()
 }
 
@@ -62,6 +64,7 @@ async function fetchPage() {
     if (list.value.length >= total.value || items.length === 0) finished.value = true
     page.value += 1
   } catch (e) {
+    err.value = e?.message || String(e)
     console.error(e)
   } finally {
     loading.value = false
@@ -153,9 +156,7 @@ onUnmounted(() => {
     <div v-if="filters.keyword" class="ff-flash-view__result">
       <AppIcon name="search" size="xs" />
       <span>找到 <strong class="ff-num">{{ total }}</strong> 条与「<strong>{{ filters.keyword }}</strong>」相关的快讯</span>
-      <button type="button" class="ff-flash-view__result-clear" @click="clearKeyword">
-        <AppIcon name="x" size="xs" /> 清除关键词
-      </button>
+      <AppButton variant="ghost" size="sm" icon="x" @click="clearKeyword">清除关键词</AppButton>
     </div>
 
     <!-- 表格模式 -->
@@ -175,6 +176,16 @@ onUnmounted(() => {
         </tbody>
       </table>
       <EmptyState
+        v-else-if="err"
+        text="加载失败"
+        icon="alert-circle"
+      >
+        <template #description>{{ err }}</template>
+        <template #action>
+          <AppButton variant="secondary" size="sm" icon="refresh" @click="loadFirst">重试</AppButton>
+        </template>
+      </EmptyState>
+      <EmptyState
         v-else-if="!loading"
         :text="filters.keyword ? `未找到与「${filters.keyword}」相关的快讯` : '暂无快讯数据'"
         icon="zap"
@@ -191,6 +202,16 @@ onUnmounted(() => {
     <!-- 卡片流模式 -->
     <div class="ff-flash-view__cards" v-else>
       <NewsCard v-for="item in list" :key="item.id" :item="item" mode="news" />
+      <EmptyState
+        v-if="err"
+        text="加载失败"
+        icon="alert-circle"
+      >
+        <template #description>{{ err }}</template>
+        <template #action>
+          <AppButton variant="secondary" size="sm" icon="refresh" @click="loadFirst">重试</AppButton>
+        </template>
+      </EmptyState>
       <EmptyState
         v-if="!loading && list.length === 0"
         :text="filters.keyword ? `未找到与「${filters.keyword}」相关的快讯` : '暂无快讯数据'"

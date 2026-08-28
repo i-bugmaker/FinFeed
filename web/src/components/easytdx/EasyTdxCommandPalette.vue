@@ -63,7 +63,7 @@ function select(id) {
             />
             <button
               type="button"
-              class="etdx-palette__close"
+              class="etdx-palette__close ff-hit"
               aria-label="关闭"
               @click="store.setPalette(false)"
             >

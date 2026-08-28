@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
           >
             <span class="etdx-watch__item-name">{{ s.name }}</span>
             <span class="etdx-watch__item-code">{{ s.code }}.{{ s.market }}</span>
-            <span class="etdx-watch__item-x" title="移除" @click.stop="remove(s, $event)">
+            <span class="etdx-watch__item-x ff-hit" title="移除" @click.stop="remove(s, $event)">
               <AppIcon name="x" size="xs" />
             </span>
           </button>

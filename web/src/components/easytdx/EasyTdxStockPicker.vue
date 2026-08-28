@@ -94,7 +94,7 @@ onBeforeUnmount(() => {
     <div v-if="stock" class="etdx-picker__chip">
       <span class="etdx-picker__chip-name">{{ stock.name }}</span>
       <span class="etdx-picker__chip-code">{{ stock.code }}.{{ stock.market }}</span>
-      <button type="button" class="etdx-picker__chip-x" title="清除标的" @click="clear">
+      <button type="button" class="etdx-picker__chip-x ff-hit" title="清除标的" @click="clear">
         <AppIcon name="x" size="xs" />
       </button>
     </div>

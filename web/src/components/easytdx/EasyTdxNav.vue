@@ -90,7 +90,7 @@ function onSceneClick(scene) {
           :class="activeView === scene.id && 'etdx-nav__scene--active'"
           @click="onSceneClick(scene)"
         >
-          <span class="etdx-nav__scene-icon"><AppIcon :name="scene.icon" size="sm" /></span>
+          <span class="etdx-nav__scene-icon ff-hit"><AppIcon :name="scene.icon" size="sm" /></span>
           <span class="etdx-nav__scene-label">{{ scene.label }}</span>
           <span class="etdx-nav__scene-count">{{ scene.funcIds?.length || 0 }}</span>
         </button>

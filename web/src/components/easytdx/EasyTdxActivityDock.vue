@@ -57,7 +57,7 @@ function loadRecentTask(t) {
           <AppIcon name="list" size="sm" /> 执行状态与日志
         </span>
         <span v-if="store.recent.length" class="etdx-dock__hint">最近任务</span>
-        <button type="button" class="etdx-dock__icon-btn" title="收起" @click="toggleDock">
+        <button type="button" class="etdx-dock__icon-btn ff-hit" title="收起" @click="toggleDock">
           <AppIcon name="chevron-down" size="sm" />
         </button>
       </div>

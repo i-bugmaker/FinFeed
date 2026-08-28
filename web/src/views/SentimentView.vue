@@ -13,6 +13,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 30
 const loading = ref(false)
+const err = ref('')
 const finished = ref(false)
 const sources = ref([])
 const sentinel = ref(null)
@@ -21,7 +22,8 @@ let observer = null
 async function loadFirst() {
   page.value = 1
   finished.value = false
-  list.value = []
+  err.value = ''
+list.value = []
   await fetchPage()
 }
 
@@ -51,6 +53,7 @@ async function fetchPage() {
     if (list.value.length >= total.value || items.length === 0) finished.value = true
     page.value += 1
   } catch (e) {
+    err.value = e?.message || String(e)
     console.error(e)
   } finally {
     loading.value = false
@@ -89,7 +92,13 @@ onUnmounted(() => observer && observer.disconnect())
 
     <div class="ff-sentiment-view__list">
       <NewsCard v-for="item in list" :key="item.id" :item="item" mode="sentiment" />
-      <EmptyState v-if="!loading && list.length === 0" text="暂无舆情数据" icon="chatter" />
+      <EmptyState v-if="err && !list.length" text="加载失败" icon="alert-circle">
+        <template #description>{{ err }}</template>
+        <template #action>
+          <AppButton variant="secondary" size="sm" icon="refresh" @click="loadFirst">重试</AppButton>
+        </template>
+      </EmptyState>
+      <EmptyState v-else-if="!loading && list.length === 0" text="暂无舆情数据" icon="chatter" />
     </div>
 
     <div ref="sentinel" class="ff-sentiment-view__sentinel">
