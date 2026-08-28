@@ -214,4 +214,11 @@ function aiAnalyze() {
 .ff-newscard__fav--active {
   color: var(--ff-icon-warn);
 }
+
+/* ── 移动端适配（D4）：表格行内换行保护 ── */
+@media (max-width: 768px) {
+  .nr__title {
+    overflow-wrap: anywhere;
+  }
+}
 </style>

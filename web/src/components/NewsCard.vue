@@ -313,4 +313,17 @@ function aiAnalyze() {
   background: var(--ff-bg-brand-subtle);
   color: var(--ff-brand);
 }
+
+/* ── 移动端适配（D4）── */
+@media (max-width: 768px) {
+  .ff-newscard {
+    gap: 10px;
+  }
+  .ff-newscard__head {
+    flex-wrap: wrap;
+  }
+  .ff-newscard__meta {
+    min-width: 0;
+  }
+}
 </style>

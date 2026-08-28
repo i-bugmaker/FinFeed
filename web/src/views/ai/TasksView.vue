@@ -224,4 +224,15 @@ onMounted(() => {
 .tv__log-kv b { color: var(--ff-text-primary); word-break: break-all; font-weight: 600; }
 .tv-fade-enter-active, .tv-fade-leave-active { transition: opacity 180ms; }
 .tv-fade-enter-from, .tv-fade-leave-to { opacity: 0; }
+
+/* ── 移动端适配（D4）── */
+@media (max-width: 768px) {
+  .tv__tabs {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .tv__tab {
+    white-space: nowrap;
+  }
+}
 </style>

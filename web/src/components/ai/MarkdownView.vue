@@ -184,4 +184,16 @@ const html = computed(() => {
 .mdv--compact :deep(h2) { font-size: 15px; margin: 12px 0 6px; }
 .mdv--compact :deep(p) { margin: 6px 0; }
 .mdv--compact :deep(table) { font-size: 12px; }
+
+/* ── 移动端适配（D4）：代码块横向滚动 ── */
+@media (max-width: 768px) {
+  :deep(pre) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  :deep(table) {
+    display: block;
+    overflow-x: auto;
+  }
+}
 </style>

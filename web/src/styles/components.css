@@ -2194,3 +2194,27 @@
     inset: -6px; /* 触屏设备命中区更大 */
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   17. 移动端通用适配（D4 · 第二批，作用于 27 个无断点组件）
+   ═══════════════════════════════════════════════════════════════════════
+   用 :where()（特异性 0）覆盖 BEM 常见布局模式，组件内显式规则不受影响：
+   · 所有 __row / __bar / __toolbar / __actions / __head 允许换行
+   · 弹层浮层（日期/下拉/菜单）不超出视口
+   · 页头操作区已单独处理（见 .ff-page__actions）
+   ------------------------------------------------------------------ */
+@media (max-width: 768px) {
+  :where([class*="__row"], [class*="__bar"], [class*="__toolbar"],
+         [class*="__actions"], [class*="__head"]) {
+    flex-wrap: wrap;
+  }
+  /* 浮层宽度不超出视口（日历年历、下拉菜单、命令面板等） */
+  :where([class*="__pop"], .ff-datepicker, .ff-select__menu, .ff-menu,
+         [class*="__panel"], [class*="__drawer"]) {
+    max-width: calc(100vw - 24px);
+  }
+  /* 长文本截断保护 */
+  :where([class*="__title"], [class*="__desc"]) {
+    overflow-wrap: anywhere;
+  }
+}
