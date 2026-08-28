@@ -134,6 +134,15 @@ onUnmounted(() => {
 
 <template>
   <div class="ff-page ff-flash-view">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">快讯</h1>
+        <p class="ff-page__desc">
+          7×24 实时财经快讯{{ total ? ` · 共 ${total} 条` : '' }}
+        </p>
+      </div>
+    </header>
+
     <!-- 筛选过滤栏 -->
     <FilterBar
       v-model="filters"

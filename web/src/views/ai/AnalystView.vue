@@ -244,6 +244,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="an">
+    <!-- 沉浸式对话布局占据整屏高度，不适合加可见页头；
+         用视觉隐藏的 h1 保留文档语义与读屏导航锚点 -->
+    <h1 class="ff-sr-only">AI 分析师对话</h1>
+
     <!-- 左：会话列表（桌面常驻，移动端隐藏） -->
     <aside class="an__sessions">
       <SessionList

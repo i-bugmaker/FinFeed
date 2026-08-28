@@ -83,6 +83,15 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-articles-view">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">财经</h1>
+        <p class="ff-page__desc">
+          深度财经长文与解读{{ total ? ` · 共 ${total} 篇` : '' }}
+        </p>
+      </div>
+    </header>
+
     <FilterBar
       v-model="filters"
       :sources="sources"

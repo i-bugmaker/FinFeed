@@ -149,6 +149,9 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
 
 <template>
   <div class="rr">
+    <!-- 阅读页的工具栏已展示报告标题，这里用视觉隐藏 h1 保文档语义 -->
+    <h1 class="ff-sr-only">{{ report?.title || '报告阅读' }}</h1>
+
     <!-- 工具栏 -->
     <div class="rr__toolbar">
       <button class="rr__back" @click="router.push('/ai/reports')"><AppIcon name="arrow-left" size="sm" /> 返回列表</button>

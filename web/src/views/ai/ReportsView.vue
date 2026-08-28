@@ -78,6 +78,15 @@ onMounted(async () => {
 
 <template>
   <div class="rv">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">研究报告</h1>
+        <p class="ff-page__desc">
+          AI 生成的复盘与分析报告{{ store.reportsTotal ? ` · 共 ${store.reportsTotal} 份` : '' }}
+        </p>
+      </div>
+    </header>
+
     <div class="rv__bar">
       <AppInput v-model="q" class="rv__search" placeholder="搜索标题 / 模型…" icon="search" />
       <button class="rv__filter" :class="{ on: pinnedOnly }" @click="pinnedOnly = !pinnedOnly">

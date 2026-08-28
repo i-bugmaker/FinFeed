@@ -76,6 +76,15 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-sentiment-view">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">舆情</h1>
+        <p class="ff-page__desc">
+          论坛与社交情绪聚合{{ total ? ` · 共 ${total} 条` : '' }}
+        </p>
+      </div>
+    </header>
+
     <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
 
     <div class="ff-sentiment-view__list">

@@ -74,6 +74,15 @@ onMounted(() => {
 
 <template>
   <div class="tv">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">任务中心</h1>
+        <p class="ff-page__desc">
+          AI 分析任务的执行状态与进度{{ failedCount ? ` · ${failedCount} 个失败可重试` : '' }}
+        </p>
+      </div>
+    </header>
+
     <div class="tv__bar">
       <div class="tv__tabs">
         <button v-for="t in tabs" :key="t.key" class="tv__tab" :class="{ on: tab === t.key }" @click="tab = t.key">

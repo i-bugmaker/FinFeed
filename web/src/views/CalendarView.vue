@@ -96,6 +96,15 @@ onMounted(async () => {
 
 <template>
   <div class="ff-page ff-calendar-view">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">财经日历</h1>
+        <p class="ff-page__desc">
+          财经事件、新股申购与全球经济数据{{ events.length ? ` · ${date} 共 ${events.length} 项` : '' }}
+        </p>
+      </div>
+    </header>
+
     <!-- 日期导航与分类选择 Ribbon -->
     <div class="ff-calendar-view__ribbon ff-glass">
       <div class="ff-calendar-view__date-nav">

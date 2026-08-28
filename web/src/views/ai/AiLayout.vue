@@ -39,6 +39,9 @@ function openCmd() { store.cmdOpen = true }
 
 <template>
   <div class="ail">
+    <!-- 布局容器：Tab 导航已提供可视上下文，h1 供读屏与文档语义 -->
+    <h1 class="ff-sr-only">AI 投研</h1>
+
     <nav class="ail__nav">
       <div class="ail__tabs">
         <router-link

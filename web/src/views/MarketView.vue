@@ -295,6 +295,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ff-page ff-market-view">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">全景行情</h1>
+        <p class="ff-page__desc">A 股指数、板块与个股全景数据</p>
+      </div>
+    </header>
+
     <AppCard class="ff-market-view__toolbar ff-glass">
       <div class="ff-market-view__row">
         <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />

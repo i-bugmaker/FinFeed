@@ -185,6 +185,15 @@ onMounted(() => {
 
 <template>
   <div class="sv">
+    <header class="ff-page__header">
+      <div class="ff-page__heading">
+        <h1 class="ff-page__title">AI 设置</h1>
+        <p class="ff-page__desc">
+          模型供应商、Prompt 模板与分析默认值
+        </p>
+      </div>
+    </header>
+
     <div class="sv__layout">
       <!-- 左导航 -->
       <aside class="sv__nav">

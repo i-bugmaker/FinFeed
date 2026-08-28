@@ -508,6 +508,9 @@ onUnmounted(() => {
 
 <template>
   <div class="ff-page ff-sm-view">
+    <!-- 双栏 grid 布局，标题用视觉隐藏 h1 保文档语义 -->
+    <h1 class="ff-sr-only">股票监控</h1>
+
     <!-- ============ 左列：监控列表 ============ -->
     <aside class="ff-sm-view__side">
       <div class="ff-sm-side">
