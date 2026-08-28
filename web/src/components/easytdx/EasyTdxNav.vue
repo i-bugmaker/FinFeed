@@ -282,4 +282,14 @@ function onSceneClick(scene) {
   color: var(--ff-text-tertiary);
   letter-spacing: 0.02em;
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-nav {
+    max-width: 100%;
+  }
+  .etdx-nav > * {
+    min-width: 0;
+  }
+}
 </style>

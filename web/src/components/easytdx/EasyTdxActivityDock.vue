@@ -230,4 +230,14 @@ function loadRecentTask(t) {
   flex: 1;
   min-height: 0;
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-dock {
+    max-width: 100%;
+  }
+  .etdx-dock > * {
+    min-width: 0;
+  }
+}
 </style>

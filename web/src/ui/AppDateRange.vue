@@ -305,4 +305,17 @@ onUnmounted(() => {
   border-color: var(--ff-border-focus);
   box-shadow: var(--ff-focus-ring);
 }
+
+/* ── 移动端适配（D4）── */
+@media (max-width: 768px) {
+  .ff-daterange__presets {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ff-daterange__custom-row {
+    flex-wrap: wrap;
+  }
+  .ff-daterange__input {
+    flex: 1 1 100%;
+  }
+}
 </style>

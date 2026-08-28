@@ -343,4 +343,14 @@ onBeforeUnmount(() => {
   background: var(--ff-bg-subtle);
   color: var(--ff-text-primary);
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-watch {
+    max-width: 100%;
+  }
+  .etdx-watch > * {
+    min-width: 0;
+  }
+}
 </style>

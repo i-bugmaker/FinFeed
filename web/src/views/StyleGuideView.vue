@@ -443,4 +443,18 @@ const selectOptions = [
   flex-direction: column;
   gap: var(--ff-space-3);
 }
+
+/* ── 移动端适配（D4）── */
+@media (max-width: 768px) {
+  .ff-styleguide__colors {
+    flex-wrap: wrap;
+  }
+  .ff-styleguide__swatch {
+    width: 72px;
+    height: 52px;
+  }
+  .ff-styleguide__color-group {
+    flex: 1 1 100%;
+  }
+}
 </style>

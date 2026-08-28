@@ -231,4 +231,14 @@ function select(id) {
   padding: var(--ff-space-8);
   font-size: var(--ff-fs-body-sm);
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-palette {
+    max-width: 100%;
+  }
+  .etdx-palette > * {
+    min-width: 0;
+  }
+}
 </style>

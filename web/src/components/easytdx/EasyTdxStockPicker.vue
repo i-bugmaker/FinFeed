@@ -255,4 +255,14 @@ onBeforeUnmount(() => {
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-body-sm);
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-picker {
+    max-width: 100%;
+  }
+  .etdx-picker > * {
+    min-width: 0;
+  }
+}
 </style>

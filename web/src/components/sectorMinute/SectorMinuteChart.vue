@@ -437,4 +437,14 @@ watch(
   position: absolute;
   inset: 0;
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .smic {
+    max-width: 100%;
+  }
+  .smic > * {
+    min-width: 0;
+  }
+}
 </style>

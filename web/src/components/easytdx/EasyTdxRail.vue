@@ -446,4 +446,14 @@ function onFavClick(id) {
   justify-content: center;
   padding: var(--ff-space-2-5) var(--ff-space-1);
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-rail {
+    max-width: 100%;
+  }
+  .etdx-rail > * {
+    min-width: 0;
+  }
+}
 </style>

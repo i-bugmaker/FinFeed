@@ -271,4 +271,14 @@ function onStrategyChange(name) {
   font-weight: 600;
   color: var(--ff-text-secondary);
 }
+
+/* ── 移动端适配（D4 · 根容器自适应）── */
+@media (max-width: 768px) {
+  .etdx-form {
+    max-width: 100%;
+  }
+  .etdx-form > * {
+    min-width: 0;
+  }
+}
 </style>
