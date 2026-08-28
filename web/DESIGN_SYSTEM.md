@@ -333,7 +333,7 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 > `page_audit.py` 产出的「异步状态缺口」「标题层级」「自写 button」三项，
 > 是纯静态扫描难以覆盖、却直接影响用户体验的维度，建议与另两个脚本一并纳入 CI。
 
-### 当前基线（v4.1 · 2026-08-29 复审）
+### 当前基线（v4.2 · 2026-08-29）
 
 | 指标 | 整改前 | 整改后 |
 |------|--------|--------|
@@ -344,10 +344,12 @@ python web/scripts/shoot_ui.py --base http://127.0.0.1:5199
 | 硬编码 HEX | 843 | 853（净增 10 处，均为 `tokens.css` 注释中的示例色值，非组件实现） |
 | 无断点适配组件 | 31 | 31（见 D4） |
 | 栅格 `lg` 断点 | 缺失 | **已补齐**，并修正为移动优先 |
-| `.ff-page` / `__header` / `.ff-grid` 采用率 | — | 9/19 · **0/19** · 1/19（见 D2） |
-| 异步状态完整（loading+empty+error） | — | **0 / 19**（见 D7） |
+| 页面 h1 覆盖 | 8 视图无标题 + 8 视图层级错乱 | **19/19 视图均有 h1**（D8 已闭环） |
+| `.ff-page` / `__header` 采用率 | 9/19 · 0/19 | **9/19 · 10/19**（其余 9 个沉浸式页面用 sr-only h1） |
+| 异步状态完整（loading+empty+error） | — | 2/19 完整 / 17/19 有缺口（见 D7） |
 | 自写 `<button>` 绕过 AppButton | — | 43 文件 / **150 处**（见 D9） |
 | 自写 `<svg>` 绕过 AppIcon | — | **0 处**（图标纪律标杆） |
+| CI 门槛接入 | — | `npm run audit:ui` / `audit:a11y` 加 `--fail` 模式，构建可设阈值失败 |
 
 > 「深色模式适配组件 0/89」这类基于 grep `data-theme` 的指标具有误导性，已从基线中移除——
 > 组件只要消费 `--ff-*` 语义令牌便会自动适配。深色模式应以**实机截图比对**为准。
@@ -427,13 +429,19 @@ empty   → <AppEmpty :title description icon />
 error   → <AppEmpty tone="danger" … /> 或告警条 + 重试按钮
 ```
 
-### D8 · 页面标题层级混乱（高）
+### D8 · 页面标题层级混乱（高）<span style="color:#059669">✓ v4.2 已修复</span>
 
-- **8 个视图无任何标题标签**：FlashView、ArticlesView、CalendarView、SentimentView、ai/Analyst、ai/Reports、ai/Tasks、AiLayout。
-- **层级起点不一**：Dashboard/EasyTdx 从 `h1`，StockMonitor 从 `h2`，Screener/Settings/Workbench 从 `h3`。
-- **8 个视图用原生 `h1~h4` 却不用 `.ff-h*` 排版类**，字号/字重/行高各自为政。
+**修复前问题**：
+- 8 个视图无任何标题标签
+- 层级起点不一：StockMonitor 从 `h2`、Screener/Settings/Workbench 从 `h3`
+- 8 个视图用原生 `h1~h4` 却不用 `.ff-h*` 排版类
 
-影响读屏可用性与 SEO。统一方案见 D2：每个视图有且仅有一个 `h1`，区块标题从 `h2` 起。
+**修复方案**：
+- 统一采用 `<header class="ff-page__header"><div class="ff-page__heading"><h1 class="ff-page__title">…</h1><p class="ff-page__desc">…</p></div></header>` 模式
+- 沉浸式页面（AnalystView 对话、ReportReaderView 报告阅读）改用 `<h1 class="ff-sr-only">` 保留文档语义，不破坏全屏布局
+- AiLayout 是 tab 容器，标题通过 sr-only h1 提供
+
+**当前状态**（v4.2 实测）：19/19 视图均有 h1，0 个视图缺显式标题；`.ff-page__header` 采用率 10/19（其余 9 个为沉浸式页面用 sr-only h1）。
 
 ### D9 · 150 处自写 `<button>` 绕过 AppButton（高）
 
