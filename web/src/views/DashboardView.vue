@@ -30,6 +30,9 @@ import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
 import BoardRankingCard from '../components/review/BoardRankingCard.vue'
 import StockRankingCard from '../components/review/StockRankingCard.vue'
 
+// ─── 市场热榜（同花顺用户关注榜） ───
+import ThsHotList from '../components/ThsHotList.vue'
+
 const store = useAppStore()
 const stats = ref(null)
 const loading = ref(true)
@@ -430,6 +433,20 @@ onMounted(async () => {
       </div>
     </section>
 
+    <!-- ═══ 市场热榜 ═══ -->
+    <section class="ff-dashboard-view__hotrank">
+      <header class="ff-dashboard-view__panel-head">
+        <h2 class="ff-dashboard-view__panel-title">
+          <span class="ff-dashboard-view__panel-bar"></span>
+          市场热榜
+        </h2>
+        <span class="ff-dashboard-view__panel-sub">同花顺用户关注榜 · 实时热度</span>
+      </header>
+      <AppCard :no-padding="true" class="ff-dashboard-view__hotrank-card">
+        <ThsHotList />
+      </AppCard>
+    </section>
+
     <!-- ═══ 指数 K 线 ═══ -->
     <section class="ff-dashboard-view__kline">
       <AppCard title="上证指数" subtitle="000001 · 多周期 + 分时">
@@ -824,6 +841,17 @@ onMounted(async () => {
 }
 .ff-dashboard-view__panorama-focus {
   /* 全宽：涨停强度 + 连板天梯 */
+}
+
+/* ═══ 市场热榜 ═══ */
+.ff-dashboard-view__hotrank {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+}
+/* ThsHotList 自带「同花顺热榜」标题，嵌入区块后隐藏，避免与区块标题重复 */
+.ff-dashboard-view__hotrank-card :deep(.ths__hero) {
+  display: none;
 }
 
 /* 指数 K 线 */

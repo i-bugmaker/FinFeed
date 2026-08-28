@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../api/client'
 import NewsRow from '../components/NewsRow.vue'
-import NewsCard from '../components/NewsCard.vue'
 import FilterBar from '../components/FilterBar.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
@@ -19,7 +18,6 @@ const loading = ref(false)
 const finished = ref(false)
 const sources = ref([])
 const sentinel = ref(null)
-const viewMode = ref('cards') // 'cards' | 'table'
 let observer = null
 
 async function loadFirst() {
@@ -85,27 +83,6 @@ onUnmounted(() => observer && observer.disconnect())
 
 <template>
   <div class="ff-page ff-articles-view">
-    <div class="ff-articles-view__header">
-      <div class="ff-articles-view__view-toggle">
-        <button
-          class="ff-articles-view__toggle-btn"
-          :class="{ 'is-active': viewMode === 'cards' }"
-          title="卡片图文视图"
-          @click="viewMode = 'cards'"
-        >
-          <AppIcon name="dashboard" size="xs" />
-        </button>
-        <button
-          class="ff-articles-view__toggle-btn"
-          :class="{ 'is-active': viewMode === 'table' }"
-          title="数据表格视图"
-          @click="viewMode = 'table'"
-        >
-          <AppIcon name="menu" size="xs" />
-        </button>
-      </div>
-    </div>
-
     <FilterBar
       v-model="filters"
       :sources="sources"
@@ -120,18 +97,8 @@ onUnmounted(() => observer && observer.disconnect())
       </button>
     </div>
 
-    <!-- 卡片流模式 -->
-    <div class="ff-articles-view__cards" v-if="viewMode === 'cards'">
-      <NewsCard v-for="item in list" :key="item.id" :item="item" mode="news" />
-      <EmptyState
-        v-if="!loading && list.length === 0"
-        :text="filters.keyword ? `未找到与「${filters.keyword}」相关的文章` : '暂无文章数据'"
-        icon="newspaper"
-      />
-    </div>
-
     <!-- 表格模式 -->
-    <AppCard :no-padding="true" class="ff-articles-view__table" v-else>
+    <AppCard :no-padding="true" class="ff-articles-view__table">
       <table class="ff-table ff-table--sticky ff-table--hover" v-if="list.length > 0">
         <thead>
           <tr>
@@ -173,52 +140,6 @@ onUnmounted(() => observer && observer.disconnect())
 .ff-articles-view {
   max-width: var(--ff-container-max);
   margin: 0 auto;
-}
-
-.ff-articles-view__header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-bottom: var(--ff-space-4);
-  gap: var(--ff-space-4);
-}
-
-.ff-articles-view__view-toggle {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: var(--ff-radius-md);
-  background: var(--ff-bg-subtle);
-  border: 1px solid var(--ff-border);
-}
-
-.ff-articles-view__toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--ff-radius-sm);
-  color: var(--ff-text-tertiary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: all var(--ff-dur-fast);
-}
-
-.ff-articles-view__toggle-btn:hover {
-  color: var(--ff-text-primary);
-}
-
-.ff-articles-view__toggle-btn.is-active {
-  background: var(--ff-bg-surface);
-  color: var(--ff-brand-text);
-  box-shadow: var(--ff-shadow-xs);
-}
-
-.ff-articles-view__cards {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ff-space-3);
 }
 
 .ff-articles-view__table {

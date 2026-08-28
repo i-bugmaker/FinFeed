@@ -59,7 +59,7 @@ function openCmd() { store.cmdOpen = true }
           {{ store.modelAvailable ? '模型可用' : '模型未配置' }}
           <span class="ail__model-name">{{ modelLabel }}</span>
         </span>
-        <button class="ail__kbd" title="命令面板 (Ctrl+K)" @click="openCmd">
+        <button class="ail__kbd" title="命令面板" @click="openCmd">
           <AppIcon name="command" size="sm" /> K
         </button>
       </div>

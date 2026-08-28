@@ -181,7 +181,15 @@ onMounted(async () => {
 }
 
 .ff-calendar-view__datepicker {
-  width: 150px;
+  width: 190px;
+}
+
+/* 「今天」按钮选中态：当前日期为今天时高亮，切换日期后高亮消失 */
+.ff-calendar-view__date-nav :deep(.ff-btn.is-today) {
+  background: var(--ff-brand);
+  border-color: var(--ff-brand);
+  color: var(--ff-brand-fg);
+  font-weight: var(--ff-fw-semibold);
 }
 
 .ff-calendar-view__type-chips {
@@ -232,23 +240,31 @@ onMounted(async () => {
 }
 
 .ff-calendar-view__groups {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-3);
+  align-items: start;
+}
+
+@media (max-width: 767px) {
+  .ff-calendar-view__groups {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ff-calendar-view__group {
-  border-bottom: 1px solid var(--ff-border-subtle);
-}
-
-.ff-calendar-view__group:last-child {
-  border-bottom: none;
+  border: 1px solid var(--ff-border-subtle);
+  border-radius: var(--ff-radius-md);
+  overflow: hidden;
+  background: var(--ff-bg-surface);
 }
 
 .ff-calendar-view__group-head {
   display: flex;
   align-items: center;
   gap: var(--ff-space-3);
-  padding: 10px 18px;
+  padding: 10px 14px;
   background: var(--ff-bg-subtle);
   border-bottom: 1px solid var(--ff-border-subtle);
 }

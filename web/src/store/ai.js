@@ -21,7 +21,7 @@ export const useAiStore = defineStore('ai', {
     activeTask: null, // 运行中任务（供工作台进度条）
     pollTimer: null,
     pollActive: false,
-    cmdOpen: false, // Ctrl+K 命令面板
+    cmdOpen: false, // 命令面板（顶部按钮打开）
     // REDUCE 阶段流式输出：taskStreamText 为渐进正文，streamTaskId 标识当前订阅
     taskStreamText: '',
     streamTaskId: null,

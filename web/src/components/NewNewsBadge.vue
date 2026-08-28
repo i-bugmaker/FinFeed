@@ -58,6 +58,12 @@ function onClick() {
   box-shadow: var(--ff-shadow-lg);
 }
 
+/* 覆盖全局 .ff-btn:active 的 transform: scale()，避免点击瞬间丢失
+   translateX(-50%) 水平居中定位导致按钮向一侧跳动 */
+.ff-newsbadge:active:not(:disabled) {
+  transform: translateX(-50%) scale(0.975);
+}
+
 .ff-newsbadge-enter-active,
 .ff-newsbadge-leave-active {
   transition: opacity var(--ff-dur-fast) var(--ff-ease-out),

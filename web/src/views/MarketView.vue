@@ -11,8 +11,6 @@ import AppTabs from '../ui/AppTabs.vue'
 import AppSwitch from '../ui/AppSwitch.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
-import ThsHotList from '../components/ThsHotList.vue'
-import ThsLimitUp from '../components/ThsLimitUp.vue'
 
 const tabs = [
   { value: 'overview', label: '总览' },
@@ -26,8 +24,6 @@ const tabs = [
   { value: 'forecast', label: '业绩预告' },
   { value: 'ipo', label: '新股' },
   { value: 'sectors', label: '板块' },
-  { value: 'hotrank', label: '热榜' },
-  { value: 'thslimitup', label: '涨停聚焦' },
   { value: 'search', label: '股票搜索' },
 ]
 const active = ref('overview')
@@ -148,8 +144,6 @@ async function toggleAuto(v) {
 }
 
 async function load() {
-  // 热榜 / 涨停聚焦由独立组件自行拉取，避免与通用行情快照流程冲突
-  if (active.value === 'hotrank' || active.value === 'thslimitup') return
   loading.value = true
   err.value = ''
   rows.value = []
@@ -301,7 +295,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ff-page ff-market-view">
-    <AppCard class="ff-market-view__toolbar ff-glass" v-if="active !== 'hotrank'">
+    <AppCard class="ff-market-view__toolbar ff-glass">
       <div class="ff-market-view__row">
         <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />
         <AppInput
@@ -417,13 +411,7 @@ onBeforeUnmount(() => {
           <AppTabs v-model="active" type="line" :items="tabs" class="ff-market-view__tabs" />
         </div>
 
-        <!-- 同花顺热榜：独立组件，自管数据与布局 -->
-        <ThsHotList v-if="active === 'hotrank'" />
-
-        <!-- 同花顺涨停聚焦：四模块独立组件，自管数据与布局 -->
-        <ThsLimitUp v-if="active === 'thslimitup'" />
-
-        <template v-else>
+        <template>
           <div v-if="summary" class="ff-market-view__summary">
           <div v-for="(v, k) in summary" :key="k" class="ff-kv">
             <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
