@@ -91,14 +91,31 @@ def overview():
         down = int(_num(r.get("down_count")))
         neutral = int(_num(r.get("neutral_count")))
         total = int(_num(r.get("total_count")))
+        # 涨跌停口径统一：优先用通达信 ZT/DT 池计数（可逐只下钻、与涨停聚焦一致）；
+        # 若当天池未入库（盘中未采集），回退 880006 指数口径。
+        limit_up = int(_num(r.get("limit_up_count")))
+        limit_down = int(_num(r.get("limit_down_count")))
+        try:
+            from finfeed.market import store
+            from finfeed.utils.time_utils import now_bj
+
+            _td = now_bj().strftime("%Y-%m-%d")
+            _up_pool = store.get_limit_pool(_td, "up")
+            _down_pool = store.get_limit_pool(_td, "down")
+            if _up_pool:
+                limit_up = len(_up_pool)
+            if _down_pool:
+                limit_down = len(_down_pool)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("通达信涨跌停池口径读取失败，回退指数口径: %s", e)
         return {
             "up": up,
             "down": down,
             "neutral": neutral,
             "suspended": int(_num(r.get("suspended_count"))),
             "total": total,
-            "limit_up": int(_num(r.get("limit_up_count"))),
-            "limit_down": int(_num(r.get("limit_down_count"))),
+            "limit_up": limit_up,
+            "limit_down": limit_down,
             "amount": _num(r.get("total_amount")),
             "volume": _num(r.get("total_volume")),
             "mcap": _num(r.get("total_market_cap")),

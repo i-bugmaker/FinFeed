@@ -488,18 +488,135 @@ def _pool_persist_rows(td: str, pool_type: str,
     } for i, it in enumerate(items)]
 
 
+def _build_down_ladder_from_pool(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """从通达信跌停池（limit_pool direction=down）构建连跌天梯。
+
+    通达信 DT 池字段（quote.py 契约）：limit_streak=连续跌停天数、
+    price(元) / pct_chg(涨跌幅%) / reason(行业) / last_limit_time(封板时间)
+    / limit_amount(封单额亿元) / turnover(换手率%)。
+    按连跌天数分组，返回与涨停天梯同构的 [{height, number, stocks}]。
+    """
+    by_streak: Dict[int, Dict[str, Any]] = {}
+    for it in rows:
+        streak = _int(it.get("limit_streak")) or 1
+        code = it.get("code")
+        if not code:
+            continue
+        g = by_streak.setdefault(
+            streak, {"height": streak, "number": 0, "stocks": []})
+        g["stocks"].append({
+            "code": code, "name": it.get("name", ""),
+            "market_id": str(it.get("market") or "") or "",
+            "continue_num": streak,
+            "price": _num(it.get("price")),
+            "change_pct": _num(it.get("pct_chg")),
+            "reason": it.get("reason", ""),
+            "board": "",
+            "limit_up_time": it.get("last_limit_time", ""),
+            "main_net_amount": _num(it.get("limit_amount")),
+            "effective_circulation": _num(it.get("circ_mv")),
+            "turnover_ratio": _num(it.get("turnover")),
+        })
+    for g in by_streak.values():
+        g["number"] = len(g["stocks"])
+    return [by_streak[s] for s in sorted(by_streak, reverse=True)]
+
+
+def _build_broken_ladder(td: str) -> Dict[str, Any]:
+    """断板梯队：昨日连板个股中今日未封板（断板）者。
+
+    断板股按「昨日高度 + 1」归入其本应冲击的层级——昨日 2 连板今日断板
+    → 归入 3 板层级，供前端在晋级天梯对应位置以虚化打叉呈现（二连板断板
+    即在三连板位置打叉）。首板断板数量巨大且信息价值低，仅作统计计数返回。
+
+    返回 {prev_date, broken_ladder: [{height, number, stocks}], first_board_broken_count}。
+    任一环节无数据（无上一交易日快照 / 今日涨停池为空）即返回空，best-effort。
+    """
+    from finfeed.market import store
+    from finfeed.storage.database import get_db_manager
+
+    dates = (store.get_ths_limitup_dates().get("dates") or [])
+    prev = next((d for d in dates if d < td), None)
+    if not prev:
+        return {"prev_date": None, "broken_ladder": [], "first_board_broken_count": 0}
+
+    prev_rows = store.get_ths_limitup_ladder(prev)
+    if not prev_rows:
+        return {"prev_date": prev, "broken_ladder": [], "first_board_broken_count": 0}
+
+    # 今日涨停池（封板成功者）；盘前 / 未采集时为空，此时断板判断无意义
+    today_up = store.get_ths_limitup_pool(td, "up")
+    if not today_up:
+        return {"prev_date": prev, "broken_ladder": [], "first_board_broken_count": 0}
+    up_codes = {r["code"] for r in today_up}
+
+    # 今日资金流富化（best-effort：断板股今日涨跌幅 / 主力净额）
+    flow_map: Dict[str, Dict[str, Any]] = {}
+    try:
+        db = get_db_manager()
+        with db.get_db() as c:
+            c.execute(
+                "SELECT code, pct_chg, main_net FROM money_flow WHERE trade_date = ?",
+                (td,),
+            )
+            for r in c.fetchall():
+                flow_map[r["code"]] = {"change_pct": _num(r["pct_chg"]),
+                                       "main_net": _num(r["main_net"])}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("断板梯队资金流富化失败（降级为空）: %s", e)
+        flow_map = {}
+
+    broken: Dict[int, Dict[str, Any]] = {}
+    first_broken = 0
+    for r in prev_rows:
+        code = r["code"]
+        if not code or code in up_codes:
+            continue  # 今日继续封板 → 晋级，不计断板
+        h = _int(r["height"])
+        if h <= 1:
+            first_broken += 1  # 首板断板仅计数
+            continue
+        target = h + 1  # 归入本应冲击的层级
+        g = broken.setdefault(target, {"height": target, "number": 0, "stocks": []})
+        flow = flow_map.get(code) or {}
+        g["stocks"].append({
+            "code": code,
+            "name": r["name"],
+            "market_id": r.get("market_id") or "",
+            "prev_height": h,
+            "prev_continue_num": _int(r.get("continue_num")) or h,
+            "price": _num(flow.get("price")),
+            "change_pct": _num(flow.get("change_pct")),
+            "reason": f"昨日{h}连板 · 今日断板",
+            "board": "",
+            "limit_up_time": "",
+            "main_net_amount": _num(flow.get("main_net")),
+            "effective_circulation": 0,
+            "turnover_ratio": 0,
+        })
+    ladders = [broken[h] for h in sorted(broken, reverse=True)]
+    for g in ladders:
+        g["number"] = len(g["stocks"])
+    return {
+        "prev_date": prev,
+        "broken_ladder": ladders,
+        "first_board_broken_count": first_broken,
+    }
+
+
 def _ladder_persist_rows(td: str,
-                         ladder_raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                         ladder: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """手游天梯（含合成 1板）持久化行。输入已规整的 [{height, number, stocks}]。"""
     out: List[Dict[str, Any]] = []
-    for item in ladder_raw:
+    for item in ladder:
         height = _int(item.get("height"))
         number = _int(item.get("number"))
-        for c in (item.get("code_list") or []):
+        for s in (item.get("stocks") or []):
             out.append({
                 "trade_date": td, "height": height, "number": number,
-                "code": c.get("code"), "name": c.get("name"),
-                "market_id": c.get("market_id"),
-                "continue_num": _int(c.get("continue_num")),
+                "code": s.get("code"), "name": s.get("name"),
+                "market_id": s.get("market_id"),
+                "continue_num": _int(s.get("continue_num")),
             })
     return out
 
@@ -619,7 +736,30 @@ def _build_ladder_from_db(td: str) -> Optional[Dict[str, Any]]:
             "turnover_ratio": pool.get("turnover_ratio", 0),
         })
     ladder = [by_height[h] for h in sorted(by_height, reverse=True)]
-    return {"date": td, "ladder": ladder, "max_height": max_height, "source": "db"}
+    d = {"date": td, "ladder": ladder, "max_height": max_height, "source": "db"}
+    # 断板梯队：昨日连板今日未封板（best-effort，失败不阻断）
+    try:
+        brk = _build_broken_ladder(td)
+        d["prev_date"] = brk["prev_date"]
+        d["broken_ladder"] = brk["broken_ladder"]
+        d["first_board_broken_count"] = brk["first_board_broken_count"]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("断板梯队 DB 读取失败: %s", e)
+        d["broken_ladder"] = []
+        d["prev_date"] = None
+        d["first_board_broken_count"] = 0
+    # 历史回看 / DB 回退：同样附带通达信跌停天梯
+    try:
+        rows = store.get_limit_pool(td, "down")
+        d["down_ladder"] = _build_down_ladder_from_pool(rows)
+        d["tdx_down_total"] = len(rows)
+        d["tdx_up_total"] = len(store.get_limit_pool(td, "up"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("通达信跌停天梯 DB 读取失败: %s", e)
+        d["down_ladder"] = []
+        d["tdx_down_total"] = 0
+        d["tdx_up_total"] = 0
+    return d
 
 
 def _build_wind_from_db(td: str) -> Optional[Dict[str, Any]]:
@@ -870,12 +1010,14 @@ async def fetch_board_ladder(trade_date: Optional[str] = None) -> Dict[str, Any]
     rich_map = {s.get("code"): s for s in up_rich}
     ladder: List[Dict[str, Any]] = []
     max_height = 0
+    seen_codes: set = set()
     for item in ladder_raw:
         h = _int(item.get("height"))
         max_height = max(max_height, h)
         stocks: List[Dict[str, Any]] = []
         for c in (item.get("code_list") or []):
             code = c.get("code")
+            seen_codes.add(code)
             rch = rich_map.get(code) or {}
             stocks.append({
                 "code": code, "name": c.get("name"),
@@ -891,6 +1033,34 @@ async def fetch_board_ladder(trade_date: Optional[str] = None) -> Dict[str, Any]
                 "turnover_ratio": rch.get("turnover_ratio", 0),
             })
         ladder.append({"height": h, "number": _int(item.get("number")), "stocks": stocks})
+
+    # 合成 1板（首板）梯队：涨停池中首次涨停（连板天数<=1）、且未被更高梯队收录的个股
+    if not any(t["height"] == 1 for t in ladder):
+        one_stocks = [
+            s for s in up_rich
+            if (_int(s.get("continue_day_cnt")) <= 1
+                and s.get("code") and s.get("code") not in seen_codes)
+        ]
+        if one_stocks:
+            max_height = max(max_height, 1)
+            ladder.append({
+                "height": 1,
+                "number": len(one_stocks),
+                "stocks": [{
+                    "code": s.get("code"), "name": s.get("name"),
+                    "market_id": s.get("market_code", ""),
+                    "continue_num": 1,
+                    "price": s.get("price", 0),
+                    "change_pct": s.get("change_pct", 0),
+                    "reason": s.get("reason", ""),
+                    "board": s.get("board", ""),
+                    "limit_up_time": s.get("limit_up_time", ""),
+                    "main_net_amount": s.get("main_net_amount", 0),
+                    "effective_circulation": s.get("effective_circulation", 0),
+                    "turnover_ratio": s.get("turnover_ratio", 0),
+                } for s in one_stocks],
+            })
+
     ladder.sort(key=lambda x: -x["height"])
 
     if not ladder:
@@ -901,8 +1071,33 @@ async def fetch_board_ladder(trade_date: Optional[str] = None) -> Dict[str, Any]
         "date": td, "ladder": ladder, "max_height": max_height,
         "source": _source_tag(degraded), "degraded": degraded,
     }
+    # 断板梯队：昨日连板今日未封板 → 按冲击层级（昨日高度+1）归位（best-effort）
     try:
-        rows = _ladder_persist_rows(td, ladder_raw)
+        brk = _build_broken_ladder(td)
+        result["prev_date"] = brk["prev_date"]
+        result["broken_ladder"] = brk["broken_ladder"]
+        result["first_board_broken_count"] = brk["first_board_broken_count"]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("断板梯队计算失败: %s", e)
+        result["broken_ladder"] = []
+        result["prev_date"] = None
+        result["first_board_broken_count"] = 0
+    # 通达信跌停天梯：读 limit_pool(down) 按连跌天数分组；失败则回退当天 DB 快照
+    try:
+        down_rows = store.get_limit_pool(td, "down")
+        result["down_ladder"] = _build_down_ladder_from_pool(down_rows)
+        result["tdx_down_total"] = len(down_rows)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("通达信跌停天梯读取失败: %s", e)
+        result["down_ladder"] = []
+        result["tdx_down_total"] = 0
+    # 通达信涨停池计数（供前端与全市场卡对齐口径）
+    try:
+        result["tdx_up_total"] = len(store.get_limit_pool(td, "up"))
+    except Exception:  # noqa: BLE001
+        result["tdx_up_total"] = 0
+    try:
+        rows = _ladder_persist_rows(td, ladder)
         result["persisted"] = store.upsert_ths_limitup_ladder(rows)
         store.prune_ths_limitup_ladder(
             td, [(r["height"], r["code"]) for r in rows])

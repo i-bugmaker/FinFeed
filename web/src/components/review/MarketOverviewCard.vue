@@ -42,8 +42,6 @@ const metrics = computed(() => {
     { label: '上涨家数', value: fmtInt(o.up), tone: 'up' },
     { label: '下跌家数', value: fmtInt(o.down), tone: 'down' },
     { label: '平盘', value: fmtInt(o.neutral), tone: '' },
-    { label: '涨停', value: fmtInt(o.limit_up), tone: 'up' },
-    { label: '跌停', value: fmtInt(o.limit_down), tone: 'down' },
     { label: '成交额', value: fmtAmount(o.amount), tone: '' },
   ]
 })
@@ -130,7 +128,7 @@ onMounted(load)
 }
 @media (min-width: 900px) {
   .mo__metrics {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 .mo__metric {

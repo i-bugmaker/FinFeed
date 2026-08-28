@@ -268,3 +268,9 @@ nul
 
 # easy-tdx 运行时产物（公告/财报下载等）
 finfeed/integrations/easytdx/output/
+
+# -------------------------
+# 工具 / 工作区数据（不入库）
+# -------------------------
+.workbuddy/
+.freebuff/

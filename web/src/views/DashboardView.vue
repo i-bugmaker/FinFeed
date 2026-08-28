@@ -1,12 +1,15 @@
 <script setup>
 /**
- * DashboardView — 盘面复盘主控台
+ * DashboardView — 盘面复盘主控台（v3.2 重构）
  *
- * 以行情 / 盘面数据为核心：
- *   · 全市场涨跌统计、涨停聚焦、板块排行榜、个股榜单、异动监控（easy-tdx 通达信行情）
- *   · 指数 K 线（多周期 + 分时）
- *   · 实时行情推送（WebSocket，含采集告警）
- * 新闻舆情降为辅助区（可折叠）；数据源健康以紧凑平铺展示。
+ * 视觉层级：
+ *   1) 顶部状态条：市场情绪灯 + 实时推送 + 刷新
+ *   2) 今日市场速览：7 项核心情绪指标
+ *   3) 盘面复盘主控台：涨跌全景（上下布局：宽度 + 涨停强度+连板天梯）
+ *      + 板块排行榜 / 个股榜单
+ *   4) 指数 K 线（上证 / 深证）
+ *   5) 新闻舆情分析（可折叠辅助区）
+ *   6) 数据源健康状态
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api/client'
@@ -26,11 +29,52 @@ import MarketOverviewCard from '../components/review/MarketOverviewCard.vue'
 import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
 import BoardRankingCard from '../components/review/BoardRankingCard.vue'
 import StockRankingCard from '../components/review/StockRankingCard.vue'
-import UnusualAlertCard from '../components/review/UnusualAlertCard.vue'
 
 const store = useAppStore()
 const stats = ref(null)
 const loading = ref(true)
+const hasStats = computed(() => !!stats.value && !!stats.value?.cycle !== undefined && stats.value?.cycle > 0)
+
+// ─── 今日市场速览（涨停聚焦指标，60s 后端缓存，与复盘卡同源） ───
+const luFlow = ref(null)
+const flowMetrics = computed(() => {
+  const f = luFlow.value
+  if (!f) return []
+  const m = f.metrics || {}
+  const rate = (v) => (v == null ? '—' : (Number(v) * 100).toFixed(1) + '%')
+  return [
+    { label: '涨停', value: f.up ?? '—', tone: 'up', icon: 'trending-up', note: '今日封板个股数' },
+    { label: '跌停', value: f.lower ?? '—', tone: 'down', icon: 'trending-down', note: '今日封跌个股数' },
+    { label: '炸板', value: f.open ?? '—', tone: 'warn', icon: 'flame', note: '封板后开板' },
+    { label: '炸板率', value: rate(m.broken_rate), tone: '', icon: 'activity', note: '炸板 / (涨停+炸板)' },
+    { label: '封板率', value: rate(m.seal_rate), tone: '', icon: 'check', note: '涨停 / (涨停+炸板)' },
+    { label: '最高连板', value: f.maxHeight ? f.maxHeight + ' 板' : '—', tone: 'hot', icon: 'sparkles', note: '市场连板高度' },
+    { label: '断板', value: f.broken ?? '—', tone: 'broken', icon: 'x', note: f.prevDate ? `对比基准 ${f.prevDate}` : '昨日连板今日未封板' },
+  ]
+})
+
+async function fetchFlow() {
+  try {
+    const [intensityRes, ladderRes] = await Promise.all([
+      api.market('thslimitup', { section: 'intensity' }),
+      api.market('thslimitup', { section: 'ladder' }),
+    ])
+    const it = intensityRes && (intensityRes.data || intensityRes)
+    const la = ladderRes && (ladderRes.data || ladderRes)
+    luFlow.value = {
+      up: la && la.tdx_up_total != null ? la.tdx_up_total : (it ? it.up_total : null),
+      open: it ? it.open_total : null,
+      lower: la && la.tdx_down_total != null ? la.tdx_down_total : (it ? it.lower_total : null),
+      metrics: it ? (it.metrics || {}) : {},
+      maxHeight: la ? la.max_height : 0,
+      broken: (la && la.broken_ladder || [])
+        .reduce((s, t) => s + ((t.stocks || []).length || 0), 0),
+      prevDate: la ? la.prev_date : '',
+    }
+  } catch (e) {
+    console.error('今日市场速览获取失败', e)
+  }
+}
 
 // 盘面面板刷新：递增 refreshKey，各复盘卡片 watch 后重新取数
 const panelRefreshKey = ref(0)
@@ -39,7 +83,7 @@ async function refreshPanel() {
   refreshing.value = true
   panelRefreshKey.value += 1
   try {
-    stats.value = await api.stats()
+    await Promise.all([api.stats(), fetchFlow()])
   } catch (e) {
     console.error(e)
   } finally {
@@ -252,10 +296,10 @@ function healthText(s) {
 // 新闻舆情区（辅助区）与数据源健康：桌面默认展开，移动端默认收起
 const mqMobile = window.matchMedia('(max-width: 767px)')
 const newsOpen = ref(!mqMobile.matches)
-const healthOpen = ref(!mqMobile.matches)
+const healthOpen = ref(false)
 function onMqChange() {
   newsOpen.value = !mqMobile.matches
-  healthOpen.value = !mqMobile.matches
+  healthOpen.value = false
 }
 onMounted(() => {
   mqMobile.addEventListener('change', onMqChange)
@@ -282,7 +326,7 @@ const liveConnText = computed(() =>
 
 onMounted(async () => {
   try {
-    stats.value = await api.stats()
+    await Promise.all([api.stats(), fetchFlow()])
   } catch (e) {
     console.error(e)
   } finally {
@@ -293,47 +337,84 @@ onMounted(async () => {
 
 <template>
   <div class="ff-page ff-dashboard-view">
-    <div class="ff-page__header">
-      <span v-if="updateTime" class="ff-dashboard-view__updated">
-        <AppIcon name="refresh" size="xs" /> 更新于 {{ updateTime }}
-      </span>
-      <span
-        class="ff-dashboard-view__live-badge"
-        :class="liveConnected ? 'is-on' : liveConnecting ? 'is-wait' : 'is-off'"
-      >
-        <span class="ff-dashboard-view__live-dot"></span>
-        {{ liveConnText }}
-      </span>
-      <span class="ff-dashboard-view__header-spacer"></span>
-      <AppButton
-        variant="tonal"
-        size="sm"
-        icon="refresh"
-        :loading="refreshing"
-        @click="refreshPanel"
-      >
-        刷新
-      </AppButton>
-    </div>
-
-    <!-- ═══ 盘面复盘主控台（核心）═══ -->
-    <div class="ff-dashboard-view__panel">
-      <div class="ff-dashboard-view__panel-head">
-        <h2 class="ff-dashboard-view__panel-title">
-          <AppIcon name="dashboard" size="sm" /> 盘面复盘主控台
-        </h2>
-        <span class="ff-dashboard-view__panel-sub">通达信实时行情 · 盘面核心数据</span>
+    <!-- ═══ 顶部状态条 ═══ -->
+    <header class="ff-dashboard-view__topbar">
+      <div class="ff-dashboard-view__brand">
+        <AppIcon name="dashboard" size="md" />
+        <div class="ff-dashboard-view__brand-text">
+          <h1 class="ff-dashboard-view__title">盘面复盘</h1>
+          <span class="ff-dashboard-view__title-sub">盘后 · 涨跌 · 晋级 / 断板</span>
+        </div>
       </div>
+      <div class="ff-dashboard-view__topbar-meta">
+        <span v-if="updateTime" class="ff-dashboard-view__updated">
+          <AppIcon name="refresh" size="xs" /> 更新于 {{ updateTime }}
+        </span>
+        <span
+          class="ff-dashboard-view__live-badge"
+          :class="liveConnected ? 'is-on' : liveConnecting ? 'is-wait' : 'is-off'"
+        >
+          <span class="ff-dashboard-view__live-dot"></span>
+          {{ liveConnText }}
+        </span>
+        <AppButton
+          variant="tonal"
+          size="sm"
+          icon="refresh"
+          :loading="refreshing"
+          @click="refreshPanel"
+        >
+          刷新
+        </AppButton>
+      </div>
+    </header>
+
+    <!-- ═══ 今日市场速览 ═══ -->
+    <section v-if="flowMetrics.length" class="ff-dashboard-view__flow">
+      <div
+        v-for="m in flowMetrics"
+        :key="m.label"
+        class="ff-dashboard-view__flow-metric"
+        :class="`is-${m.tone}`"
+      >
+        <span class="ff-dashboard-view__flow-icon">
+          <AppIcon :name="m.icon" size="sm" />
+        </span>
+        <div class="ff-dashboard-view__flow-body">
+          <span class="ff-dashboard-view__flow-label">{{ m.label }}</span>
+          <span class="ff-dashboard-view__flow-value ff-num">{{ m.value }}</span>
+          <span class="ff-dashboard-view__flow-note">{{ m.note }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 盘面复盘主控台 ═══ -->
+    <section class="ff-dashboard-view__panel">
+      <header class="ff-dashboard-view__panel-head">
+        <h2 class="ff-dashboard-view__panel-title">
+          <span class="ff-dashboard-view__panel-bar"></span>
+          盘面复盘主控台
+        </h2>
+        <span class="ff-dashboard-view__panel-sub">通达信实时行情 · 晋级 / 断板一目了然</span>
+        <span class="ff-dashboard-view__panel-spacer"></span>
+        <span class="ff-dashboard-view__panel-legend">
+          <i class="is-up"></i>晋级实色
+          <i class="is-broken"></i>断板虚化打叉
+        </span>
+      </header>
 
       <div class="ff-dashboard-view__grid">
-        <div class="ff-dashboard-view__cell ff-dashboard-view__cell--full">
-          <AppCard title="全市场涨跌统计" subtitle="涨跌家数 / 涨停跌停 / 成交额">
-            <MarketOverviewCard :refresh-key="panelRefreshKey" />
-          </AppCard>
-        </div>
-        <div class="ff-dashboard-view__cell ff-dashboard-view__cell--full">
-          <AppCard title="涨停聚焦" subtitle="强度指标 + 连板个股">
-            <LimitUpSummaryCard :refresh-key="panelRefreshKey" />
+        <!-- 涨跌全景：上下布局（宽度 + 涨停强度 / 连板天梯） -->
+        <div class="ff-dashboard-view__cell full">
+          <AppCard title="涨跌全景" subtitle="市场宽度 + 涨停强度与连板梯队">
+            <div class="ff-dashboard-view__panorama">
+              <div class="ff-dashboard-view__panorama-width">
+                <MarketOverviewCard :refresh-key="panelRefreshKey" />
+              </div>
+              <div class="ff-dashboard-view__panorama-focus">
+                <LimitUpSummaryCard :refresh-key="panelRefreshKey" />
+              </div>
+            </div>
           </AppCard>
         </div>
         <div class="ff-dashboard-view__cell">
@@ -346,29 +427,25 @@ onMounted(async () => {
             <StockRankingCard :refresh-key="panelRefreshKey" />
           </AppCard>
         </div>
-        <div class="ff-dashboard-view__cell ff-dashboard-view__cell--full">
-          <AppCard title="异动监控" subtitle="盘口异动实时捕捉">
-            <UnusualAlertCard :refresh-key="panelRefreshKey" />
-          </AppCard>
-        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- ═══ 指数 K 线（上证 / 深证，多周期 + 分时）═══ -->
-    <div class="ff-dashboard-view__kline">
-      <AppCard title="上证指数">
+    <!-- ═══ 指数 K 线 ═══ -->
+    <section class="ff-dashboard-view__kline">
+      <AppCard title="上证指数" subtitle="000001 · 多周期 + 分时">
         <IndexKlineCard code="000001" name="上证指数" />
       </AppCard>
-      <AppCard title="深证成指">
+      <AppCard title="深证成指" subtitle="399001 · 多周期 + 分时">
         <IndexKlineCard code="399001" name="深证成指" />
       </AppCard>
-    </div>
+    </section>
 
     <!-- ═══ 新闻舆情（辅助区，可折叠）═══ -->
-    <div class="ff-dashboard-view__news">
+    <section class="ff-dashboard-view__news">
       <div class="ff-dashboard-view__news-head">
         <h2 class="ff-dashboard-view__news-title">
-          <AppIcon name="chatter" size="sm" /> 新闻舆情分析
+          <span class="ff-dashboard-view__panel-bar"></span>
+          新闻舆情分析
         </h2>
         <span class="ff-dashboard-view__news-sub">已入库新闻的统计辅助视图</span>
         <span class="ff-dashboard-view__news-spacer"></span>
@@ -383,10 +460,10 @@ onMounted(async () => {
       </div>
 
       <AppSkeleton v-if="loading" variant="text" :lines="6" />
-      <EmptyState v-else-if="!stats" text="无法加载统计数据" icon="pie-chart" />
+      <EmptyState v-else-if="!hasStats" text="暂无新闻舆情统计数据" icon="pie-chart" />
 
       <Transition name="ff-fade">
-        <div v-if="!loading && stats && newsOpen" class="ff-dashboard-view__news-body">
+        <div v-if="!loading && hasStats && newsOpen" class="ff-dashboard-view__news-body">
           <div class="ff-dashboard-view__charts">
             <AppCard title="情绪分布">
               <ChartPanel :option="sentimentOption" height="220px" />
@@ -408,39 +485,43 @@ onMounted(async () => {
           </div>
         </div>
       </Transition>
-    </div>
+    </section>
 
     <!-- ═══ 数据源健康（紧凑平铺）═══ -->
-    <div class="ff-dashboard-view__health">
-      <div class="ff-dashboard-view__statusbar ff-glass">
-        <span class="ff-dashboard-view__statusbar-label">
-          <AppIcon name="server" size="sm" /> 运行状态
-        </span>
-        <AppStatus :text="stats?.status || '运行中'" :tone="(stats?.status || '运行中') === '运行中' ? 'success' : 'danger'" />
-        <span class="ff-dashboard-view__sep" aria-hidden="true"></span>
-        <span class="ff-dashboard-view__kv-mini">轮次 <strong class="ff-num">{{ stats?.cycle ?? 0 }}</strong></span>
-        <span class="ff-dashboard-view__kv-mini">本轮 <strong class="ff-num ff-t-up">{{ stats?.new_count ?? 0 }}</strong></span>
-        <span class="ff-dashboard-view__kv-mini">数据源 <strong class="ff-num">{{ stats?.source_count ?? 0 }}</strong></span>
+    <section class="ff-dashboard-view__health">
+      <div class="ff-dashboard-view__statusbar">
+        <div class="ff-dashboard-view__statusbar-group">
+          <AppIcon name="server" size="sm" />
+          <span class="ff-dashboard-view__statusbar-label">运行状态</span>
+          <AppStatus :text="stats?.status || '运行中'" :tone="(stats?.status || '运行中') === '运行中' ? 'success' : 'danger'" />
+        </div>
+        <template v-if="hasStats">
+          <span class="ff-dashboard-view__sep" aria-hidden="true"></span>
+          <span class="ff-dashboard-view__kv-mini">轮次 <strong class="ff-num">{{ stats?.cycle ?? 0 }}</strong></span>
+          <span class="ff-dashboard-view__kv-mini">本轮 <strong class="ff-num ff-t-up">{{ stats?.new_count ?? 0 }}</strong></span>
+          <span class="ff-dashboard-view__kv-mini">数据源 <strong class="ff-num">{{ stats?.source_count ?? 0 }}</strong></span>
+        </template>
         <span class="ff-dashboard-view__statusbar-spacer"></span>
-        <span class="ff-dashboard-view__statusbar-label">
-          <AppIcon name="database" size="sm" /> 健康
-        </span>
-        <span class="ff-dash-badge ff-dash-badge--ok">正常 {{ healthSummary.ok }}</span>
-        <span v-if="healthSummary.warn" class="ff-dash-badge ff-dash-badge--warn">预警 {{ healthSummary.warn }}</span>
-        <span v-if="healthSummary.fused" class="ff-dash-badge ff-dash-badge--fused">熔断 {{ healthSummary.fused }}</span>
-        <span v-if="healthSummary.idle" class="ff-dash-badge ff-dash-badge--idle">闲置 {{ healthSummary.idle }}</span>
+        <div class="ff-dashboard-view__statusbar-group">
+          <AppIcon name="database" size="sm" />
+          <span class="ff-dashboard-view__statusbar-label">健康</span>
+          <span class="ff-dash-badge ff-dash-badge--ok">正常 {{ healthSummary.ok }}</span>
+          <span v-if="healthSummary.warn" class="ff-dash-badge ff-dash-badge--warn">预警 {{ healthSummary.warn }}</span>
+          <span v-if="healthSummary.fused" class="ff-dash-badge ff-dash-badge--fused">熔断 {{ healthSummary.fused }}</span>
+          <span v-if="healthSummary.idle" class="ff-dash-badge ff-dash-badge--idle">闲置 {{ healthSummary.idle }}</span>
+        </div>
         <AppButton
           variant="ghost"
           size="sm"
           :icon="healthOpen ? 'chevron-up' : 'chevron-down'"
           @click="healthOpen = !healthOpen"
         >
-          {{ healthOpen ? '收起' : '明细' }}
+          {{ healthOpen ? '收起明细' : '展开明细' }}
         </AppButton>
       </div>
 
       <Transition name="ff-fade">
-        <div v-if="healthOpen && stats" class="ff-dashboard-view__tiles">
+        <div v-if="healthOpen && hasStats" class="ff-dashboard-view__tiles">
           <div
             v-for="s in stats.source_health || []"
             :key="s.name"
@@ -459,7 +540,7 @@ onMounted(async () => {
           <EmptyState v-if="!stats.source_health?.length" text="暂无数据源信息" icon="database" />
         </div>
       </Transition>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -469,9 +550,50 @@ onMounted(async () => {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-3);
+  gap: var(--ff-space-5);
 }
 
+/* ═══ 顶部状态条 ═══ */
+.ff-dashboard-view__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ff-space-4);
+  padding: var(--ff-space-3) var(--ff-space-5);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-lg);
+  background: linear-gradient(135deg, var(--ff-bg-surface), var(--ff-bg-subtle));
+  box-shadow: var(--ff-shadow-xs);
+}
+.ff-dashboard-view__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  color: var(--ff-brand-text);
+}
+.ff-dashboard-view__brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ff-dashboard-view__title {
+  margin: 0;
+  font-size: var(--ff-fs-h3);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ff-text-primary);
+  line-height: 1.1;
+}
+.ff-dashboard-view__title-sub {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  flex-wrap: wrap;
+}
 .ff-dashboard-view__updated {
   display: inline-flex;
   align-items: center;
@@ -480,8 +602,134 @@ onMounted(async () => {
   color: var(--ff-text-tertiary);
   white-space: nowrap;
 }
-.ff-dashboard-view__header-spacer {
-  flex: 1 1 auto;
+
+/* ═══ 今日市场速览（7 指标精致化）═══ */
+.ff-dashboard-view__flow {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ff-space-3);
+}
+@media (min-width: 768px) {
+  .ff-dashboard-view__flow {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (min-width: 1100px) {
+  .ff-dashboard-view__flow {
+    grid-template-columns: repeat(7, 1fr);
+  }
+}
+.ff-dashboard-view__flow-metric {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: var(--ff-space-2-5);
+  padding: var(--ff-space-3);
+  border-radius: var(--ff-radius-lg);
+  border: 1px solid var(--ff-border-subtle);
+  background: var(--ff-bg-surface);
+  box-shadow: var(--ff-shadow-xs);
+  overflow: hidden;
+  transition: transform var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard),
+    box-shadow var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-dashboard-view__flow-metric::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ff-border);
+}
+.ff-dashboard-view__flow-metric.is-up::before { background: var(--ff-up); }
+.ff-dashboard-view__flow-metric.is-down::before { background: var(--ff-down); }
+.ff-dashboard-view__flow-metric.is-warn::before { background: var(--ff-warn); }
+.ff-dashboard-view__flow-metric.is-hot::before { background: linear-gradient(180deg, #ff8a3d, #ff2d55); }
+.ff-dashboard-view__flow-metric.is-broken::before { background: var(--ff-text-tertiary); }
+.ff-dashboard-view__flow-metric:hover {
+  transform: translateY(-2px);
+  border-color: var(--ff-border);
+  box-shadow: var(--ff-shadow-sm);
+}
+.ff-dashboard-view__flow-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-subtle);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__flow-metric.is-up .ff-dashboard-view__flow-icon {
+  background: var(--ff-up-subtle);
+  color: var(--ff-text-up);
+}
+.ff-dashboard-view__flow-metric.is-down .ff-dashboard-view__flow-icon {
+  background: var(--ff-down-subtle);
+  color: var(--ff-down-text);
+}
+.ff-dashboard-view__flow-metric.is-warn .ff-dashboard-view__flow-icon {
+  background: var(--ff-warn-subtle);
+  color: var(--ff-warn-text);
+}
+.ff-dashboard-view__flow-metric.is-hot .ff-dashboard-view__flow-icon {
+  background: #fff1f0;
+  color: #ff2d55;
+}
+.ff-dashboard-view__flow-metric.is-broken .ff-dashboard-view__flow-icon {
+  background: var(--ff-bg-muted);
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__flow-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.ff-dashboard-view__flow-label {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  line-height: 1;
+}
+.ff-dashboard-view__flow-value {
+  font-size: var(--ff-fs-h4);
+  font-weight: var(--ff-fw-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--ff-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ff-dashboard-view__flow-metric.is-up .ff-dashboard-view__flow-value {
+  color: var(--ff-text-up);
+}
+.ff-dashboard-view__flow-metric.is-down .ff-dashboard-view__flow-value {
+  color: var(--ff-down-text);
+}
+.ff-dashboard-view__flow-metric.is-warn .ff-dashboard-view__flow-value {
+  color: var(--ff-warn-text);
+}
+.ff-dashboard-view__flow-metric.is-hot .ff-dashboard-view__flow-value {
+  color: #ff2d55;
+}
+.ff-dashboard-view__flow-metric.is-broken .ff-dashboard-view__flow-value {
+  color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__flow-note {
+  font-size: var(--ff-fs-overline);
+  color: var(--ff-text-tertiary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ═══ 盘面复盘主控台 ═══ */
@@ -493,8 +741,9 @@ onMounted(async () => {
 .ff-dashboard-view__panel-head {
   display: flex;
   align-items: baseline;
-  gap: var(--ff-space-2);
+  gap: var(--ff-space-3);
   flex-wrap: wrap;
+  padding: 0 var(--ff-space-1);
 }
 .ff-dashboard-view__panel-title {
   display: inline-flex;
@@ -504,13 +753,48 @@ onMounted(async () => {
   font-size: var(--ff-fs-h3);
   font-weight: 700;
   color: var(--ff-text-primary);
+  position: relative;
 }
-.ff-dashboard-view__panel-title :deep(.ff-icon) {
-  color: var(--ff-brand-text);
+.ff-dashboard-view__panel-bar {
+  display: inline-block;
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--ff-up), var(--ff-up-strong));
 }
 .ff-dashboard-view__panel-sub {
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
+}
+.ff-dashboard-view__panel-spacer {
+  flex: 1 1 auto;
+}
+.ff-dashboard-view__panel-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-subtle);
+  border: 1px solid var(--ff-border-subtle);
+}
+.ff-dashboard-view__panel-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.ff-dashboard-view__panel-legend i.is-up {
+  background: var(--ff-up);
+  box-shadow: 0 0 0 3px var(--ff-up-subtle);
+}
+.ff-dashboard-view__panel-legend i.is-broken {
+  background: var(--ff-text-tertiary);
+  box-shadow: 0 0 0 3px var(--ff-bg-muted);
 }
 
 /* 复盘网格：移动 1 列 / 桌面 2 列，全宽卡片横跨两列 */
@@ -524,9 +808,22 @@ onMounted(async () => {
   .ff-dashboard-view__grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .ff-dashboard-view__cell--full {
+  .ff-dashboard-view__cell.full {
     grid-column: 1 / -1;
   }
+}
+
+/* 涨跌全景：上下布局（宽度 + 涨停强度/连板天梯） */
+.ff-dashboard-view__panorama {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-5);
+}
+.ff-dashboard-view__panorama-width {
+  /* 全宽：市场宽度走水平条 + 5 指标 */
+}
+.ff-dashboard-view__panorama-focus {
+  /* 全宽：涨停强度 + 连板天梯 */
 }
 
 /* 指数 K 线 */
@@ -546,7 +843,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: var(--ff-space-3);
-  padding: var(--ff-space-3) var(--ff-space-4);
+  padding: var(--ff-space-4);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
   background: var(--ff-bg-surface);
@@ -555,7 +852,7 @@ onMounted(async () => {
 .ff-dashboard-view__news-head {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-2);
+  gap: var(--ff-space-3);
   flex-wrap: wrap;
 }
 .ff-dashboard-view__news-title {
@@ -566,9 +863,6 @@ onMounted(async () => {
   font-size: var(--ff-fs-h3);
   font-weight: 700;
   color: var(--ff-text-primary);
-}
-.ff-dashboard-view__news-title :deep(.ff-icon) {
-  color: var(--ff-brand-text);
 }
 .ff-dashboard-view__news-sub {
   font-size: var(--ff-fs-caption);
@@ -610,23 +904,25 @@ onMounted(async () => {
 .ff-dashboard-view__statusbar {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: var(--ff-space-2) var(--ff-space-3);
-  padding: var(--ff-space-2-5) var(--ff-space-4);
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-3) var(--ff-space-4);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
   background: var(--ff-bg-surface);
   box-shadow: var(--ff-shadow-xs);
+}
+.ff-dashboard-view__statusbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  color: var(--ff-text-secondary);
 }
 .ff-dashboard-view__statusbar-spacer {
   flex: 1 1 auto;
   min-width: var(--ff-space-3);
 }
 .ff-dashboard-view__statusbar-label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ff-space-1);
   font-size: var(--ff-fs-body-sm);
   font-weight: 600;
   color: var(--ff-text-secondary);
@@ -637,7 +933,6 @@ onMounted(async () => {
   width: 1px;
   height: 14px;
   background: var(--ff-border);
-  margin: 0 var(--ff-space-1);
 }
 .ff-dashboard-view__kv-mini {
   display: inline-flex;
@@ -657,8 +952,8 @@ onMounted(async () => {
 .ff-dash-badge {
   display: inline-flex;
   align-items: center;
-  height: 24px;
-  padding: 0 var(--ff-space-2-5);
+  height: 22px;
+  padding: 0 var(--ff-space-2);
   border-radius: var(--ff-radius-pill);
   border: 1px solid var(--ff-border);
   background: var(--ff-bg-subtle);
@@ -764,7 +1059,7 @@ onMounted(async () => {
   font-size: var(--ff-fs-caption);
   font-weight: 500;
   white-space: nowrap;
-  padding: 2px var(--ff-space-2);
+  padding: 3px var(--ff-space-2-5);
   border-radius: var(--ff-radius-pill);
   border: 1px solid var(--ff-border);
   background: var(--ff-bg-subtle);
