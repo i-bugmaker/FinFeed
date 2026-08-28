@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0.."
 
 python --version >nul 2>&1
@@ -24,17 +25,6 @@ if errorlevel 1 (
 )
 
 cls
-echo.
-echo  ============================================
-echo    FinFeed Monitor - Running
-echo  ============================================
-echo.
-echo   Web:      http://localhost:8866
-echo   API Docs: http://localhost:8866/docs
-echo   Stop:     Ctrl+C
-echo.
-echo  ============================================
-echo.
 
 :: 确保前端构建产物 web/dist 存在（删缓存/构建产物后可能缺失）
 if not exist "%~dp0..\web\dist\index.html" (
@@ -50,7 +40,13 @@ if not exist "%~dp0..\web\dist\index.html" (
     popd
 )
 
+:run
 python "%~dp0..\main.py" %*
+if errorlevel 42 (
+    echo.
+    echo  [Restart] Restarting FinFeed Monitor ...
+    goto run
+)
 echo.
 echo  [Done] Monitor stopped
 pause

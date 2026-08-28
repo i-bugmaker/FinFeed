@@ -104,6 +104,7 @@ def build_display(
     interval: int,
     status: str,
     web_port: int = DEFAULT_WEB_PORT,
+    restart_hotkey: bool = False,
 ) -> Layout:
     """构建完整的终端布局"""
     # 时间戳固定 19 字符（YYYY-MM-DD HH:MM:SS），宽度恒定避免 Align.center 在秒数跳变时重排；
@@ -155,14 +156,25 @@ def build_display(
         padding=(0, 2),
     )
 
-    footer_text = Align.center(
-        Text.assemble(
-            ("按 Ctrl+C 退出", "dim"),
+    footer_parts = [("按 Ctrl+C 退出", "dim")]
+    if restart_hotkey:
+        footer_parts.append(("  │  ", "dim"))
+        footer_parts.append(("按 Ctrl+R 重启", "dim"))
+    footer_parts.extend(
+        [
             ("  │  ", "dim"),
             ("网页仪表盘: ", "dim"),
-            (f"http://localhost:{web_port}", Style(color="bright_cyan", link=f"http://localhost:{web_port}", underline=False)),
-        )
+            (
+                f"http://localhost:{web_port}",
+                Style(
+                    color="bright_cyan",
+                    link=f"http://localhost:{web_port}",
+                    underline=False,
+                ),
+            ),
+        ]
     )
+    footer_text = Align.center(Text.assemble(*footer_parts))
 
     layout = Layout()
     layout.split_column(
@@ -199,9 +211,15 @@ def build_display(
 class TerminalUI:
     """终端 TUI 实时监控界面"""
 
-    def __init__(self, interval: int, web_port: int = DEFAULT_WEB_PORT):
+    def __init__(
+        self,
+        interval: int,
+        web_port: int = DEFAULT_WEB_PORT,
+        restart_hotkey: bool = False,
+    ):
         self._interval = interval
         self._web_port = web_port
+        self._restart_hotkey = restart_hotkey
         self._news_list: List[NewsItem] = []
         self._source_stats: Dict[str, int] = {}
         self._cycle = 0
@@ -274,6 +292,7 @@ class TerminalUI:
             interval=self._interval,
             status=self._status,
             web_port=self._web_port,
+            restart_hotkey=self._restart_hotkey,
         )
 
     def _size_changed(self) -> bool:

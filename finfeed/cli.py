@@ -22,6 +22,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from typing import Optional
@@ -59,7 +60,11 @@ async def run_once():
 async def run_continuous(interval: int, web_port: int):
     """持续监控模式（带TUI）"""
     monitor = get_monitor()
-    terminal_ui = TerminalUI(interval=interval, web_port=web_port)
+    terminal_ui = TerminalUI(
+        interval=interval,
+        web_port=web_port,
+        restart_hotkey=bool(_hotkey_box and _hotkey_box.get("active")),
+    )
 
     from finfeed.storage.database import (
         db_get_all_source_last_ts,
@@ -163,12 +168,36 @@ async def run_continuous(interval: int, web_port: int):
     update_task = asyncio.create_task(update_tui())
     monitor_task = asyncio.create_task(monitor.run())
 
+    # 停止信号轮询：把两类外部停止请求转换为 shutdown_event（与
+    # SIGINT/SIGTERM 同一优雅停机路径）：
+    #   1) Ctrl+R 热键（_hotkey_restart_event，仅 Windows 控制台）；
+    #   2) 重启请求哨兵文件（新实例重跑启动脚本时创建，跨平台生效，
+    #      这是"重复启动 = 重启"语义的核心通道）。
+    # 消费哨兵后以退出码 0 停机——不用 RESTART_EXIT_CODE，避免一键脚本
+    # 把已被新实例接管的重启再循环触发一次。
+    async def _stop_signal_poll():
+        stop_file = (_hotkey_box or {}).get("stop_file")
+        while not shutdown_event.is_set():
+            if _hotkey_restart_event.is_set():
+                shutdown_event.set()
+                return
+            if stop_file and os.path.exists(stop_file):
+                print("\n[重启] 收到新实例的重启请求，正在优雅停止当前实例...")
+                logger.info("收到重启请求哨兵: %s", stop_file)
+                _remove_stop_file(stop_file)
+                shutdown_event.set()
+                return
+            await asyncio.sleep(0.2)
+
+    stop_signal_task = asyncio.create_task(_stop_signal_poll())
+
     await shutdown_event.wait()
 
     terminal_ui.stop()
     await monitor.shutdown()
 
-    for task in (monitor_task, tui_task, update_task):
+    tasks = [monitor_task, tui_task, update_task, stop_signal_task]
+    for task in tasks:
         task.cancel()
         try:
             await task
@@ -262,7 +291,19 @@ def start_web_stack(port: int) -> "subprocess.Popen | None":
             "请先安装依赖: pip install -e ."
         )
         raise SystemExit(1) from None
-    return _launch_fastapi(port)
+    proc = _launch_fastapi(port)
+    # 重启场景防端口竞态：旧实例的 uvicorn 子进程刚被终止、端口尚未完全
+    # 落地时，新子进程可能 bind 失败即退出。检测到"启动即退出"则短暂
+    # 等待后重试一次。
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        logger.warning(
+            "FastAPI 子进程启动即退出(退出码 %s)，疑似端口 %s 未释放，1 秒后重试一次",
+            proc.returncode, port,
+        )
+        time.sleep(1.0)
+        proc = _launch_fastapi(port)
+    return proc
 
 
 class SafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -386,9 +427,35 @@ def _setup_logging():
 
 
 def _pid_alive(pid: int) -> bool:
-    """检查 PID 是否存活（跨平台，不依赖 psutil）。"""
+    """检查 PID 是否存活（跨平台，不依赖 psutil）。
+
+    注意：Windows 上禁止使用 ``os.kill(pid, 0)`` —— CPython 在 win32 的
+    ``os.kill`` 对非 CTRL_* 信号走 ``TerminateProcess``，sig=0 会把目标
+    进程直接杀掉而非探测存活。这里 Windows 走 OpenProcess 探测。
+    """
     if pid <= 0:
         return False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+            )
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return exit_code.value == STILL_ACTIVE
+                return True
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return True
     try:
         os.kill(pid, 0)
     except OSError:
@@ -398,38 +465,121 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def _monitor_lock_path() -> str:
+def _monitor_lock_path(instance: str = "") -> str:
+    """锁文件路径。命名实例使用独立锁文件，默认实例保持原路径。"""
+    filename = (
+        f".finfeed_monitor_{instance}.lock" if instance else ".finfeed_monitor.lock"
+    )
     return os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "finfeed",
-        ".finfeed_monitor.lock",
+        filename,
     )
 
 
-def _acquire_monitor_lock() -> Optional[str]:
-    """获取单实例锁，防止多个监控实例并发抢源/写库。
+def _read_lock_pid(lock_path: str) -> int:
+    """读取锁文件中记录的持有者 PID；损坏/缺失返回 0。"""
+    try:
+        with open(lock_path, "r", encoding="utf-8") as fp:
+            return int(fp.read().strip() or "0")
+    except (OSError, ValueError):
+        return 0
 
-    锁文件内写入本进程 PID。若锁已存在且持有者 PID 仍存活则拒绝启动；
-    持有者已退出则接管锁。返回锁文件路径，退出时由调用方释放。
+
+def _stop_file_path(lock_path: str) -> str:
+    """重启请求哨兵文件路径（位于锁文件旁）。"""
+    return lock_path + ".stop"
+
+
+def _request_graceful_stop(lock_path: str) -> None:
+    """写入重启请求哨兵，旧实例轮询到后走优雅停机路径。"""
+    try:
+        with open(_stop_file_path(lock_path), "w", encoding="utf-8") as fp:
+            fp.write(str(os.getpid()))
+    except OSError as e:
+        logger.warning(f"写入重启请求哨兵失败: {e}")
+
+
+def _remove_stop_file(stop_file_path: str) -> None:
+    """删除重启请求哨兵文件（参数为哨兵文件完整路径）。"""
+    try:
+        os.remove(stop_file_path)
+    except OSError:
+        pass
+
+
+def _wait_process_exit(pid: int, timeout: float) -> bool:
+    """轮询等待进程退出；超时返回 False。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not _pid_alive(pid):
+            return True
+        time.sleep(0.2)
+    return not _pid_alive(pid)
+
+
+def _force_kill_tree(pid: int) -> None:
+    """强制终止进程及其子进程树（Windows 用 taskkill /T，POSIX 用 SIGKILL）。
+
+    仅在旧实例未响应优雅停机时兜底使用——正常路径下旧实例会在自己的
+    finally 中终止 FastAPI 子进程并保存状态，不会走到这里。
     """
-    lock_path = _monitor_lock_path()
+    logger.warning(f"强制终止旧实例进程树 (PID {pid})")
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                timeout=15,
+                check=False,
+            )
+        else:
+            os.kill(pid, signal.SIGKILL)
+    except Exception as e:
+        logger.warning(f"强制终止进程 {pid} 失败: {e}")
+
+
+# 优雅停机等待上限：旧实例需完成 TUI 停止 / monitor 关停 / FastAPI 子进程
+# 终止 / 状态保存。正常应在数秒内完成，25s 已含慢速抓取轮的收尾余量。
+GRACEFUL_STOP_TIMEOUT = 25.0
+# 强制终止后等待端口等系统资源释放的余量。
+FORCE_KILL_WAIT = 10.0
+
+
+def _acquire_monitor_lock(instance: str = "") -> Optional[str]:
+    """获取实例锁（2026-08-28 重构：重启语义 + 多实例并存）。
+
+    - **同一实例名重复启动 = 重启**：若锁持有者存活，写入 stop 哨兵文件
+      请求旧实例优雅停止（旧实例轮询到后走与 Ctrl+C 完全相同的停机
+      路径：TUI 停止、monitor 关停、FastAPI 子进程终止、状态保存、锁
+      释放）；等待其退出，超时则强制终止进程树后接管。
+    - **不同实例名并存运行**：各自使用独立锁文件 ``.finfeed_monitor_<NAME>.lock``。
+    - **无运行中的旧实例**：按全新启动处理。
+    """
+    lock_path = _monitor_lock_path(instance)
+    tag = f" [{instance}]" if instance else ""
     try:
         if os.path.exists(lock_path):
-            old_pid = 0
-            try:
-                with open(lock_path, "r", encoding="utf-8") as fp:
-                    old_pid = int(fp.read().strip() or "0")
-            except (OSError, ValueError):
-                old_pid = 0
+            old_pid = _read_lock_pid(lock_path)
             if old_pid > 0 and _pid_alive(old_pid):
-                logger.error(
-                    f"检测到监控实例已在运行 (PID {old_pid})，"
-                    f"拒绝本实例启动以避免并发冲突。"
-                )
-                return None
-            logger.warning(f"接管失效监控锁（旧 PID {old_pid}）")
+                # 重启语义：请求旧实例优雅停止，而不是拒绝本实例启动。
+                print(f"[重启] 检测到运行中的实例{tag} (PID {old_pid})，正在请求其优雅停止...")
+                _request_graceful_stop(lock_path)
+                if not _wait_process_exit(old_pid, GRACEFUL_STOP_TIMEOUT):
+                    print(f"[重启] 旧实例 {GRACEFUL_STOP_TIMEOUT:.0f}s 内未响应，强制终止进程树...")
+                    _force_kill_tree(old_pid)
+                    if not _wait_process_exit(old_pid, FORCE_KILL_WAIT):
+                        print("[ERROR] 无法终止旧实例，放弃启动以避免端口冲突与数据竞争。")
+                        return None
+                print(f"[重启] 旧实例已停止（状态已保存、端口已释放），继续启动。")
+                time.sleep(0.3)  # 端口等系统资源完全落地的微小余量
+            elif old_pid > 0:
+                logger.warning(f"接管失效监控锁{tag}（旧 PID {old_pid}）")
         with open(lock_path, "w", encoding="utf-8") as fp:
             fp.write(str(os.getpid()))
+        # 清理可能残留的重启请求哨兵：旧实例被强制终止时未来得及消费，
+        # 若不清除，本实例的轮询任务会立刻误判为"收到重启请求"而自停。
+        _remove_stop_file(_stop_file_path(lock_path))
         return lock_path
     except OSError as e:
         logger.warning(f"监控锁创建失败（忽略，继续启动）: {e}")
@@ -448,6 +598,67 @@ def _release_monitor_lock(lock_path: Optional[str]) -> None:
                 os.remove(lock_path)
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Ctrl+R 一键重启热键（2026-08-28）
+# ---------------------------------------------------------------------------
+
+# 重启约定退出码：监控进程以此码退出时，一键脚本据此自动重启。
+RESTART_EXIT_CODE = 42
+
+# 热键触发信号：监听线程置位，run_continuous 内的轮询任务将其转换为
+# shutdown_event（与 SIGINT/SIGTERM 同一优雅停机路径）。
+_hotkey_restart_event = threading.Event()
+# 当前实例的热键状态盒（由 _start_restart_hotkey 赋值，run_continuous 读取）。
+_hotkey_box: Optional[dict] = None
+
+
+def _start_restart_hotkey() -> dict:
+    """启动 Ctrl+R 重启热键监听（仅 Windows 控制台生效）。
+
+    后台守护线程通过 msvcrt 读取按键：Ctrl+R（0x12）或 r/R 触发后置位
+    ``_hotkey_restart_event``；run_continuous 的轮询任务检测到后设置
+    shutdown_event，走与 Ctrl+C 完全相同的优雅停机（TUI 停止、monitor
+    关停、锁释放），随后进程以 RESTART_EXIT_CODE 退出，由一键脚本接管重启。
+
+    返回状态盒 box：box["active"] 表示监听线程是否已启动；box["restart"]
+    在触发后置位，main 据此决定退出码。非 Windows / 非终端环境不监听。
+    """
+    global _hotkey_box
+    box = {"restart": False, "active": False}
+    _hotkey_box = box
+    _hotkey_restart_event.clear()
+    if sys.platform != "win32":
+        return box
+    try:
+        import msvcrt
+
+        if not sys.stdin or not sys.stdin.isatty():
+            return box
+    except Exception:
+        return box
+
+    def _watch():
+        while True:
+            try:
+                ch = msvcrt.getch()
+            except OSError:
+                return
+            if ch in (b"\x12", b"r", b"R"):  # b"\x12" = Ctrl+R
+                box["restart"] = True
+                _hotkey_restart_event.set()
+                print("\n[快捷键] Ctrl+R 已触发，正在优雅停止并重启监控...")
+                return
+
+    try:
+        threading.Thread(
+            target=_watch, name="hotkey-restart", daemon=True
+        ).start()
+        box["active"] = True
+    except Exception:
+        pass
+    return box
 
 
 def _run_market_action(args):
@@ -515,9 +726,12 @@ def main():
   python main.py --export json        # 导出为JSON
   python main.py --export csv         # 导出为CSV
   python main.py --export json --start 2024-01-01 --end 2024-01-31
+  python main.py --instance b2        # 命名实例（独立锁文件，端口自动派生，可多实例并行）
+  python main.py --instance b2 --port 8877   # 命名实例并显式指定端口
         """
     )
-    parser.add_argument("--port", type=int, default=DEFAULT_WEB_PORT, help=f"Web 仪表盘端口（默认 {DEFAULT_WEB_PORT}）")
+    parser.add_argument("--port", type=int, default=None, help=f"Web 仪表盘端口（默认 {DEFAULT_WEB_PORT}；命名实例未指定时按实例名自动派生）")
+    parser.add_argument("--instance", default="", help="命名实例：使用独立锁文件 .finfeed_monitor_<NAME>.lock，允许多实例并行（注意共享同一数据库，避免同时对同一批源做重补抓）")
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL, help=f"抓取间隔（秒），默认{DEFAULT_INTERVAL}")
     parser.add_argument("--once", action="store_true", help="只抓取一次后退出")
     parser.add_argument("--export", choices=["json", "csv", "excel", "markdown", "md"], help="导出格式 (json/csv/excel/markdown)")
@@ -546,6 +760,17 @@ def main():
     screener_cli.add_arguments(parser)
 
     args = parser.parse_args()
+
+    # 端口解析：未显式指定时，默认实例用 8866；命名实例按实例名稳定派生
+    # （8867-9266，同名实例重启端口不变，便于书签/外部跳转）。
+    if args.port is None:
+        if args.instance:
+            import zlib
+
+            offset = 1 + (zlib.crc32(args.instance.encode("utf-8")) % 400)
+            args.port = DEFAULT_WEB_PORT + offset
+        else:
+            args.port = DEFAULT_WEB_PORT
 
     init_db()
 
@@ -605,23 +830,32 @@ def main():
 
     fastapi_proc = None
     lock_path = None
+    box = {"restart": False, "active": False}
     try:
-        fastapi_proc = start_web_stack(args.port)
-
         if args.once:
+            fastapi_proc = start_web_stack(args.port)
             total_new = asyncio.run(run_once())
             print_once_result([], total_new, 0, 0)
         else:
-            # 单实例锁(2026-08-24加固)：防止多个监控实例并发抢同一批源/同一数据库。
-            # 历史事故：多实例并发补抓互相打断，实时主循环被饿死数小时，
-            # 消息停留在昨日 22:49 无任何新增。
-            lock_path = _acquire_monitor_lock()
+            # 实例锁（2026-08-28 重启语义）：同名实例重复启动 = 自动停止旧
+            # 实例后重启；不同实例名使用独立锁文件，可并存运行。
+            # 锁必须先于 Web 栈获取：重启场景下旧实例仍占用 Web 端口，
+            # 先停旧实例再启动 uvicorn，否则端口冲突导致 Web 起不来。
+            lock_path = _acquire_monitor_lock(args.instance)
             if lock_path is None:
-                print("\n[ERROR] 已存在运行中的监控实例，本实例拒绝启动以避免并发冲突。")
-                print("        如需强制启动，请先停止旧实例，或删除 "
-                      "finfeed/.finfeed_monitor.lock 后重试。")
+                print("\n[ERROR] 无法获取实例锁（旧实例强制终止失败），放弃启动。")
+                print("        请手动检查进程后重试，或删除 "
+                      f"{lock_path} 及其 .stop 文件。")
                 sys.exit(1)
+            box = _start_restart_hotkey()
+            box["stop_file"] = _stop_file_path(lock_path)
+            if args.instance:
+                print(f"[OK] 命名实例 [{args.instance}] 已就绪，Web 端口 {args.port}")
+            fastapi_proc = start_web_stack(args.port)
             asyncio.run(run_continuous(interval=args.interval, web_port=args.port))
+            if box.get("restart"):
+                # 约定退出码：一键脚本检测到 42 后自动重启本进程。
+                sys.exit(RESTART_EXIT_CODE)
     except KeyboardInterrupt:
         print("\n监控已停止。数据已持久化。")
     finally:
