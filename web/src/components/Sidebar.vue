@@ -27,6 +27,7 @@ const groups = [
     title: '行情与量化',
     items: [
       { to: '/market', label: '全景行情', icon: 'trending-up' },
+      { to: '/stock-monitor', label: '股票监控', icon: 'monitor' },
       { to: '/screener', label: '智能选股', icon: 'filter' },
       { to: '/easytdx', label: 'easy-tdx', icon: 'cpu' },
     ],

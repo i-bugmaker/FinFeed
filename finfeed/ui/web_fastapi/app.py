@@ -44,6 +44,10 @@ from finfeed.integrations.easytdx.router import router as easytdx_router
 
 # 智能选股模块（五维加权评分）
 from finfeed.integrations.screener.router import router as screener_router
+
+# 股票监控模块（导入管理 / 舆情聚合 / AI 分析）
+from finfeed.stock_monitor import service as stock_monitor_service
+from finfeed.stock_monitor.router import router as stock_monitor_router
 from finfeed.market import alerting as market_alerting
 from finfeed.market import scheduler as market_scheduler
 from finfeed.market import ws_feed as market_ws
@@ -110,6 +114,9 @@ app.include_router(easytdx_dashboard_router)
 
 # 注册智能选股路由（/api/screener/*）
 app.include_router(screener_router)
+
+# 注册股票监控路由（/api/stock-monitor/*）
+app.include_router(stock_monitor_router)
 
 # ----------------------------------------------------------------------
 # 全市场资金流与板块轮动监控大屏集成（可选，依赖 easy-tdx）
@@ -507,6 +514,12 @@ async def _startup(app: FastAPI) -> None:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"板块分时刷新线程启动失败（可忽略）: {e}")
 
+    # 股票监控外部舆情刷新线程（东财资讯/公告周期入库；失败不阻断主服务）
+    try:
+        stock_monitor_service.worker.start()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"股票监控刷新线程启动失败（可忽略）: {e}")
+
     news_events.initialize()
     # 创建 tick 哨兵文件并置为当前时间，使 _sse_poll_loop 的 last_tick 基准有效；
     # 之后主进程每次抓取完成都会更新其 mtime 以「唤醒」本进程的即时推送。
@@ -563,6 +576,11 @@ async def _shutdown(app: FastAPI) -> None:
     try:
         if _sm_stop_worker is not None:
             _sm_stop_worker()
+    except Exception:  # noqa: BLE001
+        pass
+    # 停止股票监控外部舆情刷新线程
+    try:
+        stock_monitor_service.worker.stop()
     except Exception:  # noqa: BLE001
         pass
 
