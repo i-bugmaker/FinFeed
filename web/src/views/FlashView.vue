@@ -286,7 +286,7 @@ onUnmounted(() => {
   background: none;
   border: none;
   cursor: pointer;
-  transition: all var(--ff-dur-fast);
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 
 .ff-flash-view__toggle-btn:hover {

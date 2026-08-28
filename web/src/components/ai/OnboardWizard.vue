@@ -245,7 +245,7 @@ async function save() {
 .ow-body { padding: 24px 26px; }
 .ow-desc { font-size: 13.5px; color: var(--ff-text-secondary, #6b7280); margin-bottom: 15px; }
 .ow-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 320px; overflow-y: auto; }
-.ow-preset { display: flex; flex-direction: column; gap: 3px; padding: 13px 14px; border: 1.5px solid var(--ff-border, #e5e7eb); border-radius: 11px; background: #fff; cursor: pointer; text-align: left; transition: all 120ms; }
+.ow-preset { display: flex; flex-direction: column; gap: 3px; padding: 13px 14px; border: 1.5px solid var(--ff-border, #e5e7eb); border-radius: 11px; background: #fff; cursor: pointer; text-align: left; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); }
 .ow-preset:hover { border-color: var(--ff-border-brand, #9fc3b1); }
 .ow-preset.on { border-color: var(--ff-brand, #2f7d5b); background: var(--ff-bg-brand-subtle, #eaf4ef); box-shadow: 0 0 0 3px var(--ff-bg-brand-subtle, #eaf4ef); }
 .ow-pname { font-size: 13.5px; font-weight: 600; color: var(--ff-text-primary, #1f2937); }
@@ -262,7 +262,7 @@ async function save() {
 .ow-test { font-size: 12.5px; color: var(--ff-brand, #2f7d5b); margin: 4px 0 10px; }
 .ow-test.err { color: var(--ff-down, #e5484d); }
 .ow-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-.ow-btn { height: 38px; padding: 0 20px; border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; border: none; transition: all 120ms; }
+.ow-btn { height: 38px; padding: 0 20px; border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; border: none; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); }
 .ow-btn--primary { background: var(--ff-brand, #2f7d5b); color: #fff; }
 .ow-btn--primary:hover { background: var(--ff-brand-dark, #1d4e39); }
 .ow-btn--primary:disabled { opacity: 0.45; cursor: not-allowed; }

@@ -132,7 +132,7 @@ function aiAnalyze() {
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
   background: var(--ff-bg-surface);
-  transition: all var(--ff-dur-base) var(--ff-ease-standard);
+  transition: background-color var(--ff-dur-base) var(--ff-ease-standard), border-color var(--ff-dur-base) var(--ff-ease-standard), color var(--ff-dur-base) var(--ff-ease-standard), box-shadow var(--ff-dur-base) var(--ff-ease-standard), transform var(--ff-dur-base) var(--ff-ease-standard);
   cursor: pointer;
 }
 

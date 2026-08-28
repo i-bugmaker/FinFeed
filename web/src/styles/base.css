@@ -149,14 +149,17 @@ hr {
   color: var(--ff-brand-text);
 }
 
-/* 全局焦点策略：仅键盘导航显示焦点环 */
+/* 全局焦点策略：仅键盘导航显示焦点环
+   --------------------------------------------------------------------
+   注意：不要在 :focus-visible 里设置 border-radius。现代浏览器的 outline
+   会跟随元素自身的 border-radius 绘制，一旦在此强制统一圆角，胶囊形按钮
+   （border-radius: 999px）获焦时会被压成方角。各组件保留自己的圆角即可。 */
 :focus {
   outline: none;
 }
 :focus-visible {
   outline: 2px solid var(--ff-brand);
   outline-offset: 2px;
-  border-radius: var(--ff-radius-xs);
 }
 
 /* ── 2. 排版（角色化字体系统）─────────────────────────────────────────────
@@ -420,34 +423,91 @@ h6 {
   gap: var(--ff-grid-gutter);
 }
 
-/* 列跨度 */
-.ff-col-1 { grid-column: span 1 / span 1; }
-.ff-col-2 { grid-column: span 2 / span 2; }
-.ff-col-3 { grid-column: span 3 / span 3; }
-.ff-col-4 { grid-column: span 4 / span 4; }
-.ff-col-5 { grid-column: span 5 / span 5; }
-.ff-col-6 { grid-column: span 6 / span 6; }
-.ff-col-7 { grid-column: span 7 / span 7; }
-.ff-col-8 { grid-column: span 8 / span 8; }
-.ff-col-9 { grid-column: span 9 / span 9; }
+/* 列跨度 —— 移动优先（Mobile First）
+   --------------------------------------------------------------------
+   约定：不带前缀的 .ff-col-N 是「最小屏基线」，作用于所有宽度；
+        带断点前缀的 .ff-col-{sm|md|lg|xl}-N 用 min-width 逐级覆盖。
+   因此 <div class="ff-col-12 ff-col-lg-6"> 读作：手机通栏，≥1024px 占一半。
+
+   注意：此处必须与 DESIGN_SYSTEM.md 声明的用法一致。历史上本文件曾实现为
+   max-width 桌面优先，与 StyleGuideView.vue 的书写方式相反，导致栅格演示
+   失效（ff-col-lg-6 从未被定义）。v4.1 统一为移动优先。
+   -------------------------------------------------------------------- */
+.ff-col-1  { grid-column: span 1  / span 1;  }
+.ff-col-2  { grid-column: span 2  / span 2;  }
+.ff-col-3  { grid-column: span 3  / span 3;  }
+.ff-col-4  { grid-column: span 4  / span 4;  }
+.ff-col-5  { grid-column: span 5  / span 5;  }
+.ff-col-6  { grid-column: span 6  / span 6;  }
+.ff-col-7  { grid-column: span 7  / span 7;  }
+.ff-col-8  { grid-column: span 8  / span 8;  }
+.ff-col-9  { grid-column: span 9  / span 9;  }
 .ff-col-10 { grid-column: span 10 / span 10; }
 .ff-col-11 { grid-column: span 11 / span 11; }
 .ff-col-12 { grid-column: span 12 / span 12; }
 
-/* 平板 ≤1024 */
-@media (max-width: 1024px) {
-  .ff-col-md-4 { grid-column: span 4 / span 4; }
-  .ff-col-md-6 { grid-column: span 6 / span 6; }
-  .ff-col-md-8 { grid-column: span 8 / span 8; }
+/* sm ≥640 —— 大屏手机 / 竖屏平板 */
+@media (min-width: 640px) {
+  .ff-col-sm-1  { grid-column: span 1  / span 1;  }
+  .ff-col-sm-2  { grid-column: span 2  / span 2;  }
+  .ff-col-sm-3  { grid-column: span 3  / span 3;  }
+  .ff-col-sm-4  { grid-column: span 4  / span 4;  }
+  .ff-col-sm-5  { grid-column: span 5  / span 5;  }
+  .ff-col-sm-6  { grid-column: span 6  / span 6;  }
+  .ff-col-sm-7  { grid-column: span 7  / span 7;  }
+  .ff-col-sm-8  { grid-column: span 8  / span 8;  }
+  .ff-col-sm-9  { grid-column: span 9  / span 9;  }
+  .ff-col-sm-10 { grid-column: span 10 / span 10; }
+  .ff-col-sm-11 { grid-column: span 11 / span 11; }
+  .ff-col-sm-12 { grid-column: span 12 / span 12; }
+}
+
+/* md ≥768 —— 横屏平板 */
+@media (min-width: 768px) {
+  .ff-col-md-1  { grid-column: span 1  / span 1;  }
+  .ff-col-md-2  { grid-column: span 2  / span 2;  }
+  .ff-col-md-3  { grid-column: span 3  / span 3;  }
+  .ff-col-md-4  { grid-column: span 4  / span 4;  }
+  .ff-col-md-5  { grid-column: span 5  / span 5;  }
+  .ff-col-md-6  { grid-column: span 6  / span 6;  }
+  .ff-col-md-7  { grid-column: span 7  / span 7;  }
+  .ff-col-md-8  { grid-column: span 8  / span 8;  }
+  .ff-col-md-9  { grid-column: span 9  / span 9;  }
+  .ff-col-md-10 { grid-column: span 10 / span 10; }
+  .ff-col-md-11 { grid-column: span 11 / span 11; }
   .ff-col-md-12 { grid-column: span 12 / span 12; }
 }
 
-/* 移动 ≤768 —— 一律铺满 */
-@media (max-width: 768px) {
-  .ff-grid > [class*='ff-col-'] {
-    grid-column: span 12 / span 12;
-  }
-  .ff-col-sm-6 { grid-column: span 6 / span 6; }
+/* lg ≥1024 —— 笔记本（此前缺失，StyleGuideView 已在用 ff-col-lg-6） */
+@media (min-width: 1024px) {
+  .ff-col-lg-1  { grid-column: span 1  / span 1;  }
+  .ff-col-lg-2  { grid-column: span 2  / span 2;  }
+  .ff-col-lg-3  { grid-column: span 3  / span 3;  }
+  .ff-col-lg-4  { grid-column: span 4  / span 4;  }
+  .ff-col-lg-5  { grid-column: span 5  / span 5;  }
+  .ff-col-lg-6  { grid-column: span 6  / span 6;  }
+  .ff-col-lg-7  { grid-column: span 7  / span 7;  }
+  .ff-col-lg-8  { grid-column: span 8  / span 8;  }
+  .ff-col-lg-9  { grid-column: span 9  / span 9;  }
+  .ff-col-lg-10 { grid-column: span 10 / span 10; }
+  .ff-col-lg-11 { grid-column: span 11 / span 11; }
+  .ff-col-lg-12 { grid-column: span 12 / span 12; }
+}
+
+/* xl ≥1280 —— 桌面大屏 */
+@media (min-width: 1280px) {
+  .ff-col-xl-1  { grid-column: span 1  / span 1;  }
+  .ff-col-xl-2  { grid-column: span 2  / span 2;  }
+  .ff-col-xl-3  { grid-column: span 3  / span 3;  }
+  .ff-col-xl-4  { grid-column: span 4  / span 4;  }
+  .ff-col-xl-5  { grid-column: span 5  / span 5;  }
+  .ff-col-xl-6  { grid-column: span 6  / span 6;  }
+  .ff-col-xl-7  { grid-column: span 7  / span 7;  }
+  .ff-col-xl-8  { grid-column: span 8  / span 8;  }
+  .ff-col-xl-9  { grid-column: span 9  / span 9;  }
+  .ff-col-xl-10 { grid-column: span 10 / span 10; }
+  .ff-col-xl-11 { grid-column: span 11 / span 11; }
+  .ff-col-xl-12 { grid-column: span 12 / span 12; }
 }
 
 /* 自适应卡片流（无需断点） */

@@ -145,7 +145,7 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: var(--ff-text-secondary);
-  transition: all var(--ff-dur-base) var(--ff-ease-standard);
+  transition: background-color var(--ff-dur-base) var(--ff-ease-standard), border-color var(--ff-dur-base) var(--ff-ease-standard), color var(--ff-dur-base) var(--ff-ease-standard), box-shadow var(--ff-dur-base) var(--ff-ease-standard), transform var(--ff-dur-base) var(--ff-ease-standard);
 }
 
 .ff-topbar__live.is-live {

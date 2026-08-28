@@ -573,7 +573,9 @@
   height: var(--ff-control-h-md);
   padding: 0 var(--ff-space-3);
   background: var(--ff-bg-surface);
-  border: 1px solid var(--ff-border);
+  /* 表单控件边界属「识别控件所必需」，用 --ff-border-field（≥3:1）
+     而非装饰性的 --ff-border（1.23:1） */
+  border: 1px solid var(--ff-border-field);
   border-radius: var(--ff-radius-md);
   color: var(--ff-text-primary);
   transition:
@@ -582,7 +584,7 @@
     background-color var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .ff-input:hover:not(.is-disabled):not(.is-focused) {
-  border-color: var(--ff-border-strong);
+  border-color: var(--ff-border-field-hover);
 }
 .ff-input.is-focused,
 .ff-field--focused .ff-input,
@@ -681,7 +683,7 @@
   min-height: 96px;
   padding: var(--ff-space-3);
   background: var(--ff-bg-surface);
-  border: 1px solid var(--ff-border);
+  border: 1px solid var(--ff-border-field);
   border-radius: var(--ff-radius-md);
   color: var(--ff-text-primary);
   font-size: var(--ff-fs-body-sm);
@@ -691,7 +693,7 @@
     box-shadow var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .ff-textarea:hover:not(:disabled) {
-  border-color: var(--ff-border-strong);
+  border-color: var(--ff-border-field-hover);
 }
 .ff-textarea:focus {
   border-color: var(--ff-brand);
@@ -874,7 +876,7 @@
   height: var(--ff-control-h-md);
   padding: 0 var(--ff-space-3);
   background: var(--ff-bg-surface);
-  border: 1px solid var(--ff-border);
+  border: 1px solid var(--ff-border-field);
   border-radius: var(--ff-radius-md);
   color: var(--ff-text-primary);
   font-size: var(--ff-fs-body);
@@ -885,7 +887,7 @@
     background-color var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .ff-select__trigger:hover:not(:disabled) {
-  border-color: var(--ff-border-strong);
+  border-color: var(--ff-border-field-hover);
 }
 .ff-select__trigger:focus-visible,
 .ff-select__trigger.is-open,

@@ -53,7 +53,7 @@ function go() {
   border-radius: var(--ff-radius-lg);
   box-shadow: var(--ff-shadow-xs);
   overflow: hidden;
-  transition: all var(--ff-dur-base) var(--ff-ease-standard);
+  transition: background-color var(--ff-dur-base) var(--ff-ease-standard), border-color var(--ff-dur-base) var(--ff-ease-standard), color var(--ff-dur-base) var(--ff-ease-standard), box-shadow var(--ff-dur-base) var(--ff-ease-standard), transform var(--ff-dur-base) var(--ff-ease-standard);
 }
 .ff-statcard::before {
   content: '';

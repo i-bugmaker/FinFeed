@@ -1223,7 +1223,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--ff-border-strong); border-radius: var(--ff-radius-md);
   background: var(--ff-bg-subtle); color: var(--ff-text-brand);
   font-size: var(--ff-fs-body-sm); font-weight: 600; cursor: pointer;
-  transition: all var(--ff-dur-fast); white-space: nowrap;
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); white-space: nowrap;
 }
 .screener-strategy-btn:hover { border-color: var(--ff-brand); background: var(--ff-bg-hover); }
 .screener-field--switch { gap: var(--ff-space-1-5); cursor: pointer; }
@@ -1233,7 +1233,7 @@ onBeforeUnmount(() => {
   height: 26px; padding: 0 12px; border: 1px solid var(--ff-border);
   border-radius: 999px; background: var(--ff-bg-surface);
   color: var(--ff-text-secondary); font-size: var(--ff-fs-caption);
-  font-weight: 500; cursor: pointer; transition: all var(--ff-dur-fast);
+  font-weight: 500; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
   white-space: nowrap;
 }
 .screener-board-chip:hover { border-color: var(--ff-brand); color: var(--ff-brand); }
@@ -1278,7 +1278,7 @@ onBeforeUnmount(() => {
   height: 30px; padding: 0 2px; border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-md); background: var(--ff-bg-surface);
   color: var(--ff-text-secondary); font-size: 12px;
-  font-weight: 500; cursor: pointer; transition: all var(--ff-dur-fast);
+  font-weight: 500; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1;
 }
 .panel-seg__btn:hover { border-color: var(--ff-brand); color: var(--ff-brand); }
@@ -1317,14 +1317,14 @@ onBeforeUnmount(() => {
 .panel-icon-btn {
   width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md); background: var(--ff-bg-surface);
-  color: var(--ff-text-tertiary); cursor: pointer; transition: all var(--ff-dur-fast);
+  color: var(--ff-text-tertiary); cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .panel-icon-btn:hover { color: var(--ff-danger-text); border-color: var(--ff-danger-border); }
 .panel-eval-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: 32px; border: 1px dashed var(--ff-border-strong); border-radius: var(--ff-radius-md);
   background: var(--ff-bg-subtle); color: var(--ff-text-brand); font-size: var(--ff-fs-caption);
-  font-weight: 600; cursor: pointer; transition: all var(--ff-dur-fast);
+  font-weight: 600; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .panel-eval-btn:hover { border-color: var(--ff-brand); background: var(--ff-bg-hover); }
 .panel-eval-btn:disabled { opacity: 0.5; cursor: not-allowed; }

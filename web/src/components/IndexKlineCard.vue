@@ -407,7 +407,7 @@ watch([period, range, customStart, customEnd], load)
   padding: 4px 8px;
   border-radius: var(--ff-radius-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .ff-ikc__range:hover {
   color: var(--ff-text-secondary);
@@ -462,7 +462,7 @@ watch([period, range, customStart, customEnd], load)
   padding: 6px 16px;
   border-radius: var(--ff-radius-md);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .ff-ikc__retry-btn:hover {
   border-color: var(--ff-chart-primary);

@@ -294,18 +294,27 @@
   --ff-glass-border: rgba(226, 232, 240, 0.8);
   --ff-glass-blur: blur(16px);
 
-  /* 边框 */
+  /* 边框
+     --ff-border* 用于卡片分隔、装饰性描边（WCAG 对纯装饰元素无对比度要求）。
+     --ff-border-field 专供表单控件（input / select / datepicker / checkbox），
+     其边界属「识别控件所必需」，按 WCAG 1.4.11 需 ≥3:1；现值 3.01:1。
+     切勿把两者混用：用 --ff-border 画输入框会导致边界不可辨识。 */
   --ff-border-subtle: #f1f5f9;
   --ff-border: #e2e8f0;
   --ff-border-strong: #cbd5e1;
   --ff-border-inverse: #334155;
+  --ff-border-field: #808b9d;       /* 白底 3.44 / 画布 3.29 / 浅底 3.14，均 ≥3:1 */
+  --ff-border-field-hover: #6b7787; /* 白底 4.55 / 浅底 4.15 */
 
-  /* 文本 */
+  /* 文本
+     v4.1 可访问性修正：tertiary / placeholder 由 #94a3b8 加深至 #64748b。
+     原值在白底上仅 2.56:1，未达 WCAG 2.1 AA 正文 4.5:1；现值 4.76:1（画布底 4.55:1）。
+     层级依然成立：primary 17.85 / secondary 7.58 / tertiary 4.76。 */
   --ff-text-primary: #0f172a;
   --ff-text-secondary: #475569;
-  --ff-text-tertiary: #94a3b8;
+  --ff-text-tertiary: #64748b;
   --ff-text-disabled: #cbd5e1;
-  --ff-text-placeholder: #94a3b8;
+  --ff-text-placeholder: #64748b;
   --ff-text-inverse: #ffffff;
   --ff-text-link: #2563eb;
 
@@ -339,6 +348,31 @@
   --ff-ease-out: var(--ff-ease-decelerate);
   --ff-fs-base: var(--ff-fs-body);
   --ff-z-popover: var(--ff-z-dropdown);
+
+  /* ---- v4.1 补齐：被引用但此前未定义的令牌 --------------------------
+     这些名称在业务代码中大量出现（合计 141 处），此前只能靠 var(..., 兜底值)
+     静默降级，导致主题切换对相应区域完全失效。此处统一映射到现行语义体系，
+     不再新增平行概念。UI 审计脚本（web/scripts/ui_audit.py）会在 CI 中拦截
+     新增的未定义令牌引用。 */
+  --ff-text-1: var(--ff-text-primary);
+  --ff-text-2: var(--ff-text-secondary);
+  --ff-text-3: var(--ff-text-tertiary);
+  --ff-brand-dark: var(--ff-brand-active);
+  --ff-brand-light: var(--ff-brand-hover);
+  --ff-bg-up-subtle: var(--ff-up-subtle);
+  --ff-bg-down-subtle: var(--ff-down-subtle);
+  --ff-text-warning: var(--ff-warn-text);
+  --ff-text-down: var(--ff-down-text);
+  --ff-border-warning: var(--ff-warn-border);
+  --ff-border-brand-subtle: var(--ff-brand-border);
+  --ff-bg-code: var(--ff-bg-subtle);
+  --ff-icon-inverse: var(--ff-text-inverse);
+  --ff-fs-title-sm: var(--ff-fs-h4);
+  --ff-autogrid-min: 240px;
+  --ff-bg-warning-subtle: var(--ff-warn-subtle);
+  --ff-bg-brand-soft: var(--ff-brand-subtle);
+  --ff-dur-normal: var(--ff-dur-base);
+  --ff-sans: var(--ff-font-sans);
 
   /* 涨 / 利好 (A股科技红) */
   --ff-up: #e11d48;
@@ -446,18 +480,23 @@
   --ff-glass-border: rgba(255, 255, 255, 0.08);
   --ff-glass-blur: blur(20px);
 
-  /* 边框 */
+  /* 边框（装饰性；表单控件请用下方的 --ff-border-field） */
   --ff-border-subtle: rgba(255, 255, 255, 0.06);
   --ff-border: rgba(255, 255, 255, 0.1);
   --ff-border-strong: rgba(255, 255, 255, 0.18);
   --ff-border-inverse: #e2e8f0;
+  --ff-border-field: #5a6b81;       /* 3.28:1，满足 WCAG 1.4.11 表单边界 ≥3:1 */
+  --ff-border-field-hover: #7c8ba1; /* 5.16:1 */
 
-  /* 文本 */
+  /* 文本
+     v4.1 可访问性修正：tertiary / placeholder 由 #64748b / #475569 提亮至
+     #7c8ba1。原值在 #0f172a 卡片底上仅 3.75:1 / 2.36:1，未达 4.5:1；现值 5.16:1。
+     层级依然成立：primary 17.06 / secondary 6.96 / tertiary 5.16。 */
   --ff-text-primary: #f8fafc;
   --ff-text-secondary: #94a3b8;
-  --ff-text-tertiary: #64748b;
+  --ff-text-tertiary: #7c8ba1;
   --ff-text-disabled: #475569;
-  --ff-text-placeholder: #475569;
+  --ff-text-placeholder: #7c8ba1;
   --ff-text-inverse: #090d16;
   --ff-text-link: #60a5fa;
 
@@ -491,6 +530,29 @@
   --ff-ease-out: var(--ff-ease-decelerate);
   --ff-fs-base: var(--ff-fs-body);
   --ff-z-popover: var(--ff-z-dropdown);
+
+  /* ---- v4.1 补齐：被引用但此前未定义的令牌（与亮色块一一对应） ----
+     暗色下同样映射到现行语义体系；因语义令牌本身已随主题切换，
+     此处无需重复给出具体色值。 */
+  --ff-text-1: var(--ff-text-primary);
+  --ff-text-2: var(--ff-text-secondary);
+  --ff-text-3: var(--ff-text-tertiary);
+  --ff-brand-dark: var(--ff-brand-active);
+  --ff-brand-light: var(--ff-brand-hover);
+  --ff-bg-up-subtle: var(--ff-up-subtle);
+  --ff-bg-down-subtle: var(--ff-down-subtle);
+  --ff-text-warning: var(--ff-warn-text);
+  --ff-text-down: var(--ff-down-text);
+  --ff-border-warning: var(--ff-warn-border);
+  --ff-border-brand-subtle: var(--ff-brand-border);
+  --ff-bg-code: var(--ff-bg-subtle);
+  --ff-icon-inverse: var(--ff-text-inverse);
+  --ff-fs-title-sm: var(--ff-fs-h4);
+  --ff-autogrid-min: 240px;
+  --ff-bg-warning-subtle: var(--ff-warn-subtle);
+  --ff-bg-brand-soft: var(--ff-brand-subtle);
+  --ff-dur-normal: var(--ff-dur-base);
+  --ff-sans: var(--ff-font-sans);
 
   /* 涨 / 利好 (霓虹科技红) */
   --ff-up: #f43f5e;

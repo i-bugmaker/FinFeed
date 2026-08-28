@@ -103,7 +103,7 @@ function onDelete(s) {
   width: 100%; padding: 8px 0; margin-bottom: 10px;
   border: 1.5px dashed var(--ff-border, #c3cdc8); border-radius: 9px;
   background: var(--ff-bg-surface, #fff); color: var(--ff-text-secondary, #6b7280);
-  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 150ms;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .sl__new:hover { border-color: var(--ff-brand, #2f7d5b); color: var(--ff-brand, #2f7d5b); background: var(--ff-bg-brand-subtle, #eaf4ef); }
 .sl__scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }

@@ -182,7 +182,7 @@ function isActive(item) {
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
-  transition: all var(--ff-dur-fast) var(--ff-ease-standard);
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
   outline: none;
 }
 

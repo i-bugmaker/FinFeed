@@ -392,7 +392,7 @@ onBeforeUnmount(() => {
 .an__empty-title { font-size: 15px; font-weight: 600; color: var(--ff-text-primary, #1f2937); }
 .an__empty-sub { font-size: 12.5px; color: var(--ff-text-3, #9ca3af); margin-top: 4px; }
 .an__sug { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
-.an__sug-btn { border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-surface, #fff); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--ff-text-2, #6b7280); cursor: pointer; transition: all 120ms; text-align: left; }
+.an__sug-btn { border: 1px solid var(--ff-border, #e5e7eb); background: var(--ff-bg-surface, #fff); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--ff-text-2, #6b7280); cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); text-align: left; }
 .an__sug-btn:hover { border-color: var(--ff-border-brand, #9fc3b1); color: var(--ff-brand-dark, #1d4e39); background: var(--ff-bg-brand-subtle, #f4faf7); }
 .an__input-wrap { padding: 12px 14px; border-top: 1px solid var(--ff-border, #e5e7eb); position: relative; }
 .an__chips { display: flex; gap: 6px; margin-bottom: 8px; }

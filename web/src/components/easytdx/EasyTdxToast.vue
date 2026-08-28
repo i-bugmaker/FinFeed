@@ -82,7 +82,7 @@ const ICONS = { success: 'check-circle', error: 'alert-circle', info: 'info' }
 .etdx-toast__close:hover { background: var(--ff-bg-hover); color: var(--ff-text-primary); }
 .etdx-toast-enter-active,
 .etdx-toast-leave-active {
-  transition: all 200ms var(--ff-ease-spring);
+  transition: background-color var(--ff-dur-base) var(--ff-ease-spring), border-color var(--ff-dur-base) var(--ff-ease-spring), color var(--ff-dur-base) var(--ff-ease-spring), box-shadow var(--ff-dur-base) var(--ff-ease-spring), transform var(--ff-dur-base) var(--ff-ease-spring);
 }
 .etdx-toast-enter-from {
   opacity: 0;
