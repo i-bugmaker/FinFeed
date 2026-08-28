@@ -162,23 +162,23 @@ const html = computed(() => {
 </template>
 
 <style scoped>
-.mdv { font-size: 14px; line-height: 1.7; color: var(--ff-text-primary, #1f2937); word-break: break-word; }
-.mdv :deep(h2) { font-size: 17px; font-weight: 700; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid var(--ff-brand, #2f7d5b); }
+.mdv { font-size: 14px; line-height: 1.7; color: var(--ff-text-primary); word-break: break-word; }
+.mdv :deep(h2) { font-size: 17px; font-weight: 700; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid var(--ff-brand); }
 .mdv :deep(h3) { font-size: 15px; font-weight: 600; margin: 16px 0 8px; }
-.mdv :deep(h4) { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: var(--ff-text-secondary, #6b7280); }
+.mdv :deep(h4) { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: var(--ff-text-secondary); }
 .mdv :deep(p) { margin: 8px 0; }
 .mdv :deep(ul), .mdv :deep(ol) { margin: 8px 0; padding-left: 22px; }
 .mdv :deep(li) { margin: 4px 0; }
 .mdv :deep(strong) { font-weight: 700; }
-.mdv :deep(code) { font-family: var(--ff-font-mono, ui-monospace, monospace); font-size: 12.5px; background: var(--ff-bg-subtle, #f3f4f6); padding: 1px 6px; border-radius: 5px; }
-.mdv :deep(pre) { background: var(--ff-bg-subtle, #f6f8f7); border: 1px solid var(--ff-border, #e5e7eb); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
+.mdv :deep(code) { font-family: var(--ff-font-mono, ui-monospace, monospace); font-size: 12.5px; background: var(--ff-bg-subtle); padding: 1px 6px; border-radius: 5px; }
+.mdv :deep(pre) { background: var(--ff-bg-subtle); border: 1px solid var(--ff-border); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
 .mdv :deep(pre code) { background: none; padding: 0; font-size: 12.5px; line-height: 1.6; }
-.mdv :deep(blockquote) { margin: 10px 0; padding: 8px 14px; border-left: 3px solid var(--ff-border-brand, #4f9e76); background: var(--ff-bg-subtle, #f9fafb); border-radius: 0 8px 8px 0; color: var(--ff-text-secondary, #6b7280); }
-.mdv :deep(hr) { border: none; border-top: 1px dashed var(--ff-border, #e5e7eb); margin: 16px 0; }
-.mdv :deep(a) { color: var(--ff-brand, #2f7d5b); text-decoration: underline; text-underline-offset: 2px; }
+.mdv :deep(blockquote) { margin: 10px 0; padding: 8px 14px; border-left: 3px solid var(--ff-border-brand); background: var(--ff-bg-subtle); border-radius: 0 8px 8px 0; color: var(--ff-text-secondary); }
+.mdv :deep(hr) { border: none; border-top: 1px dashed var(--ff-border); margin: 16px 0; }
+.mdv :deep(a) { color: var(--ff-brand); text-decoration: underline; text-underline-offset: 2px; }
 .mdv :deep(table) { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
-.mdv :deep(th) { background: var(--ff-bg-subtle, #f3f6f4); font-weight: 600; text-align: left; padding: 7px 10px; border: 1px solid var(--ff-border, #e5e7eb); color: var(--ff-text-secondary, #6b7280); font-size: 12px; }
-.mdv :deep(td) { padding: 7px 10px; border: 1px solid var(--ff-border, #e5e7eb); }
+.mdv :deep(th) { background: var(--ff-bg-subtle); font-weight: 600; text-align: left; padding: 7px 10px; border: 1px solid var(--ff-border); color: var(--ff-text-secondary); font-size: 12px; }
+.mdv :deep(td) { padding: 7px 10px; border: 1px solid var(--ff-border); }
 .mdv :deep(.md-table) { overflow-x: auto; }
 .mdv--compact { font-size: 13px; line-height: 1.6; }
 .mdv--compact :deep(h2) { font-size: 15px; margin: 12px 0 6px; }

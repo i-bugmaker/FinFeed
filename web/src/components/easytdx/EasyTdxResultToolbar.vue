@@ -133,7 +133,7 @@ async function copy() {
   margin-right: auto;
 }
 .etdx-rtb__truncated {
-  color: var(--ff-text-warning, #b7791f);
+  color: var(--ff-text-warning);
 }
 .etdx-rtb__actions {
   display: inline-flex;

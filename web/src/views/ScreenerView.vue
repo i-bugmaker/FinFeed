@@ -484,7 +484,7 @@ function scoreDistOption(res) {
     yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10, color: '#64748b' } },
     series: [{
       name: '数量', type: 'bar', data: counts, barWidth: '70%',
-      itemStyle: { color: '#2f7d5b', borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: 'var(--ff-brand)', borderRadius: [3, 3, 0, 0] },
     }],
   }
 }
@@ -497,7 +497,7 @@ function boardPieOption(res) {
     legend: { bottom: 0, textStyle: { fontSize: 11, color: '#64748b' } },
     series: [{
       type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
-      itemStyle: { borderColor: '#fff', borderWidth: 2 },
+      itemStyle: { borderColor: 'var(--ff-bg-surface)', borderWidth: 2 },
       data,
     }],
   }
@@ -513,12 +513,12 @@ function tierBarOption(res) {
     yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10, color: '#64748b' } },
     series: [{
       type: 'bar', data: counts, barWidth: '46%',
-      itemStyle: { color: '#2f7d5b', borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: 'var(--ff-brand)', borderRadius: [3, 3, 0, 0] },
     }],
   }
 }
 function scatterOption(res) {
-  const tierColors = { strong: '#e11d48', watch: '#b45309', observe: '#0f766e', none: '#cbd5e1' }
+  const tierColors = { strong: '#e11d48', watch: '#b45309', observe: 'var(--ff-info)', none: '#cbd5e1' }
   const series = []
   const tierOrder = ['strong', 'watch', 'observe', 'none']
   tierOrder.forEach((tier) => {
@@ -549,7 +549,7 @@ function layersOption(ev) {
     series: [{
       type: 'bar', data: keys.map((k) => ev.layers[k]), barWidth: '52%',
       itemStyle: {
-        color: (p) => (p.data >= 0 ? '#e11d48' : '#15803d'),
+        color: (p) => (p.data >= 0 ? '#e11d48' : 'var(--ff-down)'),
         borderRadius: [3, 3, 0, 0],
       },
     }],
@@ -562,7 +562,7 @@ function dimIcOption(ev) {
     const icir = pd[d].icir
     if (icir < 0.5) return '#e11d48'
     if (icir < 1.0) return '#b45309'
-    return '#2f7d5b'
+    return 'var(--ff-brand)'
   })
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -1289,7 +1289,7 @@ onBeforeUnmount(() => {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1;
 }
 .panel-seg__btn:hover { border-color: var(--ff-brand); color: var(--ff-brand); }
-.panel-seg__btn.is-on { background: var(--ff-brand); border-color: var(--ff-brand); color: #fff; }
+.panel-seg__btn.is-on { background: var(--ff-brand); border-color: var(--ff-brand); color: var(--ff-bg-surface); }
 
 .dim-row { display: flex; align-items: center; gap: 8px; }
 .dim-row__label { width: 56px; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); flex: none; }

@@ -101,8 +101,8 @@ function run(task) {
 .etdx-tasks__need {
   font-size: var(--ff-fs-caption);
   font-weight: 500;
-  color: var(--ff-text-warning, #b7791f);
-  border: 1px solid var(--ff-border-warning, #ecc94b);
+  color: var(--ff-text-warning);
+  border: 1px solid var(--ff-border-warning);
   border-radius: var(--ff-radius-pill);
   padding: 0 6px;
 }

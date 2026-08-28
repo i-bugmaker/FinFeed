@@ -53,8 +53,8 @@ function buildCandle(t) {
   const x = t.rows.map((r) => r[dateIdx])
   const data = t.rows.map((r) => [num(r[oi]), num(r[ci]), num(r[lo]), num(r[hi])])
   // 红涨绿跌：阳线(close>=open)=红，阴线=绿
-  const up = themeColor('--ff-up', '#f0575c')
-  const down = themeColor('--ff-down', '#2bb763')
+  const up = themeColor('--ff-up', 'var(--ff-up)')
+  const down = themeColor('--ff-down', 'var(--ff-down)')
   // 成交量副图（存在 vol/volume 列时）
   const volIdx = cols.findIndex((c) => /^vol(ume)?$/i.test(c))
   const closes = t.rows.map((r) => num(r[ci]))
@@ -74,7 +74,7 @@ function buildCandle(t) {
         borderColor0: down,
       },
     },
-    { name: 'MA5', type: 'line', data: ma(5), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#f59e0b' } },
+    { name: 'MA5', type: 'line', data: ma(5), smooth: true, showSymbol: false, lineStyle: { width: 1, color: 'var(--ff-warn)' } },
     { name: 'MA10', type: 'line', data: ma(10), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#875bf7' } },
     { name: 'MA20', type: 'line', data: ma(20), smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#0ea5a5' } },
   ]
@@ -102,15 +102,15 @@ function buildCandle(t) {
         return p.axisValue
       },
     },
-    legend: { data: ['MA5', 'MA10', 'MA20'], top: 0, right: 10, textStyle: { color: '#9aa4b2', fontSize: 11 } },
+    legend: { data: ['MA5', 'MA10', 'MA20'], top: 0, right: 10, textStyle: { color: 'var(--ff-text-3)', fontSize: 11 } },
     grid,
     xAxis: [
-      { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: '#e3e8ef' } }, axisLabel: { color: '#9aa4b2', fontSize: 10.5 } },
+      { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: 'var(--ff-border)' } }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10.5 } },
       ...(volIdx >= 0 ? [{ type: 'category', gridIndex: 1, data: x, axisLabel: { show: false } }] : []),
     ],
     yAxis: [
-      { scale: true, splitLine: { lineStyle: { color: '#f0f3f7' } }, axisLabel: { formatter: (v) => Number(v).toFixed(2) } },
-      ...(volIdx >= 0 ? [{ gridIndex: 1, splitLine: { show: false }, axisLabel: { color: '#9aa4b2', fontSize: 10 } }] : []),
+      { scale: true, splitLine: { lineStyle: { color: 'var(--ff-bg-subtle)' } }, axisLabel: { formatter: (v) => Number(v).toFixed(2) } },
+      ...(volIdx >= 0 ? [{ gridIndex: 1, splitLine: { show: false }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10 } }] : []),
     ],
     dataZoom: [{ type: 'inside', xAxisIndex: volIdx >= 0 ? [0, 1] : 0 }, { type: 'slider', height: 16, xAxisIndex: volIdx >= 0 ? [0, 1] : 0 }],
     series,
@@ -127,8 +127,8 @@ function buildFund(t) {
   const dataCol = netIdx >= 0 ? netIdx : volIdx
   const x = dateIdx >= 0 ? t.rows.map((r) => r[dateIdx]) : t.rows.map((_, i) => i + 1)
   const values = t.rows.map((r) => num(r[dataCol]))
-  const up = themeColor('--ff-up', '#f0575c')
-  const down = themeColor('--ff-down', '#2bb763')
+  const up = themeColor('--ff-up', 'var(--ff-up)')
+  const down = themeColor('--ff-down', 'var(--ff-down)')
   return {
     tooltip: {
       trigger: 'axis',
@@ -140,8 +140,8 @@ function buildFund(t) {
       },
     },
     grid: { left: 70, right: 16, top: 24, bottom: 30 },
-    xAxis: { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: '#e3e8ef' } }, axisLabel: { color: '#9aa4b2', fontSize: 10.5 } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f0f3f7' } }, axisLabel: { color: '#9aa4b2', fontSize: 10, formatter: (v) => (Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : Math.abs(v) >= 1e4 ? (v / 1e4).toFixed(0) + '万' : v) } },
+    xAxis: { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: 'var(--ff-border)' } }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10.5 } },
+    yAxis: { type: 'value', splitLine: { lineStyle: { color: 'var(--ff-bg-subtle)' } }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10, formatter: (v) => (Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : Math.abs(v) >= 1e4 ? (v / 1e4).toFixed(0) + '万' : v) } },
     series: [
       {
         name: columnLabel(cols[dataCol]),
@@ -486,19 +486,19 @@ function isPlainDict(v) {
   align-items: flex-start;
   gap: var(--ff-space-3);
   padding: var(--ff-space-4);
-  background: var(--ff-bg-down-subtle, #fdecea);
-  border: 1px solid var(--ff-border-down, #fbcdcf);
+  background: var(--ff-bg-down-subtle);
+  border: 1px solid var(--ff-border-down);
   border-radius: var(--ff-radius-md);
 }
 .etdx-result__error-ico {
   display: inline-flex;
   flex: none;
-  color: var(--ff-down-text, #c0392b);
+  color: var(--ff-down-text);
 }
 .etdx-result__error-body b {
   display: block;
   font-size: var(--ff-fs-body);
-  color: var(--ff-down-text, #c0392b);
+  color: var(--ff-down-text);
   margin-bottom: 4px;
 }
 .etdx-result__error-body p {
@@ -606,7 +606,7 @@ function isPlainDict(v) {
   color: var(--ff-text-tertiary);
 }
 .etdx-result__truncated {
-  color: var(--ff-text-warning, #b7791f);
+  color: var(--ff-text-warning);
 }
 .etdx-result__tablewrap {
   overflow-x: auto;
@@ -615,11 +615,11 @@ function isPlainDict(v) {
 }
 /* 涨跌着色（红涨绿跌） */
 .etdx-result :deep(.ff-table__cell.is-up) {
-  color: var(--ff-up-text, #d02b31);
+  color: var(--ff-up-text);
   font-weight: 500;
 }
 .etdx-result :deep(.ff-table__cell.is-down) {
-  color: var(--ff-down-text, #0d8a43);
+  color: var(--ff-down-text);
   font-weight: 500;
 }
 /* 买卖方向徽章 */
@@ -632,12 +632,12 @@ function isPlainDict(v) {
   font-weight: 600;
 }
 .etdx-dir--buy {
-  background: var(--ff-bg-up-subtle, #fde4e5);
-  color: var(--ff-up-text, #d02b31);
+  background: var(--ff-bg-up-subtle);
+  color: var(--ff-up-text);
 }
 .etdx-dir--sell {
-  background: var(--ff-bg-down-subtle, #d1fadf);
-  color: var(--ff-down-text, #0d8a43);
+  background: var(--ff-bg-down-subtle);
+  color: var(--ff-down-text);
 }
 /* 文件结果图标配色 */
 .etdx-result__file {

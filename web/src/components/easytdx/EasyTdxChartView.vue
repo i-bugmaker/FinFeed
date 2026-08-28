@@ -32,8 +32,8 @@ function buildCandle(t) {
   if ([dateIdx, oi, hi, lo, ci].some((i) => i < 0)) return null
   const x = t.rows.map((r) => r[dateIdx])
   const data = t.rows.map((r) => [num(r[oi]), num(r[ci]), num(r[lo]), num(r[hi])])
-  const up = themeColor('--ff-up', '#f0575c')
-  const down = themeColor('--ff-down', '#2bb763')
+  const up = themeColor('--ff-up', 'var(--ff-up)')
+  const down = themeColor('--ff-down', 'var(--ff-down)')
   return {
     tooltip: {
       trigger: 'axis',

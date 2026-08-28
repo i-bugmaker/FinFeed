@@ -88,16 +88,16 @@ function run(item) {
 
 <style scoped>
 .cp-mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 25, 20, 0.35); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
-.cp-panel { width: 560px; max-width: calc(100vw - 32px); background: var(--ff-bg-surface, #fff); border-radius: 14px; box-shadow: 0 12px 40px rgba(10, 30, 22, 0.25); border: 1px solid var(--ff-border, #e5e7eb); overflow: hidden; }
-.cp-input { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--ff-border, #e5e7eb); color: var(--ff-text-3, #9ca3af); }
-.cp-input input { flex: 1; border: none; outline: none; font-size: 15px; background: none; color: var(--ff-text-primary, #1f2937); }
+.cp-panel { width: 560px; max-width: calc(100vw - 32px); background: var(--ff-bg-surface); border-radius: 14px; box-shadow: 0 12px 40px rgba(10, 30, 22, 0.25); border: 1px solid var(--ff-border); overflow: hidden; }
+.cp-input { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--ff-border); color: var(--ff-text-3); }
+.cp-input input { flex: 1; border: none; outline: none; font-size: 15px; background: none; color: var(--ff-text-primary); }
 .cp-list { max-height: 340px; overflow-y: auto; padding: 8px; }
 .cp-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 9px; cursor: pointer; }
-.cp-item.on { background: var(--ff-bg-brand-subtle, #eaf4ef); }
-.cp-item.on .cp-label { color: var(--ff-brand-dark, #1d4e39); }
-.cp-item .cp-label { flex: 1; font-size: 13.5px; color: var(--ff-text-primary, #1f2937); }
-.cp-group { font-size: 11px; color: var(--ff-text-3, #9ca3af); }
-.cp-none { padding: 28px; text-align: center; color: var(--ff-text-3, #9ca3af); font-size: 13px; }
+.cp-item.on { background: var(--ff-bg-brand-subtle); }
+.cp-item.on .cp-label { color: var(--ff-brand-dark); }
+.cp-item .cp-label { flex: 1; font-size: 13.5px; color: var(--ff-text-primary); }
+.cp-group { font-size: 11px; color: var(--ff-text-3); }
+.cp-none { padding: 28px; text-align: center; color: var(--ff-text-3); font-size: 13px; }
 .cp-fade-enter-active, .cp-fade-leave-active { transition: opacity 150ms, transform 150ms; }
 .cp-fade-enter-from, .cp-fade-leave-to { opacity: 0; transform: translateY(-8px); }
 </style>

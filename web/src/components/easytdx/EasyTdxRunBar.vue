@@ -93,6 +93,6 @@ function onAbort() {
 .etdx-runbar__hint {
   margin: 0;
   font-size: var(--ff-fs-caption);
-  color: var(--ff-text-warning, #b7791f);
+  color: var(--ff-text-warning);
 }
 </style>

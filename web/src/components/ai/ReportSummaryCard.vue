@@ -40,9 +40,9 @@ const tags = computed(() => {
 </template>
 
 <style scoped>
-.rsc { background: var(--ff-bg-brand-subtle, #eaf4ef); border: 1px solid var(--ff-border-brand, #bfd9cc); border-radius: 12px; padding: 14px 16px; }
-.rsc__label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ff-brand-dark, #1d4e39); letter-spacing: .05em; margin-bottom: 7px; }
-.rsc__text { font-size: 13.5px; line-height: 1.7; color: var(--ff-text-primary, #1f2937); margin: 0; }
+.rsc { background: var(--ff-bg-brand-subtle); border: 1px solid var(--ff-border-brand); border-radius: 12px; padding: 14px 16px; }
+.rsc__label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ff-brand-dark); letter-spacing: .05em; margin-bottom: 7px; }
+.rsc__text { font-size: 13.5px; line-height: 1.7; color: var(--ff-text-primary); margin: 0; }
 .rsc__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.rsc__tag { font-size: 11px; font-weight: 600; color: var(--ff-brand-dark, #1d4e39); background: #fff; border: 1px solid var(--ff-border-brand, #bfd9cc); padding: 2px 9px; border-radius: 10px; }
+.rsc__tag { font-size: 11px; font-weight: 600; color: var(--ff-brand-dark); background: var(--ff-bg-surface); border: 1px solid var(--ff-border-brand); padding: 2px 9px; border-radius: 10px; }
 </style>

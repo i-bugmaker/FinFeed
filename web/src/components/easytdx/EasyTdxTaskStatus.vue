@@ -90,12 +90,12 @@ watch(
   font-weight: 600;
 }
 .etdx-status__badge.is-done {
-  background: var(--ff-bg-up-subtle, #e6f4ea);
-  color: var(--ff-up-text, #1a7f37);
+  background: var(--ff-bg-up-subtle);
+  color: var(--ff-up-text);
 }
 .etdx-status__badge.is-error {
-  background: var(--ff-bg-down-subtle, #fdecea);
-  color: var(--ff-down-text, #c0392b);
+  background: var(--ff-bg-down-subtle);
+  color: var(--ff-down-text);
 }
 .etdx-status__badge.is-running {
   background: var(--ff-bg-brand-subtle);
@@ -127,15 +127,15 @@ watch(
   align-items: flex-start;
   gap: 6px;
   padding: var(--ff-space-2) var(--ff-space-3);
-  background: var(--ff-bg-down-subtle, #fdecea);
-  color: var(--ff-down-text, #c0392b);
+  background: var(--ff-bg-down-subtle);
+  color: var(--ff-down-text);
   border-radius: var(--ff-radius-sm);
   font-size: var(--ff-fs-body-sm);
 }
 .etdx-status__logs {
   flex: 1;
   overflow-y: auto;
-  background: var(--ff-bg-code, #0f1419);
+  background: var(--ff-bg-code);
   border-radius: var(--ff-radius-md);
   padding: var(--ff-space-2) var(--ff-space-3);
   font-family: var(--ff-font-mono, monospace);
@@ -170,7 +170,7 @@ watch(
   color: #f0c040;
 }
 .etdx-status__log.lvl-error .etdx-status__log-level {
-  color: #ff6b6b;
+  color: var(--ff-up);
 }
 .etdx-status__log-msg {
   color: #c5d0db;

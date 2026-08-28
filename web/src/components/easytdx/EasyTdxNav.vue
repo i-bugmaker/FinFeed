@@ -208,7 +208,7 @@ function onSceneClick(scene) {
 }
 .etdx-nav__scene--active .etdx-nav__scene-icon {
   background: var(--ff-bg-brand);
-  color: #fff;
+  color: var(--ff-bg-surface);
 }
 .etdx-nav__scene-label {
   flex: 1;
@@ -234,7 +234,7 @@ function onSceneClick(scene) {
   color: var(--ff-text-tertiary);
 }
 .etdx-nav__scene--active .etdx-nav__scene-count {
-  background: #fff;
+  background: var(--ff-bg-surface);
   color: var(--ff-text-brand);
 }
 .etdx-nav__list {

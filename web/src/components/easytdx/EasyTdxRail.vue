@@ -414,13 +414,13 @@ function onFavClick(id) {
   opacity: 1;
 }
 .etdx-rail__item-star:hover {
-  color: var(--ff-star, #b7791f);
+  color: var(--ff-star);
 }
 .etdx-rail__item-star.is-fav {
-  color: var(--ff-star, #b7791f);
+  color: var(--ff-star);
 }
 .etdx-rail__item-favicon {
-  color: var(--ff-star, #b7791f);
+  color: var(--ff-star);
   flex-shrink: 0;
 }
 .etdx-rail__empty {
