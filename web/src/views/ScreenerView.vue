@@ -3,6 +3,7 @@
 // 左侧：策略配置面板（引擎/权重/过滤/输出/模板/对比）；右侧：结果/图表/评估 三个页签。
 // 引擎支持：线性固定 / IC 客观加权 / 自动 / ML / 混合（后端 engine.mode 特性开关）。
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { echarts } from '@/shared/lib/echarts'
 import { useScreenerStore } from '../store/screener'
 import AppIcon from '../ui/AppIcon.vue'
@@ -16,6 +17,18 @@ import MarkdownView from '../components/ai/MarkdownView.vue'
 import DimensionRadar from '../features/screener/components/DimensionRadar.vue'
 
 const store = useScreenerStore()
+const router = useRouter()
+
+// ECharts 渲染在 canvas 上，fillStyle 不支持 CSS var()，
+// 必须解析出真实色值（主题切换后下次 setOption 生效）
+function cssVar(name, fallback) {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    return v || fallback
+  } catch {
+    return fallback
+  }
+}
 
 // ═════════════════════════════ 策略配置 ═════════════════════════════
 const ENGINE_MODES = [
@@ -60,9 +73,16 @@ const excludeSt = ref(true)
 const minPrice = ref(3)
 const maxPrice = ref(300)
 const peMax = ref(100)
-const minAmount = ref(1e8)
+// 成交额/市值以「亿」为单位输入（内部仍换算为元提交），避免手输 1e8 级原始数字
+const minAmountYi = ref(1)
 const minTurnover = ref(0.3)
-const minCircCap = ref(3e9)
+const minCircCapYi = ref(30)
+
+// 维度分列显示开关（默认收起三个新增维度，减少 17 列表格的扫读负担）
+const visibleDimCols = reactive({
+  capital: true, momentum: true, valuation: true, liquidity: true,
+  quality: true, sentiment: false, growth: false, reversal: false,
+})
 
 // 模板 / 对比
 const templateName = ref('')
@@ -70,6 +90,7 @@ const loadTemplateName = ref('')
 const compareTemplate = ref('')
 const showCompare = ref(false)
 const showStrategy = ref(false)   // 选股策略说明弹窗
+const panelOpen = ref(false)      // 窄屏下配置面板抽屉开关
 
 // 表格
 const activeTab = ref('result')
@@ -78,14 +99,16 @@ const sortDir = ref(-1)
 const searchText = ref('')
 const tierFilter = ref('all')
 const selectedStock = ref(null)
+const showColMenu = ref(false)
 const showDetail = computed({
   get: () => !!selectedStock.value,
   set: (v) => { if (!v) selectedStock.value = null },
 })
 
 // ═════════════════════════════ 本地固化（prefs）═════════════════════════════
-// 用户配置持久化到 localStorage：引擎/权重/过滤/输出，下次打开自动恢复，无需重选。
-const PREFS_KEY = 'finfeed.screener.prefs.v1'
+// 用户配置持久化到 localStorage：引擎/权重/过滤/输出/列开关，下次打开自动恢复。
+// v2：金额字段改以「亿」为单位存储，旧 v1 配置直接弃用（避免单位混淆）。
+const PREFS_KEY = 'finfeed.screener.prefs.v2'
 
 function collectPrefs() {
   return {
@@ -103,9 +126,10 @@ function collectPrefs() {
     minPrice: minPrice.value,
     maxPrice: maxPrice.value,
     peMax: peMax.value,
-    minAmount: minAmount.value,
+    minAmountYi: minAmountYi.value,
     minTurnover: minTurnover.value,
-    minCircCap: minCircCap.value,
+    minCircCapYi: minCircCapYi.value,
+    visibleDimCols: { ...visibleDimCols },
   }
 }
 function readPrefs() {
@@ -142,9 +166,12 @@ function applyPrefs(p) {
   if (typeof p.minPrice === 'number') minPrice.value = p.minPrice
   if (typeof p.maxPrice === 'number') maxPrice.value = p.maxPrice
   if (typeof p.peMax === 'number') peMax.value = p.peMax
-  if (typeof p.minAmount === 'number') minAmount.value = p.minAmount
+  if (typeof p.minAmountYi === 'number') minAmountYi.value = p.minAmountYi
   if (typeof p.minTurnover === 'number') minTurnover.value = p.minTurnover
-  if (typeof p.minCircCap === 'number') minCircCap.value = p.minCircCap
+  if (typeof p.minCircCapYi === 'number') minCircCapYi.value = p.minCircCapYi
+  if (p.visibleDimCols) {
+    for (const d of dimOrder) if (typeof p.visibleDimCols[d] === 'boolean') visibleDimCols[d] = p.visibleDimCols[d]
+  }
 }
 // 任一配置变化即持久化（对象 getter 依赖变化时触发）
 watch(collectPrefs, savePrefs, { deep: true })
@@ -167,9 +194,9 @@ watch(
     if (typeof cfg.filters?.min_price === 'number') minPrice.value = cfg.filters.min_price
     if (typeof cfg.filters?.max_price === 'number') maxPrice.value = cfg.filters.max_price
     if (typeof cfg.filters?.pe_max === 'number') peMax.value = cfg.filters.pe_max
-    if (typeof cfg.filters?.min_amount === 'number') minAmount.value = cfg.filters.min_amount
+    if (typeof cfg.filters?.min_amount === 'number') minAmountYi.value = cfg.filters.min_amount / 1e8
     if (typeof cfg.filters?.min_turnover === 'number') minTurnover.value = cfg.filters.min_turnover
-    if (typeof cfg.filters?.min_circ_cap === 'number') minCircCap.value = cfg.filters.min_circ_cap
+    if (typeof cfg.filters?.min_circ_cap === 'number') minCircCapYi.value = cfg.filters.min_circ_cap / 1e8
     if (cfg.engine?.blend_alpha != null) blendAlpha.value = cfg.engine.blend_alpha
     if (cfg.engine?.top_quantile != null) topQuantile.value = cfg.engine.top_quantile
     if (cfg.engine?.horizon != null) horizon.value = cfg.engine.horizon
@@ -179,16 +206,22 @@ watch(
   { immediate: true },
 )
 
-// 权重归一化：拖动单个滑块后整体归一化到 100%
-function normalizeWeights() {
-  const tot = dimOrder.reduce((s, d) => s + (Number(dimWeights[d]) || 0), 0)
-  if (tot > 0) {
-    for (const d of dimOrder) dimWeights[d] = Math.round((dimWeights[d] / tot) * 1000) / 10
-  }
+// 权重交互：滑块保存「原始偏好值」，实时换算为占比展示；拖动不归一化，
+// 其它滑块不会跟着跳。提交时按占比归一化（buildRequest），
+// 「归一化」按钮把占比写回原始值（合计 100）。
+const weightTotal = computed(() => dimOrder.reduce((s, d) => s + (Number(dimWeights[d]) || 0), 0))
+function weightShare(d) {
+  const t = weightTotal.value
+  return t > 0 ? ((Number(dimWeights[d]) || 0) / t) * 100 : 0
 }
 function onDimChange() {
   userTouchedWeights.value = true
-  normalizeWeights()
+}
+function normalizeWeights() {
+  const t = weightTotal.value
+  if (t > 0) {
+    for (const d of dimOrder) dimWeights[d] = Math.round(weightShare(d) * 10) / 10
+  }
 }
 function resetWeights() {
   if (!store.config?.weights) return
@@ -206,20 +239,22 @@ function buildRequest() {
     ml: { horizon: horizon.value, top_quantile: topQuantile.value },
   }
   if (engineMode.value === 'blend') strategy.blend_alpha = blendAlpha.value
-  if (engineMode.value === 'linear' && userTouchedWeights.value) {
+  if (engineMode.value === 'linear' && userTouchedWeights.value && weightTotal.value > 0) {
     strategy.dim_weights = {}
-    for (const d of dimOrder) strategy.dim_weights[d] = Math.round(((dimWeights[d] || 0) / 100) * 10000) / 10000
+    for (const d of dimOrder) {
+      strategy.dim_weights[d] = Math.round((weightShare(d) / 100) * 10000) / 10000
+    }
   }
   return {
     universe: {
       boards: { ...boards },
       exclude_st: excludeSt.value,
       exclude_suspended: true,
-      min_amount: minAmount.value,
+      min_amount: minAmountYi.value * 1e8,
       min_turnover: minTurnover.value,
       price_range: [minPrice.value, maxPrice.value],
       pe_ttm_range: [null, peMax.value],
-      float_cap_range: [minCircCap.value, null],
+      float_cap_range: [minCircCapYi.value * 1e8, null],
     },
     strategy,
     output: { top: top.value },
@@ -261,9 +296,9 @@ function applyRequest(req) {
     if (u.price_range[1] != null) maxPrice.value = u.price_range[1]
   }
   if (Array.isArray(u.pe_ttm_range) && u.pe_ttm_range.length === 2 && u.pe_ttm_range[1] != null) peMax.value = u.pe_ttm_range[1]
-  if (u.min_amount != null) minAmount.value = u.min_amount
+  if (u.min_amount != null) minAmountYi.value = u.min_amount / 1e8
   if (u.min_turnover != null) minTurnover.value = u.min_turnover
-  if (Array.isArray(u.float_cap_range) && u.float_cap_range.length === 2 && u.float_cap_range[0] != null) minCircCap.value = u.float_cap_range[0]
+  if (Array.isArray(u.float_cap_range) && u.float_cap_range.length === 2 && u.float_cap_range[0] != null) minCircCapYi.value = u.float_cap_range[0] / 1e8
   if (s.mode) engineMode.value = s.mode
   if ('orthogonalize' in s) orthogonalize.value = !!s.orthogonalize
   if (s.blend_alpha != null) blendAlpha.value = s.blend_alpha
@@ -277,9 +312,12 @@ function applyRequest(req) {
   if (o.top != null) top.value = o.top
 }
 
-function onLoadTemplate() {
+async function onLoadTemplate() {
   const tpl = store.templates.find((t) => t.name === loadTemplateName.value)
-  if (tpl) applyRequest(tpl.request)
+  if (!tpl) return
+  applyRequest(tpl.request)
+  // 应用后自动跑一次，省去再点「开始选股」
+  await onRun()
 }
 async function onDeleteTemplate() {
   if (!loadTemplateName.value) return
@@ -320,27 +358,38 @@ const tierMeta = {
   none: { label: '不入选', variant: 'default' },
 }
 
-const headers = [
-  { key: 'rank', label: '排名', w: '52px' },
-  { key: 'code', label: '代码', w: '92px', sortable: true },
-  { key: 'name', label: '名称', w: '104px', sortable: true },
-  { key: 'board', label: '板块', w: '64px', sortable: true },
-  { key: 'price', label: '现价', w: '76px', align: 'right', sortable: true },
-  { key: 'change_pct', label: '涨跌幅', w: '84px', align: 'right', sortable: true },
-  { key: 'total_score', label: '综合分', w: '78px', align: 'right', sortable: true },
-  { key: 'ml_prob', label: 'ML 概率', w: '74px', align: 'right', sortable: true, mlOnly: true },
-  { key: 'tier', label: '评级', w: '68px', sortable: true },
-  { key: 'capital_score', label: '资金', w: '66px', align: 'right', sortable: true },
-  { key: 'momentum_score', label: '动量', w: '66px', align: 'right', sortable: true },
-  { key: 'valuation_score', label: '估值', w: '66px', align: 'right', sortable: true },
-  { key: 'liquidity_score', label: '量价', w: '66px', align: 'right', sortable: true },
-  { key: 'quality_score', label: '质量', w: '66px', align: 'right', sortable: true },
-  { key: 'sentiment_score', label: '情绪', w: '66px', align: 'right', sortable: true },
-  { key: 'growth_score', label: '成长', w: '66px', align: 'right', sortable: true },
-  { key: 'reversal_score', label: '反转', w: '66px', align: 'right', sortable: true },
-]
+// 表头：ML 概率列仅在结果含 ml_prob 时出现（此前表头恒显示、数据列条件渲染会错位）；
+// 八个维度分列按可见性开关过滤。
+const headers = computed(() => {
+  const cols = [
+    { key: 'rank', label: '排名', w: '52px' },
+    { key: 'code', label: '代码', w: '92px', sortable: true },
+    { key: 'name', label: '名称', w: '104px', sortable: true },
+    { key: 'board', label: '板块', w: '64px', sortable: true },
+    { key: 'price', label: '现价', w: '76px', align: 'right', sortable: true },
+    { key: 'change_pct', label: '涨跌幅', w: '84px', align: 'right', sortable: true },
+    { key: 'total_score', label: '综合分', w: '78px', align: 'right', sortable: true },
+  ]
+  if (hasMlProb.value) cols.push({ key: 'ml_prob', label: 'ML 概率', w: '74px', align: 'right', sortable: true })
+  cols.push({ key: 'tier', label: '评级', w: '68px', sortable: true })
+  for (const d of dimOrder) {
+    if (visibleDimCols[d]) cols.push({ key: `${d}_score`, label: DIM_LABELS[d], w: '66px', align: 'right', sortable: true, dim: d })
+  }
+  return cols
+})
 
 const hasMlProb = computed(() => (result.value?.scores || []).some((r) => r.ml_prob != null))
+
+const visibleDimColsKeys = computed(() => dimOrder.filter((d) => visibleDimCols[d]))
+
+// 维度分热力着色：A 股色序——高分红系（强）、低分绿系（弱），仅做背景衬色
+function heatStyle(v) {
+  const n = Number(v)
+  if (v === null || v === undefined || !Number.isFinite(n)) return {}
+  const t = Math.max(0, Math.min(100, n)) / 100
+  const hue = Math.round(140 - 140 * t) // 140(绿) → 0(红)
+  return { backgroundColor: `hsla(${hue}, 72%, 50%, 0.13)` }
+}
 
 const sortedScores = computed(() => {
   let arr = (result.value?.scores || []).slice()
@@ -381,6 +430,71 @@ function toggleRow(code) {
 }
 function openDetail(row) {
   selectedStock.value = row
+}
+
+// ═════════════════════════════ 自选 / 跳转 / 最近任务 ═════════════════════════════
+// 与 easy-tdx 模块共用同一份 localStorage 自选股列表（finfeed.easytdx.watchlist）
+const WATCHLIST_KEY = 'finfeed.easytdx.watchlist'
+const PENDING_STOCK_KEY = 'finfeed.easytdx.pendingStock'
+
+function marketTag(market) {
+  const m = Number(market)
+  return m === 1 ? 'SH' : m === 2 ? 'BJ' : 'SZ'
+}
+
+const toastMsg = ref('')
+let toastTimer = null
+function showToast(msg) {
+  toastMsg.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastMsg.value = '' }, 2200)
+}
+
+function addWatch(row) {
+  let list = []
+  try {
+    const raw = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]')
+    if (Array.isArray(raw)) list = raw
+  } catch { /* 损坏则重建 */ }
+  if (list.some((s) => s.code === row.code)) {
+    showToast(`${row.name} 已在自选`)
+    return
+  }
+  list.push({ name: row.name, code: row.code, market: marketTag(row.market) })
+  try {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list))
+    showToast(`已加入自选：${row.name}`)
+  } catch {
+    showToast('加入自选失败（存储不可用）')
+  }
+}
+
+// 跳转 easy-tdx 查看个股：通过 localStorage 交接当前标的，模块挂载时自动消费
+function gotoQuote(row) {
+  try {
+    localStorage.setItem(PENDING_STOCK_KEY, JSON.stringify({ name: row.name, code: row.code, market: marketTag(row.market) }))
+  } catch { /* 忽略 */ }
+  router.push('/easytdx')
+}
+
+// 最近选股记录（store.recent 在页面加载时已拉取）
+const showRecent = ref(false)
+function fmtTime(ts) {
+  if (!ts) return '—'
+  return new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false })
+}
+function taskTierCount(t, tier) {
+  const scores = t?.result?.scores || []
+  return scores.filter((s) => s.tier === tier).length
+}
+async function openRecent(t) {
+  showRecent.value = false
+  await store.loadTask(t.task_id)
+  activeTab.value = 'result'
+}
+function dimCoverage(d) {
+  const c = store.evalResult?.dim_coverage?.[d]
+  return c == null ? '—' : `${Math.round(c * 100)}%`
 }
 
 // 对比摘要行（配置差异 + 结果差异）
@@ -459,7 +573,7 @@ const engineModeLabel = computed(() => ENGINE_MODES.find((m) => m.value === engi
 const scoreDistRef = ref(null)
 const boardPieRef = ref(null)
 const tierBarRef = ref(null)
-const scatterRef = ref(null)
+const dimAvgRef = ref(null)
 const evalLayersRef = ref(null)
 const evalDimRef = ref(null)
 const chartMap = {}
@@ -488,7 +602,7 @@ function scoreDistOption(res) {
     yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10, color: '#64748b' } },
     series: [{
       name: '数量', type: 'bar', data: counts, barWidth: '70%',
-      itemStyle: { color: 'var(--ff-brand)', borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: cssVar('--ff-brand', '#e11d48'), borderRadius: [3, 3, 0, 0] },
     }],
   }
 }
@@ -501,7 +615,7 @@ function boardPieOption(res) {
     legend: { bottom: 0, textStyle: { fontSize: 11, color: '#64748b' } },
     series: [{
       type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
-      itemStyle: { borderColor: 'var(--ff-bg-surface)', borderWidth: 2 },
+      itemStyle: { borderColor: cssVar('--ff-bg-surface', '#ffffff'), borderWidth: 2 },
       data,
     }],
   }
@@ -517,30 +631,35 @@ function tierBarOption(res) {
     yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10, color: '#64748b' } },
     series: [{
       type: 'bar', data: counts, barWidth: '46%',
-      itemStyle: { color: 'var(--ff-brand)', borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: cssVar('--ff-brand', '#e11d48'), borderRadius: [3, 3, 0, 0] },
     }],
   }
 }
-function scatterOption(res) {
-  const tierColors = { strong: '#e11d48', watch: '#b45309', observe: 'var(--ff-info)', none: '#cbd5e1' }
-  const series = []
-  const tierOrder = ['strong', 'watch', 'observe', 'none']
-  tierOrder.forEach((tier) => {
-    const pts = res.scores.filter((s) => s.tier === tier)
-    if (!pts.length) return
-    series.push({
-      name: tierMeta[tier].label, type: 'scatter', symbolSize: 7,
-      itemStyle: { color: tierColors[tier], opacity: 0.75 },
-      data: pts.map((s) => [s.total_score, s.change_pct ?? 0]),
-    })
-  })
+// 「入选组 vs 全体」的八维平均分对比：直接回答「入选的股票强在哪」，
+// 替代信息价值有限的原「综合分×当日涨跌」散点图
+function dimAvgOption(res) {
+  const strong = res.scores.filter((s) => s.tier === 'strong')
+  const avg = (arr) => dimOrder.map((d) => (
+    arr.length
+      ? arr.reduce((s, r) => s + (Number(r[`${d}_score`]) || 0), 0) / arr.length
+      : 0
+  ))
   return {
-    tooltip: { trigger: 'item', formatter: (p) => `${p.seriesName}<br/>综合分 ${p.value[0].toFixed(1)} · 涨跌 ${p.value[1].toFixed(2)}%` },
+    tooltip: { trigger: 'axis', valueFormatter: (v) => Number(v).toFixed(1) },
     legend: { top: 0, textStyle: { fontSize: 11, color: '#64748b' } },
     grid: { left: 44, right: 16, top: 30, bottom: 30 },
-    xAxis: { name: '综合分', type: 'value', min: 0, max: 100, axisLabel: { fontSize: 10, color: '#64748b' } },
-    yAxis: { name: '当日涨跌%', type: 'value', axisLabel: { fontSize: 10, color: '#64748b' } },
-    series,
+    xAxis: { type: 'category', data: dimOrder.map((d) => DIM_LABELS[d]), axisLabel: { fontSize: 10, color: '#64748b' } },
+    yAxis: { type: 'value', max: 100, axisLabel: { fontSize: 10, color: '#64748b' } },
+    series: [
+      {
+        name: '入选组均分', type: 'bar', data: avg(strong), barWidth: '32%',
+        itemStyle: { color: cssVar('--ff-brand', '#e11d48'), borderRadius: [3, 3, 0, 0] },
+      },
+      {
+        name: '全体均分', type: 'bar', data: avg(res.scores), barWidth: '32%',
+        itemStyle: { color: '#94a3b8', borderRadius: [3, 3, 0, 0] },
+      },
+    ],
   }
 }
 function layersOption(ev) {
@@ -553,7 +672,7 @@ function layersOption(ev) {
     series: [{
       type: 'bar', data: keys.map((k) => ev.layers[k]), barWidth: '52%',
       itemStyle: {
-        color: (p) => (p.data >= 0 ? '#e11d48' : 'var(--ff-down)'),
+        color: (p) => (p.data >= 0 ? '#e11d48' : cssVar('--ff-down', '#16a34a')),
         borderRadius: [3, 3, 0, 0],
       },
     }],
@@ -566,7 +685,7 @@ function dimIcOption(ev) {
     const icir = pd[d].icir
     if (icir < 0.5) return '#e11d48'
     if (icir < 1.0) return '#b45309'
-    return 'var(--ff-brand)'
+    return cssVar('--ff-brand', '#e11d48')
   })
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -586,7 +705,7 @@ function renderCharts() {
   setChart('scoreDist', scoreDistRef.value, scoreDistOption(res))
   setChart('boardPie', boardPieRef.value, boardPieOption(res))
   setChart('tierBar', tierBarRef.value, tierBarOption(res))
-  setChart('scatter', scatterRef.value, scatterOption(res))
+  setChart('dimAvg', dimAvgRef.value, dimAvgOption(res))
 }
 function renderEvalCharts() {
   const ev = store.evalResult
@@ -637,8 +756,14 @@ onBeforeUnmount(() => {
     <!-- ═══════ 顶部 ═══════ -->
     <header class="screener-top ff-glass">
       <div class="screener-controls">
+        <button type="button" class="screener-strategy-btn screener-menu-btn" @click="panelOpen = !panelOpen">
+          <AppIcon name="panel-left" size="xs" /> 策略配置
+        </button>
         <button type="button" class="screener-strategy-btn" @click="showStrategy = true">
           <AppIcon name="info" size="xs" /> 选股策略
+        </button>
+        <button type="button" class="screener-strategy-btn" @click="showRecent = true">
+          <AppIcon name="clock" size="xs" /> 最近选股
         </button>
         <label class="screener-field">
           <span class="screener-field__label">显示前</span>
@@ -675,7 +800,8 @@ onBeforeUnmount(() => {
     <!-- ═══════ 主体：左配置 + 右结果 ═══════ -->
     <div class="screener-body">
       <!-- ── 左：配置面板 ── -->
-      <aside class="screener-panel">
+      <div v-if="panelOpen" class="screener-backdrop" @click="panelOpen = false" />
+      <aside class="screener-panel" :class="{ 'is-open': panelOpen }">
         <!-- 引擎模式 -->
         <section class="panel-sec">
           <h3 class="panel-sec__title"><AppIcon name="settings" size="xs" /> 引擎模式</h3>
@@ -699,6 +825,7 @@ onBeforeUnmount(() => {
           <h3 class="panel-sec__title">
             <AppIcon name="sliders" size="xs" /> 维度权重
             <span class="panel-sec__sp" />
+            <button type="button" class="panel-link" @click="normalizeWeights">归一化</button>
             <button type="button" class="panel-link" @click="resetWeights">重置</button>
           </h3>
           <div v-for="d in dimOrder" :key="d" class="dim-row">
@@ -713,10 +840,13 @@ onBeforeUnmount(() => {
               class="dim-row__slider"
               @input="dimWeights[d] = Number($event.target.value); onDimChange()"
             />
-            <span class="dim-row__val">{{ dimWeights[d].toFixed(1) }}%</span>
+            <span class="dim-row__val">{{ weightShare(d).toFixed(1) }}%</span>
           </div>
           <p v-if="engineMode !== 'linear'" class="panel-sec__hint">
             非线性模式下权重由引擎客观计算（IC/ML），此处禁用。
+          </p>
+          <p v-else class="panel-sec__hint">
+            滑块为偏好值，右侧为实际占比；「归一化」把占比写回滑块（合计 100%）。
           </p>
         </section>
 
@@ -732,7 +862,7 @@ onBeforeUnmount(() => {
             <input v-model.number="horizon" type="number" min="5" max="60" class="panel-field__input" />
             <span class="panel-field__unit">日</span>
           </label>
-          <label class="panel-field">
+          <label v-if="engineMode === 'ml' || engineMode === 'blend'" class="panel-field">
             <span class="panel-field__label">ML 强势分位 top</span>
             <input v-model.number="topQuantile" type="number" min="0.1" max="0.5" step="0.05" class="panel-field__input" />
           </label>
@@ -777,8 +907,8 @@ onBeforeUnmount(() => {
             </label>
             <label class="panel-field">
               <span class="panel-field__label">成交额下限</span>
-              <input v-model.number="minAmount" type="number" class="panel-field__input" />
-              <span class="panel-field__unit">元</span>
+              <input v-model.number="minAmountYi" type="number" min="0" step="0.5" class="panel-field__input" />
+              <span class="panel-field__unit">亿</span>
             </label>
             <label class="panel-field">
               <span class="panel-field__label">换手率下限</span>
@@ -787,8 +917,8 @@ onBeforeUnmount(() => {
             </label>
             <label class="panel-field">
               <span class="panel-field__label">流通市值下限</span>
-              <input v-model.number="minCircCap" type="number" class="panel-field__input" />
-              <span class="panel-field__unit">元</span>
+              <input v-model.number="minCircCapYi" type="number" min="0" step="1" class="panel-field__input" />
+              <span class="panel-field__unit">亿</span>
             </label>
           </div>
         </section>
@@ -890,13 +1020,24 @@ onBeforeUnmount(() => {
                 </span>
                 <div class="screener-toolbar__tiers">
                   <button
-                    v-for="t in [{ v: 'all', l: '全部' }, { v: 'strong', l: '入选' }, { v: 'watch', l: '关注' }, { v: 'observe', l: '观察' }]"
+                    v-for="t in [{ v: 'all', l: '全部' }, { v: 'strong', l: '入选' }, { v: 'watch', l: '关注' }, { v: 'observe', l: '观察' }, { v: 'none', l: '不入选' }]"
                     :key="t.v"
                     type="button"
                     class="screener-board-chip"
                     :class="{ 'is-on': tierFilter === t.v }"
                     @click="tierFilter = t.v"
                   >{{ t.l }}</button>
+                </div>
+                <div class="screener-toolbar__cols">
+                  <button type="button" class="screener-card__toggle" @click="showColMenu = !showColMenu">
+                    <AppIcon name="columns" size="xs" /> 维度列
+                  </button>
+                  <div v-if="showColMenu" class="col-menu">
+                    <label v-for="d in dimOrder" :key="d" class="col-menu__item">
+                      <input v-model="visibleDimCols[d]" type="checkbox" />
+                      <span>{{ DIM_LABELS[d] }}</span>
+                    </label>
+                  </div>
                 </div>
                 <span class="screener-toolbar__count">共 {{ sortedScores.length }} / {{ result.scores.length }} 只</span>
               </div>
@@ -946,14 +1087,12 @@ onBeforeUnmount(() => {
                         <td>
                           <AppBadge :text="tierMeta[row.tier]?.label || row.tier" :variant="tierMeta[row.tier]?.variant || 'default'" />
                         </td>
-                        <td class="is-right">{{ fmtScore(row.capital_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.momentum_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.valuation_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.liquidity_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.quality_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.sentiment_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.growth_score) }}</td>
-                        <td class="is-right">{{ fmtScore(row.reversal_score) }}</td>
+                        <td
+                          v-for="d in visibleDimColsKeys"
+                          :key="d"
+                          class="is-right dim-score-cell"
+                          :style="heatStyle(row[`${d}_score`])"
+                        >{{ fmtScore(row[`${d}_score`]) }}</td>
                         <td class="is-center">
                           <AppIcon :name="expandedRows.has(row.code) ? 'chevron-up' : 'chevron-down'" size="xs" />
                         </td>
@@ -969,6 +1108,9 @@ onBeforeUnmount(() => {
                               <span v-if="row.realized_vol_ann != null">年化波动 {{ fmtScore(row.realized_vol_ann) }}%</span>
                               <span v-if="row.drawdown_from_high != null">距高点回撤 {{ fmtScore(row.drawdown_from_high) }}%</span>
                               <AppBadge v-if="row.ma_align" text="均线多头排列" variant="success" />
+                              <span class="screener-detail__sp" />
+                              <AppButton variant="secondary" size="sm" @click.stop="addWatch(row)">加入自选</AppButton>
+                              <AppButton variant="secondary" size="sm" @click.stop="gotoQuote(row)">看行情</AppButton>
                               <AppButton variant="secondary" size="sm" @click.stop="openDetail(row)">详情</AppButton>
                             </div>
                             <div class="screener-detail__cols">
@@ -1031,8 +1173,8 @@ onBeforeUnmount(() => {
                 <div ref="tierBarRef" class="chart-box__canvas" />
               </div>
               <div class="chart-box">
-                <h4 class="chart-box__title">综合分 × 当日涨跌（按评级着色）</h4>
-                <div ref="scatterRef" class="chart-box__canvas" />
+                <h4 class="chart-box__title">入选组 vs 全体 · 维度均分对比</h4>
+                <div ref="dimAvgRef" class="chart-box__canvas" />
               </div>
             </div>
           </div>
@@ -1055,15 +1197,19 @@ onBeforeUnmount(() => {
               <div class="eval-stats">
                 <div class="screener-stat">
                   <span class="screener-stat__label">复合 RankIC</span>
-                  <span class="screener-stat__value screener-stat__value--sm">{{ store.evalResult.composite?.ic_mean }}</span>
+                  <span class="screener-stat__value screener-stat__value--sm" title="综合分与前瞻收益的逐期截面 Spearman 相关均值，>0.03 即有预测力">{{ store.evalResult.composite?.ic_mean }}</span>
                 </div>
                 <div class="screener-stat">
                   <span class="screener-stat__label">复合 ICIR</span>
-                  <span class="screener-stat__value screener-stat__value--sm">{{ store.evalResult.composite?.icir }}</span>
+                  <span class="screener-stat__value screener-stat__value--sm" title="IC均值/标准差；>1 强、0.5~1 一般、<0.5 失效。前瞻窗口重叠时相邻期 IC 自相关，原始 ICIR 偏乐观">{{ store.evalResult.composite?.icir }}</span>
+                </div>
+                <div v-if="store.evalResult.composite?.icir_nw != null" class="screener-stat">
+                  <span class="screener-stat__label">ICIR（NW 修正）</span>
+                  <span class="screener-stat__value screener-stat__value--sm" title="Newey-West 自相关修正后的 ICIR：前瞻窗口重叠（step<horizon）时以该值解读更严谨">{{ store.evalResult.composite.icir_nw }}</span>
                 </div>
                 <div class="screener-stat">
                   <span class="screener-stat__label">多空价差 IR</span>
-                  <span class="screener-stat__value screener-stat__value--sm">{{ store.evalResult.spread?.information_ratio }}</span>
+                  <span class="screener-stat__value screener-stat__value--sm" title="Top-Bottom 五分位价差的年化信息比率">{{ store.evalResult.spread?.information_ratio }}</span>
                 </div>
                 <div class="screener-stat">
                   <span class="screener-stat__label">有效截面</span>
@@ -1092,7 +1238,11 @@ onBeforeUnmount(() => {
                 <table class="screener-table">
                   <thead>
                     <tr>
-                      <th>维度</th><th>IC 均值</th><th>ICIR</th><th>正截面</th>
+                      <th>维度</th>
+                      <th title="逐期 RankIC 均值，>0.03 即有预测力">IC 均值</th>
+                      <th title="IC均值/标准差：>1 强、0.5~1 一般、<0.5 失效（红/橙/绿着色）">ICIR</th>
+                      <th title="IC>0 的截面占比，50%=无方向性">正截面</th>
+                      <th title="维度分「非中性」样本占比；覆盖率低（如成长维度仅业绩预告覆盖股）说明 IC 结论只对少数样本有效">覆盖率</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1101,6 +1251,7 @@ onBeforeUnmount(() => {
                       <td>{{ v.ic_mean }}</td>
                       <td :class="v.icir < 0.5 ? 'is-down' : v.icir < 1 ? 'is-warn' : 'is-up'">{{ v.icir }}</td>
                       <td>{{ v.hit_rate }}</td>
+                      <td>{{ dimCoverage(d) }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1163,6 +1314,9 @@ onBeforeUnmount(() => {
           <h3 class="drill__name">{{ selectedStock.name }}</h3>
           <span class="drill__code">{{ selectedStock.code }}</span>
           <AppBadge :text="tierMeta[selectedStock.tier]?.label || selectedStock.tier" :variant="tierMeta[selectedStock.tier]?.variant || 'default'" />
+          <span class="drill__sp" />
+          <AppButton variant="secondary" size="sm" @click="addWatch(selectedStock)">加入自选</AppButton>
+          <AppButton variant="secondary" size="sm" @click="gotoQuote(selectedStock)">看行情</AppButton>
         </div>
         <div class="drill__cols">
           <div class="drill__left">
@@ -1190,6 +1344,32 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </AppModal>
+
+    <!-- ═══════ 最近选股记录弹窗 ═══════ -->
+    <AppModal v-model="showRecent" title="最近选股记录" size="lg" :show-ok="false" cancel-text="关闭">
+      <div v-if="!store.recent.length" class="screener-empty screener-empty--sm">
+        <p>暂无历史任务</p>
+      </div>
+      <div v-else class="recent-list">
+        <div v-for="t in store.recent" :key="t.task_id" class="recent-item">
+          <span class="recent-item__time">{{ fmtTime(t.started_at) }}</span>
+          <AppBadge
+            :text="t.status === 'success' ? '完成' : t.status === 'error' ? '失败' : t.status === 'running' ? '进行中' : t.status"
+            :variant="t.status === 'success' ? 'success' : t.status === 'error' ? 'down' : 'muted'"
+          />
+          <span class="recent-item__meta">
+            全市场 {{ t.result?.universe_size ?? '—' }} · 入选 {{ taskTierCount(t, 'strong') }} · 关注 {{ taskTierCount(t, 'watch') }}
+          </span>
+          <span class="recent-item__sp" />
+          <AppButton variant="secondary" size="sm" @click="openRecent(t)">查看</AppButton>
+        </div>
+      </div>
+    </AppModal>
+
+    <!-- 全局轻提示 -->
+    <transition name="toast-fade">
+      <div v-if="toastMsg" class="screener-toast">{{ toastMsg }}</div>
+    </transition>
   </div>
 </template>
 
@@ -1484,6 +1664,26 @@ onBeforeUnmount(() => {
   .screener-stats { grid-template-columns: repeat(3, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
   .eval-stats { grid-template-columns: repeat(2, 1fr); }
+
+  /* 窄屏：配置面板收进抽屉，顶部出现开关按钮 */
+  .screener-menu-btn { display: none; }
+}
+@media (max-width: 1180px) {
+  .screener-panel {
+    position: fixed; left: 0; top: 0; bottom: 0; width: min(360px, 88vw);
+    z-index: 60; border-radius: 0; overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.24s var(--ff-ease-standard);
+    box-shadow: var(--ff-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.24));
+  }
+  .screener-panel.is-open { transform: translateX(0); }
+  .screener-backdrop {
+    position: fixed; inset: 0; z-index: 55;
+    background: rgba(15, 23, 42, 0.45);
+  }
+}
+@media (min-width: 1181px) {
+  .screener-menu-btn { display: none; }
 }
 @media (max-width: 860px) {
   .screener-body { flex-direction: column; overflow-y: auto; }
@@ -1491,4 +1691,55 @@ onBeforeUnmount(() => {
   .screener-top { flex-direction: column; align-items: flex-start; }
   .screener-controls { flex-wrap: wrap; }
 }
+
+/* ── 维度分热力单元格 ── */
+.dim-score-cell {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--ff-font-mono);
+  border-radius: 4px;
+  transition: background-color var(--ff-dur-fast);
+}
+
+/* ── 工具条列开关 ── */
+.screener-toolbar__cols { position: relative; }
+.col-menu {
+  position: absolute; top: 32px; right: 0; z-index: 20;
+  min-width: 132px; padding: 6px;
+  background: var(--ff-bg-surface); border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-md); box-shadow: var(--ff-shadow-sm);
+  display: flex; flex-direction: column;
+}
+.col-menu__item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: var(--ff-radius-sm, 4px);
+  font-size: var(--ff-fs-caption); color: var(--ff-text-secondary);
+  cursor: pointer; user-select: none;
+}
+.col-menu__item:hover { background: var(--ff-bg-hover); color: var(--ff-text-primary); }
+
+/* ── 展开行/下钻头部弹性空隙 ── */
+.screener-detail__sp, .drill__sp { flex: 1; }
+
+/* ── 最近选股记录 ── */
+.recent-list { display: flex; flex-direction: column; max-height: 56vh; overflow-y: auto; }
+.recent-item {
+  display: flex; align-items: center; gap: var(--ff-space-3);
+  padding: 9px 6px; border-bottom: 1px solid var(--ff-border-subtle);
+  font-size: var(--ff-fs-body-sm);
+}
+.recent-item:last-child { border-bottom: none; }
+.recent-item__time { font-variant-numeric: tabular-nums; color: var(--ff-text-secondary); min-width: 140px; }
+.recent-item__meta { color: var(--ff-text-tertiary); font-size: var(--ff-fs-caption); }
+.recent-item__sp { flex: 1; }
+
+/* ── 全局轻提示 ── */
+.screener-toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  z-index: 90; padding: 9px 18px; border-radius: 999px;
+  background: var(--ff-text-primary, #1e293b); color: var(--ff-bg-surface, #fff);
+  font-size: var(--ff-fs-body-sm); font-weight: 500;
+  box-shadow: var(--ff-shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.2));
+}
+.toast-fade-enter-active, .toast-fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.toast-fade-enter-from, .toast-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
 </style>

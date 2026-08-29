@@ -210,6 +210,18 @@ onMounted(async () => {
   await store.init()
   await store.loadNames()
   await store.loadRecent()
+  // 消费其它模块（如智能选股「看行情」）交接的标的：选中并自动执行默认视图
+  try {
+    const raw = localStorage.getItem('finfeed.easytdx.pendingStock')
+    if (raw) {
+      localStorage.removeItem('finfeed.easytdx.pendingStock')
+      const s = JSON.parse(raw)
+      if (s && s.code) {
+        store.selectStock(s)
+        if (currentNeedsStock.value) run()
+      }
+    }
+  } catch { /* 忽略坏数据 */ }
 })
 onBeforeUnmount(() => store.stopPolling())
 </script>
