@@ -5,7 +5,7 @@
  * 数据流：
  *  - 监控列表与分组舆情来自 /api/stock-monitor/feed（系统内 news 匹配 + 系统外东财缓存）
  *  - 实时增量走 SSE /api/stock-monitor/feed/stream（事件 feed），60s 轮询兜底
- *  - 离线补全：localStorage 记忆 last_seen_ts，重开页面以 since_ts 一次性取回遗漏消息
+ *  - 离线补全：localStorage 记忆 last_seen_ts，重开页面时全量拉取并按 last_seen 本地高亮遗漏消息
  *  - AI 分析提交后台任务后轮询 /analyze/task/{id}，结果持久化并按股票关联
  */
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
@@ -110,7 +110,9 @@ async function loadFeed({ withCatchUp = false } = {}) {
   feedLoading.value = true
   try {
     const since = withCatchUp ? Number(localStorage.getItem(LAST_SEEN_KEY) || 0) : 0
-    const data = await stockMonitorApi.feed({ since_ts: since, limit: 80 })
+    // 始终全量拉取：since_ts 传给后端会被过滤成增量，导致进入页面只剩遗漏消息（常为空），
+    // 需手动刷新才显示全量。last_seen 只用于本地标记「离线补全」高亮。
+    const data = await stockMonitorApi.feed({ since_ts: 0, limit: 80 })
     const nextGroups = {}
     let catchUp = 0
     for (const [code, g] of Object.entries(data.groups || {})) {
