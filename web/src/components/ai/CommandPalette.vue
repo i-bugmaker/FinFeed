@@ -20,7 +20,7 @@ const inputEl = ref(null)
 const sel = ref(0)
 
 const COMMANDS = [
-  { id: 'workbench', label: '打开投研工作台', icon: 'dashboard', group: '页面', action: () => router.push('/ai') },
+  { id: 'workbench', label: '打开 AI 分析工作台', icon: 'dashboard', group: '页面', action: () => router.push('/ai') },
   { id: 'analyst', label: '打开分析师工作区', icon: 'chatter', group: '页面', action: () => router.push('/ai/analyst') },
   { id: 'reports', label: '打开研究报告', icon: 'file-text', group: '页面', action: () => router.push('/ai/reports') },
   { id: 'tasks', label: '打开任务中心', icon: 'activity', group: '页面', action: () => router.push('/ai/tasks') },

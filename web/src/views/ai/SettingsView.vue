@@ -92,15 +92,22 @@ async function deleteProvider(id) {
 
 // ---------- Prompt ----------
 const showPrompts = ref(true) // 默认展开，便于直接查看与编辑模板
-const prompts = ref({ map_system: '', map_user: '', reduce_system: '', reduce_user: '', single_user: '' })
-const promptDefaults = ref({ map_system: '', map_user: '', reduce_system: '', reduce_user: '', single_user: '' })
+const PROMPT_KEYS = [
+  'map_system', 'map_user', 'reduce_system', 'reduce_user', 'single_user',
+  'stock_system', 'stock_user', 'sentiment_system', 'sentiment_user',
+]
+const prompts = ref(Object.fromEntries(PROMPT_KEYS.map((k) => [k, ''])))
+const promptDefaults = ref(Object.fromEntries(PROMPT_KEYS.map((k) => [k, ''])))
 
 // 按流水线阶段分组：同屏只展示当前阶段的模板，降低视觉密度。
-// MAP=分批压缩要点；REDUCE=汇总成分章报告；SINGLE=一次性生成报告。
+// MAP=分批压缩要点；REDUCE=汇总成分章报告；SINGLE=一次性生成报告；
+// STOCK/SENTIMENT=个股深度与舆情研判的独立模板。
 const PROMPT_STAGES = [
   { key: 'map', label: '① 分析映射', desc: '对每批新闻做要点压缩：抽事件、去噪、保留主体与量化信息', keys: ['map_system', 'map_user'] },
-  { key: 'reduce', label: '② 汇总成文', desc: '汇总全部分块要点，产出结构化复盘报告', keys: ['reduce_system', 'reduce_user'] },
+  { key: 'reduce', label: '② 汇总成文', desc: '汇总全部分块要点与市场事实包，产出结构化复盘报告', keys: ['reduce_system', 'reduce_user'] },
   { key: 'single', label: '③ 单轮分析', desc: '跳过分批压缩，一次性基于原始资讯生成报告', keys: ['single_user'] },
+  { key: 'stock', label: '④ 个股深度', desc: '个股诊断报告：行情资金事实包 + 关联资讯的综合研判', keys: ['stock_system', 'stock_user'] },
+  { key: 'sentiment', label: '⑤ 舆情研判', desc: '舆情专题报告：舆情事实包 + 市场事实 + 资讯的聚合研判', keys: ['sentiment_system', 'sentiment_user'] },
 ]
 const activeStage = ref('map')
 const currentStage = computed(() => PROMPT_STAGES.find((s) => s.key === activeStage.value) || PROMPT_STAGES[0])
@@ -108,10 +115,14 @@ const currentStage = computed(() => PROMPT_STAGES.find((s) => s.key === activeSt
 // 每个模板的名称与一句话用途说明；compact=true 表示较短的系统提示，用更小的编辑区
 const promptMeta = {
   map_system: { name: '系统提示', desc: '设定分析师角色与事实边界，约束模型不引入材料之外的信息、不编造数据', compact: true },
-  map_user: { name: '用户模板', desc: '每批资讯的压缩指令与输出格式，含 {payload} 运行时占位符' },
-  reduce_system: { name: '系统提示', desc: '设定首席策略分析师角色与排版规范（emoji 图标、加粗、要点化）', compact: true },
-  reduce_user: { name: '用户模板', desc: '九章节复盘简报的结构指令，含 {stats_block} / {digests} 运行时占位符' },
-  single_user: { name: '用户模板', desc: '单次调用直接生成完整报告的指令，含 {stats_block} / {payload} 运行时占位符' },
+  map_user: { name: '用户模板', desc: '每批资讯的压缩指令与输出格式，含 {payload} 运行时占位符；要求保留 [编号] 引用' },
+  reduce_system: { name: '系统提示', desc: '设定首席策略分析师角色与排版规范（emoji 图标、加粗、要点化、引用标注）', compact: true },
+  reduce_user: { name: '用户模板', desc: '九章节复盘简报的结构指令，含 {facts_block} / {stats_block} / {digests} 运行时占位符' },
+  single_user: { name: '用户模板', desc: '单次调用直接生成完整报告的指令，含 {facts_block} / {stats_block} / {payload} 运行时占位符' },
+  stock_system: { name: '系统提示', desc: '个股诊断报告的研究员角色设定与数据边界约束', compact: true },
+  stock_user: { name: '用户模板', desc: '个股深度报告结构指令，含 {stock_name} / {facts_block} / {payload} 运行时占位符' },
+  sentiment_system: { name: '系统提示', desc: '舆情研判报告的分析师角色设定与数据边界约束', compact: true },
+  sentiment_user: { name: '用户模板', desc: '舆情研判报告结构指令，含 {facts_block} / {facts_market_block} / {payload} 运行时占位符' },
 }
 
 const isCustom = (key) => prompts.value[key] !== promptDefaults.value[key]
@@ -154,16 +165,27 @@ async function savePrompts() {
 }
 
 // ---------- 默认值 ----------
-const defaults = ref({ scope: 'all', window: 24, focus: '' })
+const defaults = ref({ scope: 'all', window: 24, focus: '', report_type: 'review' })
 const scopeOptions = computed(() => store.scopeOptions.map((s) => ({ label: s.label, value: s.key })))
 const windowOptions = computed(() => store.windowOptions.map((w) => ({ label: `${w} 小时`, value: w })))
+const typeOptions = computed(() =>
+  (store.reportTypes?.length
+    ? store.reportTypes
+    : [
+        { key: 'review', label: '复盘简报' },
+        { key: 'stock', label: '个股深度' },
+        { key: 'sentiment', label: '舆情研判' },
+      ]
+  ).map((t) => ({ label: t.label, value: t.key }))
+)
 function saveDefaults() {
   store.saveConfig({
     scope: defaults.value.scope,
     window: Number(defaults.value.window) || 24,
     focus: defaults.value.focus || '',
+    report_type: defaults.value.report_type || 'review',
   })
-  window.alert('默认值已保存，生成报告时将使用该范围与窗口')
+  window.alert('默认值已保存（服务端持久化），生成报告时将使用该范围与窗口')
 }
 
 onMounted(() => {
@@ -171,11 +193,12 @@ onMounted(() => {
   store.loadStatus()
   store.loadInit()
   loadPrompts()
-  // 恢复本地默认值（与 store 单一数据源同步）
+  // 恢复默认值（服务端优先，localStorage 兜底，与 store 单一数据源同步）
   store.loadConfig()
   defaults.value.scope = store.config.scope
   defaults.value.window = store.config.window
   defaults.value.focus = store.config.focus
+  defaults.value.report_type = store.config.report_type || 'review'
   // 等待 providers 加载完成后自动测试连通性
   setTimeout(() => {
     if (store.providers.length) autoTestAll()
@@ -324,6 +347,7 @@ onMounted(() => {
         <div v-else class="sv__panel">
           <div class="sv__head"><h3 class="sv__h3">分析默认值</h3></div>
           <div class="sv__defaults">
+            <AppSelect v-model="defaults.report_type" label="默认报告类型" :options="typeOptions" />
             <AppSelect v-model="defaults.scope" label="默认分析范围" :options="scopeOptions" />
             <AppSelect v-model="defaults.window" label="默认时间窗口" :options="windowOptions" />
             <AppInput v-model="defaults.focus" label="自定义焦点（可选）" placeholder="如：重点关注半导体与新能源" />

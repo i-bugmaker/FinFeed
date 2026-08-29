@@ -153,6 +153,11 @@ async function sendChat() {
 
   const payload = { question: q, history }
   if (store.contextReport?.id) payload.report_id = store.contextReport.id
+  // @标的上下文真正传给后端：触发个股事实包注入
+  if (stock) {
+    payload.stock_code = stock.code || ''
+    payload.stock_name = stock.name || ''
+  }
 
   abortController = new AbortController()
   sending.value = true
@@ -184,6 +189,42 @@ function stopChat() {
 function onChatEnter() {
   if (sending.value) stopChat()
   else sendChat()
+}
+
+// 斜杠命令 /复盘：直接提交复盘简报生成任务（不走对话）
+async function runSlashReview() {
+  if (sending.value) return
+  if (!activeSessionId.value) {
+    const s = await store.createSession('复盘任务')
+    if (!s) return
+    activeSessionId.value = s.id
+  }
+  const sid = activeSessionId.value
+  chatLog.value.push({ role: 'user', text: '/复盘' })
+  const aiIndex = chatLog.value.length
+  chatLog.value.push({ role: 'ai', text: '', pending: true })
+  scrollToBottom()
+  store.saveMessage(sid, 'user', '/复盘')
+  sending.value = true
+  try {
+    const r = await store.submitAnalysis({
+      provider_id: store.status?.default_provider?.id,
+      scope: store.config.scope,
+      window: Number(store.config.window) || 24,
+      focus: store.config.focus || '',
+      report_type: 'review',
+    })
+    const text = r.ok
+      ? `✅ 已提交复盘简报生成任务${r.queued ? '（排队中）' : ''}，任务编号 ${r.task_id}。可在「任务中心」查看进度，完成后自动归档到研究报告。`
+      : '❌ 提交失败：' + (r.error || '未知错误')
+    chatLog.value[aiIndex] = { role: 'ai', text, pending: false }
+    store.saveMessage(sid, 'assistant', text)
+  } catch (e) {
+    chatLog.value[aiIndex] = { role: 'ai', text: '出错了：' + (e.message || String(e)), pending: false, error: true }
+  } finally {
+    sending.value = false
+    scrollToBottom()
+  }
 }
 
 // 引用报告（从路由 query 或工作台跳转）
@@ -311,7 +352,7 @@ onBeforeUnmount(() => {
           <button class="an__ctxref-x" @click="store.setContextReport(null)"><AppIcon name="x" size="xs" /></button>
         </div>
         <div class="an__chips">
-          <button class="an__chip" @click="chatInput = '/复盘 '">/复盘</button>
+          <button class="an__chip" title="提交一次复盘简报生成任务" @click="runSlashReview">/复盘</button>
           <button class="an__chip" @click="chatInput = '/解读 '">/解读</button>
           <button class="an__chip" @click="chatInput += '@'">@ 标的</button>
         </div>

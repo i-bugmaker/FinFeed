@@ -1,6 +1,6 @@
 <script setup>
 /**
- * AiLayout — AI 投研模块布局容器
+ * AiLayout — AI 分析模块布局容器
  * 顶部：模块页头（状态徽标 + 全局生成按钮）
  * 次导航：工作台 / 分析师 / 报告 / 任务 / 设置 五个子路由 Tab
  */
@@ -40,7 +40,7 @@ function openCmd() { store.cmdOpen = true }
 <template>
   <div class="ail">
     <!-- 布局容器：Tab 导航已提供可视上下文，h1 供读屏与文档语义 -->
-    <h1 class="ff-sr-only">AI 投研</h1>
+    <h1 class="ff-sr-only">AI 分析</h1>
 
     <nav class="ail__nav">
       <div class="ail__tabs">

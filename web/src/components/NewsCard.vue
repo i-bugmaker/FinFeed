@@ -46,7 +46,7 @@ async function copyNews() {
   } catch (e) {}
 }
 
-/* 提交当前快讯到 AI 投研分析 */
+/* 提交当前快讯到 AI 分析 */
 function aiAnalyze() {
   const q = [
     props.item.title,
@@ -94,8 +94,8 @@ function aiAnalyze() {
     <div class="ff-newscard__actions">
       <button
         class="ff-newscard__ai"
-        title="提交到 AI 投研分析"
-        aria-label="提交到 AI 投研分析"
+        title="提交到 AI 分析"
+        aria-label="提交到 AI 分析"
         @click.stop="aiAnalyze"
       >
         <AppIcon name="sparkles" size="sm" tone="brand" />

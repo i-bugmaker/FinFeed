@@ -17,12 +17,13 @@ logger = logging.getLogger("news_monitor")
 _LIST_COLUMNS = (
     "id, task_id, title, provider_name, model, window_hours, scope, news_count, "
     "scanned_count, start_ts, end_ts, status, error, chunk_count, prompt_tokens, "
-    "completion_tokens, elapsed, pinned, created_at, created_ts"
+    "completion_tokens, elapsed, pinned, report_type, stock_code, "
+    "created_at, created_ts"
 )
 
 
 def save_report(payload: Dict[str, Any]) -> int:
-    """写入一份报告，返回报告 id"""
+    """写入一份报告（成功或失败均落库），返回报告 id"""
     ensure_tables()
     now = now_bj().strftime("%Y-%m-%d %H:%M:%S")
     db = get_db_manager()
@@ -31,8 +32,9 @@ def save_report(payload: Dict[str, Any]) -> int:
             """INSERT INTO llm_reports
                (task_id, title, provider_name, model, window_hours, scope, news_count,
                 scanned_count, start_ts, end_ts, status, content, stats_json, error,
-                chunk_count, prompt_tokens, completion_tokens, elapsed, created_at, created_ts)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                chunk_count, prompt_tokens, completion_tokens, elapsed,
+                report_type, stock_code, sources_json, options_json, created_at, created_ts)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 payload.get("task_id", ""),
                 payload.get("title", ""),
@@ -52,12 +54,19 @@ def save_report(payload: Dict[str, Any]) -> int:
                 int(payload.get("prompt_tokens", 0)),
                 int(payload.get("completion_tokens", 0)),
                 float(payload.get("elapsed", 0)),
+                payload.get("report_type", "review"),
+                payload.get("stock_code", ""),
+                json.dumps(payload.get("sources", []), ensure_ascii=False),
+                json.dumps(payload.get("options", {}), ensure_ascii=False),
                 now,
                 int(time.time()),
             ),
         )
         report_id = c.lastrowid
-    logger.info(f"LLM 分析报告已保存: id={report_id} 条数={payload.get('news_count', 0)}")
+    logger.info(
+        f"LLM 分析报告已保存: id={report_id} status={payload.get('status', 'success')} "
+        f"条数={payload.get('news_count', 0)}"
+    )
     return report_id
 
 
@@ -118,6 +127,16 @@ def get_report(report_id: int) -> Optional[Dict[str, Any]]:
     except Exception:
         d["stats"] = {}
     d.pop("stats_json", None)
+    try:
+        d["sources"] = json.loads(d.get("sources_json") or "[]")
+    except Exception:
+        d["sources"] = []
+    d.pop("sources_json", None)
+    try:
+        d["options"] = json.loads(d.get("options_json") or "{}")
+    except Exception:
+        d["options"] = {}
+    d.pop("options_json", None)
     return d
 
 

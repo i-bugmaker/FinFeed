@@ -63,6 +63,28 @@ function onBodyScroll() {
   if (cur) activeSection.value = decodeURIComponent(cur)
 }
 
+// ---------- 引用溯源：[编号] -> 参考资讯对照 ----------
+const sources = computed(() => {
+  const s = report.value?.sources
+  return Array.isArray(s) ? s : []
+})
+
+// 把正文里的 [n] 引用编号替换为可点击的页内锚点链接（仅替换存在于对照表的编号）
+const citedContent = computed(() => {
+  const c = report.value?.content || ''
+  if (!sources.value.length) return c
+  const idxSet = new Set(sources.value.map((s) => s.idx))
+  return c.replace(/\[(\d{1,3})\]/g, (m, n) => {
+    const idx = Number(n)
+    return idxSet.has(idx) ? `[[${idx}]](#ff-src-${idx})` : m
+  })
+})
+
+const typeLabel = computed(() => {
+  const t = report.value?.report_type
+  return { review: '复盘简报', stock: '个股深度', sentiment: '舆情研判' }[t] || ''
+})
+
 function askReport() {
   store.setContextReport({ id: report.value.id, title: report.value.title, created_at: report.value.created_at })
   router.push({ path: '/ai/analyst', query: { report_id: report.value.id } })
@@ -189,7 +211,21 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
       <article ref="bodyEl" class="rr__content" @scroll.passive="onBodyScroll">
         <h1 class="rr__h1">{{ report.title || '报告 #' + report.id }}</h1>
         <ReportSummaryCard :report="report" />
-        <MarkdownView :content="report.content" />
+        <MarkdownView :content="citedContent" />
+        <!-- 引用溯源对照表 -->
+        <div v-if="sources.length" class="rr__sources">
+          <div class="rr__sources-title">📎 引用资讯对照（正文 [编号] 可点击回链）</div>
+          <div v-for="s in sources" :key="s.idx" :id="'ff-src-' + s.idx" class="rr__src">
+            <span class="rr__src-idx">[{{ s.idx }}]</span>
+            <span class="rr__src-main">
+              <template v-if="s.url && s.url !== '#'">
+                <a :href="s.url" target="_blank" rel="noopener" class="rr__src-link">{{ s.title }}</a>
+              </template>
+              <template v-else>{{ s.title }}</template>
+              <span class="rr__src-meta">{{ s.source }} · {{ s.time }} · 重要性 {{ s.importance }}</span>
+            </span>
+          </div>
+        </div>
       </article>
 
       <!-- 右操作 -->
@@ -211,6 +247,7 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
         </div>
         <div class="rr__card">
           <div class="rr__card-label">元信息</div>
+          <div v-if="typeLabel" class="rr__kv"><span>类型</span><b>{{ typeLabel }}</b></div>
           <div class="rr__kv"><span>范围</span><b>{{ store.scopeLabel(report.scope) }}</b></div>
           <div class="rr__kv"><span>窗口</span><b>{{ report.window_hours || 24 }} 小时</b></div>
           <div class="rr__kv"><span>资讯</span><b>{{ report.news_count || 0 }} 条</b></div>
@@ -258,6 +295,15 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
 .rr__toc-empty { font-size: 12px; color: var(--ff-text-3); padding: 8px; }
 .rr__content { background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 13px; padding: 26px 30px; max-height: calc(100vh - 260px); overflow-y: auto; }
 .rr__h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 16px; color: var(--ff-text-primary); }
+.rr__sources { margin-top: 30px; padding-top: 16px; border-top: 1px dashed var(--ff-border); }
+.rr__sources-title { font-size: 13px; font-weight: 700; color: var(--ff-text-secondary); margin-bottom: 10px; }
+.rr__src { display: flex; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12.5px; line-height: 1.55; scroll-margin-top: 20px; }
+.rr__src:hover { background: var(--ff-bg-hover); }
+.rr__src-idx { font-family: var(--ff-font-mono, ui-monospace, monospace); color: var(--ff-brand); font-weight: 700; flex-shrink: 0; }
+.rr__src-main { min-width: 0; color: var(--ff-text-2); }
+.rr__src-link { color: var(--ff-text-primary); text-decoration: none; }
+.rr__src-link:hover { color: var(--ff-brand); text-decoration: underline; }
+.rr__src-meta { display: block; font-size: 11px; color: var(--ff-text-3); margin-top: 1px; }
 .rr__side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 14px; }
 .rr__card { background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 12px; padding: 13px 14px; }
 .rr__card--warn { background: #fef9ee; border-color: #f0dfb8; color: #92400e; display: flex; gap: 8px; align-items: flex-start; }

@@ -248,6 +248,71 @@ def collect(hours: int = 24, scope: str = SCOPE_ALL, min_importance: float = 0.0
     return records, meta
 
 
+def collect_for_stock(code: str, hours: int = 48, max_items: int = 300,
+                      end_ts: Optional[int] = None) -> Tuple[List[NewsRecord], Dict[str, Any]]:
+    """采集窗口内与指定标的关联的新闻（news_stock_link 关联，标题/正文双匹配兜底）。"""
+    code = (code or "").strip()
+    hours = normalize_window(hours)
+    start_ts, real_end = window_bounds(hours, end_ts)
+    max_items = max(20, min(int(max_items or 300), 2000))
+
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            f"SELECT COUNT(*) AS n FROM news WHERE publish_ts >= ? AND publish_ts <= ? "
+            f"AND (stocks LIKE ? OR id IN (SELECT news_id FROM news_stock_link WHERE code = ?))",
+            [start_ts, real_end, f'%"{code}"%', code],
+        )
+        scanned = c.fetchone()["n"]
+
+        c.execute(
+            f"SELECT {_SELECT_COLS} FROM news "
+            f"WHERE publish_ts >= ? AND publish_ts <= ? "
+            f"AND (stocks LIKE ? OR id IN (SELECT news_id FROM news_stock_link WHERE code = ?)) "
+            f"ORDER BY importance DESC, publish_ts DESC, id DESC LIMIT ?",
+            [start_ts, real_end, f'%"{code}"%', code, max_items],
+        )
+        rows = c.fetchall()
+
+    records = [
+        NewsRecord(
+            id=r["id"],
+            title=r["title"] or "",
+            intro=r["intro"] or "",
+            source=r["source"] or "",
+            category=r["category"] or "",
+            publish_time=r["publish_time"] or "",
+            publish_ts=int(r["publish_ts"] or 0),
+            sentiment=r["sentiment"] or "neutral",
+            importance=float(r["importance"] or 0),
+            stocks=_json_list(r["stocks"]),
+            keywords=_json_list(r["keywords"]),
+            duplicate_count=int(r["duplicate_count"] or 0),
+            url=r["url"] or "",
+        )
+        for r in rows
+    ]
+    records.sort(key=lambda x: x.publish_ts)
+
+    meta = {
+        "hours": hours,
+        "scope": SCOPE_ALL,
+        "scope_label": f"标的 {code} 关联资讯",
+        "start_ts": start_ts,
+        "end_ts": real_end,
+        "start_str": bj_str_from_ts(start_ts),
+        "end_str": bj_str_from_ts(real_end),
+        "scanned_count": scanned,
+        "selected_count": len(records),
+        "truncated": scanned > len(records),
+        "min_importance": 0.0,
+        "order": ORDER_IMPORTANCE,
+        "max_items": max_items,
+    }
+    logger.info(f"LLM 个股采集：{code} 窗口 {hours}h / 命中 {scanned} 条 / 送分析 {len(records)} 条")
+    return records, meta
+
+
 def build_chunks(records: List[NewsRecord], chunk_chars: int = 8000,
                  max_chunks: int = 24, intro_chars: int = 80) -> List[List[str]]:
     """按字符预算切块，返回每块的文本行列表"""

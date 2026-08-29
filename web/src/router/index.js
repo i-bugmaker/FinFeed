@@ -15,7 +15,7 @@ const ScreenerView = () => import('../views/ScreenerView.vue')
 const StockMonitorView = () => import('../views/StockMonitorView.vue')
 const NotificationSettingsView = () => import('../views/NotificationSettingsView.vue')
 
-// AI 投研模块（v2.0 重构）：/ai 为布局容器，五个子路由对应
+// AI 分析模块（v2.0 重构）：/ai 为布局容器，五个子路由对应
 // 工作台 / 分析师 / 研究报告 / 任务中心 / 设置
 const AiLayout = () => import('../views/ai/AiLayout.vue')
 const WorkbenchView = () => import('../views/ai/WorkbenchView.vue')
@@ -40,9 +40,9 @@ const routes = [
   {
     path: '/ai',
     component: AiLayout,
-    meta: { title: 'AI 投研' },
+    meta: { title: 'AI 分析' },
     children: [
-      { path: '', name: 'ai', component: WorkbenchView, meta: { title: 'AI 投研工作台' } },
+      { path: '', name: 'ai', component: WorkbenchView, meta: { title: 'AI 分析工作台' } },
       { path: 'analyst', name: 'ai-analyst', component: AnalystView, meta: { title: '分析师' } },
       { path: 'reports', name: 'ai-reports', component: ReportsView, meta: { title: '研究报告' } },
       { path: 'reports/:id', name: 'ai-report', component: ReportReaderView, meta: { title: '报告阅读' } },

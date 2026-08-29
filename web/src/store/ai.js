@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { api } from '../api/client'
 
 /**
- * AI 投研模块共享状态
+ * AI 分析模块共享状态
  * 工作台 / 分析师 / 报告 / 任务 / 设置 五个页面共用的数据源与轮询逻辑。
  * 单一数据源：任务状态在 TasksView 变更后，工作台与报告列表实时联动。
  */
@@ -26,12 +26,17 @@ export const useAiStore = defineStore('ai', {
     taskStreamText: '',
     streamTaskId: null,
     streamUnsub: null,
-    // 分析默认配置（scope/window/focus）：设置页保存，工作台/生成任务读取
+    // 分析默认配置（scope/window/focus/report_type）：服务端持久化，localStorage 兜底
     config: {
       scope: 'all',
       window: 24,
       focus: '',
+      report_type: 'review',
     },
+    // 提交前数据预估（/api/llm/preview）
+    preview: null,
+    // 报告类型注册表（来自后端 REPORT_TYPES）
+    reportTypes: [],
     // 会话级上下文（分析师页）
     contextStock: null, // { name, code, price, change, ... }
     contextReport: null, // { id, title, section }
@@ -61,22 +66,46 @@ export const useAiStore = defineStore('ai', {
 
   actions: {
     // ---------- 基础加载 ----------
-    // 读取本地保存的分析默认值（设置页写入）
+    // 读取分析默认值：localStorage 先行，随后以服务端配置为准（跨设备共享）
     loadConfig() {
       try {
         const raw = localStorage.getItem('finfeed_ai_config')
-        if (!raw) return
-        const c = JSON.parse(raw)
-        if (c.scope) this.config.scope = c.scope
-        if (c.window) this.config.window = Number(c.window) || 24
-        if (c.focus !== undefined) this.config.focus = c.focus
+        if (raw) {
+          const c = JSON.parse(raw)
+          if (c.scope) this.config.scope = c.scope
+          if (c.window) this.config.window = Number(c.window) || 24
+          if (c.focus !== undefined) this.config.focus = c.focus
+          if (c.report_type) this.config.report_type = c.report_type
+        }
       } catch (e) {}
+      api
+        .llm('/config')
+        .then((r) => {
+          const d = r?.defaults
+          if (!d) return
+          if (d.scope) this.config.scope = d.scope
+          if (d.window) this.config.window = Number(d.window) || 24
+          if (d.focus !== undefined) this.config.focus = d.focus
+          if (d.report_type) this.config.report_type = d.report_type
+        })
+        .catch(() => {})
     },
     saveConfig(patch = {}) {
       this.config = { ...this.config, ...patch }
       try {
         localStorage.setItem('finfeed_ai_config', JSON.stringify(this.config))
       } catch (e) {}
+      // 服务端持久化（静默失败：离线/旧后端仍有 localStorage 兜底）
+      api.llmPost('/config', { ...this.config }).catch(() => {})
+    },
+    // 提交前预估：送分析量 / 批次 / 耗时
+    async fetchPreview(params) {
+      try {
+        this.preview = await api.llm('/preview', params)
+      } catch (e) {
+        this.preview = null
+      }
+      return this.preview
     },
     async loadStatus() {
       try {
@@ -92,6 +121,7 @@ export const useAiStore = defineStore('ai', {
         this.presets = init.presets || []
         this.scopeOptions = init.scopes || []
         if (init.windows && init.windows.length) this.windowOptions = init.windows
+        if (init.report_types?.length) this.reportTypes = init.report_types
         if (init.status) this.status = init.status
       } catch (e) {}
     },
@@ -160,6 +190,8 @@ export const useAiStore = defineStore('ai', {
         scope: cfg.scope,
         hours: Number(cfg.window),
         focus: cfg.focus || undefined,
+        report_type: cfg.report_type || 'review',
+        stock_code: cfg.stock_code || undefined,
         min_importance: 0,
       })
       await this.loadTasks()
@@ -174,6 +206,20 @@ export const useAiStore = defineStore('ai', {
     },
     async retryTask(taskId) {
       const r = await api.llmPost('/task/retry', { task_id: taskId })
+      await this.loadTasks()
+      if (r.ok && r.task_id) this.startTaskStream(r.task_id)
+      return r
+    },
+    // 报告级重试：内存任务已过期时回退到报告归档参数
+    async retryReport(report) {
+      if (report?.task_id) {
+        try {
+          return await this.retryTask(report.task_id)
+        } catch (e) {
+          /* 任务不在内存（可能已重启），回退 report/retry */
+        }
+      }
+      const r = await api.llmPost('/report/retry', { id: report.id })
       await this.loadTasks()
       if (r.ok && r.task_id) this.startTaskStream(r.task_id)
       return r

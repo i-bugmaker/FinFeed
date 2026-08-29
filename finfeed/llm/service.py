@@ -15,12 +15,14 @@ from typing import Any, Callable, Dict, List, Optional
 
 from . import analyzer, collector, store
 from . import config as cfg
+from . import prompts as analyzer_prompts
 from .analyzer import AnalysisCancelled
 from .client import LLMError, build_client
 
 logger = logging.getLogger("news_monitor")
 
 MAX_TASK_HISTORY = 20
+MAX_QUEUE_SIZE = 5  # 运行中之外的排队任务上限（超出返回 409）
 
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
@@ -50,6 +52,8 @@ class TaskState:
     message: str = "任务已创建"
     hours: int = 24
     scope: str = "all"
+    report_type: str = "review"
+    stock_code: str = ""
     provider_name: str = ""
     model: str = ""
     news_count: int = 0
@@ -78,6 +82,7 @@ class AnalysisService:
         self._lock = threading.Lock()
         self._tasks: Dict[str, TaskState] = {}
         self._order: List[str] = []
+        self._queue: List[str] = []  # 排队任务（FIFO）
         self._active_id: Optional[str] = None
         self._cancel_flags: Dict[str, bool] = {}
         # 任务事件发布器：fn(task_id, payload)，由传输层（SSE）注入；领域层不感知 UI。
@@ -128,6 +133,15 @@ class AnalysisService:
             t = self._tasks.get(task_id)
             if not t or t.status not in (STATUS_PENDING, STATUS_RUNNING):
                 return False
+            if t.status == STATUS_PENDING and task_id in self._queue:
+                # 排队中的任务尚未启动，直接出队置为取消
+                self._queue.remove(task_id)
+                t.status = STATUS_CANCELLED
+                t.stage = "done"
+                t.progress = 100
+                t.message = "任务已取消（尚未开始）"
+                t.finished_ts = time.time()
+                return True
             self._cancel_flags[task_id] = True
             t.message = "正在取消…"
         return True
@@ -155,15 +169,10 @@ class AnalysisService:
         return result
 
     def submit(self, options: Dict[str, Any]) -> Dict[str, Any]:
-        """提交分析任务。返回 {ok, task_id, error}"""
-        if self.is_busy():
-            active = self.get_active()
-            return {
-                "ok": False,
-                "error": "已有分析任务正在运行，请等待完成或先取消",
-                "active": active,
-            }
+        """提交分析任务。运行中有任务时自动排队（上限 MAX_QUEUE_SIZE）。
 
+        返回 {ok, task_id, error, queued}
+        """
         provider_id = options.get("provider_id")
         provider = None
         if provider_id:
@@ -183,26 +192,65 @@ class AnalysisService:
         scope = options.get("scope") or collector.SCOPE_ALL
         if scope not in collector.SCOPES:
             scope = collector.SCOPE_ALL
+        report_type = options.get("report_type") or "review"
+        if report_type not in analyzer_prompts.REPORT_TYPES:
+            report_type = "review"
+        stock_code = str(options.get("stock_code") or "").strip()
+        if report_type == "stock" and not stock_code:
+            return {"ok": False, "error": "个股深度报告需要提供股票代码（stock_code）"}
 
-        state = TaskState(
-            task_id=task_id,
-            status=STATUS_PENDING,
-            hours=hours,
-            scope=scope,
-            provider_name=provider.name,
-            model=provider.model,
-            options=dict(options),
-        )
+        queued = False
         with self._lock:
+            busy = bool(
+                self._active_id
+                and self._tasks.get(self._active_id)
+                and self._tasks[self._active_id].status in (STATUS_PENDING, STATUS_RUNNING)
+            )
+            if busy and len(self._queue) >= MAX_QUEUE_SIZE:
+                return {
+                    "ok": False,
+                    "error": f"任务繁忙且排队已满（{MAX_QUEUE_SIZE} 个），请稍后再试",
+                    "active": self._tasks[self._active_id].to_dict() if self._active_id in self._tasks else None,
+                }
+            queued = busy
+
+            state = TaskState(
+                task_id=task_id,
+                status=STATUS_PENDING,
+                hours=hours,
+                scope=scope,
+                report_type=report_type,
+                stock_code=stock_code,
+                provider_name=provider.name,
+                model=provider.model,
+                options=dict(options),
+                message="排队中，等待空闲…" if queued else "任务已创建",
+            )
             self._tasks[task_id] = state
             self._order.append(task_id)
             self._cancel_flags[task_id] = False
-            self._active_id = task_id
+            if queued:
+                self._queue.append(task_id)
+            else:
+                self._active_id = task_id
             while len(self._order) > MAX_TASK_HISTORY:
                 old = self._order.pop(0)
                 self._tasks.pop(old, None)
                 self._cancel_flags.pop(old, None)
+                if old in self._queue:
+                    self._queue.remove(old)
 
+        if not queued:
+            self._spawn(task_id, provider, options)
+        logger.info(
+            f"LLM 分析任务已提交: {task_id} 类型={report_type}"
+            f"{' 标的=' + stock_code if stock_code else ''} "
+            f"窗口={hours}h 范围={scope} 模型={provider.model}"
+            f"{'（排队中）' if queued else ''}"
+        )
+        return {"ok": True, "task_id": task_id, "task": state.to_dict(), "queued": queued}
+
+    def _spawn(self, task_id: str, provider, options: Dict[str, Any]) -> None:
         thread = threading.Thread(
             target=self._run,
             args=(task_id, provider, options),
@@ -210,10 +258,53 @@ class AnalysisService:
             name=f"llm-analysis-{task_id}",
         )
         thread.start()
-        logger.info(
-            f"LLM 分析任务已提交: {task_id} 窗口={hours}h 范围={scope} 模型={provider.model}"
-        )
-        return {"ok": True, "task_id": task_id, "task": state.to_dict()}
+
+    def _start_next(self) -> None:
+        """当前任务结束后从队列取下一个排队任务启动。"""
+        with self._lock:
+            next_id = None
+            while self._queue:
+                cand = self._queue.pop(0)
+                t = self._tasks.get(cand)
+                if t and t.status == STATUS_PENDING:
+                    next_id = cand
+                    break
+            if not next_id:
+                self._active_id = None
+                return
+            self._active_id = next_id
+            provider = None
+            options: Dict[str, Any] = {}
+            if next_id in self._tasks:
+                provider_name = self._tasks[next_id].provider_name
+                options = dict(self._tasks[next_id].options or {})
+            else:
+                provider_name = ""
+        # 释放锁后再解析 provider 并启动线程
+        if provider_name and not options.get("provider_id"):
+            for p in cfg.list_providers():
+                if p.name == provider_name:
+                    options["provider_id"] = p.id
+                    break
+        provider = None
+        pid = options.get("provider_id")
+        if pid:
+            try:
+                provider = cfg.get_provider(int(pid))
+            except (TypeError, ValueError):
+                provider = None
+        if provider is None:
+            provider = cfg.get_default_provider()
+        if provider is None:
+            self._update(next_id, status=STATUS_FAILED, stage="done", progress=100,
+                         message="模型配置缺失", error="模型配置缺失", finished_ts=time.time())
+            with self._lock:
+                if self._active_id == next_id:
+                    self._active_id = None
+            self._start_next()
+            return
+        self._publish(next_id, event="status", status=STATUS_RUNNING)
+        self._spawn(next_id, provider, options)
 
     # ---------- 执行 ----------
     def _update(self, task_id: str, **kwargs) -> None:
@@ -279,6 +370,8 @@ class AnalysisService:
                 client,
                 hours=collector.normalize_window(options.get("hours", 24)),
                 scope=options.get("scope") or collector.SCOPE_ALL,
+                report_type=str(options.get("report_type") or "review"),
+                stock_code=str(options.get("stock_code") or ""),
                 min_importance=_num("min_importance", float, 0.0, 0.0, 10.0),
                 max_items=_num("max_items", int, 500, 20, 5000),
                 order=options.get("order") or collector.ORDER_IMPORTANCE,
@@ -309,6 +402,10 @@ class AnalysisService:
                     "prompt_tokens": result["prompt_tokens"],
                     "completion_tokens": result["completion_tokens"],
                     "elapsed": result["elapsed"],
+                    "report_type": result.get("report_type", "review"),
+                    "stock_code": result.get("stock_code", ""),
+                    "sources": result.get("sources", []),
+                    "options": dict(options),
                 }
             )
 
@@ -355,6 +452,7 @@ class AnalysisService:
                 error_kind=e.kind,
                 finished_ts=time.time(),
             )
+            self._persist_failure(task_id, provider.name, options, e.message)
             self._publish(
                 task_id, event="done", status=STATUS_FAILED, error=e.message, error_kind=e.kind
             )
@@ -371,6 +469,7 @@ class AnalysisService:
                 error_kind="unknown",
                 finished_ts=time.time(),
             )
+            self._persist_failure(task_id, provider.name, options, msg)
             self._publish(
                 task_id, event="done", status=STATUS_FAILED, error=msg, error_kind="unknown"
             )
@@ -379,6 +478,36 @@ class AnalysisService:
             with self._lock:
                 if self._active_id == task_id:
                     self._active_id = None
+            self._start_next()
+
+    def _persist_failure(
+        self, task_id: str, provider_name: str, options: Dict[str, Any], error: str
+    ) -> None:
+        """失败任务落库：报告页可见失败记录并可重试（options 供跨重启重试）。"""
+        try:
+            report_type = str(options.get("report_type") or "review")
+            label = analyzer_prompts.REPORT_TYPES.get(report_type, {}).get("label", "复盘简报")
+            stock_code = str(options.get("stock_code") or "")
+            store.save_report(
+                {
+                    "task_id": task_id,
+                    "title": f"分析失败 · {label}" + (f" · {stock_code}" if stock_code else ""),
+                    "provider_name": provider_name,
+                    "model": "",
+                    "window_hours": collector.normalize_window(options.get("hours", 24)),
+                    "scope": options.get("scope") or collector.SCOPE_ALL,
+                    "status": "failed",
+                    "content": "",
+                    "stats": {},
+                    "error": error,
+                    "report_type": report_type,
+                    "stock_code": stock_code,
+                    "sources": [],
+                    "options": dict(options),
+                }
+            )
+        except Exception as e:  # noqa: BLE001 —— 失败落库失败不影响任务状态
+            logger.debug(f"失败报告落库异常: {e}")
 
 
 _service: Optional[AnalysisService] = None

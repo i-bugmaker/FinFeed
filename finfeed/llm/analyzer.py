@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 from finfeed.storage.database import get_db_manager
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
-from . import collector, prompts
+from . import collector, context, prompts
 from .cleanup import clean_report_body
 from .client import LLMClient, LLMError, estimate_tokens
 from .collector import NewsRecord
@@ -212,11 +212,29 @@ def _safe_format(template: str, default: str, **kw) -> str:
         return default.format(**kw)
 
 
+def _build_sources(records: List[NewsRecord]) -> List[Dict[str, Any]]:
+    """构建引用溯源映射：资讯清单编号 [idx] -> 原始新闻（供阅读器回链）。"""
+    return [
+        {
+            "idx": i,
+            "id": r.id,
+            "title": r.title,
+            "source": r.source,
+            "time": r.publish_time or bj_str_from_ts(r.publish_ts),
+            "url": r.url,
+            "importance": round(r.importance, 1),
+        }
+        for i, r in enumerate(records, 1)
+    ]
+
+
 def run_analysis(
     client: LLMClient,
     *,
     hours: int = 24,
     scope: str = collector.SCOPE_ALL,
+    report_type: str = "review",
+    stock_code: str = "",
     min_importance: float = 0.0,
     max_items: int = 500,
     order: str = collector.ORDER_IMPORTANCE,
@@ -229,11 +247,15 @@ def run_analysis(
 ) -> Dict[str, Any]:
     """执行一次完整分析，返回报告 payload
 
-    on_delta: REDUCE（含单批直出）阶段的正文增量回调，用于 SSE 渐进输出。
+    report_type: review 复盘简报（map-reduce/单轮）｜stock 个股深度｜sentiment 舆情研判
+    on_delta: 生成正文阶段的增量回调，用于 SSE 渐进输出。
       - 每收到一段模型增量调用一次 on_delta(piece)；
       - 流式中断回退非流式重取时，先以 on_delta("") 作为「清空缓冲」信号，
         再整段补发完整正文——前端据此避免拼接重复内容。
     """
+    if report_type not in prompts.REPORT_TYPES:
+        report_type = "review"
+
     # 生效提示词（内置默认 + 用户自定义覆盖）；占位符缺失时回退内置默认
     P = get_prompts()
     t_start = time.time()
@@ -249,15 +271,45 @@ def run_analysis(
         if should_cancel and should_cancel():
             raise AnalysisCancelled()
 
-    _p("collect", 3, "正在从新闻库检索时间窗口内的数据…")
-    records, meta = collector.collect(
-        hours=hours,
-        scope=scope,
-        min_importance=min_importance,
-        max_items=max_items,
-        order=order,
-    )
+    # ---------- 事实包（先于采集，失败静默降级） ----------
+    _p("collect", 3, "正在汇编市场事实与资讯数据…")
+    market_text = ""
+    stock_name = ""
+    if report_type == "stock":
+        stock_code = (stock_code or "").strip()
+        if not stock_code:
+            raise LLMError("个股深度报告需要提供股票代码", kind="empty_data")
+        facts_pack = context.stock_fact_pack(stock_code)
+        if not facts_pack.get("found"):
+            logger.warning(f"事实层缺少 {stock_code} 档案，仅用资讯生成")
+        stock_name = (facts_pack.get("meta") or {}).get("name") or stock_code
+        facts_text = context.stock_fact_to_text(facts_pack)
+    elif report_type == "sentiment":
+        facts_pack = context.sentiment_fact_pack()
+        market_pack = context.market_fact_pack()
+        facts_text = context.sentiment_fact_to_text(facts_pack)
+        market_text = context.market_fact_to_text(market_pack)
+    else:
+        facts_pack = context.market_fact_pack()
+        facts_text = context.market_fact_to_text(facts_pack)
+
+    # ---------- 采集 ----------
+    if report_type == "stock":
+        records, meta = collector.collect_for_stock(stock_code, hours=hours, max_items=max_items)
+    else:
+        records, meta = collector.collect(
+            hours=hours,
+            scope=scope,
+            min_importance=min_importance,
+            max_items=max_items,
+            order=order,
+        )
     if not records:
+        if report_type == "stock":
+            raise LLMError(
+                f"近 {hours} 小时内没有找到与 {stock_name}({stock_code}) 关联的资讯，请放宽时间窗口",
+                kind="empty_data",
+            )
         raise LLMError(
             f"窗口内没有符合条件的新闻（近 {hours} 小时 / {collector.SCOPES.get(scope, scope)}"
             f" / 重要性≥{min_importance}），请放宽筛选条件",
@@ -269,6 +321,7 @@ def run_analysis(
     stats = compute_stats(records, meta)
     stats_block = stats_to_prompt_block(stats)
     win_label = prompts.window_label(meta["hours"])
+    sources = _build_sources(records)
 
     chunks = collector.build_chunks(records, chunk_chars=chunk_chars, max_chunks=max_chunks)
     total_chunks = len(chunks)
@@ -342,27 +395,8 @@ def run_analysis(
         _safe_delta(text)
         return text
 
-    # ---------- 单批：直接一次成文 ----------
-    if total_chunks == 1:
-        _check()
-        _p("reduce", 30, "数据量适中，单次调用生成报告…")
-        user = (
-            _safe_format(
-                P["single_user"],
-                prompts.SINGLE_PASS_USER_TEMPLATE,
-                window_label=win_label,
-                start_str=meta["start_str"],
-                end_str=meta["end_str"],
-                news_count=len(records),
-                stats_block=stats_block,
-                payload="\n".join(chunks[0]),
-            )
-            + focus_note
-        )
-        body = _generate_final(P["reduce_system"], user, cap=None)
-        _p("reduce", 92, "报告生成完成")
-    else:
-        # ---------- MAP ----------
+    def _map_digests() -> str:
+        """多批时逐批压缩为要点，返回拼接后的要点文本（含失败占位）。"""
         digests: List[str] = []
         for i, chunk in enumerate(chunks, 1):
             _check()
@@ -391,17 +425,77 @@ def run_analysis(
             except LLMError as e:
                 logger.warning(f"LLM 第 {i} 批压缩失败：{e.message}")
                 digests.append(f"—— 第 {i}/{total_chunks} 批要点 ——\n（该批处理失败：{e.message}）")
-
         ok_batches = sum(1 for d in digests if "（该批处理失败" not in d)
         if ok_batches == 0:
             raise LLMError("所有批次均调用失败，请检查模型配置与网络", kind="all_failed")
-
-        # ---------- REDUCE ----------
-        _check()
         _p("reduce", 80, f"{ok_batches}/{total_chunks} 批要点提取完成，正在汇总生成报告…")
         digest_text = "\n\n".join(digests)
         if len(digest_text) > chunk_chars * 3:
             digest_text = digest_text[: chunk_chars * 3] + "\n（要点过长，已截断）"
+        return digest_text
+
+    # ---------- 分类型生成 ----------
+    if report_type == "stock":
+        # 个股深度：单批直接用资讯清单；多批先 MAP 压缩再以要点为素材
+        _p("reduce", 30, f"正在生成 {stock_name}({stock_code}) 深度诊断…")
+        material = "\n".join(chunks[0]) if total_chunks == 1 else _map_digests()
+        material_label = "关联资讯清单" if total_chunks == 1 else "经分批压缩后的关联资讯要点"
+        user = (
+            _safe_format(
+                P["stock_user"],
+                prompts.STOCK_USER_TEMPLATE,
+                stock_name=stock_name,
+                stock_code=stock_code,
+                facts_block=facts_text or "（事实层数据暂缺，以下仅基于资讯分析）",
+                stats_block=stats_block,
+                window_hours=meta["hours"],
+                news_count=len(records),
+                payload=material,
+            ).replace("【关联资讯清单】", f"【{material_label}】")
+            + focus_note
+        )
+        body = _generate_final(P["stock_system"], user, cap=None)
+    elif report_type == "sentiment":
+        _p("reduce", 30, "正在生成舆情研判报告…")
+        material = "\n".join(chunks[0]) if total_chunks == 1 else _map_digests()
+        user = (
+            _safe_format(
+                P["sentiment_user"],
+                prompts.SENTIMENT_USER_TEMPLATE,
+                facts_block=facts_text or "（舆情事实数据暂缺）",
+                facts_market_block=market_text or "（市场事实数据暂缺）",
+                stats_block=stats_block,
+                window_label=win_label,
+                news_count=len(records),
+                payload=material,
+            )
+            + focus_note
+        )
+        body = _generate_final(P["sentiment_system"], user, cap=None)
+    elif total_chunks == 1:
+        # ---------- 复盘简报：单批直接成文 ----------
+        _check()
+        _p("reduce", 30, "数据量适中，单次调用生成报告…")
+        user = (
+            _safe_format(
+                P["single_user"],
+                prompts.SINGLE_PASS_USER_TEMPLATE,
+                window_label=win_label,
+                start_str=meta["start_str"],
+                end_str=meta["end_str"],
+                news_count=len(records),
+                facts_block=facts_text or "（市场事实数据暂缺）",
+                stats_block=stats_block,
+                payload="\n".join(chunks[0]),
+            )
+            + focus_note
+        )
+        body = _generate_final(P["reduce_system"], user, cap=None)
+        _p("reduce", 92, "报告生成完成")
+    else:
+        # ---------- 复盘简报：MAP + REDUCE ----------
+        digest_text = _map_digests()
+        _check()
         user = (
             _safe_format(
                 P["reduce_user"],
@@ -410,6 +504,7 @@ def run_analysis(
                 start_str=meta["start_str"],
                 end_str=meta["end_str"],
                 news_count=len(records),
+                facts_block=facts_text or "（市场事实数据暂缺）",
                 stats_block=stats_block,
                 digests=digest_text,
             )
@@ -418,17 +513,24 @@ def run_analysis(
         body = _generate_final(P["reduce_system"], user, cap=None)
         _p("reduce", 92, "报告生成完成")
 
+    # ---------- 拼装 ----------
     _p("assemble", 96, "正在拼装报告…")
     elapsed = time.time() - t_start
     generated_at = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-    title = f"FinFeed 近{meta['hours']}小时资讯复盘 · {generated_at[:16]}"
+    if report_type == "stock":
+        title = f"FinFeed 个股诊断 · {stock_name}({stock_code}) · {generated_at[:16]}"
+    elif report_type == "sentiment":
+        title = f"FinFeed 市场舆情研判 · {generated_at[:16]}"
+    else:
+        title = f"FinFeed 近{meta['hours']}小时资讯复盘 · {generated_at[:16]}"
 
     header = "\n".join(
         [
             f"# {title}",
             "",
             f"> 生成时间：{generated_at}　|　分析模型：{client.model}　|　"
-            f"覆盖区间：{meta['start_str']} — {meta['end_str']}",
+            f"覆盖区间：{meta['start_str']} — {meta['end_str']}"
+            + (f"　|　标的：{stock_name}({stock_code})" if report_type == "stock" else ""),
             "",
             "---",
             "",
@@ -441,7 +543,7 @@ def run_analysis(
             "",
             f"*本报告由 FinFeed AI 分析模块生成。样本 {len(records)} 条 / 分 {total_chunks} 批处理 / "
             f"耗时 {elapsed:.1f} 秒 / token 约 {prompt_tokens + completion_tokens}。"
-            "结论由大语言模型基于库内公开资讯归纳，不构成投资建议。*",
+            "结论由大语言模型基于库内公开资讯与事实数据归纳，不构成投资建议。*",
         ]
     )
 
@@ -453,6 +555,9 @@ def run_analysis(
         "content": content,
         "stats": stats,
         "meta": meta,
+        "report_type": report_type,
+        "stock_code": stock_code,
+        "sources": sources,
         "news_count": len(records),
         "scanned_count": meta["scanned_count"],
         "chunk_count": total_chunks,
@@ -460,7 +565,7 @@ def run_analysis(
         "completion_tokens": completion_tokens,
         "elapsed": round(elapsed, 2),
         "window_hours": meta["hours"],
-        "scope": scope,
+        "scope": meta.get("scope", scope),
         "start_ts": meta["start_ts"],
         "end_ts": meta["end_ts"],
         "model": client.model,

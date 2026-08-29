@@ -33,10 +33,10 @@ const groups = [
     ],
   },
   {
-    title: '投研分析',
+    title: 'AI 分析',
     items: [
       { to: '/dashboard', label: '仪表盘', icon: 'dashboard' },
-      { to: '/ai', label: 'AI 投研', icon: 'sparkles' },
+      { to: '/ai', label: 'AI 分析', icon: 'sparkles' },
       { to: '/favorites', label: '自选收藏', icon: 'star' },
       { to: '/notifications', label: '通知设置', icon: 'bell' },
     ],

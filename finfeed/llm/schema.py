@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS llm_reports (
     completion_tokens INTEGER DEFAULT 0,
     elapsed           REAL DEFAULT 0,
     pinned            INTEGER DEFAULT 0,
+    report_type       TEXT DEFAULT 'review',
+    stock_code        TEXT DEFAULT '',
+    sources_json      TEXT DEFAULT '[]',
+    options_json      TEXT DEFAULT '{}',
     created_at        TEXT DEFAULT '',
     created_ts        INTEGER DEFAULT 0
 )
@@ -148,6 +152,10 @@ def _migrate(c) -> None:
             ("stats_json", "TEXT DEFAULT '{}'"),
             ("chunk_count", "INTEGER DEFAULT 0"),
             ("pinned", "INTEGER DEFAULT 0"),
+            ("report_type", "TEXT DEFAULT 'review'"),
+            ("stock_code", "TEXT DEFAULT ''"),
+            ("sources_json", "TEXT DEFAULT '[]'"),
+            ("options_json", "TEXT DEFAULT '{}'"),
         ]),
     ):
         try:

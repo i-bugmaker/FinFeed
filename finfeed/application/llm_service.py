@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""LLM 投研用例服务（应用层，框架无关）
+"""AI 分析用例服务（应用层，框架无关）
 
 从原 finfeed.llm.api 收敛而来。领域包（finfeed.llm）不感知 HTTP；
 本模块只做「取数 + 编排 + 组装 dict」，输入输出均为纯 Python 数据结构，
@@ -10,17 +10,22 @@
   - status_payload()   服务状态聚合（供应商 / 默认模型可用性 / 任务忙闲）
   - init_payload()     工作台首屏一次性数据
   - preview_estimate() 送分析量 / 批次 / 耗时预估
+  - analysis_defaults()/save_analysis_defaults()  分析默认值（服务端持久化）
   - chat_report()      报告追问（以报告正文 + 统计为上下文）
-  - chat_free()        自由问答（注入近 48h 资讯摘要）
+  - chat_stock()       @标的问答（以个股事实包 + 关联资讯为上下文）
+  - chat_free()        自由问答（按问题关键词检索相关资讯注入）
+  - dispatch_chat()    斜杠命令（/复盘）与上下文分派
   - export_report()    报告导出（md/txt/json）
 """
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from finfeed.llm import collector, store
+from finfeed.llm import collector, context, store
 from finfeed.llm import config as cfg
+from finfeed.llm import prompts as llm_prompts
 from finfeed.llm.client import LLMError, build_chat_url, build_client, build_models_url
 from finfeed.llm.schema import ensure_tables
 from finfeed.llm.service import get_service
@@ -62,9 +67,13 @@ def init_payload() -> Dict[str, Any]:
         "presets": cfg.PRESETS,
         "scopes": [{"key": k, "label": v} for k, v in collector.SCOPES.items()],
         "windows": list(collector.ALLOWED_WINDOWS),
+        "report_types": [
+            {"key": k, **v} for k, v in llm_prompts.REPORT_TYPES.items()
+        ],
         "status": status_payload(),
         "providers": [p.to_dict() for p in cfg.list_providers()],
         "reports": store.list_reports(limit=30, offset=0).get("items", []),
+        "defaults": analysis_defaults(),
     }
 
 
@@ -89,6 +98,49 @@ def save_prompts(values: Dict[str, str]) -> int:
         cfg.set_setting("prompt_" + k, "" if not str(v).strip() else str(v))
         saved += 1
     return saved
+
+
+# ============================================================
+# 分析默认值（服务端持久化，跨设备共享；localStorage 仅作兜底）
+# ============================================================
+def analysis_defaults() -> Dict[str, Any]:
+    try:
+        scope = cfg.get_setting("default_scope", "all")
+        if scope not in collector.SCOPES:
+            scope = "all"
+        try:
+            window = int(cfg.get_setting("default_window", "24"))
+        except ValueError:
+            window = 24
+        window = collector.normalize_window(window)
+        report_type = cfg.get_setting("default_report_type", "review")
+        if report_type not in llm_prompts.REPORT_TYPES:
+            report_type = "review"
+        return {
+            "scope": scope,
+            "window": window,
+            "focus": cfg.get_setting("default_focus", ""),
+            "report_type": report_type,
+        }
+    except Exception as e:  # noqa: BLE001 —— 设置读取失败回退内置默认
+        logger.debug(f"读取分析默认值失败: {e}")
+        return {"scope": "all", "window": 24, "focus": "", "report_type": "review"}
+
+
+def save_analysis_defaults(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """保存分析默认值；返回保存后的完整默认值。"""
+    if "scope" in payload and payload["scope"] in collector.SCOPES:
+        cfg.set_setting("default_scope", str(payload["scope"]))
+    if "window" in payload:
+        try:
+            cfg.set_setting("default_window", str(collector.normalize_window(int(payload["window"]))))
+        except (TypeError, ValueError):
+            pass
+    if "focus" in payload:
+        cfg.set_setting("default_focus", str(payload.get("focus") or ""))
+    if "report_type" in payload and payload["report_type"] in llm_prompts.REPORT_TYPES:
+        cfg.set_setting("default_report_type", str(payload["report_type"]))
+    return analysis_defaults()
 
 
 # ============================================================
@@ -223,13 +275,53 @@ def chat_report(report_id: int, question: str, history: Any = None) -> Dict[str,
     }
 
 
+def chat_stock(stock_code: str, stock_name: str, question: str, history: Any = None) -> Dict[str, Any]:
+    """@标的问答：以个股事实包 + 关联资讯为上下文回答用户问题。"""
+    provider, err = _provider_or_error()
+    if err or provider is None:
+        return err  # type: ignore[return-value]
+
+    pack = context.stock_fact_pack(stock_code)
+    facts_text = context.stock_fact_to_text(pack)
+    news_lines = []
+    for n in (pack.get("news") or [])[:12]:
+        news_lines.append(f"- [{n.get('publish_time') or ''}] {n.get('source') or ''} {n.get('title')}")
+
+    system_prompt = f"""你是 FinFeed 的个股分析助手，正在回答用户关于 {stock_name or stock_code}（{stock_code}）的问题。
+当前时间：{now_bj().strftime("%Y-%m-%d %H:%M")}（北京时间）。
+
+{facts_text or "（个股事实数据暂缺）"}
+
+【近期关联资讯】
+{chr(10).join(news_lines) if news_lines else "（暂无关联资讯）"}
+
+回答要求：
+1. 简洁、直接、结构清晰（要点列表优先）；
+2. 数字只能来自上方事实包或资讯，不得编造；事实包未覆盖的维度明确说明"数据未覆盖"；
+3. 涉及投资判断时给出风险提示。"""
+
+    client = build_client(provider)
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages.extend(_build_history_messages(history))
+    messages.append({"role": "user", "content": question[:_MESSAGE_MAX_CHARS]})
+
+    res = client.chat(messages, temperature=0.3)
+    return {
+        "ok": True,
+        "reply": res.content.strip(),
+        "model": res.model or provider.model,
+        "prompt_tokens": res.prompt_tokens,
+        "completion_tokens": res.completion_tokens,
+    }
+
+
 def chat_free(question: str, history: Any = None) -> Dict[str, Any]:
     """自由问答：基于近期新闻/舆情数据做通用财经问答。"""
     provider, err = _provider_or_error()
     if err or provider is None:
         return err  # type: ignore[return-value]
 
-    news_context = _load_recent_news_context()
+    news_context = _load_recent_news_context(question=question)
     system_prompt = f"""你是 FinFeed 的财经 AI 助手，擅长回答市场、新闻、投资相关问题。
 当前时间：{now_bj().strftime("%Y-%m-%d %H:%M")}（北京时间）。
 
@@ -256,39 +348,105 @@ def chat_free(question: str, history: Any = None) -> Dict[str, Any]:
     }
 
 
-def dispatch_chat(question: str, report_id: int, history: Any = None) -> Dict[str, Any]:
-    """按是否携带 report_id 分派到追问 / 自由问答模式。
+_SLASH_HANDLERS = ("/复盘",)
+
+
+def dispatch_chat(
+    question: str,
+    report_id: int,
+    history: Any = None,
+    stock_code: str = "",
+    stock_name: str = "",
+) -> Dict[str, Any]:
+    """对话入口分派：斜杠命令 > 报告追问 > @标的 > 自由问答。
 
     领域错误（LLMError.kind == "not_found"）转译为业务错误载荷，
     由传输层映射为 404。
     """
-    if report_id <= 0:
-        return chat_free(question, history)
+    question = (question or "").strip()
 
-    try:
-        return chat_report(report_id, question, history)
-    except LLMError as e:
-        if e.kind == "not_found":
-            return {"ok": False, "error": "报告不存在", "kind": "not_found"}
-        raise
+    # 斜杠命令：/复盘 —— 直接提交一次复盘分析任务（复用服务端保存的默认值）
+    if question.startswith("/复盘"):
+        args = question[len("/复盘"):].strip()
+        defaults = analysis_defaults()
+        options = {
+            "hours": defaults["window"],
+            "scope": defaults["scope"],
+            "focus": args or defaults["focus"],
+            "report_type": "review",
+        }
+        result = get_service().submit(options)
+        if result.get("ok"):
+            queued = "（排队中）" if result.get("queued") else ""
+            return {
+                "ok": True,
+                "type": "task",
+                "task_id": result.get("task_id"),
+                "reply": f"✅ 已提交复盘简报生成任务{queued}，任务编号 {result.get('task_id')}。"
+                "可在「任务中心」查看进度，完成后自动归档到研究报告。",
+            }
+        return {"ok": False, "error": result.get("error") or "任务提交失败", "kind": "conflict"}
+
+    if report_id > 0:
+        try:
+            return chat_report(report_id, question, history)
+        except LLMError as e:
+            if e.kind == "not_found":
+                return {"ok": False, "error": "报告不存在", "kind": "not_found"}
+            raise
+
+    if stock_code:
+        return chat_stock(stock_code, stock_name, question, history)
+
+    return chat_free(question, history)
 
 
-def _load_recent_news_context(max_items: int = 15) -> str:
-    """从数据库加载最近新闻条目作为对话上下文摘要。
+def _load_recent_news_context(question: str = "", max_items: int = 15) -> str:
+    """加载对话上下文资讯：优先按问题关键词检索（标题+正文），不足时回退最近条目。
 
     时间过滤统一使用 unix 秒比较，避免 localtime 语义跨机漂移。
     """
     from finfeed.storage.database import get_db
 
     cutoff = now_bj().timestamp() - 48 * 3600
+    rows = []
     try:
         with get_db() as c:
-            c.execute(
-                "SELECT title, source, importance, sentiment, publish_ts FROM news "
-                "WHERE publish_ts >= ? ORDER BY publish_ts DESC LIMIT ?",
-                (int(cutoff), max_items),
-            )
-            rows = c.fetchall()
+            # 关键词命中（2 字以上的连续片段）
+            tokens = [
+                t for t in re.findall(r"[\u4e00-\u9fa5A-Za-z0-9]{2,}", question or "") if len(t) >= 2
+            ][:6]
+            if tokens:
+                seen_ids: set = set()
+                for tok in tokens:
+                    c.execute(
+                        "SELECT title, intro, source, importance, sentiment, publish_ts FROM news "
+                        "WHERE publish_ts >= ? AND (title LIKE ? OR intro LIKE ?) "
+                        "ORDER BY importance DESC, publish_ts DESC LIMIT 8",
+                        (int(cutoff), f"%{tok}%", f"%{tok}%"),
+                    )
+                    for r in c.fetchall():
+                        if r[0] in seen_ids:
+                            continue
+                        seen_ids.add(r[0])
+                        rows.append(r)
+                        if len(rows) >= max_items:
+                            break
+                    if len(rows) >= max_items:
+                        break
+            # 回退：最近条目（带正文摘要）
+            if len(rows) < max_items:
+                c.execute(
+                    "SELECT title, intro, source, importance, sentiment, publish_ts FROM news "
+                    "WHERE publish_ts >= ? ORDER BY publish_ts DESC LIMIT ?",
+                    (int(cutoff), max_items),
+                )
+                for r in c.fetchall():
+                    if r[0] in {x[0] for x in rows}:
+                        continue
+                    rows.append(r)
+                    if len(rows) >= max_items:
+                        break
     except Exception as e:  # noqa: BLE001 —— 上下文缺失降级为无背景问答
         logger.debug(f"加载新闻上下文失败: {e}")
         return ""
@@ -298,14 +456,17 @@ def _load_recent_news_context(max_items: int = 15) -> str:
 
     imp_map = ((8, "⚠️极重要"), (6, "🔴重要"), (3, "🟡一般"))
     sent_map = {"positive": "😊正面", "negative": "😟负面", "neutral": "😐中性"}
-    lines = ["【近期资讯摘要（最近 48 小时）】"]
+    lines = ["【相关资讯摘要（最近 48 小时，含正文摘要）】"]
     for r in rows:
-        importance = float(r[2] or 0)
+        importance = float(r[3] or 0)
         imp = next((label for floor, label in imp_map if importance >= floor), "⚪较低")
-        sent = sent_map.get(r[3], "")
-        ts_str = bj_str_from_ts(int(r[4]))[5:16] if r[4] else ""
-        src = r[1] or ""
-        lines.append(f"- [{ts_str}] {src} {imp}{sent} {r[0]}")
+        sent = sent_map.get(r[4], "")
+        ts_str = bj_str_from_ts(int(r[5]))[5:16] if r[5] else ""
+        src = r[2] or ""
+        intro = " ".join(str(r[1] or "").split())[:120]
+        title = " ".join(str(r[0] or "").split())
+        body = f"｜{intro}" if intro and intro[:20] not in title else ""
+        lines.append(f"- [{ts_str}] {src} {imp}{sent} {title}{body}")
     return "\n".join(lines) + "\n"
 
 

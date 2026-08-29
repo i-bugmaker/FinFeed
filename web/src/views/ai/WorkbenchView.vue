@@ -1,7 +1,7 @@
 <script setup>
 /**
- * WorkbenchView — AI 投研工作台（入口页）
- * 服务状态 → 快捷指令 → KPI → 运行中任务 → 最近报告 → 今日洞察
+ * WorkbenchView — AI 分析工作台（入口页）
+ * 生成面板（报告类型 + 数据预估）→ 快捷指令 → KPI → 运行中任务 → 最近报告 → 今日洞察
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
@@ -16,11 +16,44 @@ const store = useAiStore()
 const showWizard = ref(false)
 const generating = ref(false)
 const genMsg = ref('')
+const stockInput = ref('')
+
+// 报告类型（与后端 REPORT_TYPES 对齐；init 返回时以后端为准）
+const reportTypes = ref([
+  { key: 'review', label: '复盘简报' },
+  { key: 'stock', label: '个股深度' },
+  { key: 'sentiment', label: '舆情研判' },
+])
+const reportType = ref(store.config.report_type || 'review')
+
+function setType(key) {
+  reportType.value = key
+  store.saveConfig({ report_type: key })
+}
+
+const activeType = computed(
+  () => reportTypes.value.find((t) => t.key === reportType.value) || reportTypes.value[0]
+)
+
+// 提交前数据预估（来自 /api/llm/preview）
+const estText = computed(() => {
+  const p = store.preview
+  if (!p || !p.matched) return ''
+  const est = p.estimate || {}
+  return `窗口命中 ${p.matched} 条 · 预计送分析 ${est.selected ?? p.matched} 条 · 约 ${est.chunks ?? 1} 批 · 耗时约 ${est.eta_seconds ?? '—'}s`
+})
+
+function refreshPreview() {
+  store.fetchPreview({
+    hours: Number(store.config.window) || 24,
+    scope: store.config.scope || 'all',
+  })
+}
 
 const quickActions = [
-  { icon: 'zap', title: '生成复盘', desc: '一键产出当日复盘报告', to: '/ai/tasks', act: 'generate' },
   { icon: 'target', title: '解读个股', desc: '@ 标的深度分析', to: '/ai/analyst' },
   { icon: 'chatter', title: '追问行情', desc: '基于快讯与报告问答', to: '/ai/analyst' },
+  { icon: 'activity', title: '任务中心', desc: '进度 / 取消 / 重试', to: '/ai/tasks' },
   { icon: 'settings', title: 'AI 设置', desc: '模型与 Prompt 配置', to: '/ai/settings' },
 ]
 
@@ -39,15 +72,15 @@ function summaryOf(content) {
 }
 
 function go(action, to) {
-  if (action === 'generate') {
-    generate()
-  } else {
-    router.push(to)
-  }
+  if (to) router.push(to)
 }
 
 async function generate() {
   if (generating.value) return
+  if (reportType.value === 'stock' && !stockInput.value.trim()) {
+    genMsg.value = '个股深度报告需要输入股票代码'
+    return
+  }
   generating.value = true
   genMsg.value = ''
   try {
@@ -57,9 +90,13 @@ async function generate() {
       scope: store.config.scope,
       window: Number(store.config.window) || 24,
       focus: store.config.focus || '',
+      report_type: reportType.value,
+      stock_code: stockInput.value.trim(),
     })
     if (r.ok) {
-      genMsg.value = `已提交分析任务（${r.task_id}），可在任务中心查看进度`
+      genMsg.value = r.queued
+        ? `已提交${activeType.value.label}任务（${r.task_id}），当前排队中`
+        : `已提交${activeType.value.label}任务（${r.task_id}），可在任务中心查看进度`
       router.push('/ai/tasks')
     } else {
       genMsg.value = r.error || '提交失败'
@@ -85,7 +122,11 @@ function fmtDate(ts) {
 
 onMounted(() => {
   store.loadConfig()
-  store.loadInit()
+  store.loadInit().then(() => {
+    if (store.reportTypes?.length) reportTypes.value = store.reportTypes
+    reportType.value = store.config.report_type || 'review'
+    refreshPreview()
+  })
   store.loadReports({ limit: 6 })
   store.loadTasks()
   store.startPolling()
@@ -96,7 +137,7 @@ onBeforeUnmount(() => store.stopPolling())
 <template>
   <div class="wb">
     <!-- 模块页头按产品要求移除，h1 保留 sr-only 保文档语义 -->
-    <h1 class="ff-sr-only">AI 投研工作台</h1>
+    <h1 class="ff-sr-only">AI 分析工作台</h1>
 
     <!-- 未配置模型横幅 -->
     <div v-if="!store.modelAvailable" class="wb__banner">
@@ -106,6 +147,31 @@ onBeforeUnmount(() => store.stopPolling())
         <span>配置后即可生成每日复盘报告与 AI 分析</span>
       </div>
       <button class="wb__banner-btn" @click="showWizard = true">立即配置</button>
+    </div>
+
+    <!-- 生成面板：报告类型 + 特别关注 + 数据预估 + 一键生成 -->
+    <div class="wb__gen">
+      <div class="wb__gen-types">
+        <button
+          v-for="t in reportTypes"
+          :key="t.key"
+          class="wb__gen-type"
+          :class="{ on: reportType === t.key }"
+          :title="t.desc || ''"
+          @click="setType(t.key)"
+        >{{ t.label }}</button>
+      </div>
+      <input
+        v-if="reportType === 'stock'"
+        v-model="stockInput"
+        class="wb__gen-stock"
+        placeholder="输入股票代码，如 600519"
+        @keydown.enter="generate"
+      />
+      <button class="wb__gen-btn" :disabled="generating || !store.modelAvailable" @click="generate">
+        <AppIcon name="zap" size="sm" /> {{ generating ? '提交中…' : '生成' + activeType.label }}
+      </button>
+      <span v-if="estText" class="wb__gen-est">{{ estText }}</span>
     </div>
 
     <!-- 快捷指令 -->
@@ -212,6 +278,16 @@ onBeforeUnmount(() => store.stopPolling())
 
 <style scoped>
 .wb { display: flex; flex-direction: column; gap: 16px; }
+.wb__gen { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--ff-bg-surface); border: 1px solid var(--ff-border-brand); border-radius: 13px; padding: 12px 14px; }
+.wb__gen-types { display: inline-flex; gap: 4px; background: var(--ff-bg-subtle); border-radius: 10px; padding: 3px; }
+.wb__gen-type { border: none; background: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; transition: all var(--ff-dur-fast) var(--ff-ease-standard); }
+.wb__gen-type.on { background: var(--ff-bg-surface); color: var(--ff-brand-dark); box-shadow: 0 1px 4px rgba(16, 40, 30, 0.12); }
+.wb__gen-stock { height: 34px; width: 210px; border: 1px solid var(--ff-border); border-radius: 9px; padding: 0 12px; font-size: 13px; outline: none; background: var(--ff-bg-surface); color: var(--ff-text-primary); }
+.wb__gen-stock:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px var(--ff-focus-ring); }
+.wb__gen-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border: none; border-radius: 9px; background: var(--ff-brand); color: var(--ff-bg-surface); font-size: 13px; font-weight: 600; cursor: pointer; }
+.wb__gen-btn:hover { background: var(--ff-brand-dark); }
+.wb__gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.wb__gen-est { font-size: 11.5px; color: var(--ff-text-3); }
 .wb__banner { display: flex; align-items: center; gap: 12px; background: #fef7e6; border: 1px solid #f5d9a0; border-radius: 12px; padding: 13px 16px; color: #b45309; }
 .wb__banner-text { display: flex; flex-direction: column; gap: 1px; font-size: 13px; flex: 1; }
 .wb__banner-text b { font-size: 14px; }

@@ -67,7 +67,7 @@ function markRead() {
   if (!props.item.is_read) api.markRead(props.item.id, true).catch(() => {})
 }
 
-/* 提交当前快讯到 AI 投研分析 */
+/* 提交当前快讯到 AI 分析 */
 function aiAnalyze() {
   const q = [
     props.item.title,
@@ -112,7 +112,7 @@ function aiAnalyze() {
         <button
           class="ff-newsrow__ai"
           :title="`AI 分析：${item.title}`"
-          aria-label="提交到 AI 投研分析"
+          aria-label="提交到 AI 分析"
           @click.stop="aiAnalyze"
         >
           <AppIcon name="sparkles" size="sm" />

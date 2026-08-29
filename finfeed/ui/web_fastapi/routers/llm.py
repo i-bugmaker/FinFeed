@@ -1,4 +1,4 @@
-"""LLM 投研 HTTP 传输层（FastAPI 原生路由）。
+"""AI 分析 HTTP 传输层（FastAPI 原生路由）。
 
 分层约定（见 docs/ARCHITECTURE.md）：
   - 本模块只做「校验输入 -> 调用服务 -> 映射响应」；
@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from finfeed.application import llm_service
 from finfeed.llm import collector, store
 from finfeed.llm import config as cfg
+from finfeed.llm import prompts as llm_prompts
 from finfeed.llm import sessions as _sessions
 from finfeed.llm.client import build_client
 from finfeed.llm.schema import ensure_tables
@@ -93,6 +94,8 @@ class AnalyzeRequest(_Loose):
     provider_id: Optional[int] = None
     hours: int = Field(default=24, ge=1, le=168)
     scope: str = "all"
+    report_type: str = "review"
+    stock_code: str = ""
     focus: str = ""
     min_importance: float = Field(default=0.0, ge=0.0, le=10.0)
     max_items: int = Field(default=500, ge=20, le=5000)
@@ -159,7 +162,16 @@ class ChatRequest(_Loose):
     report_id: int = 0
     question: str = ""
     message: str = ""
+    stock_code: str = ""
+    stock_name: str = ""
     history: Optional[list[ChatTurn]] = None
+
+
+class AnalysisConfigRequest(_Loose):
+    scope: Optional[str] = None
+    window: Optional[int] = None
+    focus: Optional[str] = None
+    report_type: Optional[str] = None
 
 
 class PromptsSaveRequest(_Loose):
@@ -228,8 +240,21 @@ def create_router() -> APIRouter:
                 "presets": cfg.PRESETS,
                 "scopes": [{"key": k, "label": v} for k, v in collector.SCOPES.items()],
                 "windows": list(collector.ALLOWED_WINDOWS),
+                "report_types": [
+                    {"key": k, **v} for k, v in llm_prompts.REPORT_TYPES.items()
+                ],
             }
         )
+
+    @router.get("/api/llm/config")
+    def get_analysis_config() -> Dict[str, Any]:
+        return _respond({"defaults": llm_service.analysis_defaults()})
+
+    @router.post("/api/llm/config")
+    def save_analysis_config(req: AnalysisConfigRequest) -> Dict[str, Any]:
+        payload = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
+        defaults = llm_service.save_analysis_defaults(payload)
+        return _respond({"success": True, "defaults": defaults})
 
     @router.get("/api/llm/prompts")
     def get_prompts() -> Dict[str, Any]:
@@ -487,6 +512,17 @@ def create_router() -> APIRouter:
             raise ApiError("报告不存在", status_code=404, code="NOT_FOUND")
         return _respond({"success": True})
 
+    @router.post("/api/llm/report/retry")
+    def report_retry(req: IdRequest) -> Dict[str, Any]:
+        """按报告归档的提交参数重新发起分析（支持跨重启重试失败任务）。"""
+        rep = store.get_report(req.id)
+        _require(rep, "报告不存在")
+        options = dict(rep.get("options") or {})
+        if not options:
+            raise ApiError("该报告没有归档提交参数，无法重试", status_code=400, code="VALIDATION")
+        result = get_service().submit(options)
+        return _respond(result, status=200 if result.get("ok") else 409)
+
     @router.post("/api/llm/report/pin")
     def report_pin(req: ReportPinRequest) -> Dict[str, Any]:
         ensure_tables()
@@ -509,7 +545,13 @@ def create_router() -> APIRouter:
         history = [t.model_dump() for t in req.history] if req.history else None
 
         try:
-            payload = llm_service.dispatch_chat(question, req.report_id, history)
+            payload = llm_service.dispatch_chat(
+                question,
+                req.report_id,
+                history,
+                stock_code=req.stock_code or "",
+                stock_name=req.stock_name or "",
+            )
         except Exception:
             logger.exception("LLM 对话异常")
             raise ApiError(

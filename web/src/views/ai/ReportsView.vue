@@ -57,6 +57,14 @@ async function togglePin(r) {
 async function askDelete(r) {
   if (window.confirm('确认删除该报告？')) await store.deleteReport(r.id)
 }
+// 失败重试：内存任务优先，跨重启回退报告归档参数
+async function retryReport(r) {
+  try {
+    await store.retryReport(r)
+  } catch (e) {
+    window.alert('重试失败：' + (e.message || e))
+  }
+}
 
 function fmtDate(ts) {
   if (!ts) return ''
@@ -123,7 +131,7 @@ onMounted(async () => {
               <span class="rv__badge" :class="statusMeta(r).cls">{{ statusMeta(r).label }}</span>
             </td>
             <td class="rv__ops">
-              <button v-if="r.status === 'failed'" class="rv__op" title="重试" @click="store.retryTask(r.task_id)">
+              <button v-if="r.status === 'failed'" class="rv__op" title="重试" @click="retryReport(r)">
                 <AppIcon name="refresh" size="sm" />
               </button>
               <button class="rv__op" :title="r.pinned ? '取消置顶' : '置顶'" @click="togglePin(r)">
