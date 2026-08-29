@@ -549,7 +549,6 @@ const visibleStocks = computed(() => {
     <header class="smm__top">
       <!-- 模块标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
       <h1 class="ff-sr-only">多标的分时对比</h1>
-      </div>
 
       <!-- 数据日期组件：显示当前分时对应日期，前后切换 + 日期选择 -->
       <div
