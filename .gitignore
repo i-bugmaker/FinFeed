@@ -49,6 +49,7 @@ Temporary Items
 .settings/
 .history/
 .vscode-test/
+.zcode/
 
 
 # -------------------------

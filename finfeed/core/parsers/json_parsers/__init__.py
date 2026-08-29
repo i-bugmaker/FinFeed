@@ -18,6 +18,7 @@ from .hkexnews import HkexNewsParser
 from .jin10 import Jin10Parser
 from .jingji21 import Jingji21Parser
 from .jrj import JrjParser
+from .marsbit import MarsbitParser
 from .qcc import QCCParser
 from .sina import SinaParser
 from .sina724 import Sina724Parser
@@ -38,6 +39,7 @@ __all__ = [
     "CLSParser",
     "AiGuPiaoParser",
     "JrjParser",
+    "MarsbitParser",
     "THSParser",
     "EastMoneyParser",
     "Jingji21Parser",

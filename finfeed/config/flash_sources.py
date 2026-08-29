@@ -284,13 +284,28 @@ FLASH_NEWS_SOURCES: list[NewsSource] = [
         },
     ),
 
-NewsSource(
+    NewsSource(
         name='英为财情',
         url='https://cn.investing.com/news/latest-news',
         parser_type='investing_cn',
         headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+        },
+    ),
+
+    NewsSource(
+        name='火星财经',
+        url='https://api.marsbit.co/info/lives/showlives',
+        parser_type='marsbit',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://news.marsbit.co/flash',
+            'Accept': 'application/json, text/plain, */*'
+        },
+        params={
+            'currentPage': 1,
+            'pageSize': 50
         },
     ),
 ]
