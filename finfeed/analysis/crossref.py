@@ -290,3 +290,20 @@ def run_backfill() -> int:
 
 def run_calibrate(lookback_days: int = 180) -> Dict:
     return calibrate_sentiment(lookback_days)
+
+
+def save_calibration_result(result: Dict) -> None:
+    """把校准结果写入 metadata 表（key = sentiment_calibration_latest），
+    供 /api/alerts/calibration 查询与通知设置页展示。"""
+    import json
+
+    from finfeed.utils.time_utils import now_bj
+
+    payload = {**result, "run_at": now_bj().strftime("%Y-%m-%d %H:%M:%S")}
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES ('sentiment_calibration_latest', ?)",
+            (json.dumps(payload, ensure_ascii=False),),
+        )
+    logger.info(f"情感校准结果已保存（样本 {result.get('sample', 0)}）")

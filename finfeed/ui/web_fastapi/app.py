@@ -48,6 +48,9 @@ from finfeed.integrations.screener.router import router as screener_router
 # 股票监控模块（导入管理 / 舆情聚合 / AI 分析）
 from finfeed.stock_monitor import service as stock_monitor_service
 from finfeed.stock_monitor.router import router as stock_monitor_router
+
+# 告警推送模块（webhook 渠道 / 主题订阅 / 推送日志 / 情感校准）
+from finfeed.alerts.router import router as alerts_router
 from finfeed.market import alerting as market_alerting
 from finfeed.market import scheduler as market_scheduler
 from finfeed.market import ws_feed as market_ws
@@ -117,6 +120,7 @@ app.include_router(screener_router)
 
 # 注册股票监控路由（/api/stock-monitor/*）
 app.include_router(stock_monitor_router)
+app.include_router(alerts_router)
 
 # ----------------------------------------------------------------------
 # 全市场资金流与板块轮动监控大屏集成（可选，依赖 easy-tdx）
@@ -537,6 +541,13 @@ async def _startup(app: FastAPI) -> None:
         market_scheduler.maybe_autostart()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"行情自动采集调度器启动失败（可忽略）: {e}")
+
+    # 告警推送模块数据表（webhooks/topics/settings/push_log，幂等建表）
+    try:
+        from finfeed.alerts import store as alerts_store
+        alerts_store.ensure_tables()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"告警模块数据表初始化失败（可忽略）: {e}")
 
     # WebSocket 行情推送服务：把采集失败告警实时推送给在线客户端
     # （回调接线同时内置于 ws_feed.start()，避免依赖启动顺序）

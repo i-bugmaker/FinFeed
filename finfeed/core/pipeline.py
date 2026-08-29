@@ -242,6 +242,12 @@ async def process_and_store(raw_items: List[NewsItem], source_name: str = "") ->
     # 更新去重引擎中的news_id
     if inserted:
         engine.update_after_insert(inserted)
+        # 告警分发（fire-and-forget）：自选股/主题订阅命中 → webhook 推送
+        try:
+            from finfeed.alerts.dispatcher import schedule_dispatch
+            schedule_dispatch(inserted)
+        except Exception as e:
+            logger.debug(f"告警分发调度失败（不影响入库）: {e}")
 
     if count > 0 or merged_count > 0:
         logger.debug(

@@ -6,9 +6,10 @@
 无需用户手动点击。复用 finfeed.market.service 的同步入口，并通过 get_state() 暴露运行状态。
 
 调度策略（北京时间，交易日内生效）：
-  - universe : 每个交易日 08:40   刷新股票池与板块成分（盘前）
-  - snapshot : 每个交易日 16:10   盘后全市场快照（资金流/宽度/涨跌停/龙虎榜/参考）
-  - bars     : 每个交易日 16:40   增量补日线（错峰，受 push2his 限流保护；默认关闭，需 FINFEED_MK_AUTO_BARS=1）
+  - universe  : 每个交易日 08:40   刷新股票池与板块成分（盘前）
+  - snapshot  : 每个交易日 16:10   盘后全市场快照（资金流/宽度/涨跌停/龙虎榜/参考）
+  - bars      : 每个交易日 16:40   增量补日线（错峰，受 push2his 限流保护；默认关闭，需 FINFEED_MK_AUTO_BARS=1）
+  - calibrate : 每个交易日 17:30   情感闭环校准（T+1 收益回测情感标签胜率，结果落 metadata）
 
 每个任务每日仅执行一次（按自然日去重），网络/解析失败仅记录状态，不影响其它任务与 Web 主线程。
 可通过环境变量 FINFEED_MK_AUTO=0 整体关闭；FINFEED_MK_AUTO_BARS=1 开启日线自动补采。
@@ -28,6 +29,7 @@ SLOTS = {
     "hotrank": {"h": 16, "m": 15, "default_on": True},
     "limitup": {"h": 16, "m": 20, "default_on": True},
     "bars": {"h": 16, "m": 40, "default_on": False},
+    "calibrate": {"h": 17, "m": 30, "default_on": True},
 }
 
 _state_lock = threading.Lock()
@@ -107,6 +109,8 @@ def _empty_check(action: str):
                 return int(saved or 0) <= 0
             except (TypeError, ValueError):
                 return False
+        if action == "calibrate":
+            return not res.get("sample")
         return False
 
     return check
@@ -161,6 +165,20 @@ def _run_action(action: str, today: str):
                 is_empty=_empty_check(action),
             )
             msg = f"完成（{res.get('saved', res.get('total', '已同步'))} 条）"
+        elif action == "calibrate":
+            from finfeed.analysis.crossref import run_calibrate, save_calibration_result
+
+            def _do_calibrate():
+                cal_res = run_calibrate()
+                save_calibration_result(cal_res)
+                return cal_res
+
+            res = mk_alerting.with_retry(
+                task, _do_calibrate,
+                max_retries=2, backoff_base=2.0, timeout=600,
+                is_empty=_empty_check(action),
+            )
+            msg = f"完成（样本 {res.get('sample', 0)}）"
         else:
             return
         status = "done"
@@ -188,7 +206,7 @@ def _worker(action: str, today: str):
 
 def _loop():
     logger.info(
-        "行情自动采集调度器已启动（universe 08:40 / snapshot 16:10 / hotrank 16:15 / limitup 16:20 / bars 16:40，交易日内各一次）"
+        "行情自动采集调度器已启动（universe 08:40 / snapshot 16:10 / hotrank 16:15 / limitup 16:20 / bars 16:40 / calibrate 17:30，交易日内各一次）"
     )
     while _state["enabled"]:
         try:

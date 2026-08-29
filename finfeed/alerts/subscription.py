@@ -2,72 +2,54 @@
 # -*- coding: utf-8 -*-
 """自选股与主题订阅管理
 
-功能：
-- 自选股增删改查
-- 主题订阅（关键词组合）
-- 新闻匹配判断
+- 自选股：复用 ``stock_monitor.stock_watchlist``（与股票监控模块同一份数据源，
+  用户在「股票监控」页导入的股票自动参与告警匹配）
+- 主题订阅：``alerts.store.topics`` 表（关键词组合，命中即推送）
+- 新闻匹配判断（供 dispatcher 调用）
 """
 
-import json
 import logging
 
-from finfeed.storage.database import get_db
+from finfeed.alerts import store
 from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 
 # ============================================================
-# 自选股管理
+# 自选股管理（委托 stock_monitor.store）
 # ============================================================
 
 def add_stock(stock_code: str, stock_name: str = "") -> bool:
     """添加自选股"""
+    from finfeed.stock_monitor import store as sm_store
+
     stock_code = stock_code.upper().strip()
     if not stock_code:
         return False
-    with get_db() as conn:
-        c = conn.cursor()
-        now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            c.execute(
-                "INSERT OR IGNORE INTO watchlist (stock_code, stock_name, added_at) VALUES (?, ?, ?)",
-                (stock_code, stock_name or stock_code, now_str)
-            )
-            conn.commit()
-            return c.rowcount > 0
-        except Exception as e:
-            logger.warning(f"添加自选股失败 {stock_code}: {e}")
-            return False
+    return sm_store.upsert_stock(stock_code, stock_name or stock_code, "", "")
 
 
 def remove_stock(stock_code: str) -> bool:
     """移除自选股"""
-    stock_code = stock_code.upper().strip()
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM watchlist WHERE stock_code = ?", (stock_code,))
-        conn.commit()
-        return c.rowcount > 0
+    from finfeed.stock_monitor import store as sm_store
+
+    return sm_store.delete_stock(stock_code.upper().strip())
 
 
 def get_watchlist() -> list[dict]:
     """获取自选股列表"""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT stock_code, stock_name, added_at FROM watchlist ORDER BY added_at DESC")
-        return [
-            {"code": row[0], "name": row[1], "added_at": row[2]}
-            for row in c.fetchall()
-        ]
+    from finfeed.stock_monitor import store as sm_store
+
+    return [
+        {"code": s["code"], "name": s.get("name") or s["code"], "added_at": s.get("created_at") or ""}
+        for s in sm_store.list_stocks()
+    ]
 
 
 def is_stock_watched(stock_code: str) -> bool:
     """检查某股票是否在自选股中"""
     stock_code = stock_code.upper().strip()
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT 1 FROM watchlist WHERE stock_code = ? LIMIT 1", (stock_code,))
-        return c.fetchone() is not None
+    return any(s["code"] == stock_code for s in get_watchlist())
 
 
 # ============================================================
@@ -75,65 +57,24 @@ def is_stock_watched(stock_code: str) -> bool:
 # ============================================================
 
 def add_topic(name: str, keywords: list[str], description: str = "") -> int:
-    """添加主题订阅
-
-    Args:
-        name: 主题名称
-        keywords: 关键词列表
-        description: 主题描述
-
-    Returns:
-        主题 ID，失败返回 0
-    """
-    if not name or not keywords:
-        return 0
-    with get_db() as conn:
-        c = conn.cursor()
-        now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            c.execute(
-                "INSERT INTO topics (name, keywords, description, created_at, is_enabled) VALUES (?, ?, ?, ?, 1)",
-                (name, json.dumps(keywords, ensure_ascii=False), description, now_str)
-            )
-            conn.commit()
-            return c.lastrowid
-        except Exception as e:
-            logger.warning(f"添加主题订阅失败 {name}: {e}")
-            return 0
+    """添加主题订阅，返回主题 ID（失败返回 0）"""
+    t = store.create_topic(name, keywords, description)
+    return t["id"] if t else 0
 
 
 def remove_topic(topic_id: int) -> bool:
     """删除主题订阅"""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM topics WHERE id = ?", (topic_id,))
-        conn.commit()
-        return c.rowcount > 0
+    return store.delete_topic(topic_id)
 
 
 def get_topics(enabled_only: bool = True) -> list[dict]:
     """获取主题列表"""
-    with get_db() as conn:
-        c = conn.cursor()
-        if enabled_only:
-            c.execute(
-                "SELECT id, name, keywords, description, created_at, is_enabled FROM topics WHERE is_enabled = 1 ORDER BY created_at DESC"
-            )
-        else:
-            c.execute(
-                "SELECT id, name, keywords, description, created_at, is_enabled FROM topics ORDER BY created_at DESC"
-            )
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "keywords": json.loads(row[2]) if row[2] else [],
-                "description": row[3] or "",
-                "created_at": row[4],
-                "is_enabled": bool(row[5]),
-            }
-            for row in c.fetchall()
-        ]
+    return store.list_topics(enabled_only=enabled_only)
+
+
+def set_topic_enabled(topic_id: int, enabled: bool) -> bool:
+    """启用/停用主题订阅"""
+    return store.update_topic(topic_id, {"is_enabled": enabled}) is not None
 
 
 # ============================================================
@@ -148,8 +89,7 @@ def match_watchlist_news(news_stocks: list[str]) -> list[str]:
     """
     if not news_stocks:
         return []
-    watchlist = get_watchlist()
-    watched_codes = {s["code"] for s in watchlist}
+    watched_codes = {s["code"] for s in get_watchlist()}
     return [code for code in news_stocks if code.upper() in watched_codes]
 
 
@@ -162,9 +102,8 @@ def match_topics_news(title: str, intro: str = "") -> list[dict]:
         匹配的主题列表
     """
     text = f"{title} {intro}"
-    topics = get_topics(enabled_only=True)
     matched = []
-    for topic in topics:
+    for topic in get_topics(enabled_only=True):
         for kw in topic["keywords"]:
             if kw and kw in text:
                 matched.append(topic)
