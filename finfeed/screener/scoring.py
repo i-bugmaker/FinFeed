@@ -230,6 +230,30 @@ def _highlight_sentiment(row: dict) -> list[str]:
     return out
 
 
+def _highlight_growth(row: dict) -> list[str]:
+    """成长性亮点：业绩预告预增/扭亏、增幅显著。"""
+    out = []
+    g = row.get("earnings_growth_pct")
+    if not _is_missing(g) and _f(g) >= 50:
+        out.append(f"预告净利增{_f(g):+.0f}%")
+    ftype = str(row.get("forecast_type") or "").strip()
+    if ftype in ("预增", "扭亏"):
+        out.append(f"业绩{ftype}")
+    return out
+
+
+def _highlight_reversal(row: dict) -> list[str]:
+    """反转亮点：超跌后当日止跌企稳。"""
+    c20 = row.get("change_20d_pct")
+    chg = row.get("chg_today")
+    if _is_missing(c20) or _is_missing(chg):
+        return []
+    if _f(c20) <= -20 and _f(chg) >= 0:
+        out = f"20日超跌{_f(c20):+.0f}%现企稳"
+        return [out]
+    return []
+
+
 def _make_percentile(values: list[float]):
     """构造「值 → 同组内百分位(0~100)」的函数（越高越好方向）。"""
     s = sorted(values)
@@ -269,6 +293,8 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
     liquidity = blended("liquidity")
     quality = blended("quality")
     sentiment = blended("sentiment") if "sentiment" in dims else 0.0
+    growth = blended("growth") if "growth" in dims else 0.0
+    reversal = blended("reversal") if "reversal" in dims else 0.0
 
     total = (
         w["capital"] * capital
@@ -277,6 +303,8 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         + w["liquidity"] * liquidity
         + w["quality"] * quality
         + w.get("sentiment", 0.0) * sentiment
+        + w.get("growth", 0.0) * growth
+        + w.get("reversal", 0.0) * reversal
     )
     total = factors.clamp(total)
 
@@ -315,6 +343,8 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         + _highlight_valuation(row)
         + _highlight_liquidity(row)
         + _highlight_quality(row)
+        + _highlight_growth(row)
+        + _highlight_reversal(row)
     )
     rationale = "；".join(highlights) if highlights else "无显著亮点"
     if failures:
@@ -336,6 +366,8 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         liquidity_score=liquidity,
         quality_score=quality,
         sentiment_score=sentiment,
+        growth_score=growth,
+        reversal_score=reversal,
         total_score=total,
         tier=tier,
         eligible=True,
@@ -449,7 +481,8 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
     scores: list[StockScore] = []
     raw_records = sub.to_dict("records")
     raw_by_pos = {i: rec for i, rec in zip(sub.index, raw_records)}
-    _DIMS_SCORES = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment")
+    _DIMS_SCORES = ("capital", "momentum", "valuation", "liquidity", "quality",
+                    "sentiment", "growth", "reversal")
     for i, rec in assembled.iterrows():
         raw = raw_by_pos.get(i, {})
         failures: list[str] = []
@@ -474,6 +507,8 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
                 + _highlight_liquidity(row)
                 + _highlight_quality(row)
                 + _highlight_sentiment(row)
+                + _highlight_growth(row)
+                + _highlight_reversal(row)
             )
             rationale = "；".join(highlights) if highlights else "无显著亮点"
             if failures:
@@ -511,6 +546,8 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
             liquidity_score=float(rec["liquidity_score"]),
             quality_score=float(rec["quality_score"]),
             sentiment_score=float(rec["sentiment_score"]),
+            growth_score=float(rec.get("growth_score", 0.0)),
+            reversal_score=float(rec.get("reversal_score", 0.0)),
             total_score=float(rec["total_score"]),
             tier=str(rec["tier"]),
             eligible=bool(rec["eligible"]),

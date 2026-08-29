@@ -23,8 +23,11 @@ from .boards import classify_board
 from .normalize import orthogonalize_dimensions
 
 
-def _vec_sigmoid(x: pd.Series, mid: float, scale: float) -> pd.Series:
-    return 1.0 / (1.0 + np.exp(-(x - mid) / scale))
+def _vec_sigmoid(x: pd.Series, mid: float, scale: float, higher_better: bool = True) -> pd.Series:
+    s = 1.0 / (1.0 + np.exp(-(x - mid) / scale))
+    if not higher_better:
+        s = 1.0 - s
+    return s
 
 
 def _vec_bell(x: pd.Series, mid: float, width: float) -> pd.Series:
@@ -141,6 +144,29 @@ def dimension_scores_vec(df: pd.DataFrame, cfg) -> dict[str, pd.Series]:
         sp["w_limitup"] * s_lup + sp["w_streak"] * s_streak
         + sp["w_ddx"] * s_ddx + sp["w_volspeed"] * s_vs
     ).clip(0.0, 100.0)
+
+    # ---- 成长性（业绩预告增幅 + 预告类型；缺失 → 中性 50）----
+    gp = p["growth"]
+    eg_raw = pd.to_numeric(_col(df, "earnings_growth_pct"), errors="coerce")
+    s_eg = _vec_sigmoid(eg_raw, gp["growth_mid"], gp["growth_scale"]) * 100.0
+    s_eg = s_eg.where(eg_raw.notna(), 50.0)
+    ftype = _col(df, "forecast_type").astype(str).str.strip()
+    s_type = pd.Series(50.0, index=df.index)
+    s_type = s_type.mask(ftype.isin(gp.get("bonus_types", [])), 100.0)
+    s_type = s_type.mask(ftype.isin(gp.get("penalty_types", [])), 0.0)
+    out["growth"] = (gp["w_growth"] * s_eg + gp["w_type"] * s_type).clip(0.0, 100.0)
+
+    # ---- 反转/超跌修复（20日跌幅反转 + 当日企稳；缺失 → 中性 50）----
+    rp = p["reversal"]
+    c20_raw = pd.to_numeric(_col(df, "change_20d_pct"), errors="coerce")
+    s_drop = _vec_sigmoid(c20_raw, rp["drop_mid"], rp["drop_scale"], higher_better=False) * 100.0
+    cliff = c20_raw < -rp["cliff_threshold"]
+    s_drop = s_drop.where(~cliff, (s_drop * rp["cliff_floor"]).clip(0.0, 100.0))
+    s_drop = s_drop.where(c20_raw.notna(), 50.0)
+    chg_raw = pd.to_numeric(_col(df, "chg_today"), errors="coerce")
+    s_stab = _vec_sigmoid(chg_raw, rp["stabilize_mid"], rp["stabilize_scale"]) * 100.0
+    s_stab = s_stab.where(chg_raw.notna(), 50.0)
+    out["reversal"] = (rp["w_drop"] * s_drop + rp["w_stabilize"] * s_stab).clip(0.0, 100.0)
 
     return out
 
@@ -265,8 +291,9 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg,
     if orthogonalize:
         blended = orthogonalize_dimensions(blended)
 
-    _DIMS = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment")
-    total = sum(w[d] * blended[d] for d in _DIMS if d in blended)
+    _DIMS = ("capital", "momentum", "valuation", "liquidity", "quality",
+             "sentiment", "growth", "reversal")
+    total = sum(w.get(d, 0.0) * blended[d] for d in _DIMS if d in blended)
     total = total.clip(0.0, 100.0)
 
     chg = pd.to_numeric(_col(df, "chg_today"), errors="coerce").fillna(0.0)
@@ -302,6 +329,8 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg,
         "liquidity_score": blended["liquidity"],
         "quality_score": blended["quality"],
         "sentiment_score": blended["sentiment"] if "sentiment" in blended else pd.Series(0.0, index=idx),
+        "growth_score": blended["growth"] if "growth" in blended else pd.Series(0.0, index=idx),
+        "reversal_score": blended["reversal"] if "reversal" in blended else pd.Series(0.0, index=idx),
         "total_score": total,
         "tier": tier,
         "eligible": pd.Series(True, index=idx),

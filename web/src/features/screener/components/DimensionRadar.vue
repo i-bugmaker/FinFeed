@@ -1,5 +1,5 @@
 <script setup>
-// 六维子分雷达图（ECharts），用于个股下钻：维度画像可视化。
+// 八维子分雷达图（ECharts），用于个股下钻：维度画像可视化。
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { echarts } from '@/shared/lib/echarts'
 
@@ -16,6 +16,8 @@ const DIM_LABELS = {
   liquidity: '量价活跃',
   quality: '质量稳定',
   sentiment: '情绪/事件',
+  growth: '成长性',
+  reversal: '反转修复',
 }
 
 const elRef = ref(null)

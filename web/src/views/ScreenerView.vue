@@ -38,12 +38,13 @@ const blendAlpha = ref(0.5)
 const topQuantile = ref(0.3)
 const horizon = ref(20)
 
-const dimOrder = ['capital', 'momentum', 'valuation', 'liquidity', 'quality', 'sentiment']
+const dimOrder = ['capital', 'momentum', 'valuation', 'liquidity', 'quality', 'sentiment', 'growth', 'reversal']
 const DIM_LABELS = {
   capital: '资金面', momentum: '动量趋势', valuation: '估值',
   liquidity: '量价活跃', quality: '质量稳定', sentiment: '情绪/事件',
+  growth: '成长性', reversal: '反转修复',
 }
-const dimWeights = reactive({ capital: 20, momentum: 25, valuation: 18, liquidity: 15, quality: 12, sentiment: 10 })
+const dimWeights = reactive({ capital: 18, momentum: 22, valuation: 16, liquidity: 14, quality: 10, sentiment: 7, growth: 8, reversal: 5 })
 const userTouchedWeights = ref(false)
 
 // 输出与过滤
@@ -335,6 +336,8 @@ const headers = [
   { key: 'liquidity_score', label: '量价', w: '66px', align: 'right', sortable: true },
   { key: 'quality_score', label: '质量', w: '66px', align: 'right', sortable: true },
   { key: 'sentiment_score', label: '情绪', w: '66px', align: 'right', sortable: true },
+  { key: 'growth_score', label: '成长', w: '66px', align: 'right', sortable: true },
+  { key: 'reversal_score', label: '反转', w: '66px', align: 'right', sortable: true },
 ]
 
 const hasMlProb = computed(() => (result.value?.scores || []).some((r) => r.ml_prob != null))
@@ -404,13 +407,14 @@ function exportCsv() {
   const rows = sortedScores.value
   if (!rows.length) return
   const hdrs = ['排名', '代码', '名称', '板块', '现价', '涨跌幅', '综合分', 'ML概率', '评级',
-    '资金', '动量', '估值', '量价', '质量', '情绪', '成交额', 'PE_TTM', '入选逻辑']
+    '资金', '动量', '估值', '量价', '质量', '情绪', '成长', '反转', '成交额', 'PE_TTM', '入选逻辑']
   const lines = [hdrs.join(',')]
   rows.forEach((r, i) => {
     lines.push([
       i + 1, r.code, `"${r.name}"`, r.board, r.price, r.change_pct, r.total_score,
       r.ml_prob ?? '', r.tier, r.capital_score, r.momentum_score, r.valuation_score,
-      r.liquidity_score, r.quality_score, r.sentiment_score, r.amount, r.pe_ttm,
+      r.liquidity_score, r.quality_score, r.sentiment_score, r.growth_score,
+      r.reversal_score, r.amount, r.pe_ttm,
       `"${(r.rationale || '').replace(/"/g, '""')}"`,
     ].join(','))
   })
@@ -948,6 +952,8 @@ onBeforeUnmount(() => {
                         <td class="is-right">{{ fmtScore(row.liquidity_score) }}</td>
                         <td class="is-right">{{ fmtScore(row.quality_score) }}</td>
                         <td class="is-right">{{ fmtScore(row.sentiment_score) }}</td>
+                        <td class="is-right">{{ fmtScore(row.growth_score) }}</td>
+                        <td class="is-right">{{ fmtScore(row.reversal_score) }}</td>
                         <td class="is-center">
                           <AppIcon :name="expandedRows.has(row.code) ? 'chevron-up' : 'chevron-down'" size="xs" />
                         </td>
@@ -991,6 +997,7 @@ onBeforeUnmount(() => {
                                 capital: row.capital_score, momentum: row.momentum_score,
                                 valuation: row.valuation_score, liquidity: row.liquidity_score,
                                 quality: row.quality_score, sentiment: row.sentiment_score,
+                                growth: row.growth_score, reversal: row.reversal_score,
                               }" :height="180" />
                             </div>
                           </div>
@@ -1173,6 +1180,7 @@ onBeforeUnmount(() => {
               capital: selectedStock.capital_score, momentum: selectedStock.momentum_score,
               valuation: selectedStock.valuation_score, liquidity: selectedStock.liquidity_score,
               quality: selectedStock.quality_score, sentiment: selectedStock.sentiment_score,
+              growth: selectedStock.growth_score, reversal: selectedStock.reversal_score,
             }" :height="260" />
           </div>
         </div>

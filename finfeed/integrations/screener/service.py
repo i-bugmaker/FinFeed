@@ -38,6 +38,54 @@ from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("screener_service")
 
+
+def _enrich_growth(df: pd.DataFrame) -> pd.DataFrame:
+    """为因子行注入成长性字段（东财业绩预告 earnings_forecast，is_latest=1）。
+
+    - earnings_growth_pct：预告净利润同比增幅（取上下限均值；均为 0 时视为无数据）
+    - forecast_type：预告类型（预增/扭亏/预减…）
+    无覆盖的标的保持缺失（score_growth 给中性分），失败静默降级。
+    """
+    try:
+        from finfeed.storage.database import get_db
+
+        codes = [str(c).zfill(6) for c in df["code"].tolist()] if "code" in df.columns else []
+        if not codes:
+            return df
+        marks = ",".join("?" for _ in codes)
+        growth: dict[str, tuple] = {}
+        with get_db() as c:
+            rows = c.execute(
+                f"""SELECT code, forecast_type, increase_low, increase_high
+                    FROM earnings_forecast WHERE is_latest = 1 AND code IN ({marks})""",
+                codes,
+            ).fetchall()
+        for r in rows:
+            lo, hi = float(r["increase_low"] or 0.0), float(r["increase_high"] or 0.0)
+            growth[str(r["code"]).zfill(6)] = (
+                (lo + hi) / 2.0 if (lo or hi) else None,
+                r["forecast_type"] or "",
+            )
+        if not growth:
+            return df
+        import math
+
+        def _map(code):
+            g = growth.get(str(code).zfill(6))
+            if not g:
+                return (None, "")
+            return g
+
+        mapped = df["code"].map(_map)
+        df["earnings_growth_pct"] = [m[0] if m and m[0] is not None and math.isfinite(m[0]) else None
+                                      for m in mapped]
+        df["forecast_type"] = [m[1] if m else "" for m in mapped]
+        covered = sum(1 for v in df["earnings_growth_pct"] if v is not None)
+        logger.info("成长因子富化完成：覆盖 %d/%d 标的", covered, len(df))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("业绩预告富化失败（growth 因子按缺失处理）: %s", exc)
+    return df
+
 # 任务内存表（当前进程；历史任务从 TaskStore 恢复）
 _TASKS: dict[str, dict] = {}
 _TASKS_LOCK = threading.Lock()
@@ -303,7 +351,8 @@ def _run(task: dict) -> None:
         else:
             _progress(task, 60)
 
-        _log(task, "开始五维加权评分…")
+        df = _enrich_growth(df)
+        _log(task, "开始八维加权评分…")
         engine_meta: dict = {}
         scores = score_frame(df, cfg, technical_enabled=technical,
                              store=snapshot_store, meta=engine_meta)
@@ -423,6 +472,7 @@ def get_config() -> dict[str, Any]:
 def _execute_once(cfg: ScreenerConfig, df: pd.DataFrame, technical: bool,
                   top_n: int = 200) -> ScreenerResult:
     """单次评分 + 结果封装（供 compare 复用，不写任务状态）。"""
+    df = _enrich_growth(df)
     engine_meta: dict = {}
     scores = score_frame(df, cfg, technical_enabled=technical,
                          store=snapshot_store, meta=engine_meta)

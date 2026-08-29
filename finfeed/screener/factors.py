@@ -275,8 +275,76 @@ def score_sentiment(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     return clamp(score), contrib
 
 
+def score_growth(row: dict, p: dict) -> tuple[float, dict[str, str]]:
+    """成长性（两因子，数据源：东财业绩预告 earnings_forecast）：
+
+    - 预告增幅：最新一期业绩预告的净利润同比增幅（sigmoid，增幅 30% 得 50 分）
+    - 预告类型：预增/扭亏/略增加分，预减/首亏/略减/续亏减分，未知给中性
+    缺失（无业绩预告覆盖）按中性 50 处理——不因信息缺失惩罚标的。
+    """
+    gp = p["growth"]
+    g = row.get("earnings_growth_pct")
+    if _is_missing(g):
+        s_growth = 50.0
+        g_label = "缺失→中性"
+    else:
+        s_growth = score_sigmoid(_f(g), gp["growth_mid"], gp["growth_scale"])
+        g_label = f"{_f(g):+.1f}%"
+
+    ftype = str(row.get("forecast_type") or "").strip()
+    if ftype in gp.get("bonus_types", ()):
+        s_type = 100.0
+    elif ftype in gp.get("penalty_types", ()):
+        s_type = 0.0
+    else:
+        s_type = 50.0
+
+    score = gp["w_growth"] * s_growth + gp["w_type"] * s_type
+    contrib = {
+        "预告增幅": f"{g_label} → {s_growth:.0f}",
+        "预告类型": f"{ftype or '无'} → {s_type:.0f}",
+    }
+    return clamp(score), contrib
+
+
+def score_reversal(row: dict, p: dict) -> tuple[float, dict[str, str]]:
+    """反转/超跌修复（两因子，easy-tdx 快照源）：
+
+    - 20 日跌幅反转：跌得越深反弹弹性越高（higher_better=False）；
+      跌势过深（> 阈值）视为趋势性下跌，分数衰减防接飞刀
+    - 当日企稳：止跌（≥0）给高分，继续大跌给低分
+    缺失（无 K 线派生数据）按中性处理。
+    """
+    rp = p["reversal"]
+    c20 = row.get("change_20d_pct")
+    if _is_missing(c20):
+        s_drop = 50.0
+        drop_label = "缺失→中性"
+    else:
+        c20 = _f(c20)
+        s_drop = score_sigmoid(c20, rp["drop_mid"], rp["drop_scale"], higher_better=False)
+        if c20 < -rp["cliff_threshold"]:
+            s_drop = clamp(s_drop * rp["cliff_floor"])
+        drop_label = f"{c20:+.1f}%"
+
+    chg = row.get("chg_today")
+    if _is_missing(chg):
+        s_stab = 50.0
+        stab_label = "缺失→中性"
+    else:
+        s_stab = score_sigmoid(_f(chg), rp["stabilize_mid"], rp["stabilize_scale"])
+        stab_label = f"{_f(chg):+.2f}%"
+
+    score = rp["w_drop"] * s_drop + rp["w_stabilize"] * s_stab
+    contrib = {
+        "20日跌幅": f"{drop_label} → {s_drop:.0f}",
+        "当日企稳": f"{stab_label} → {s_stab:.0f}",
+    }
+    return clamp(score), contrib
+
+
 def dimension_scores(row: dict, cfg) -> dict[str, tuple[float, dict[str, str]]]:
-    """返回六维度的 (子分, 贡献说明)。"""
+    """返回八个维度的 (子分, 贡献说明)。"""
     p = cfg.params
     return {
         "capital": score_capital(row, p),
@@ -285,4 +353,6 @@ def dimension_scores(row: dict, cfg) -> dict[str, tuple[float, dict[str, str]]]:
         "liquidity": score_liquidity(row, p),
         "quality": score_quality(row, p),
         "sentiment": score_sentiment(row, p),
+        "growth": score_growth(row, p),
+        "reversal": score_reversal(row, p),
     }

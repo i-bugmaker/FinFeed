@@ -37,16 +37,18 @@ from .boards import BOARD_LABELS
 
 def _default_weights() -> dict[str, float]:
     # 权重实证校准（2026-08 回测驱动 + 维度扩展）：
-    # - 新增情绪/事件维度 10%（easy-tdx 快照：涨停基因/连涨/大单动向/量速）
-    # - 资金面 25%→20%：主力净流入为估算值且无历史数据可回测验证，继续让渡
-    # - 估值 20%→18%、质量 15%→12%：为情绪维度腾出权重
+    # - 新增情绪/事件维度（easy-tdx 快照：涨停基因/连涨/大单动向/量速）
+    # - 2026-08 二期：补齐设计预留的 growth/reversal 两维（业绩预告成长 + 超跌反转），
+    #   其余维度等比让渡权重（累计 -7%），合计仍为 1.00
     return {
-        "capital": 0.20,     # 资金面（原 0.30→0.25→0.20，数据可信度存疑持续让渡）
-        "momentum": 0.25,    # 动量趋势
-        "valuation": 0.18,   # 估值（原 0.20）
-        "liquidity": 0.15,   # 量价活跃
-        "quality": 0.12,     # 质量稳定（原 0.15）
-        "sentiment": 0.10,   # 情绪/事件（新增：A 股短线 alpha，easy-tdx 快照源）
+        "capital": 0.18,     # 资金面（原 0.20，为 growth 让渡）
+        "momentum": 0.22,    # 动量趋势（原 0.25）
+        "valuation": 0.16,   # 估值（原 0.18）
+        "liquidity": 0.14,   # 量价活跃（原 0.15）
+        "quality": 0.10,     # 质量稳定（原 0.12）
+        "sentiment": 0.07,   # 情绪/事件（原 0.10）
+        "growth": 0.08,      # 成长性（新增：业绩预告增幅 + 预告类型）
+        "reversal": 0.05,    # 反转/超跌修复（新增：20日跌幅 + 企稳信号）
     }
 
 
@@ -151,6 +153,27 @@ def _default_params() -> dict[str, Any]:
             # 量速：钟形（峰值 1.8 适度放量最优），爆量（>4）警惕出货
             "volspeed_mid": 1.8, "volspeed_width": 1.2,
             "w_limitup": 0.25, "w_streak": 0.20, "w_ddx": 0.30, "w_volspeed": 0.25,
+        },
+        # 成长性（新增维度，数据源：东财业绩预告 earnings_forecast）：
+        # 预告净利润同比增幅 + 预告类型（预增/扭亏加分，预减/首亏减分）
+        "growth": {
+            # 预告净利润同比增幅(%)：sigmoid 锚点（增幅 30% 得 50 分）
+            "growth_mid": 30.0, "growth_scale": 40.0,
+            # 预告类型加分/减分（类型未知给中性 50）
+            "bonus_types": ["预增", "扭亏", "略增"],
+            "penalty_types": ["预减", "首亏", "略减", "续亏"],
+            "w_growth": 0.60, "w_type": 0.40,
+        },
+        # 反转/超跌修复（新增维度，easy-tdx 快照源）：
+        # 20 日跌幅反转弹性 + 当日企稳信号；跌势过深衰减防接飞刀
+        "reversal": {
+            # 20日涨跌幅(%)：higher_better=False，跌得越深反转弹性越高（-10% 得 50 分）
+            "drop_mid": -10.0, "drop_scale": 10.0,
+            # 跌势过深衰减：20 日跌幅超过 45% 视为趋势性下跌（基本面恶化），分数打 4 折
+            "cliff_threshold": 45.0, "cliff_floor": 0.4,
+            # 当日涨跌幅(%)：企稳信号（≥0 止跌给高分，继续大跌降分）
+            "stabilize_mid": 0.0, "stabilize_scale": 1.5,
+            "w_drop": 0.55, "w_stabilize": 0.45,
         },
     }
 
@@ -292,7 +315,7 @@ class ScreenerConfig:
         lines = []
         lines.append("## 选股评分方法论")
         lines.append("")
-        lines.append("模型对每只股票计算 **6 个维度子分（0~100）**，按权重加权得到综合分（0~100）：")
+        lines.append("模型对每只股票计算 **8 个维度子分（0~100）**，按权重加权得到综合分（0~100）：")
         lines.append("")
         lines.append("| 维度 | 权重 | 核心含义 | 主要因子 |")
         lines.append("|------|------|----------|----------|")
@@ -302,6 +325,8 @@ class ScreenerConfig:
         lines.append(f"| 量价活跃 | {w['liquidity']*100:.0f}% | 是否具备可交易流动性 | 成交额(log)、换手率(%) |")
         lines.append(f"| 质量稳定 | {w['quality']*100:.0f}% | 波动/盈利/规模是否稳健 | 波动率 + 盈利 + 市值规模 + 分红四因子 |")
         lines.append(f"| 情绪/事件 | {w.get('sentiment', 0.0)*100:.0f}% | A 股短线情绪信号 | 年内涨停天数、连涨天数、DDX大单动向、量速 |")
+        lines.append(f"| 成长性 | {w.get('growth', 0.0)*100:.0f}% | 业绩是否高增长 | 业绩预告净利润同比增幅、预告类型（预增/扭亏） |")
+        lines.append(f"| 反转修复 | {w.get('reversal', 0.0)*100:.0f}% | 超跌反弹弹性 | 20日跌幅反转（跌深衰减防接飞刀）、当日企稳 |")
         lines.append("")
         lines.append("### 维度子分计算")
         lines.append("")
@@ -334,6 +359,14 @@ class ScreenerConfig:
         lines.append(f"  - 连涨天数：钟形（峰值 {sp['streak_mid']:.0f} 天），连涨过高=追高风险")
         lines.append(f"  - DDX 大单净量比：sigmoid（锚点 {sp['ddx_mid']}，尺度 {sp['ddx_scale']}），>0 净流入更好")
         lines.append(f"  - 量速：钟形（峰值 {sp['volspeed_mid']}），适度放量最优，爆量警惕出货")
+        gp = p['growth']
+        lines.append(f"- **成长性** = {gp['w_growth']:.2f}×预告增幅分 + {gp['w_type']:.2f}×预告类型分")
+        lines.append(f"  - 预告增幅：sigmoid（锚点 {gp['growth_mid']}%，尺度 {gp['growth_scale']}%），无覆盖给中性分")
+        lines.append(f"  - 预告类型：{'/'.join(gp['bonus_types'])} 加分，{'/'.join(gp['penalty_types'])} 减分")
+        rp = p['reversal']
+        lines.append(f"- **反转修复** = {rp['w_drop']:.2f}×跌幅反转分 + {rp['w_stabilize']:.2f}×企稳分")
+        lines.append(f"  - 20日跌幅反转：越高越差（跌深弹性大），> {rp['cliff_threshold']:.0f}% 深跌衰减至 {rp['cliff_floor']:.0%} 防接飞刀")
+        lines.append(f"  - 当日企稳：sigmoid（锚点 {rp['stabilize_mid']}%），止跌给高分")
         lines.append("")
         lines.append("### 硬性过滤（评分前剔除）")
         lines.append("")

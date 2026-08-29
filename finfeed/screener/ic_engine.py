@@ -31,7 +31,7 @@ from . import vector
 from .config import ScreenerConfig
 
 # 八维体系（在六维基础上显式补入 growth / reversal，逐步接入）
-DIMS = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment")
+DIMS = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment", "growth", "reversal")
 
 
 def _forward_returns(history: list[tuple[str, pd.DataFrame]], horizon: int):
