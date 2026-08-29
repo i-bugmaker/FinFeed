@@ -150,6 +150,23 @@ ARTICLE_NEWS_SOURCES: list[NewsSource] = [
     ),
 
     NewsSource(
+        name='财新网',
+        url='https://gateway.caixin.com/api/dataplatform/scroll/index',
+        parser_type='caixin',
+        headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://www.caixin.com/',
+            'Accept': 'application/json, text/plain, */*'
+        },
+        params={
+            'page': 1,
+            'size': 50,
+            'date': '',
+            'channel': ''
+        },
+    ),
+
+    NewsSource(
         name='韭研公社',
         url='https://www.jiuyangongshe.com',
         parser_type='jiuyan',
