@@ -10,8 +10,8 @@
 - assemble_vec：板块中性化（groupby percentile）+ 加权总分 + 动态涨跌停护栏 + 评级，
   输出数值字段 DataFrame（rationale 等解释性文本由调用方在逐行阶段生成）。
 
-缺失语义：各维度计算前对缺失列 fillna(0)，与标量路径 _f(NaN)->0 行为一致；
-估值维度按 PE 缺失 -> 中性分处理（与 factors.score_valuation 对齐）。
+缺失语义：标量/向量两路径一致——各因子缺失给中性分（估值/成长/反转/情绪/盈利/
+动量有序度均为 50），不以 0 冒充真实值；仅成交额等「明确 0 才有意义」的字段按 0 处理。
 """
 
 from __future__ import annotations
@@ -67,17 +67,22 @@ def dimension_scores_vec(df: pd.DataFrame, cfg) -> dict[str, pd.Series]:
 
     # ---- 动量趋势 ----
     mp = p["momentum"]
-    c5 = _num(_col(df, "change_5d_pct"))
+    c5_raw = pd.to_numeric(_col(df, "change_5d_pct"), errors="coerce")
+    c20_raw = pd.to_numeric(_col(df, "change_20d_pct"), errors="coerce")
+    c60_raw = pd.to_numeric(_col(df, "change_60d_pct"), errors="coerce")
+    c5 = c5_raw.fillna(0.0).astype(float)
     c10 = _num(_col(df, "change_10d_pct"))
-    c20 = _num(_col(df, "change_20d_pct"))
-    c60 = _num(_col(df, "change_60d_pct"))
+    c20 = c20_raw.fillna(0.0).astype(float)
+    c60 = c60_raw.fillna(0.0).astype(float)
     s20 = _vec_sigmoid(c20, mp["mom20_mid"], mp["mom20_scale"]) * 100.0
     overheat = c20 > mp["mom20_overheat"]
     denom = mp.get("mom20_decay_denom", 80.0)
     decay = (1.0 - (c20 - mp["mom20_overheat"]) / denom).clip(mp.get("mom20_overheat_floor", 0.6), 1.0)
     s20 = s20.where(~overheat, s20 * decay)
     s60 = _vec_sigmoid(c60, mp["mom60_mid"], mp["mom60_scale"]) * 100.0
+    # 动量有序：任一周期缺失 → 中性 50（与标量路径缺失语义一致）
     ordered = ((c5 >= c20).astype(float) + (c20 >= c60).astype(float) + (c60 >= 0).astype(float)) / 3.0 * 100.0
+    ordered = ordered.where(c5_raw.notna() & c20_raw.notna() & c60_raw.notna(), 50.0)
     # 动量加速度：20日动量 - 10日动量（10日缺失 -> 输入 0 得 sigmoid 中性 50，与标量一致）
     c10_raw = pd.to_numeric(_col(df, "change_10d_pct"), errors="coerce")
     accel_in = (c20 - c10).where(c10_raw.notna(), 0.0)
@@ -114,8 +119,11 @@ def dimension_scores_vec(df: pd.DataFrame, cfg) -> dict[str, pd.Series]:
 
     # ---- 质量稳定（四因子）----
     qp = p["quality"]
-    eps = _num(_col(df, "eps"))
+    eps_raw = pd.to_numeric(_col(df, "eps"), errors="coerce")
+    eps = eps_raw.fillna(0.0).astype(float)
+    # 盈利因子：EPS>0 满分、亏损 0 分、缺失中性 50（缺失 ≠ 亏损）
     s_profit = (eps > 0).astype(float) * 100.0
+    s_profit = s_profit.where(eps_raw.notna(), 50.0)
     rv = pd.to_numeric(_col(df, "realized_vol_ann"), errors="coerce")
     amp = _num(_col(df, "amplitude"))
     s_vol_rv = _vec_bell(rv, qp["vol_ann_mid"], qp["vol_ann_width"])
@@ -130,16 +138,20 @@ def dimension_scores_vec(df: pd.DataFrame, cfg) -> dict[str, pd.Series]:
         + qp["w_size"] * s_size + qp["w_dy"] * s_dy_q
     ).clip(0.0, 100.0)
 
-    # ---- 情绪/事件（四因子，easy-tdx 快照源）----
+    # ---- 情绪/事件（四因子，easy-tdx 快照源；缺失 → 中性 50）----
     sp = p["sentiment"]
-    lup = _num(_col(df, "annual_limit_up_days"))
-    s_lup = _vec_bell(lup, sp["limitup_mid"], sp["limitup_width"])
-    streak = _num(_col(df, "consecutive_up_days"))
-    s_streak = _vec_bell(streak, sp["streak_mid"], sp["streak_width"])
-    ddx = _num(_col(df, "ddx"))
-    s_ddx = _vec_sigmoid(ddx, sp["ddx_mid"], sp["ddx_scale"]) * 100.0
-    vs = _num(_col(df, "vol_speed_pct"))
-    s_vs = _vec_bell(vs, sp["volspeed_mid"], sp["volspeed_width"])
+
+    def _neutral_bell(col: str, mid: float, width: float) -> pd.Series:
+        raw = pd.to_numeric(_col(df, col), errors="coerce")
+        s = _vec_bell(raw.fillna(0.0), mid, width)
+        return s.where(raw.notna(), 50.0)
+
+    s_lup = _neutral_bell("annual_limit_up_days", sp["limitup_mid"], sp["limitup_width"])
+    s_streak = _neutral_bell("consecutive_up_days", sp["streak_mid"], sp["streak_width"])
+    ddx_raw = pd.to_numeric(_col(df, "ddx"), errors="coerce")
+    s_ddx = _vec_sigmoid(ddx_raw.fillna(0.0), sp["ddx_mid"], sp["ddx_scale"]) * 100.0
+    s_ddx = s_ddx.where(ddx_raw.notna(), 50.0)
+    s_vs = _neutral_bell("vol_speed_pct", sp["volspeed_mid"], sp["volspeed_width"])
     out["sentiment"] = (
         sp["w_limitup"] * s_lup + sp["w_streak"] * s_streak
         + sp["w_ddx"] * s_ddx + sp["w_volspeed"] * s_vs

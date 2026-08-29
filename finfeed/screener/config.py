@@ -82,8 +82,8 @@ def _default_filters() -> dict[str, Any]:
         "min_turnover": 0.3,
         # 成交额下限（元，默认 1 亿）：可交易性护栏，仅排除僵尸/极度缩量标的
         "min_amount": 1.0e8,
-        # 上市天数下限（天）：剔除次新（需技术面阶段提供，可选）
-        "min_listing_days": 0,
+        # 注：次新股过滤（min_listing_days）已移除——当前数据源无上市日期字段，
+        # 该配置此前从未被 is_eligible 检查（死配置）；接入上市日期数据后再恢复。
     }
 
 
@@ -216,7 +216,10 @@ def _default_engine() -> dict[str, Any]:
         "horizon": 20,            # 前瞻收益期限
         "ic_halflife": 60,        # IC 半衰期
         "scheme": "halflife_ic",  # halflife_ic | icir
-        "orthogonalize": False,   # 维度正交化开关
+        # 正交化默认开启：momentum/reversal 共用 20 日动量原始字段（方向相反）、
+        # capital/main_net 与 sentiment/DDX 同为资金流信号，维度间冗余会稀释
+        # 合成 ICIR；正交化去除冗余后再加权（海通实证 ICIR 2.29→3.30）。
+        "orthogonalize": True,
         "blend_alpha": 0.5,       # 混合模式线性权重 α（ml 概率权重 1-α）
         "top_quantile": 0.3,      # ML 标签分位（前/后 30%）
         "ml_min_history_days": 60,  # ML 训练所需最少历史交易日（低于 IC 要求，更快可用）

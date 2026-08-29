@@ -27,11 +27,16 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
+from .boards import classify_board
 from .config import ScreenerConfig, load_config
 from .datasource import _kline_pool
 from .scoring import score_frame
 
 logger = logging.getLogger("finfeed.screener.backtest")
+
+# 回测可执行性与成本参数
+TOP_N = 10                 # TopN 组合规模（每截面综合分前 N 名）
+COST_ROUND_TRIP_PCT = 0.2  # 单次双边交易成本（%，佣金+滑点），从前瞻收益中扣除
 
 # 回测股票池生成规则（混合板块抽样，代码前缀 + 序号区间）
 _POOL_RULES: list[tuple[str, int, int]] = [
@@ -71,6 +76,7 @@ def _fetch_history(market: int, code: str, days: int) -> pd.DataFrame | None:
     date_col = next((c for c in ("date", "datetime", "time", "day") if c in cols), None)
     df = pd.DataFrame({
         "date": pd.to_datetime(raw[cols[date_col]] if date_col else range(len(raw))),
+        "open": pd.to_numeric(raw[cols.get("open", "open")], errors="coerce"),
         "close": pd.to_numeric(raw[cols.get("close", "close")], errors="coerce"),
         "high": pd.to_numeric(raw[cols.get("high", "high")], errors="coerce"),
         "low": pd.to_numeric(raw[cols.get("low", "low")], errors="coerce"),
@@ -184,6 +190,15 @@ def run_backtest(pool_size: int = 200, n_cross: int = 8, step: int = 5,
             row["cross"] = k
             row["fwd_5"] = float(close.iloc[asof_pos + 5] / c0 - 1.0) * 100.0
             row["fwd_20"] = float(close.iloc[asof_pos + 20] / c0 - 1.0) * 100.0
+            # 可执行性：次日开盘即涨停（≥ 板块涨停×99.5%）时 T+1 无法买入，
+            # 该样本从分层收益 / TopN 等交易类统计中剔除（IC 为秩统计，保留）。
+            buyable = True
+            if asof_pos + 1 < n:
+                next_open = float(hist["open"].iloc[asof_pos + 1])
+                board = classify_board(code, market)
+                limit = {"kcb": 20.0, "cyb": 20.0, "bj": 30.0}.get(board, 10.0)
+                buyable = not (next_open > 0 and next_open >= c0 * (1.0 + limit * 0.995 / 100.0))
+            row["buyable"] = buyable
             rows.append(row)
     if not rows:
         return {"error": "回测样本为空（K 线抓取失败或股票池无有效标的）", "pool_size": pool_size}
@@ -231,6 +246,7 @@ def run_backtest_from_snapshots(pool_size: int = 200, n_cross: int = 8,
     cfg = load_config()
     cfg.filters["turnover_missing_tolerant"] = True
     rows: list[dict] = []
+    topn_by_cross: dict[int, set] = {}
     t0 = time.time()
     for k in range(n_cross):
         asof_idx = k * step
@@ -243,6 +259,8 @@ def run_backtest_from_snapshots(pool_size: int = 200, n_cross: int = 8,
         if len(scores) < 30:
             continue
         sc = {s.code: s.total_score for s in scores}
+        # 记录每截面 TopN 名单（用于相邻截面换手率统计）
+        topn_by_cross[k] = {c for c, _ in sorted(sc.items(), key=lambda kv: -kv[1])[:TOP_N]}
         # 未来收益（后续交易日快照 close）
         fwd = {}
         for h in (5, 20):
@@ -266,23 +284,45 @@ def run_backtest_from_snapshots(pool_size: int = 200, n_cross: int = 8,
             })
     if not rows:
         return {"error": "快照回测样本为空", "pool_size": pool_size}
+    # 相邻截面 TopN 名单重合度 → 每期换手率（1 - 重合比例；截面间隔 step 日）
+    topn_turnover: list[float] = []
+    for k in sorted(topn_by_cross):
+        if k - 1 in topn_by_cross:
+            a, b = topn_by_cross[k - 1], topn_by_cross[k]
+            if a:
+                topn_turnover.append(1.0 - len(a & b) / len(a))
     return _aggregate_metrics(
         pd.DataFrame(rows), cfg, pool_size, n_cross, step, time.time() - t0,
-        full_factors=True,
+        full_factors=True, topn_turnover=topn_turnover,
     )
 
 
 def _aggregate_metrics(frame: pd.DataFrame, cfg, pool_size: int, n_cross: int,
-                       step: int, elapsed: float, full_factors: bool) -> dict[str, Any]:
-    """公共聚合：逐截面 IC、分层收益、TopN 统计。"""
+                       step: int, elapsed: float, full_factors: bool,
+                       topn_turnover: list[float] | None = None) -> dict[str, Any]:
+    """公共聚合：逐截面 IC、分层收益、TopN 统计。
+
+    可执行性约束：若 frame 含 buyable 列（K 线重建路径计算「次日开盘涨停不可买」），
+    IC 为秩统计保留全样本；分层收益与 TopN 等**交易类**统计仅用可执行样本，
+    并扣除双边交易成本（COST_ROUND_TRIP_PCT%）。
+    """
     ic_5: list[float] = []
     ic_20: list[float] = []
     layer_stats: dict[str, dict[str, float]] = {}
+    topn_ret5: list[float] = []
+    topn_ret20: list[float] = []
+    n_unbuyable = 0
+    cost = COST_ROUND_TRIP_PCT / 100.0
+    has_buyable = "buyable" in frame.columns
+    if has_buyable:
+        n_unbuyable = int((~frame["buyable"].astype(bool)).sum())
 
     for k in range(n_cross):
         sub = frame[frame["cross"] == k]
         if len(sub) < 30:
             continue
+        # 交易类统计只用可执行样本
+        trade = sub[sub["buyable"].astype(bool)] if has_buyable else sub
         sc = sub.set_index("code")["total_score"]
         joined = sub.set_index("code")
         joined = joined.assign(total_score=sc)
@@ -295,17 +335,26 @@ def _aggregate_metrics(frame: pd.DataFrame, cfg, pool_size: int, n_cross: int,
             if r5 == r5:  # not NaN
                 ic_5.append(float(r5))
                 ic_20.append(float(r20))
-        # 分层：按总分五分位
-        try:
-            joined["q"] = pd.qcut(joined["total_score"], 5, labels=False, duplicates="drop")
-        except ValueError:
-            continue
-        for q in sorted(joined["q"].dropna().unique()):
-            grp = joined[joined["q"] == q]
-            if len(grp) >= 3:
-                s = layer_stats.setdefault(f"Q{int(q) + 1}", {"fwd_5": [], "fwd_20": []})
-                s["fwd_5"].append(float(grp["fwd_5"].mean()))
-                s["fwd_20"].append(float(grp["fwd_20"].mean()))
+        # 分层：按总分五分位（仅可执行样本，净收益）
+        trade_j = trade.set_index("code").dropna(subset=["fwd_5", "fwd_20"])
+        if len(trade_j) >= 20 and trade_j["total_score"].nunique() > 1:
+            q_ok = True
+            try:
+                trade_j["q"] = pd.qcut(trade_j["total_score"], 5, labels=False, duplicates="drop")
+            except ValueError:
+                q_ok = False
+            if q_ok:
+                for q in sorted(trade_j["q"].dropna().unique()):
+                    grp = trade_j[trade_j["q"] == q]
+                    if len(grp) >= 3:
+                        s = layer_stats.setdefault(f"Q{int(q) + 1}", {"fwd_5": [], "fwd_20": []})
+                        s["fwd_5"].append(float(grp["fwd_5"].mean()) - cost)
+                        s["fwd_20"].append(float(grp["fwd_20"].mean()) - cost)
+                # TopN：综合分前 N 名的净前瞻收益
+                if len(trade_j) >= TOP_N:
+                    top = trade_j.nlargest(TOP_N, "total_score")
+                    topn_ret5.append(float(top["fwd_5"].mean()) - cost)
+                    topn_ret20.append(float(top["fwd_20"].mean()) - cost)
 
     # 市场状态分组：按截面全样本平均 fwd_20 正负分「强/弱市」，分别统计 IC
     state_ic: dict[str, dict[str, float]] = {"bull": {"ic_5": [], "ic_20": []},
@@ -358,6 +407,17 @@ def _aggregate_metrics(frame: pd.DataFrame, cfg, pool_size: int, n_cross: int,
             for k, v in state_ic.items()
         },
         "factor_ic_20": factor_corr,
+        "topn": {
+            "n": TOP_N,
+            "cost_round_trip_pct": COST_ROUND_TRIP_PCT,
+            "fwd_5_mean": round(float(np.mean(topn_ret5)), 3) if topn_ret5 else None,
+            "fwd_20_mean": round(float(np.mean(topn_ret20)), 3) if topn_ret20 else None,
+            "n_cross": len(topn_ret20),
+            "turnover_per_step": (round(float(np.mean(topn_turnover)), 3)
+                                  if topn_turnover else None),
+            "turnover_periods": len(topn_turnover),
+        },
+        "excluded_unbuyable": n_unbuyable,
         "layers": {k: {kk: round(float(np.mean(vv)), 3) for kk, vv in v.items()}
                    for k, v in sorted(layer_stats.items())},
         "disclaimer": ("" if full_factors else
@@ -375,8 +435,9 @@ def weight_sensitivity(pool_size: int = 120, n_cross: int = 6, step: int = 5,
     每个扰动组合独立跑一次小规模回测（约 6 组，耗时可控）。
     """
     from .config import ScreenerConfig
+    from .ic_engine import DIMS
 
-    dims = ("capital", "momentum", "valuation", "liquidity", "quality")
+    dims = DIMS  # 八维全量扫描（capital/momentum/valuation/liquidity/quality/sentiment/growth/reversal）
     base_cfg = load_config()
     results: dict[str, Any] = {"delta": delta, "variants": {}}
 
@@ -440,13 +501,26 @@ def render_markdown(result: dict[str, Any]) -> str:
         for k, v in fic.items():
             L.append(f"- {k}：{v}")
         L.append("")
-    L.append("### 分层收益（按综合分五分位，各层前瞻收益均值 %）")
+    L.append("### 分层收益（按综合分五分位，各层前瞻收益均值 %，扣双边成本后）")
     L.append("")
     L.append("| 分层 | T+5 | T+20 |")
     L.append("|------|-----|------|")
     for q, v in result["layers"].items():
         L.append(f"| {q} | {v.get('fwd_5', '—')} | {v.get('fwd_20', '—')} |")
     L.append("")
+    topn = result.get("topn") or {}
+    if topn.get("fwd_20_mean") is not None:
+        L.append(f"### TopN 组合（前 {topn['n']} 名，扣双边成本 {topn.get('cost_round_trip_pct')}%）")
+        L.append("")
+        L.append(f"- 净前瞻收益：T+5 {topn.get('fwd_5_mean')}%｜T+20 {topn.get('fwd_20_mean')}%（{topn.get('n_cross')} 个截面）")
+        if topn.get("turnover_per_step") is not None:
+            L.append(f"- TopN 换手率：每 {result.get('step', 1)} 日 {topn['turnover_per_step']:.0%}"
+                     f"（{topn.get('turnover_periods')} 期，快照路径）")
+        L.append("")
+    if result.get("excluded_unbuyable"):
+        L.append(f"> ⚠️ 可执行性：已从交易类统计中剔除 {result['excluded_unbuyable']} 个"
+                 "「次日开盘涨停无法买入」样本（IC 为秩统计不受影响）。")
+        L.append("")
     if result.get("disclaimer"):
         L.append(f"> ⚠️ {result['disclaimer']}")
         L.append("")

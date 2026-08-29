@@ -102,10 +102,13 @@ def score_momentum(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     缺失（无 10 日数据源）时给中性分（sigmoid(0)=50）。
     """
     mp = p["momentum"]
-    c5 = _f(row.get("change_5d_pct"))
+    c5_raw = row.get("change_5d_pct")
+    c20_raw = row.get("change_20d_pct")
+    c60_raw = row.get("change_60d_pct")
+    c5 = _f(c5_raw)
     c10 = _f(row.get("change_10d_pct"))
-    c20 = _f(row.get("change_20d_pct"))
-    c60 = _f(row.get("change_60d_pct"))
+    c20 = _f(c20_raw)
+    c60 = _f(c60_raw)
 
     s20 = score_sigmoid(c20, mp["mom20_mid"], mp["mom20_scale"])
     if c20 > mp["mom20_overheat"]:
@@ -115,8 +118,14 @@ def score_momentum(row: dict, p: dict) -> tuple[float, dict[str, str]]:
         s20 = clamp(s20 * decay)
     s60 = score_sigmoid(c60, mp["mom60_mid"], mp["mom60_scale"])
 
-    # 多周期动量有序：5日≥20日≥60日≥0 每满足一项 +1/3
-    ordered = ((c5 >= c20) + (c20 >= c60) + (c60 >= 0)) / 3.0 * 100.0
+    # 多周期动量有序：5日≥20日≥60日≥0 每满足一项 +1/3；
+    # 任一周期缺失 → 无法判定有序结构，给中性 50（缺失 ≠ 0，避免误判无序）
+    if _is_missing(c5_raw) or _is_missing(c20_raw) or _is_missing(c60_raw):
+        ordered = 50.0
+        ordered_label = "缺失→中性"
+    else:
+        ordered = ((c5 >= c20) + (c20 >= c60) + (c60 >= 0)) / 3.0 * 100.0
+        ordered_label = f"{ordered:.0f}"
 
     # 动量加速度：20日动量 - 10日动量（缺失给中性 50）
     if _is_missing(row.get("change_10d_pct")):
@@ -134,7 +143,7 @@ def score_momentum(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     contrib = {
         "20日动量": f"{c20:+.1f}% → {s20:.0f}",
         "60日动量": f"{c60:+.1f}% → {s60:.0f}",
-        "动量有序度": f"{ordered:.0f}",
+        "动量有序度": ordered_label,
         "动量加速度": f"{accel_label} → {s_accel:.0f}",
     }
     return clamp(score), contrib
@@ -194,13 +203,19 @@ def score_quality(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     """质量稳定（四因子）：
 
     - 波动率适中（振幅或已实现年化波动）
-    - 盈利为正（EPS>0）
+    - 盈利为正（EPS>0；缺失给中性分，不因数据缺失误判亏损）
     - 市值规模稳健（log10 总市值钟形，避免壳/妖股与超大盘极端）
     - 持续分红（股息率钟形，经营稳健信号）
     """
     qp = p["quality"]
-    eps = _f(row.get("eps"))
-    s_profit = 100.0 if eps > 0 else 0.0
+    eps_raw = row.get("eps")
+    if _is_missing(eps_raw):
+        s_profit = 50.0
+        profit_label = "EPS缺失→中性"
+    else:
+        eps = _f(eps_raw)
+        s_profit = 100.0 if eps > 0 else 0.0
+        profit_label = f"盈利EPS {eps:.2f} → {s_profit:.0f}"
 
     rv = row.get("realized_vol_ann")
     if rv is not None and math.isfinite(float(rv)):
@@ -232,7 +247,7 @@ def score_quality(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     )
     contrib = {
         vol_label: f"→ {s_vol:.0f}",
-        "盈利EPS": f"{eps:.2f} → {s_profit:.0f}",
+        "盈利": profit_label,
         size_label: f"→ {s_size:.0f}",
         "股息率": f"{dy:.2f}% → {s_dy:.0f}",
     }
@@ -245,32 +260,50 @@ def score_sentiment(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     - 涨停基因：年内涨停天数（钟形，峰值约 6 次；过高=妖股风险衰减）
     - 连涨动能：连涨天数（钟形，峰值 3 天；连跌自然低分）
     - 大单动向：DDX 大单净量比（sigmoid，>0 净流入更好）
-    - 量能变化：量速（钟形，适度放量最优，爆量警惕）
-    缺失（回退源/非交易时段）按中性处理。
+    - 量能变化：量速（钟形，适度放量最优，爆量警惕出货）
+    缺失（回退源/非交易时段）各因子按中性 50 处理——缺失 ≠ 0，不惩罚标的。
     """
     sp = p["sentiment"]
 
-    lup = _f(row.get("annual_limit_up_days"))
-    s_lup = score_bell(lup, sp["limitup_mid"], sp["limitup_width"])
+    lup_raw = row.get("annual_limit_up_days")
+    if _is_missing(lup_raw):
+        s_lup = 50.0
+    else:
+        s_lup = score_bell(_f(lup_raw), sp["limitup_mid"], sp["limitup_width"])
 
-    streak = _f(row.get("consecutive_up_days"))
-    s_streak = score_bell(streak, sp["streak_mid"], sp["streak_width"])
+    streak_raw = row.get("consecutive_up_days")
+    if _is_missing(streak_raw):
+        s_streak = 50.0
+    else:
+        s_streak = score_bell(_f(streak_raw), sp["streak_mid"], sp["streak_width"])
 
-    ddx = _f(row.get("ddx"))
-    s_ddx = score_sigmoid(ddx, sp["ddx_mid"], sp["ddx_scale"])
+    ddx_raw = row.get("ddx")
+    if _is_missing(ddx_raw):
+        s_ddx = 50.0
+        ddx_label = "缺失→中性"
+    else:
+        ddx = _f(ddx_raw)
+        s_ddx = score_sigmoid(ddx, sp["ddx_mid"], sp["ddx_scale"])
+        ddx_label = f"{ddx:+.3f}"
 
-    vs = _f(row.get("vol_speed_pct"))
-    s_vs = score_bell(vs, sp["volspeed_mid"], sp["volspeed_width"])
+    vs_raw = row.get("vol_speed_pct")
+    if _is_missing(vs_raw):
+        s_vs = 50.0
+        vs_label = "缺失→中性"
+    else:
+        vs = _f(vs_raw)
+        s_vs = score_bell(vs, sp["volspeed_mid"], sp["volspeed_width"])
+        vs_label = f"{vs:.2f}"
 
     score = (
         sp["w_limitup"] * s_lup + sp["w_streak"] * s_streak
         + sp["w_ddx"] * s_ddx + sp["w_volspeed"] * s_vs
     )
     contrib = {
-        "年内涨停": f"{lup:.0f}次 → {s_lup:.0f}",
-        "连涨": f"{streak:.0f}天 → {s_streak:.0f}",
-        "DDX": f"{ddx:+.3f} → {s_ddx:.0f}",
-        "量速": f"{vs:.2f} → {s_vs:.0f}",
+        "年内涨停": f"{_f(lup_raw):.0f}次 → {s_lup:.0f}" if not _is_missing(lup_raw) else "缺失→中性",
+        "连涨": f"{_f(streak_raw):.0f}天 → {s_streak:.0f}" if not _is_missing(streak_raw) else "缺失→中性",
+        "DDX": f"{ddx_label} → {s_ddx:.0f}",
+        "量速": f"{vs_label} → {s_vs:.0f}",
     }
     return clamp(score), contrib
 

@@ -31,20 +31,38 @@ from .scoring import score_frame
 _ANNUAL_TRADING_DAYS = 242
 
 
-def _agg_ic(series: list[float]) -> dict[str, float] | None:
-    """由逐期 IC 序列聚合出 IC mean / std / ICIR / 命中率。"""
+def _agg_ic(series: list[float], overlap_lag: int = 0) -> dict[str, float] | None:
+    """由逐期 IC 序列聚合出 IC mean / std / ICIR / 命中率。
+
+    overlap_lag > 0 表示相邻期前瞻窗口重叠（step < horizon 时必然发生），
+    逐期 IC 自相关会低估均值标准误、高估 ICIR——此时额外产出
+    Newey-West 修正的 icir_nw（Bartlett 核，滞后阶 = overlap_lag），
+    供严谨解读参考；icir 保留原始口径（与历史报告可比）。
+    """
     arr = np.array([v for v in series if v == v and v is not None], dtype=float)
     if arr.size == 0:
         return None
     std = float(arr.std(ddof=0))
     icir = float(arr.mean() / (std + 1e-9))
-    return {
+    out = {
         "ic_mean": round(float(arr.mean()), 4),
         "ic_std": round(std, 4),
         "icir": round(icir, 4),
         "hit_rate": round(float((arr > 0).mean()), 4),
         "n_periods": int(arr.size),
     }
+    if overlap_lag > 0 and arr.size > overlap_lag + 2:
+        x = arr - arr.mean()
+        n = arr.size
+        se2 = float(np.mean(x * x))
+        for lag in range(1, overlap_lag + 1):
+            gamma_l = float(np.mean(x[lag:] * x[:-lag]))
+            w = 1.0 - lag / (overlap_lag + 1.0)  # Bartlett 核
+            se2 += 2.0 * w * gamma_l
+        se = math.sqrt(max(se2 / n, 1e-12))
+        out["icir_nw"] = round(float(arr.mean()) / se, 4) if se > 0 else None
+        out["overlap_lag"] = int(overlap_lag)
+    return out
 
 
 def evaluate_engine(cfg: ScreenerConfig, store, end_date: str | None = None,
@@ -91,6 +109,14 @@ def evaluate_engine(cfg: ScreenerConfig, store, end_date: str | None = None,
             continue
         tot = {s.code: float(s.total_score) for s in scores}
         dims = {d: {s.code: float(getattr(s, f"{d}_score")) for s in scores} for d in DIMS}
+        # 维度覆盖率：该截面内维度分「非中性（≠50）」的标的占比。
+        # growth/reversal/sentiment 等维度对无覆盖标的给中性 50，覆盖率低说明
+        # 该维度的 IC 结论只对少数样本有效（如仅有业绩预告的股票）。
+        dim_coverage = {
+            d: (round(float(np.mean([abs(v - 50.0) > 1e-6 for v in dims[d].values()])), 4)
+                if dims[d] else 0.0)
+            for d in DIMS
+        }
         fwd = {}
         for c in tot:
             c0 = close_map.get(c)
@@ -103,6 +129,7 @@ def evaluate_engine(cfg: ScreenerConfig, store, end_date: str | None = None,
             "total": tot,
             "dims": dims,
             "fwd": fwd,
+            "dim_coverage": dim_coverage,
         })
 
     if len(records) < min_periods:
@@ -147,9 +174,18 @@ def evaluate_engine(cfg: ScreenerConfig, store, end_date: str | None = None,
         if 0 in q and 4 in q:
             spreads.append(float(fm[q == 4].mean()) - float(fm[q == 0].mean()))
 
-    composite = _agg_ic(period_total)
-    per_dim = {d: _agg_ic(period_dim[d]) for d in DIMS}
+    # 相邻期前瞻窗口重叠阶数（step<horizon 时 IC 自相关，ICIR 需 NW 修正参考）
+    overlap_lag = max(0, math.ceil(horizon / max(step, 1)) - 1)
+
+    composite = _agg_ic(period_total, overlap_lag=overlap_lag)
+    per_dim = {d: _agg_ic(period_dim[d], overlap_lag=overlap_lag) for d in DIMS}
     per_dim = {d: v for d, v in per_dim.items() if v is not None}
+
+    # 维度覆盖率（各截面均值）：覆盖率低的维度，其 IC 结论只对少数样本有效
+    coverage = {
+        d: round(float(np.mean([r["dim_coverage"][d] for r in records])), 4)
+        for d in DIMS if records and d in records[0]["dim_coverage"]
+    }
 
     layers = {f"Q{q + 1}": round(float(np.mean(layer_q[q])) * 100.0, 3)
               for q in range(5) if layer_q[q]}
@@ -157,7 +193,18 @@ def evaluate_engine(cfg: ScreenerConfig, store, end_date: str | None = None,
     ann = math.sqrt(_ANNUAL_TRADING_DAYS / max(horizon, 1))
     spread_mean = float(spread_arr.mean()) * 100.0
     spread_std = float(spread_arr.std(ddof=0)) * 100.0
+    # IR 同样受窗口重叠自相关影响：给出 NW 修正后的 IR 参考
     ir = float(spread_mean / (spread_std + 1e-9) * ann) if spread_std > 0 else None
+    ir_nw = None
+    if spreads and overlap_lag > 0 and len(spreads) > overlap_lag + 2:
+        sx = spread_arr - spread_arr.mean()
+        n = sx.size
+        se2 = float(np.mean(sx * sx))
+        for lag in range(1, overlap_lag + 1):
+            gamma_l = float(np.mean(sx[lag:] * sx[:-lag]))
+            se2 += 2.0 * (1.0 - lag / (overlap_lag + 1.0)) * gamma_l
+        se = math.sqrt(max(se2 / n, 1e-12))
+        ir_nw = round(float(spread_arr.mean()) / se * ann, 4) if se > 0 else None
 
     return {
         "engine_mode": records[0]["engine_mode"],
@@ -166,11 +213,13 @@ def evaluate_engine(cfg: ScreenerConfig, store, end_date: str | None = None,
         "min_periods": min_periods,
         "composite": composite,
         "per_dimension": per_dim,
+        "dim_coverage": coverage,
         "layers": layers,
         "spread": {
             "top_minus_bottom_mean_pct": round(spread_mean, 3),
             "std_pct": round(spread_std, 3),
             "information_ratio": round(ir, 4) if ir is not None else None,
+            "information_ratio_nw": ir_nw,
             "annualization_factor": round(ann, 3),
         },
         "factor_health": monitor_factor_health(per_dim, recent_window=min(20, len(records))),
@@ -268,19 +317,31 @@ def render_evaluation_markdown(result: dict[str, Any]) -> str:
              f"有效截面：{result['n_periods']} 个")
     comp = result.get("composite") or {}
     L.append(f"- **复合 RankIC(T+{result['horizon']})**：均值 {comp.get('ic_mean')} ± {comp.get('ic_std')}"
-             f"，ICIR={comp.get('icir')}，正截面占比 {comp.get('hit_rate')}")
+             f"，ICIR={comp.get('icir')}"
+             + (f"（NW 修正 {comp.get('icir_nw')}）" if comp.get("icir_nw") is not None else "")
+             + f"，正截面占比 {comp.get('hit_rate')}")
     spread = result.get("spread") or {}
+    ir_note = f"（NW 修正 {spread['information_ratio_nw']}）" if spread.get("information_ratio_nw") is not None else ""
     L.append(f"- **多空价差（Top-Bottom）**：均值 {spread.get('top_minus_bottom_mean_pct')}%"
-             f"，IR={spread.get('information_ratio')}（年化因子 {spread.get('annualization_factor')}）")
+             f"，IR={spread.get('information_ratio')}{ir_note}（年化因子 {spread.get('annualization_factor')}）")
     L.append("")
     pd_ = result.get("per_dimension") or {}
     if pd_:
         L.append("### 分维度 RankIC / ICIR")
         L.append("")
-        L.append("| 维度 | IC均值 | ICIR | 正截面 |")
-        L.append("|------|--------|------|--------|")
+        L.append("| 维度 | IC均值 | ICIR | 正截面 | 覆盖率 |")
+        L.append("|------|--------|------|--------|--------|")
+        cov = result.get("dim_coverage") or {}
         for d, v in pd_.items():
-            L.append(f"| {d} | {v.get('ic_mean')} | {v.get('icir')} | {v.get('hit_rate')} |")
+            c = cov.get(d)
+            L.append(f"| {d} | {v.get('ic_mean')} | {v.get('icir')} | {v.get('hit_rate')} | "
+                     f"{f'{c:.0%}' if c is not None else '—'} |")
+        L.append("")
+        low_cov = {d: c for d, c in cov.items() if c is not None and c < 0.3}
+        if low_cov:
+            L.append("> ⚠️ 低覆盖维度（<30% 样本非中性）：" +
+                     "、".join(f"{d}({c:.0%})" for d, c in sorted(low_cov.items())) +
+                     "——这些维度的 IC 结论仅对少数样本有效，解读需谨慎。")
         L.append("")
     layers = result.get("layers") or {}
     if layers:

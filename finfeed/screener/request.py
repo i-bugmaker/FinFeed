@@ -70,7 +70,7 @@ def build_config(req: ScreenerRequest, base: ScreenerConfig | None = None) -> Sc
     """把 ScreenerRequest 合并进 ScreenerConfig（不修改 base，返回新实例）。
 
     映射规则（设计文档 §4.1）：
-    - universe        → filters（板块/ST/停牌/流动性/价格/PE/市值/上市天数）
+    - universe        → filters（板块/ST/停牌/流动性/价格/PE/市值）
     - strategy.mode   → engine.mode（linear→fixed|auto，ml→ml，blend→blend）
     - strategy.auto_weight + dim_weights → 维度权重（任一非 null 覆盖）
     - strategy.orthogonalize / ml / blend_alpha → engine
@@ -113,12 +113,12 @@ def build_config(req: ScreenerRequest, base: ScreenerConfig | None = None) -> Sc
             f["pe_min"] = float(lo)
         if hi is not None:
             f["pe_max"] = float(hi)
-    if isinstance(u.get("float_cap_range"), (list, tuple)) and len(u["float_cap_range"]) == 2:
+    if isinstance(u.get("float_cap_range"), (list, tuple)) and len(u.get("float_cap_range")) == 2:
         lo, hi = u["float_cap_range"]
         if lo is not None:
             f["min_circ_cap"] = float(lo)
-    if "exclude_new_days" in u and u["exclude_new_days"] is not None:
-        f["min_listing_days"] = int(u["exclude_new_days"])
+    # 注：exclude_new_days（剔除次新）已随 min_listing_days 死配置一并移除
+    # —— 数据源无上市日期字段，此前该参数从未生效。
 
     s = req.strategy or {}
     eng = cfg.engine
