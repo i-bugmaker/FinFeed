@@ -511,6 +511,12 @@ let hoverSelf = new Set(); // 联动回环保护
 let dragActive = false;    // 拖拽进行中标志：抑制轮询重建，避免把拖到的顺序弹回原位
 let pollTimer = null, catchUpTimer = null, searchTimer = null, stockSeq = 0;
 let sparkQueue = [], sparkQueued = new Set(), sparkBusy = 0;  // 迷你分时简图懒加载
+let sparkRetries = {};  // key -> 已重试次数（后端瞬时抓取失败/超出单批上限时退避重试）
+// 每批请求数须 ≤ 后端 MAX_LAZY_SPARKS（config.py 默认 12）：
+// 后端单次请求只对前 12 个未命中 key 补抓，超出部分只会进 missing 返回，
+// 批量一旦超过就会有无重试路径的 key 永远空图。
+const SPARK_BATCH = 12;
+const SPARK_MAX_RETRIES = 3;
 let mainSeq = 0;           // 图表 DOM id 全局自增（增量增删时保证 id 唯一）
 
 /* ---------------- 工具 ---------------- */
@@ -1000,6 +1006,7 @@ function selectDate(dStr) {
   state.histNoDataShown = false;
   // 日期变化 → 历史/实时数据都不同，清空简图缓存与当前图表数据，避免显示旧日期残留
   state.sparkCache = {};
+  sparkRetries = {};
   resetChartsForDate();
   persistUI();
   renderDateBox();
@@ -1106,7 +1113,7 @@ function scheduleFlush() {
 function flushSparks() {
   if (sparkBusy || !sparkQueue.length) return;
   sparkBusy = 1;
-  const batch = sparkQueue.splice(0, 15);
+  const batch = sparkQueue.splice(0, SPARK_BATCH);
   // 历史日期：迷你分时简图同样按所选日期取数（后端按日期缓存/抓取）
   // 注意：API.sparklines(date) 在 date 非空时已带 ?date=…，追加参数需用 & 而非 ?
   const dateStr = state.date || "";
@@ -1114,7 +1121,7 @@ function flushSparks() {
   fetchJson(API.sparklines(dateStr) + sep + "codes=" + encodeURIComponent(batch.join(",")) + "&lazy=1", null, 2)
     .then((res) => {
       const items = (res && res.items) || {};
-      Object.entries(items).forEach(([k, d]) => { state.sparkCache[k] = d; });
+      Object.entries(items).forEach(([k, d]) => { delete sparkRetries[k]; state.sparkCache[k] = d; });
       if (Object.keys(items).length) {
         // 回填当前渲染的所有匹配项（含隐藏分区，切页即已就绪）
         document.querySelectorAll(".spark[data-key]").forEach((svg) => {
@@ -1122,13 +1129,34 @@ function flushSparks() {
           if (d) drawSpark(svg, d);
         });
       }
+      // 未取到的 key（后端瞬时抓取失败等）：有限次退避重试，避免永久空图
+      retrySparks(((res && res.missing) || []).filter((k) => !items[k]));
     })
-    .catch(() => { /* 瞬时失败：从队列移除，下次重渲染时重新入队 */ })
+    .catch(() => { retrySparks(batch); /* 瞬时失败：退避后整批重试 */ })
     .finally(() => {
       sparkBusy = 0;
       batch.forEach((k) => sparkQueued.delete(k));
       if (sparkQueue.length) setTimeout(flushSparks, 150);
     });
+}
+
+// 对本轮未取到数据的 key 做有限次退避重试（1.5s 起步逐次加倍）。
+// IntersectionObserver 是一次性观察且列表不随轮询重建，漏掉的 key 若不在此处
+// 重新入队就再无补图机会；超过重试上限的视为真无数据（停牌等）放弃。
+function retrySparks(keys) {
+  const due = [];
+  keys.forEach((k) => {
+    if (state.sparkCache[k]) return;
+    const n = (sparkRetries[k] || 0) + 1;
+    sparkRetries[k] = n;
+    if (n <= SPARK_MAX_RETRIES) due.push(k);
+  });
+  if (!due.length) return;
+  const maxN = Math.max(...due.map((k) => sparkRetries[k]));
+  setTimeout(() => {
+    due.forEach((k) => { if (!state.sparkCache[k]) enqueueSpark(k); });
+    scheduleFlush();
+  }, 1500 * Math.pow(2, maxN - 1));
 }
 
 /* ---------------- 主体渲染 ---------------- */

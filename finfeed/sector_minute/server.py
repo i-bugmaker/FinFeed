@@ -28,6 +28,9 @@ store = SectorStore()
 worker: Optional[RefreshWorker] = None
 _worker_lock = threading.Lock()
 
+# 历史分时抓取的哨兵：抓取异常且未达重试上限时占位，表示「保持未就绪、不写负缓存」
+_PENDING = object()
+
 
 # --------------------------------------------------------------------------- #
 # 刷新线程生命周期（幂等，供主应用挂载共用）
@@ -118,6 +121,11 @@ def _fetch_hist_date(date_str: str) -> None:
 
     用户在日期组件中切换历史日期时由 ``/charts?date=`` 触发；
     完成后前端轮询 ``/charts?date=`` 即可取到全部数据。
+
+    失败语义区分两类：
+    - 抓取异常（网络抖动/TDX 超时）：未达重试上限时不写缓存，该标的保持
+      「未就绪」，前端下次轮询触发重试；达到上限才写负缓存止损。
+    - 服务器正常应答但无分时点（停牌/非交易日）：直接写负缓存，不重复触网。
     """
     try:
         d = _parse_date(date_str)
@@ -125,8 +133,21 @@ def _fetch_hist_date(date_str: str) -> None:
             return
         subs = store.subscriptions()
         for i, sub in enumerate(subs):
-            chart = fetch_tick_chart(sub.market, sub.code, query_date=d)
-            store.hist_set(date_str, sub, chart)
+            chart = None
+            try:
+                chart = fetch_tick_chart(sub.market, sub.code, query_date=d, strict=True)
+                store.hist_clear_error(date_str, sub.key)
+            except Exception as exc:  # noqa: BLE001
+                give_up = store.hist_note_error(date_str, sub.key)
+                logger.warning(
+                    "历史分时抓取异常 date=%s %s:%s: %s%s",
+                    date_str, sub.market, sub.code, exc,
+                    "（已达重试上限，记为缺失）" if give_up else "（留待下次轮询重试）",
+                )
+                if not give_up:
+                    chart = _PENDING  # 哨兵：保持未就绪，不写负缓存
+            if chart is not _PENDING:
+                store.hist_set(date_str, sub, chart)
             if i < len(subs) - 1:
                 time.sleep(config.HIST_FETCH_SLEEP)
         logger.info("历史分时抓取完成 date=%s 标的=%d", date_str, len(subs))

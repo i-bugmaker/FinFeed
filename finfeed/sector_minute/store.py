@@ -86,6 +86,9 @@ class SectorStore:
         self._hist_ticks: dict[str, dict[str, TickChart]] = {}
         self._hist_order: list[str] = []       # LRU 顺序（尾部最新）
         self._hist_busy: set[str] = set()      # 正在后台抓取的日期（去重）
+        # 历史日期抓取异常计数：(date_str, sub_key) -> 连续异常次数。
+        # 与负缓存区分：异常在达到上限前不算「已就绪」，下次请求会重试。
+        self._hist_fail: dict[tuple[str, str], int] = {}
 
     # -- 订阅 ---------------------------------------------------------------
     def set_subscriptions(self, items: list[dict]) -> list[Subscription]:
@@ -158,6 +161,7 @@ class SectorStore:
             while len(self._hist_order) > config.MAX_HIST_DATES:
                 old = self._hist_order.pop(0)
                 self._hist_ticks.pop(old, None)
+                self._hist_fail = {k: v for k, v in self._hist_fail.items() if k[0] != old}
 
     def hist_set(self, date_str: str, sub: Subscription, chart: Optional[TickChart]) -> None:
         """写入某历史日期的单标的分时（chart 为 None 时记录为缺失，避免重复触网）。"""
@@ -172,6 +176,22 @@ class SectorStore:
                 chart.trade_date = date_str
                 bucket[sub.key] = chart
             self._hist_touch(date_str)
+
+    def hist_note_error(self, date_str: str, key: str) -> bool:
+        """记录某历史日期某标的的一次抓取异常，返回是否已达重试上限。
+
+        达到上限返回 True：调用方应写入负缓存（hist_set None）止损，
+        避免对持续性坏标的无限重试；未达到则不写缓存，留给下次请求重试。
+        """
+        with self._lock:
+            n = self._hist_fail.get((date_str, key), 0) + 1
+            self._hist_fail[(date_str, key)] = n
+            return n >= config.HIST_FETCH_MAX_TRIES
+
+    def hist_clear_error(self, date_str: str, key: str) -> None:
+        """标的抓取成功（含正常的无数据应答）后清除异常计数。"""
+        with self._lock:
+            self._hist_fail.pop((date_str, key), None)
 
     def hist_get(self, date_str: str, key: str) -> Optional[TickChart]:
         with self._lock:

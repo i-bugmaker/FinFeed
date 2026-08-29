@@ -57,6 +57,11 @@ MAX_HIST_DATES: int = int(os.environ.get("SECTOR_MIN_MAX_HIST_DATES", "10"))
 # 与实时后台刷新错峰 0.3s 不同：日期切换是用户主动操作，取小间隔换取更快出图。
 HIST_FETCH_SLEEP: float = float(os.environ.get("SECTOR_MIN_HIST_SLEEP", "0.1"))
 
+# 历史日期单标的「抓取异常」（网络抖动/TDX 超时等，区别于服务器正常应答但无分时点）
+# 的最大重试次数：达到上限前不写负缓存（下次 /charts 请求会重试），达到后记为缺失止损，
+# 避免瞬时失败被永久记成「无数据」、也避免对真坏标的无限重试。
+HIST_FETCH_MAX_TRIES: int = int(os.environ.get("SECTOR_MIN_HIST_FETCH_TRIES", "3"))
+
 # 历史分时可回溯的最大天数（前端日期选择器的下限；超出时后端返回空数据）。
 HIST_MAX_LOOKBACK_DAYS: int = int(os.environ.get("SECTOR_MIN_HIST_LOOKBACK", "365"))
 

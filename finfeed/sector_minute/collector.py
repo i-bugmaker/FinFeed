@@ -117,6 +117,7 @@ def fetch_tick_chart(
     code: str,
     query_date: Optional[date] = None,
     client: MacClient | None = None,
+    strict: bool = False,
 ) -> Optional[TickChart]:
     """获取单个标的单日分时图。
 
@@ -125,6 +126,8 @@ def fetch_tick_chart(
         code:   标的代码（板块 88xxxx / 个股 6 位代码）。
         query_date: 查询日期；``None`` 表示「今天」（服务器返回最近一个交易日的分时，
                    周末/节假日时即为上一交易日）。
+        strict: True 时抓取异常向上抛出（供调用方区分「网络/服务异常」与
+               「服务器正常应答但无分时点」）；默认 False 时异常打日志并返回 None。
 
     通过原始 0x122D 命令取得完整分时（含昨收/开高低收/名称元数据）；
     返回 ``TickChart``；失败或无数据返回 None。
@@ -133,10 +136,13 @@ def fetch_tick_chart(
 
     ensure_alive()
     client = client or get_client()
-    chart = _safe(
-        lambda: client._execute(SymbolTickChartCmd(int(market), str(code), query_date)),
-        tag=f"tick_{market}_{code}_{query_date or 'today'}",
-    )
+    try:
+        chart = client._execute(SymbolTickChartCmd(int(market), str(code), query_date))
+    except Exception as exc:  # noqa: BLE001
+        if strict:
+            raise
+        logger.warning("采集失败[tick_%s_%s_%s]: %s", market, code, query_date or "today", exc)
+        chart = None
     if chart is None or not getattr(chart, "charts", None):
         return None
 
