@@ -11,6 +11,11 @@ export const useAppStore = defineStore('app', {
     pendingTruncated: { flash: false, article: false, forum: false },
     badgeDismissedAt: 0, // 用户手动点击 badge 清除的时间戳，用于冷却期
     sources: [], // 数据源健康
+    // SSE 断线感知：offlineSince 记录断线起点，reconnectTick 在重连后自增，
+    // 列表页 watch 它来重拉第一页，保证断线期间的数据不丢。
+    offlineSince: 0,
+    lastOfflineMs: 0,
+    reconnectTick: 0,
   }),
   actions: {
     initTheme() {
@@ -39,7 +44,19 @@ export const useAppStore = defineStore('app', {
       }, 360)
     },
     setLive(v) {
+      const wasLive = this.live
       this.live = v
+      if (!v && wasLive) {
+        // live→offline 转变时刻（重复的 error 事件不覆盖起点）
+        if (!this.offlineSince) this.offlineSince = Date.now()
+      }
+    },
+    markReconnect() {
+      if (this.offlineSince) {
+        this.lastOfflineMs = Date.now() - this.offlineSince
+        this.offlineSince = 0
+      }
+      this.reconnectTick++
     },
     pushPending(items, truncated = false) {
       // 舆情(forum)新闻不在快讯/财经页展示（API 显式分类隔离），进入未读缓冲只会

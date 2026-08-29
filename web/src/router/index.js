@@ -13,6 +13,7 @@ const StyleGuideView = () => import('../views/StyleGuideView.vue')
 const EasyTdxView = () => import('../views/EasyTdxView.vue')
 const ScreenerView = () => import('../views/ScreenerView.vue')
 const StockMonitorView = () => import('../views/StockMonitorView.vue')
+const NotificationSettingsView = () => import('../views/NotificationSettingsView.vue')
 
 // AI 投研模块（v2.0 重构）：/ai 为布局容器，五个子路由对应
 // 工作台 / 分析师 / 研究报告 / 任务中心 / 设置
@@ -52,6 +53,7 @@ const routes = [
   { path: '/easytdx', name: 'easytdx', component: EasyTdxView, meta: { title: 'easy-tdx' } },
   { path: '/screener', name: 'screener', component: ScreenerView, meta: { title: '智能选股' } },
   { path: '/stock-monitor', name: 'stock-monitor', component: StockMonitorView, meta: { title: '股票监控' } },
+  { path: '/notifications', name: 'notifications', component: NotificationSettingsView, meta: { title: '通知设置' } },
   { path: '/styleguide', name: 'styleguide', component: StyleGuideView, meta: { title: '设计规范' } },
 ]
 

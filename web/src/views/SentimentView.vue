@@ -1,11 +1,14 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../api/client'
+import { useAppStore } from '../store/app'
 import NewsCard from '../components/NewsCard.vue'
 import FilterBar from '../components/FilterBar.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+
+const store = useAppStore()
 
 const filters = ref({ source: 'all', sentiment: 'all', keyword: '', start: '', end: '', favorites: false })
 const list = ref([])
@@ -64,6 +67,22 @@ function onFilterChange() {
   loadFirst()
 }
 
+// SSE 断线恢复后重拉第一页，保证断线期间的舆情不丢
+const reconnectNotice = ref('')
+let noticeTimer = null
+watch(
+  () => store.reconnectTick,
+  () => {
+    loadFirst()
+    const mins = Math.round(store.lastOfflineMs / 60000)
+    reconnectNotice.value = mins >= 1
+      ? `连接中断约 ${mins} 分钟，已为您刷新最新舆情`
+      : '连接已恢复，已为您刷新最新舆情'
+    clearTimeout(noticeTimer)
+    noticeTimer = setTimeout(() => (reconnectNotice.value = ''), 6000)
+  },
+)
+
 onMounted(async () => {
   await loadFirst()
   await nextTick()
@@ -74,7 +93,10 @@ onMounted(async () => {
   if (sentinel.value) observer.observe(sentinel.value)
 })
 
-onUnmounted(() => observer && observer.disconnect())
+onUnmounted(() => {
+  if (observer) observer.disconnect()
+  if (noticeTimer) clearTimeout(noticeTimer)
+})
 </script>
 
 <template>
@@ -83,6 +105,12 @@ onUnmounted(() => observer && observer.disconnect())
     <h1 class="ff-sr-only">舆情</h1>
 
     <FilterBar v-model="filters" :sources="sources" :show-fav="true" @change="onFilterChange" />
+
+    <!-- SSE 断线恢复提示 -->
+    <div v-if="reconnectNotice" class="ff-sentiment-view__reconnect">
+      <AppIcon name="broadcast" size="xs" />
+      <span>{{ reconnectNotice }}</span>
+    </div>
 
     <div class="ff-sentiment-view__list">
       <NewsCard v-for="item in list" :key="item.id" :item="item" mode="sentiment" />
@@ -105,6 +133,20 @@ onUnmounted(() => observer && observer.disconnect())
 </template>
 
 <style scoped>
+.ff-sentiment-view__reconnect {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
+  padding: var(--ff-space-2) var(--ff-space-3);
+  border: 1px solid var(--ff-brand-border);
+  background: var(--ff-brand-subtle);
+  border-radius: var(--ff-radius-md);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption);
+  animation: ff-scale-in var(--ff-dur-base) var(--ff-ease-spring);
+}
+
 .ff-sentiment-view {
   max-width: var(--ff-container-max);
   margin: 0 auto;

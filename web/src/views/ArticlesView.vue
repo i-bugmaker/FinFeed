@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../api/client'
+import { useAppStore } from '../store/app'
 import NewsRow from '../components/NewsRow.vue'
 import FilterBar from '../components/FilterBar.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -8,6 +9,8 @@ import AppCard from '../ui/AppCard.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+
+const store = useAppStore()
 
 const filters = ref({ source: 'all', sentiment: 'all', keyword: '', start: '', end: '', favorites: false })
 const list = ref([])
@@ -66,6 +69,22 @@ function onFilterChange() {
   loadFirst()
 }
 
+// SSE 断线恢复后重拉第一页，保证断线期间的文章不丢
+const reconnectNotice = ref('')
+let noticeTimer = null
+watch(
+  () => store.reconnectTick,
+  () => {
+    loadFirst()
+    const mins = Math.round(store.lastOfflineMs / 60000)
+    reconnectNotice.value = mins >= 1
+      ? `连接中断约 ${mins} 分钟，已为您刷新最新文章`
+      : '连接已恢复，已为您刷新最新文章'
+    clearTimeout(noticeTimer)
+    noticeTimer = setTimeout(() => (reconnectNotice.value = ''), 6000)
+  },
+)
+
 function clearKeyword() {
   filters.value.keyword = ''
   loadFirst()
@@ -81,7 +100,10 @@ onMounted(async () => {
   if (sentinel.value) observer.observe(sentinel.value)
 })
 
-onUnmounted(() => observer && observer.disconnect())
+onUnmounted(() => {
+  if (observer) observer.disconnect()
+  if (noticeTimer) clearTimeout(noticeTimer)
+})
 </script>
 
 <template>
@@ -94,6 +116,12 @@ onUnmounted(() => observer && observer.disconnect())
       :sources="sources"
       @change="onFilterChange"
     />
+
+    <!-- SSE 断线恢复提示 -->
+    <div v-if="reconnectNotice" class="ff-articles-view__reconnect">
+      <AppIcon name="broadcast" size="xs" />
+      <span>{{ reconnectNotice }}</span>
+    </div>
 
     <div v-if="filters.keyword" class="ff-articles-view__result">
       <AppIcon name="search" size="xs" />
@@ -158,6 +186,20 @@ onUnmounted(() => observer && observer.disconnect())
 
 .ff-articles-view__table {
   overflow: hidden;
+}
+
+.ff-articles-view__reconnect {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
+  padding: var(--ff-space-2) var(--ff-space-3);
+  border: 1px solid var(--ff-brand-border);
+  background: var(--ff-brand-subtle);
+  border-radius: var(--ff-radius-md);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption);
+  animation: ff-scale-in var(--ff-dur-base) var(--ff-ease-spring);
 }
 
 .ff-articles-view__result {

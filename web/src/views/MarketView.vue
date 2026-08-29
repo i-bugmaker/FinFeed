@@ -42,6 +42,57 @@ const autoLast = ref({})
 const autoNext = ref({})
 let statusTimer = null
 
+// 行情数据自动刷新（可开关；日期类 tab 数据盘后变化低频，30/60s 档足够）
+const AUTO_REFRESH_KEY = 'finfeed_market_autorefresh'
+const autoRefresh = ref(localStorage.getItem(AUTO_REFRESH_KEY) === '1')
+const autoRefreshInterval = ref(Number(localStorage.getItem('finfeed_market_autorefresh_sec')) || 60)
+const lastUpdated = ref('')
+let refreshTimer = null
+// 搜索结果由用户输入驱动，不参与自动刷新
+const REFRESH_SKIP_TABS = new Set(['search'])
+
+function fmtClock(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  if (!autoRefresh.value) return
+  refreshTimer = setInterval(() => {
+    if (document.hidden || loading.value || runningAction.value) return
+    if (REFRESH_SKIP_TABS.has(active.value)) return
+    load()
+  }, autoRefreshInterval.value * 1000)
+}
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+function toggleAutoRefresh(v) {
+  autoRefresh.value = v
+  localStorage.setItem(AUTO_REFRESH_KEY, v ? '1' : '0')
+  if (v) {
+    load()
+    startAutoRefresh()
+  } else {
+    stopAutoRefresh()
+  }
+}
+function changeRefreshInterval(v) {
+  autoRefreshInterval.value = Number(v) || 60
+  localStorage.setItem('finfeed_market_autorefresh_sec', String(autoRefreshInterval.value))
+  if (autoRefresh.value) startAutoRefresh()
+}
+function onVisibilityChange() {
+  // 切回页面且开着自动刷新时立即刷新一次，避免看到陈旧盘面
+  if (!document.hidden && autoRefresh.value && !REFRESH_SKIP_TABS.has(active.value)) {
+    load()
+  }
+}
+
 const HEADER_MAP = {
   code: '代码', name: '名称', trade_date: '交易日', date: '日期', reason: '涨停原因',
   buy_amount: '买入额', sell_amount: '卖出额', net_amount: '净额', turnover_ratio: '换手率',
@@ -176,6 +227,7 @@ async function load() {
     err.value = e.message || String(e)
   } finally {
     loading.value = false
+    lastUpdated.value = fmtClock()
   }
 }
 
@@ -282,10 +334,14 @@ onMounted(async () => {
   await loadAutoStatus()
   statusTimer = setInterval(loadAutoStatus, 30000)
   await load()
+  startAutoRefresh()
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
   stopPolling()
+  stopAutoRefresh()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   if (statusTimer) {
     clearInterval(statusTimer)
     statusTimer = null
@@ -310,6 +366,19 @@ onBeforeUnmount(() => {
           @enter="load"
         />
         <AppButton variant="secondary" size="sm" icon="refresh" @click="load">刷新</AppButton>
+        <div class="ff-market-view__autorefresh">
+          <AppSwitch :model-value="autoRefresh" @change="toggleAutoRefresh" />
+          <span class="ff-market-view__autorefresh-label">自动刷新</span>
+          <AppSelect
+            v-if="autoRefresh"
+            :model-value="autoRefreshInterval"
+            :options="[{ label: '30秒', value: 30 }, { label: '60秒', value: 60 }]"
+            size="sm"
+            class="ff-market-view__autorefresh-interval"
+            @update:model-value="changeRefreshInterval"
+          />
+          <span v-if="lastUpdated" class="ff-market-view__autorefresh-time">更新于 {{ lastUpdated }}</span>
+        </div>
       </div>
       <div class="ff-market-view__row ff-market-view__row--actions">
         <AppButton
@@ -522,6 +591,27 @@ onBeforeUnmount(() => {
 .ff-market-view__row--actions {
   padding-top: var(--ff-space-3);
   border-top: 1px solid var(--ff-border);
+}
+
+.ff-market-view__autorefresh {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-left: auto;
+}
+.ff-market-view__autorefresh-label {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  white-space: nowrap;
+}
+.ff-market-view__autorefresh-interval {
+  width: 92px;
+}
+.ff-market-view__autorefresh-time {
+  font-size: var(--ff-fs-caption);
+  font-family: var(--ff-font-mono);
+  color: var(--ff-text-tertiary);
+  white-space: nowrap;
 }
 
 /* ---------------- 后台自动采集状态面板 ---------------- */

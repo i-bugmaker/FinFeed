@@ -110,6 +110,22 @@ watch(
   () => applyPending(),
 )
 
+// SSE 断线恢复后重拉第一页，保证断线期间的快讯不丢
+const reconnectNotice = ref('')
+let noticeTimer = null
+watch(
+  () => store.reconnectTick,
+  () => {
+    loadFirst()
+    const mins = Math.round(store.lastOfflineMs / 60000)
+    reconnectNotice.value = mins >= 1
+      ? `连接中断约 ${mins} 分钟，已为您刷新最新快讯`
+      : '连接已恢复，已为您刷新最新快讯'
+    clearTimeout(noticeTimer)
+    noticeTimer = setTimeout(() => (reconnectNotice.value = ''), 6000)
+  },
+)
+
 onMounted(async () => {
   contentEl.value = document.querySelector('.ff-app__content')
   if (contentEl.value) {
@@ -132,6 +148,7 @@ onUnmounted(() => {
   if (contentEl.value) {
     contentEl.value.removeEventListener('scroll', onContentScroll)
   }
+  if (noticeTimer) clearTimeout(noticeTimer)
 })
 </script>
 
@@ -151,6 +168,12 @@ onUnmounted(() => {
       <AppIcon name="search" size="xs" />
       <span>找到 <strong class="ff-num">{{ total }}</strong> 条与「<strong>{{ filters.keyword }}</strong>」相关的快讯</span>
       <AppButton variant="ghost" size="sm" icon="x" @click="clearKeyword">清除关键词</AppButton>
+    </div>
+
+    <!-- SSE 断线恢复提示 -->
+    <div v-if="reconnectNotice" class="ff-flash-view__reconnect">
+      <AppIcon name="broadcast" size="xs" />
+      <span>{{ reconnectNotice }}</span>
     </div>
 
     <!-- 表格模式 -->
@@ -372,6 +395,20 @@ onUnmounted(() => {
   background: var(--ff-bg-hover);
   border-color: var(--ff-border-strong);
   color: var(--ff-text-primary);
+}
+
+.ff-flash-view__reconnect {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
+  padding: var(--ff-space-2) var(--ff-space-3);
+  border: 1px solid var(--ff-brand-border);
+  background: var(--ff-brand-subtle);
+  border-radius: var(--ff-radius-md);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption);
+  animation: ff-scale-in var(--ff-dur-base) var(--ff-ease-spring);
 }
 
 .ff-flash-view__sentinel {
