@@ -7,6 +7,9 @@
  * 涨停 / 炸板 / 跌停 / 炸板率 / 封板率等强度指标由页面顶部「今日市场速览」统一呈现，
  * 此处不再重复展示。
  *
+ * 复用方：独立模块「连板天地」（/limitup-ladder，本组件全量渲染）。
+ * 取数结束 emit('loaded', { ok }) 供页面落地「最后更新」时间戳。
+ *
  * 天梯为「晋级 + 断板」合并视图：
  *   · 晋级股：今日封板成功，红色实色展示（红涨，--ff-up 体系）
  *   · 断板股：昨日 N 连板今日未封板，按「昨日高度 + 1」归入其本应冲击的
@@ -23,6 +26,8 @@ import { fmtChg, chgClass, fmtPrice, fmtRatio, fmtSignedAmount } from './format'
 const props = defineProps({
   refreshKey: { type: Number, default: 0 },
 })
+
+const emit = defineEmits(['loaded'])
 
 const loading = ref(false)
 const err = ref('')
@@ -118,6 +123,7 @@ async function load() {
     err.value = e.message || String(e)
   } finally {
     loading.value = false
+    emit('loaded', { ok: !err.value })
   }
 }
 

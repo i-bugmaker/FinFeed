@@ -5,7 +5,7 @@
  * 视觉层级（单列卡片流，统一间距，无独立区块标题）：
  *   1) 顶部工具条：更新时间 + 实时推送状态 + 刷新（轻量，无卡片框）
  *   2) 今日市场速览：单卡 6 格指标（涨停/跌停/炸板/炸板率/封板率/最高连板）
- *   3) 涨跌全景：市场宽度 + 连板天梯（晋级/断板）
+ *   3) 涨跌全景：市场宽度 + 连板概览（完整天梯见「连板天地」模块 /limitup-ladder）
  *   4) 板块排行榜 / 个股榜单（双列）
  *   5) 指数 K 线：上证 / 深证（双列）
  *   6) 市场热榜
@@ -27,7 +27,7 @@ import { useMarketSocket } from '../composables/useMarketSocket'
 
 // ─── 盘面复盘卡片（easy-tdx 行情） ───
 import MarketOverviewCard from '../components/review/MarketOverviewCard.vue'
-import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
+import LimitUpMiniCard from '../components/review/LimitUpMiniCard.vue'
 import BoardRankingCard from '../components/review/BoardRankingCard.vue'
 import StockRankingCard from '../components/review/StockRankingCard.vue'
 
@@ -43,6 +43,7 @@ const hasStats = computed(
 
 // ─── 今日市场速览（涨停聚焦指标，60s 后端缓存，与复盘卡同源） ───
 const luFlow = ref(null)
+const flowLoading = ref(true)
 const flowMetrics = computed(() => {
   const f = luFlow.value
   if (!f) return []
@@ -58,7 +59,13 @@ const flowMetrics = computed(() => {
   ]
 })
 
+/** 梯队个股求和：ladder 载荷结构为 [{ height, number, stocks }] */
+function sumStocks(list) {
+  return (list || []).reduce((n, t) => n + ((t && t.stocks ? t.stocks.length : 0) || 0), 0)
+}
+
 async function fetchFlow() {
+  flowLoading.value = true
   try {
     const [intensityRes, ladderRes] = await Promise.all([
       api.market('thslimitup', { section: 'intensity' }),
@@ -72,9 +79,16 @@ async function fetchFlow() {
       lower: la && la.tdx_down_total != null ? la.tdx_down_total : (it ? it.lower_total : null),
       metrics: it ? (it.metrics || {}) : {},
       maxHeight: la ? la.max_height : 0,
+      // 连板概览：完整天梯已独立为「连板天地」模块（/limitup-ladder），
+      // 此处只保留汇总数字 + 跳转入口，不重复渲染梯队列表
+      advance: sumStocks(la && la.ladder),
+      broken: sumStocks(la && la.broken_ladder),
+      downStreak: sumStocks(la && la.down_ladder),
     }
   } catch (e) {
     console.error('今日市场速览获取失败', e)
+  } finally {
+    flowLoading.value = false
   }
 }
 
@@ -403,18 +417,18 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- ═══ 涨跌全景：市场宽度 + 连板天梯 ═══ -->
-    <AppCard title="涨跌全景" subtitle="市场宽度 · 连板天梯（晋级 / 断板）">
-      <template #actions>
-        <span class="ff-dashboard-view__legend" aria-hidden="true">
-          <span><i class="is-up"></i>晋级实色</span>
-          <span><i class="is-broken"></i>断板虚化</span>
-        </span>
-      </template>
+    <!-- ═══ 涨跌全景：市场宽度 + 连板概览（完整天梯已独立为「连板天地」模块） ═══ -->
+    <AppCard title="涨跌全景" subtitle="市场宽度 · 连板概览">
       <div class="ff-dashboard-view__panorama">
         <MarketOverviewCard :refresh-key="panelRefreshKey" />
         <div class="ff-dashboard-view__panorama-sep" aria-hidden="true"></div>
-        <LimitUpSummaryCard :refresh-key="panelRefreshKey" />
+        <LimitUpMiniCard
+          :max-height="luFlow?.maxHeight || 0"
+          :advance="luFlow?.advance || 0"
+          :broken="luFlow?.broken || 0"
+          :down-streak="luFlow?.downStreak || 0"
+          :loading="flowLoading"
+        />
       </div>
     </AppCard>
 
@@ -622,36 +636,7 @@ onMounted(async () => {
   }
 }
 
-/* ═══ 涨跌全景图例（卡片头部 actions） ═══ */
-.ff-dashboard-view__legend {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ff-space-3);
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-secondary);
-  white-space: nowrap;
-}
-.ff-dashboard-view__legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.ff-dashboard-view__legend i {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.ff-dashboard-view__legend i.is-up {
-  background: var(--ff-up);
-  box-shadow: 0 0 0 3px var(--ff-up-subtle);
-}
-.ff-dashboard-view__legend i.is-broken {
-  background: var(--ff-text-tertiary);
-  box-shadow: 0 0 0 3px var(--ff-bg-muted);
-}
-
-/* 涨跌全景：市场宽度 + 连板天梯 上下布局 */
+/* 涨跌全景：市场宽度 + 连板概览 上下布局（完整天梯见「连板天地」模块） */
 .ff-dashboard-view__panorama {
   display: flex;
   flex-direction: column;

@@ -28,6 +28,7 @@ const groups = [
     items: [
       { to: '/market', label: '全景行情', icon: 'trending-up' },
       { to: '/stock-monitor', label: '股票监控', icon: 'monitor' },
+      { to: '/limitup-ladder', label: '连板天地', icon: 'layers' },
       { to: '/screener', label: '智能选股', icon: 'filter' },
       { to: '/easytdx', label: 'easy-tdx', icon: 'cpu' },
     ],
