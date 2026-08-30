@@ -203,18 +203,6 @@ function isActive(item) {
   font-weight: 600;
 }
 
-.ff-sidebar__item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: var(--ff-radius-pill);
-  background: var(--ff-brand);
-  box-shadow: 0 0 10px var(--ff-brand);
-}
-
 .ff-sidebar__icon-wrap {
   display: inline-flex;
   align-items: center;

@@ -71,6 +71,14 @@ function tierClass(t) {
   }
 }
 
+// 断板归因：题材/原因 + 断板事实，完整展示不省略
+// （断板股同样要能看到「为什么板的」，缺失原因时至少给出断板高度信息）
+function brokenReason(s) {
+  const r = (s && s.reason ? String(s.reason) : '').trim()
+  const tail = `昨日 ${s?.prev_height ?? '—'} 连板 · 今日断板`
+  return r ? `${r} · ${tail}` : tail
+}
+
 // 数据日期 / 缓存状态提示条（来自 intensity 载荷的 date / source / fallback / cached_date）
 const dataMeta = computed(() => {
   const d = intensity.value || {}
@@ -171,24 +179,22 @@ onMounted(load)
             </span>
           </div>
           <div class="lu-sum__tier-grid">
-            <!-- 晋级卡片（实色左边框，红涨体系） -->
+            <!-- 晋级卡片（红涨体系；连板高度由梯队头部统一标注，卡片不再重复） -->
             <article
               v-for="(s, i) in t.stocks"
               :key="(s.code || '') + '-' + i"
               class="lu-sum__card"
-              :title="`${s.name} ${s.code} · ${s.continue_num} 连板${s.reason ? ' · ' + s.reason : ''}`"
             >
               <header class="lu-sum__card-head">
                 <span class="lu-sum__card-name">{{ s.name }}</span>
-                <span class="lu-sum__card-streak ff-num">{{ s.continue_num }}连板</span>
+                <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
               </header>
               <div class="lu-sum__card-quote">
                 <span class="lu-sum__card-price ff-num">{{ fmtPrice(s.price) }}</span>
                 <span class="lu-sum__card-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
               </div>
-              <p class="lu-sum__card-reason" :title="s.reason || ''">{{ s.reason || '—' }}</p>
+              <p class="lu-sum__card-reason">{{ s.reason || '—' }}</p>
               <footer class="lu-sum__card-foot">
-                <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
                 <span class="lu-sum__card-tags">
                   <span v-if="s.limit_up_time" class="lu-sum__card-tag">封板 {{ s.limit_up_time }}</span>
                   <span v-if="s.main_net_amount" class="lu-sum__card-tag" :class="chgClass(s.main_net_amount)">
@@ -198,27 +204,24 @@ onMounted(load)
                 </span>
               </footer>
             </article>
-            <!-- 断板卡片（虚化灰度，不打叉、不计入统计） -->
+            <!-- 断板卡片（虚化灰度，不打叉、不计入统计；归因完整展示） -->
             <article
               v-for="s in t.broken"
               :key="'b' + (s.code || '')"
               class="lu-sum__card lu-sum__card--broken"
-              :title="`${s.name} ${s.code} · 昨日 ${s.prev_height} 连板，今日断板`"
             >
               <header class="lu-sum__card-head">
                 <span class="lu-sum__card-name">{{ s.name }}</span>
-                <span class="lu-sum__card-streak lu-sum__card-streak--broken ff-num">
-                  {{ s.prev_height }}板断
-                </span>
+                <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
               </header>
               <div class="lu-sum__card-quote">
                 <span class="lu-sum__card-price ff-num">{{ s.price ? fmtPrice(s.price) : '—' }}</span>
                 <span class="lu-sum__card-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
               </div>
-              <p class="lu-sum__card-reason">昨日{{ s.prev_height }}连板 · 今日断板</p>
+              <p class="lu-sum__card-reason">{{ brokenReason(s) }}</p>
               <footer class="lu-sum__card-foot">
-                <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
                 <span class="lu-sum__card-tags">
+                  <span class="lu-sum__card-tag lu-sum__card-tag--broken">断板</span>
                   <span v-if="s.main_net_amount" class="lu-sum__card-tag" :class="chgClass(s.main_net_amount)">
                     主力 {{ fmtSignedAmount(s.main_net_amount) }}
                   </span>
@@ -254,19 +257,17 @@ onMounted(load)
               v-for="(s, i) in t.stocks"
               :key="(s.code || '') + '-' + i"
               class="lu-sum__card lu-sum__card--down"
-              :title="`${s.name} ${s.code} · 连续跌停 ${s.continue_num} 天`"
             >
               <header class="lu-sum__card-head">
                 <span class="lu-sum__card-name">{{ s.name }}</span>
-                <span class="lu-sum__card-streak lu-sum__card-streak--down ff-num">{{ s.continue_num }}连跌</span>
+                <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
               </header>
               <div class="lu-sum__card-quote">
                 <span class="lu-sum__card-price ff-num">{{ fmtPrice(s.price) }}</span>
                 <span class="lu-sum__card-chg ff-num" :class="chgClass(s.change_pct)">{{ fmtChg(s.change_pct) }}</span>
               </div>
-              <p class="lu-sum__card-reason" :title="s.reason || ''">{{ s.reason || '—' }}</p>
+              <p class="lu-sum__card-reason">{{ s.reason || '—' }}</p>
               <footer class="lu-sum__card-foot">
-                <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
                 <span class="lu-sum__card-tags">
                   <span v-if="s.limit_up_time" class="lu-sum__card-tag">封板 {{ s.limit_up_time }}</span>
                   <span v-if="s.main_net_amount" class="lu-sum__card-tag" :class="chgClass(s.main_net_amount)">
@@ -433,108 +434,115 @@ onMounted(load)
 .lu-sum__tier.is-down-hot .lu-sum__tier-badge--down {
   background: linear-gradient(90deg, #7c3aed, #312e81);
 }
-/* 连跌卡片：左侧跌停色描边，红线换成跌停色
-   （选择器带 .lu-sum__tier 提升优先级，避免被后方 .lu-sum__card 基础红色左边框覆盖） */
+/* 连跌卡片：顶线走跌停绿，底色浅绿，现价改用跌停色
+   （选择器带 .lu-sum__tier 提升优先级，避免被后方基础规则覆盖） */
 .lu-sum__tier .lu-sum__card--down {
-  border-left-color: var(--ff-down);
+  background: linear-gradient(180deg, var(--ff-down-subtle), var(--ff-bg-surface) 68%);
+  border-color: var(--ff-down-border);
 }
-.lu-sum__tier.is-down-hot .lu-sum__card--down {
-  border-left-color: #312e81;
+.lu-sum__tier .lu-sum__card--down .lu-sum__card-price {
+  color: var(--ff-down-text);
 }
-/* 连跌徽章：明确采用绿色实底，与涨停红底徽章对称 */
-.lu-sum__tier .lu-sum__card-streak--down {
-  color: var(--ff-down-fg);
-  background: var(--ff-down);
-  border-color: var(--ff-down-strong);
-}
-.lu-sum__tier.is-down-hot .lu-sum__card-streak--down {
-  color: #312e81;
-  background: #eef0ff;
-  border-color: #d7dcff;
+/* 连续跌停 ≥4 天：顶线转深紫，强化极端弱势信号 */
+.lu-sum__tier.is-down-hot .lu-sum__card--down::before {
+  background: linear-gradient(90deg, #7c3aed, #312e81);
 }
 
 /* ================= 梯队卡片网格 =================
-   auto-fill + minmax 自适应列数：宽屏多列、窄屏单列，
-   minmax(0, 1fr) 的 1fr 保证列宽均分且不被内容最小宽撑破 */
+   auto-fill + minmax 自适应列数：宽屏多列、窄屏少列 */
 .lu-sum__tier-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
-  gap: var(--ff-space-2);
+  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  gap: var(--ff-space-3);
 }
 /* 1板（首板）梯队数量最大：压缩列宽提高密度 */
 .lu-sum__tier.is-col2 .lu-sum__tier-grid {
-  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
-  gap: var(--ff-space-1-5);
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: var(--ff-space-2);
 }
 /* 高板梯队（≥4 板）标的稀缺：放大卡片强化视觉权重 */
 .lu-sum__tier.is-hot .lu-sum__tier-grid {
-  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(284px, 1fr));
 }
 
 /* ================= 个股卡片 ================= */
 .lu-sum__card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 11px 13px 10px;
   border: 1px solid var(--ff-border-subtle);
-  border-left: 3px solid var(--ff-up);
-  border-radius: var(--ff-radius-md);
+  border-radius: var(--ff-radius-lg);
   background: var(--ff-bg-surface);
+  box-shadow: var(--ff-shadow-sm);
+  overflow: hidden;
   cursor: default;
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
     border-color var(--ff-dur-fast) var(--ff-ease-standard),
-    box-shadow var(--ff-dur-fast) var(--ff-ease-standard),
-    transform var(--ff-dur-fast) var(--ff-ease-standard),
+    box-shadow var(--ff-dur-base) var(--ff-ease-standard),
+    transform var(--ff-dur-base) var(--ff-ease-standard),
     opacity var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.lu-sum__tier.is-hot .lu-sum__card {
-  border-left-color: #ff2d55;
-  background: linear-gradient(180deg, var(--ff-up-subtle), var(--ff-bg-surface) 62%);
+
+/* 顶部 2px 类型色线：晋级红 / 高板橙红 / 断板灰 / 连跌绿
+   —— 取代原左侧色条，避免与侧边栏选中态的发光条观感重复 */
+.lu-sum__card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--ff-up), var(--ff-up-strong));
 }
-.lu-sum__card:hover {
-  border-color: var(--ff-border);
-  box-shadow: var(--ff-shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.08));
-  transform: translateY(-1px);
+.lu-sum__tier.is-hot .lu-sum__card::before {
+  background: linear-gradient(90deg, #ff8a3d, #ff2d55);
+}
+.lu-sum__card--broken::before {
+  background: linear-gradient(90deg, var(--ff-border), var(--ff-text-tertiary));
+}
+.lu-sum__card--down::before {
+  background: linear-gradient(90deg, var(--ff-down), var(--ff-down-strong));
 }
 
-/* 卡片头：股票名称 + 连板徽章 */
+/* 高板卡片：浅红渐变底 + 品牌色描边，视觉权重高于普通晋级卡 */
+.lu-sum__tier.is-hot .lu-sum__card {
+  background: linear-gradient(180deg, var(--ff-up-subtle), var(--ff-bg-surface) 68%);
+  border-color: var(--ff-up-border);
+}
+.lu-sum__card:hover {
+  border-color: var(--ff-border-strong);
+  box-shadow: var(--ff-shadow-md);
+  transform: translateY(-2px);
+}
+
+/* 卡片头：股票名称 + 代码（连板高度由梯队头部标注，卡片不重复） */
 .lu-sum__card-head {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
 }
 .lu-sum__card-name {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--ff-fs-body-sm);
-  font-weight: var(--ff-fw-semibold);
+  font-size: var(--ff-fs-body);
+  font-weight: var(--ff-fw-bold);
+  line-height: 1.35;
   color: var(--ff-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 完整显示：超长换行，不做省略 */
+  overflow-wrap: anywhere;
 }
-.lu-sum__card-streak {
+.lu-sum__card-code {
   flex-shrink: 0;
-  padding: 0 6px;
-  border-radius: var(--ff-radius-sm);
   font-size: var(--ff-fs-overline);
-  font-weight: var(--ff-fw-semibold);
-  color: var(--ff-up-text);
-  background: var(--ff-up-subtle);
-  border: 1px solid var(--ff-up-border);
+  color: var(--ff-text-tertiary);
   font-variant-numeric: tabular-nums;
-  line-height: 1.6;
-}
-.lu-sum__tier.is-hot .lu-sum__card-streak {
-  color: #ff2d55;
-  background: #fff1f0;
-  border-color: #ffd6d0;
+  letter-spacing: 0.02em;
 }
 
-/* 报价行：现价 + 涨跌幅 */
+/* 报价行：现价 + 涨跌幅（涨跌幅为药丸 chip，红涨绿跌） */
 .lu-sum__card-quote {
   display: flex;
   align-items: baseline;
@@ -542,85 +550,83 @@ onMounted(load)
   min-width: 0;
 }
 .lu-sum__card-price {
-  font-size: var(--ff-fs-body);
+  font-size: 17px;
   font-weight: var(--ff-fw-bold);
+  line-height: 1.2;
   color: var(--ff-text-up);
   font-variant-numeric: tabular-nums;
 }
 .lu-sum__card-chg {
+  padding: 1px 7px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-muted);
   font-size: var(--ff-fs-body-sm);
   font-weight: var(--ff-fw-semibold);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lu-sum__card-chg.is-up {
+  background: var(--ff-up-subtle);
+  color: var(--ff-text-up);
+}
+.lu-sum__card-chg.is-down {
+  background: var(--ff-down-subtle);
+  color: var(--ff-down-text);
 }
 
-/* 归因：卡片内最多两行，完整内容见 title */
+/* 归因：完整展示，不截断、不省略（断板股同样显示题材原因） */
 .lu-sum__card-reason {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 2.6em;
+  padding: 5px 8px;
+  border-radius: var(--ff-radius-sm);
+  background: var(--ff-bg-subtle);
   font-size: var(--ff-fs-caption);
-  line-height: 1.3;
+  line-height: 1.55;
   color: var(--ff-text-secondary);
-}
-/* 首板梯队密度优先：归因压到一行 */
-.lu-sum__tier.is-col2 .lu-sum__card-reason {
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
-  min-height: 1.3em;
+  overflow-wrap: anywhere;
 }
 
-/* 卡片底：代码 + 标签组 */
+/* 卡片底：标签组（虚线分隔，标签自动换行不省略） */
 .lu-sum__card-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
   min-width: 0;
-  margin-top: 2px;
-  padding-top: 4px;
+  margin-top: 1px;
+  padding-top: 6px;
   border-top: 1px dashed var(--ff-border-subtle);
 }
-.lu-sum__card-code {
-  flex-shrink: 0;
-  font-size: var(--ff-fs-overline);
-  color: var(--ff-text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
 .lu-sum__card-tags {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   min-width: 0;
-  overflow: hidden;
 }
 .lu-sum__card-tag {
-  padding: 0 5px;
+  padding: 0 6px;
   border-radius: var(--ff-radius-sm);
   font-size: var(--ff-fs-overline);
   color: var(--ff-text-secondary);
   background: var(--ff-bg-muted);
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  line-height: 1.6;
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.lu-sum__card-tag--broken {
+  color: var(--ff-text-tertiary);
+  background: var(--ff-bg-subtle);
+  border: 1px solid var(--ff-border);
+  font-weight: var(--ff-fw-semibold);
 }
 
 /* ============ 断板卡片：虚化灰度（不打叉） ============ */
 .lu-sum__card--broken {
-  border-left-color: var(--ff-border);
   background: var(--ff-bg-muted);
-  opacity: 0.62;
-  filter: grayscale(0.35);
+  opacity: 0.72;
+  filter: grayscale(0.3);
 }
 .lu-sum__card--broken:hover {
-  opacity: 0.92;
+  opacity: 0.95;
   background: var(--ff-bg-hover);
-  border-color: var(--ff-border);
 }
 .lu-sum__card--broken .lu-sum__card-name {
   color: var(--ff-text-tertiary);
@@ -628,23 +634,20 @@ onMounted(load)
   text-decoration-thickness: 1.5px;
   text-decoration-color: var(--ff-text-tertiary);
 }
-.lu-sum__card--broken .lu-sum__card-price,
-.lu-sum__card--broken .lu-sum__card-reason,
-.lu-sum__card--broken .lu-sum__card-code {
+.lu-sum__card--broken .lu-sum__card-price {
   color: var(--ff-text-tertiary);
 }
-.lu-sum__card-streak--broken {
-  color: var(--ff-text-tertiary);
-  background: var(--ff-bg-subtle);
-  border-color: var(--ff-border);
+.lu-sum__card--broken .lu-sum__card-reason {
+  color: var(--ff-text-secondary);
 }
 
-/* 窄屏：卡片放宽到两列，避免单列过长 */
+/* 窄屏：收回两列，保证归因完整可读 */
 @media (max-width: 640px) {
   .lu-sum__tier-grid,
   .lu-sum__tier.is-col2 .lu-sum__tier-grid,
   .lu-sum__tier.is-hot .lu-sum__tier-grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+    gap: var(--ff-space-2);
   }
 }
 
