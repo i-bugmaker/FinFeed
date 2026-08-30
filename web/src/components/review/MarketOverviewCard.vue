@@ -128,7 +128,7 @@ onMounted(load)
 }
 @media (min-width: 900px) {
   .mo__metrics {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 .mo__metric {

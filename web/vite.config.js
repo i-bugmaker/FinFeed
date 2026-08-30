@@ -2,6 +2,17 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
+// dev server 韧性：HMR/代理的裸 socket 在对端半关闭时抛 ECONNRESET/EPIPE，
+// 无人监听 error 事件会以 uncaughtException 直接杀死 Vite 进程。
+// 这里只吞掉连接类错误（对开发无影响），其余照常抛出。
+process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
+    console.warn('[vite] ignored socket error:', err.code)
+    return
+  }
+  throw err
+})
+
 // 构建产物输出到 dist/，由 FastAPI 静态托管（见 finfeed/ui/web_fastapi/app.py）。
 // 开发态通过 proxy 把 /api 转发到 8866 的 FastAPI 服务。
 export default defineConfig({
@@ -24,6 +35,13 @@ export default defineConfig({
         agent: false, // 每次新建连接，规避 uvicorn 半关闭 socket 被复用的挂起/重置
         timeout: 30000,
         proxyTimeout: 30000,
+        // uvicorn 半关闭 socket 仍可能在 read 侧抛 ECONNRESET；不挂 error 处理器
+        // 会以 unhandled error 直接杀死 Vite 进程，这里降级为日志
+        configure: (proxy) => proxy.on('error', (err, req, res) => {
+          console.warn('[vite-proxy] /api error:', err.code || err.message)
+          if (res && !res.headersSent) res.writeHead(502).end()
+          else if (res?.socket) res.socket.destroy()
+        }),
       },
       '/docs': { target: 'http://127.0.0.1:8866', changeOrigin: true, agent: false, timeout: 30000, proxyTimeout: 30000 },
       '/openapi.json': { target: 'http://127.0.0.1:8866', changeOrigin: true, agent: false, timeout: 30000, proxyTimeout: 30000 },
