@@ -449,20 +449,13 @@ onMounted(load)
 }
 
 /* ================= 梯队卡片网格 =================
-   auto-fill + minmax 自适应列数：宽屏多列、窄屏少列 */
+   统一列宽 + grid-auto-rows: 1fr —— 同一梯队内所有卡片严格等高，
+   行高由该梯队内容最多的一张决定，消除长短卡片参差 */
 .lu-sum__tier-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+  grid-auto-rows: 1fr;
   gap: var(--ff-space-3);
-}
-/* 1板（首板）梯队数量最大：压缩列宽提高密度 */
-.lu-sum__tier.is-col2 .lu-sum__tier-grid {
-  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
-  gap: var(--ff-space-2);
-}
-/* 高板梯队（≥4 板）标的稀缺：放大卡片强化视觉权重 */
-.lu-sum__tier.is-hot .lu-sum__tier-grid {
-  grid-template-columns: repeat(auto-fill, minmax(284px, 1fr));
 }
 
 /* ================= 个股卡片 ================= */
@@ -470,13 +463,16 @@ onMounted(load)
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  padding: 11px 13px 10px;
+  /* 统一基线高度：与归因区 3 行基线 + 两行标签基线配套，
+     使晋级 / 断板 / 连跌卡片落在同一尺寸上，梯队之间不再参差 */
+  min-height: 196px;
+  padding: 13px 14px 12px;
   border: 1px solid var(--ff-border-subtle);
-  border-radius: var(--ff-radius-lg);
+  border-radius: 12px;
   background: var(--ff-bg-surface);
-  box-shadow: var(--ff-shadow-sm);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   overflow: hidden;
   cursor: default;
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
@@ -486,14 +482,15 @@ onMounted(load)
     opacity var(--ff-dur-fast) var(--ff-ease-standard);
 }
 
-/* 顶部 2px 类型色线：晋级红 / 高板橙红 / 断板灰 / 连跌绿
-   —— 取代原左侧色条，避免与侧边栏选中态的发光条观感重复 */
+/* 顶部 3px 类型色线：晋级红 / 高板橙红 / 断板灰 / 连跌绿 */
 .lu-sum__card::before {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
-  height: 2px;
+  height: 3px;
+  opacity: 0.85;
   background: linear-gradient(90deg, var(--ff-up), var(--ff-up-strong));
+  transition: opacity var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .lu-sum__tier.is-hot .lu-sum__card::before {
   background: linear-gradient(90deg, #ff8a3d, #ff2d55);
@@ -507,13 +504,16 @@ onMounted(load)
 
 /* 高板卡片：浅红渐变底 + 品牌色描边，视觉权重高于普通晋级卡 */
 .lu-sum__tier.is-hot .lu-sum__card {
-  background: linear-gradient(180deg, var(--ff-up-subtle), var(--ff-bg-surface) 68%);
+  background: linear-gradient(180deg, var(--ff-up-subtle), var(--ff-bg-surface) 72%);
   border-color: var(--ff-up-border);
 }
 .lu-sum__card:hover {
   border-color: var(--ff-border-strong);
-  box-shadow: var(--ff-shadow-md);
+  box-shadow: 0 6px 16px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(15, 23, 42, 0.06);
   transform: translateY(-2px);
+}
+.lu-sum__card:hover::before {
+  opacity: 1;
 }
 
 /* 卡片头：股票名称 + 代码（连板高度由梯队头部标注，卡片不重复） */
@@ -574,25 +574,28 @@ onMounted(load)
   color: var(--ff-down-text);
 }
 
-/* 归因：完整展示，不截断、不省略（断板股同样显示题材原因） */
+/* 归因：完整展示，不截断、不省略（断板股同样显示题材原因）
+   flex: 1 吸收卡片剩余高度，配合 grid-auto-rows 让同梯队卡片底部标签齐平 */
 .lu-sum__card-reason {
-  padding: 5px 8px;
-  border-radius: var(--ff-radius-sm);
-  background: var(--ff-bg-subtle);
+  flex: 1 1 auto;
+  /* 3 行基线（4.5em = 3 × 1.5 行高）：短归因不压矮卡片，
+     保证不同梯队、不同长度的卡片落在同一高度上 */
+  min-height: 4.5em;
+  margin: 0;
   font-size: var(--ff-fs-caption);
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--ff-text-secondary);
   overflow-wrap: anywhere;
 }
 
-/* 卡片底：标签组（虚线分隔，标签自动换行不省略） */
+/* 卡片底：标签组（自动换行不省略）
+   min-height 预留两行标签高度 —— 断板卡只有 1 个标签、晋级卡有 3 个，
+   不锁基线会因标签行数不同而让卡片高度参差 */
 .lu-sum__card-foot {
   display: flex;
   align-items: center;
   min-width: 0;
-  margin-top: 1px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--ff-border-subtle);
+  min-height: 40px;
 }
 .lu-sum__card-tags {
   display: flex;
@@ -605,27 +608,27 @@ onMounted(load)
   padding: 0 6px;
   border-radius: var(--ff-radius-sm);
   font-size: var(--ff-fs-overline);
-  color: var(--ff-text-secondary);
-  background: var(--ff-bg-muted);
+  color: var(--ff-text-tertiary);
+  background: var(--ff-bg-subtle);
   font-variant-numeric: tabular-nums;
-  line-height: 1.7;
+  line-height: 1.75;
   white-space: nowrap;
 }
 .lu-sum__card-tag--broken {
   color: var(--ff-text-tertiary);
-  background: var(--ff-bg-subtle);
-  border: 1px solid var(--ff-border);
+  background: var(--ff-bg-muted);
   font-weight: var(--ff-fw-semibold);
 }
 
 /* ============ 断板卡片：虚化灰度（不打叉） ============ */
 .lu-sum__card--broken {
-  background: var(--ff-bg-muted);
-  opacity: 0.72;
+  background: var(--ff-bg-subtle);
+  border-color: var(--ff-border);
+  opacity: 0.78;
   filter: grayscale(0.3);
 }
 .lu-sum__card--broken:hover {
-  opacity: 0.95;
+  opacity: 1;
   background: var(--ff-bg-hover);
 }
 .lu-sum__card--broken .lu-sum__card-name {
@@ -641,11 +644,9 @@ onMounted(load)
   color: var(--ff-text-secondary);
 }
 
-/* 窄屏：收回两列，保证归因完整可读 */
+/* 窄屏：收回两列，保证归因完整可读（等高规则 1fr 保持生效） */
 @media (max-width: 640px) {
-  .lu-sum__tier-grid,
-  .lu-sum__tier.is-col2 .lu-sum__tier-grid,
-  .lu-sum__tier.is-hot .lu-sum__tier-grid {
+  .lu-sum__tier-grid {
     grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
     gap: var(--ff-space-2);
   }
