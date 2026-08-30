@@ -10,30 +10,23 @@
  * 但列表渲染只在模块内做一次，避免重复请求与视觉冗余。
  *
  * 自动刷新沿用「行情与量化」分组惯例（与全景行情一致）：
- * 开关 + 30/60s 档位，状态持久化到 localStorage，默认关闭。
+ * 固定 30 秒后台静默轮询，无开关/档位/刷新按钮，仅保留最后更新时间提示。
  */
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import AppCard from '../ui/AppCard.vue'
-import AppButton from '../ui/AppButton.vue'
-import AppSwitch from '../ui/AppSwitch.vue'
-import AppSegmented from '../ui/AppSegmented.vue'
 import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
 
-const AUTO_REFRESH_KEY = 'finfeed_limitup_autorefresh'
-const AUTO_REFRESH_SEC_KEY = 'finfeed_limitup_autorefresh_sec'
-
-const INTERVALS = [
-  { value: 30, label: '30s' },
-  { value: 60, label: '60s' },
-]
+// 固定 30 秒，后台静默执行，无任何交互控件
+const AUTO_REFRESH_MS = 30 * 1000
 
 // 递增 refreshKey 驱动卡片重新取数（与仪表盘一致的刷新协议）
 const refreshKey = ref(0)
 const refreshing = ref(false)
 const lastUpdated = ref('')
+// 数据日期 / 晋级数量（由卡片取数结果带出，展示在卡片头部）
+const dataDate = ref('')
+const totalUp = ref(0)
 
-const autoRefresh = ref(localStorage.getItem(AUTO_REFRESH_KEY) === '1')
-const autoRefreshInterval = ref(Number(localStorage.getItem(AUTO_REFRESH_SEC_KEY)) || 60)
 let refreshTimer = null
 
 function fmtClock(d = new Date()) {
@@ -43,11 +36,10 @@ function fmtClock(d = new Date()) {
 
 function startAutoRefresh() {
   stopAutoRefresh()
-  if (!autoRefresh.value) return
   refreshTimer = setInterval(() => {
     if (document.hidden || refreshing.value) return
     refresh()
-  }, autoRefreshInterval.value * 1000)
+  }, AUTO_REFRESH_MS)
 }
 
 function stopAutoRefresh() {
@@ -57,41 +49,28 @@ function stopAutoRefresh() {
   }
 }
 
-function toggleAutoRefresh(v) {
-  autoRefresh.value = v
-  localStorage.setItem(AUTO_REFRESH_KEY, v ? '1' : '0')
-  if (v) {
-    refresh()
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-
-function changeRefreshInterval(v) {
-  autoRefreshInterval.value = Number(v) || 60
-  localStorage.setItem(AUTO_REFRESH_SEC_KEY, String(autoRefreshInterval.value))
-  if (autoRefresh.value) startAutoRefresh()
-}
-
 function refresh() {
   refreshing.value = true
   refreshKey.value += 1
 }
 
 // 卡片取数结束（成功或失败）都落地时间戳，失败时时间不前进，避免「看似刷新成功」
-function onLoaded({ ok }) {
+function onLoaded({ ok, date, total }) {
   refreshing.value = false
-  if (ok) lastUpdated.value = fmtClock()
+  if (ok) {
+    lastUpdated.value = fmtClock()
+    if (date) dataDate.value = date
+    if (typeof total === 'number') totalUp.value = total
+  }
 }
 
 function onVisibilityChange() {
-  // 切回页面且开着自动刷新时立即刷新一次，避免看到陈旧盘面
-  if (!document.hidden && autoRefresh.value && !refreshing.value) refresh()
+  // 切回页面时立即刷新一次，避免看到陈旧盘面
+  if (!document.hidden && !refreshing.value) refresh()
 }
 
 onMounted(() => {
-  if (autoRefresh.value) startAutoRefresh()
+  startAutoRefresh()
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
@@ -106,38 +85,23 @@ onUnmounted(() => {
     <!-- 页面标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
     <h1 class="ff-sr-only">连板天地</h1>
 
-    <header class="ff-limitup-view__toolbar">
-      <span class="ff-limitup-view__legend" aria-hidden="true">
-        <span><i class="is-up"></i>晋级实色</span>
-        <span><i class="is-broken"></i>断板虚化</span>
-      </span>
-
-      <span class="ff-limitup-view__spacer"></span>
-
-      <span class="ff-limitup-view__updated ff-num">
-        最后更新 {{ lastUpdated || '--:--:--' }}
-      </span>
-
-      <span class="ff-limitup-view__sep" aria-hidden="true"></span>
-
-      <span class="ff-limitup-view__lbl">刷新</span>
-      <AppSegmented v-model="autoRefreshInterval" :options="INTERVALS" size="sm" />
-
-      <AppSwitch :model-value="autoRefresh" @change="toggleAutoRefresh" />
-      <span class="ff-limitup-view__autorefresh-label">自动刷新</span>
-
-      <AppButton
-        variant="tonal"
-        size="sm"
-        icon="refresh"
-        :loading="refreshing"
-        @click="refresh"
-      >
-        刷新
-      </AppButton>
-    </header>
-
-    <AppCard title="连板天梯" subtitle="晋级 / 断板 · 连跌天梯">
+    <!-- 头部直接挂在 AppCard 上：header 展示数据日期，actions 展示最后更新时间 -->
+    <AppCard>
+      <template #header>
+        <span class="ff-limitup-view__head">
+          <span class="ff-limitup-view__date">
+            数据日期 <b class="ff-num">{{ dataDate || '—' }}</b>
+          </span>
+          <span class="ff-limitup-view__date">
+            晋级 <b class="ff-num">{{ totalUp }}</b> 只
+          </span>
+        </span>
+      </template>
+      <template #actions>
+        <span class="ff-limitup-view__updated ff-num">
+          最后更新 {{ lastUpdated || '--:--:--' }}
+        </span>
+      </template>
       <LimitUpSummaryCard :refresh-key="refreshKey" @loaded="onLoaded" />
     </AppCard>
   </div>
@@ -149,76 +113,28 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-.ff-limitup-view__toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--ff-space-3);
-  padding: var(--ff-space-3) var(--ff-space-4);
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-lg);
-  background: var(--ff-bg-surface);
-  margin-bottom: var(--ff-space-4);
-}
-
-.ff-limitup-view__legend {
+/* AppCard header slot：数据日期 · 晋级数量 */
+.ff-limitup-view__head {
   display: inline-flex;
   align-items: center;
   gap: var(--ff-space-3);
+}
+.ff-limitup-view__date {
   font-size: var(--ff-fs-caption);
-  color: var(--ff-text-secondary);
-  white-space: nowrap;
-}
-.ff-limitup-view__legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.ff-limitup-view__legend i {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.ff-limitup-view__legend i.is-up {
-  background: var(--ff-up);
-  box-shadow: 0 0 0 3px var(--ff-up-subtle);
-}
-.ff-limitup-view__legend i.is-broken {
-  background: var(--ff-text-tertiary);
-  box-shadow: 0 0 0 3px var(--ff-bg-muted);
-}
-
-.ff-limitup-view__spacer {
-  flex: 1 1 auto;
-  min-width: var(--ff-space-3);
-}
-
-.ff-limitup-view__updated {
-  font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-tertiary);
   white-space: nowrap;
+}
+.ff-limitup-view__date b {
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.ff-limitup-view__sep {
-  display: inline-block;
-  width: 1px;
-  height: 14px;
-  background: var(--ff-border);
-}
-
-.ff-limitup-view__lbl {
-  font-size: var(--ff-fs-body-sm);
-  font-weight: 600;
-  color: var(--ff-text-secondary);
+/* AppCard 右上角 actions slot：最后更新时间提示 */
+.ff-limitup-view__updated {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
   white-space: nowrap;
-}
-
-.ff-limitup-view__autorefresh-label {
-  font-size: var(--ff-fs-body-sm);
-  color: var(--ff-text-secondary);
-  white-space: nowrap;
-  user-select: none;
+  font-variant-numeric: tabular-nums;
 }
 </style>

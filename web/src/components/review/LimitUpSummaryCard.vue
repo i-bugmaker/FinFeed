@@ -20,7 +20,6 @@ import { ref, watch, onMounted, computed } from 'vue'
 import { api } from '../../api/client'
 import AppEmpty from '../../ui/AppEmpty.vue'
 import AppSkeleton from '../../ui/AppSkeleton.vue'
-import AppIcon from '../../ui/AppIcon.vue'
 import { fmtChg, chgClass, fmtPrice, fmtRatio, fmtSignedAmount } from './format'
 
 const props = defineProps({
@@ -131,7 +130,12 @@ async function load() {
     err.value = e.message || String(e)
   } finally {
     loading.value = false
-    emit('loaded', { ok: !err.value })
+    // date / total 一并带出，供页面把「数据日期」「晋级数量」提升到卡片头部展示
+    emit('loaded', {
+      ok: !err.value,
+      date: dataMeta.value.date || '',
+      total: totalStockCount.value,
+    })
   }
 }
 
@@ -150,22 +154,8 @@ onMounted(load)
     <AppEmpty v-else-if="!intensity && !tiers.length" icon="flame" title="暂无涨停摘要" />
 
     <template v-else>
-      <!-- 数据日期 / 缓存状态提示条 -->
-      <div class="lu-sum__meta">
-        <span class="lu-sum__meta-date">数据日期 <b class="ff-num">{{ dataMeta.date || '—' }}</b></span>
-        <span class="lu-sum__meta-src" :class="`is-${dataMeta.tone}`">
-          <i class="lu-sum__dot"></i>{{ dataMeta.label }}
-        </span>
-      </div>
-
-      <!-- 连板天梯（晋级 + 断板合并视图，全量） -->
+      <!-- 连板天梯（晋级 + 断板合并视图，全量）；晋级数量已上移到页面头部展示 -->
       <div v-if="mergedTiers.length" class="lu-sum__ladder">
-        <div class="lu-sum__ladder-head">
-          <span class="lu-sum__ladder-title">
-            <AppIcon name="columns" size="sm" /> 连板天梯
-          </span>
-          <span class="lu-sum__ladder-count">晋级 <b class="ff-num">{{ totalStockCount }}</b> 只</span>
-        </div>
         <div
           v-for="t in mergedTiers"
           :key="'t' + t.height"
@@ -235,9 +225,6 @@ onMounted(load)
       <!-- 连跌天梯：通达信跌停池，按连续跌停天数分组 -->
       <div v-if="downTiers.length" class="lu-sum__ladder lu-sum__down">
         <div class="lu-sum__ladder-head">
-          <span class="lu-sum__ladder-title">
-            <AppIcon name="columns" size="sm" /> 连跌天梯
-          </span>
           <span class="lu-sum__ladder-count">共 <b class="ff-num">{{ totalDownCount }}</b> 只</span>
         </div>
         <div
@@ -294,47 +281,6 @@ onMounted(load)
   min-height: 120px;
 }
 
-/* 数据日期 / 缓存状态提示条 */
-.lu-sum__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ff-space-2);
-  padding-bottom: var(--ff-space-2);
-  border-bottom: 1px solid var(--ff-border-subtle);
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
-}
-.lu-sum__meta-date b {
-  font-weight: var(--ff-fw-semibold);
-  color: var(--ff-text-secondary);
-}
-.lu-sum__meta-src {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-.lu-sum__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-.lu-sum__meta-src.is-live {
-  color: var(--ff-text-up);
-}
-.lu-sum__meta-src.is-live .lu-sum__dot {
-  background: var(--ff-text-up);
-}
-.lu-sum__meta-src.is-cache,
-.lu-sum__meta-src.is-degraded {
-  color: var(--ff-warn-text);
-}
-.lu-sum__meta-src.is-cache .lu-sum__dot,
-.lu-sum__meta-src.is-degraded .lu-sum__dot {
-  background: var(--ff-warn-text);
-}
-
 /* ================= 连板天梯：梯队分组 + 列表行 ================= */
 .lu-sum__ladder {
   display: flex;
@@ -344,19 +290,8 @@ onMounted(load)
 .lu-sum__ladder-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--ff-space-2);
-}
-.lu-sum__ladder-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--ff-fs-body-sm);
-  font-weight: var(--ff-fw-semibold);
-  color: var(--ff-text-primary);
-}
-.lu-sum__ladder-title :deep(.ff-icon) {
-  color: var(--ff-brand-text);
 }
 .lu-sum__ladder-count {
   font-size: var(--ff-fs-caption);
@@ -423,9 +358,6 @@ onMounted(load)
 .lu-sum__down {
   padding-top: var(--ff-space-4);
   border-top: 1px solid var(--ff-border-subtle);
-}
-.lu-sum__down .lu-sum__ladder-title :deep(.ff-icon) {
-  color: var(--ff-down-text);
 }
 .lu-sum__tier-badge--down {
   color: var(--ff-down-fg);

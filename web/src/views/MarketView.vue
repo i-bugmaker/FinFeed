@@ -9,7 +9,6 @@ import AppButton from '../ui/AppButton.vue'
 import AppInput from '../ui/AppInput.vue'
 import AppDatePicker from '../ui/AppDatePicker.vue'
 import AppTabs from '../ui/AppTabs.vue'
-import AppSwitch from '../ui/AppSwitch.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 
@@ -60,16 +59,14 @@ watch([active, date, kw], ([a, d, k]) => {
   router.replace({ query: q }).catch(() => {})
 })
 
-// 后台自动采集调度状态
-const autoEnabled = ref(false)
+// 后台自动采集调度状态（仅用于展示下次/上次执行时间，开关已移除）
 const autoLast = ref({})
 const autoNext = ref({})
 let statusTimer = null
 
-// 行情数据自动刷新（可开关；日期类 tab 数据盘后变化低频，30/60s 档足够）
-const AUTO_REFRESH_KEY = 'finfeed_market_autorefresh'
-const autoRefresh = ref(localStorage.getItem(AUTO_REFRESH_KEY) === '1')
-const autoRefreshInterval = ref(Number(localStorage.getItem('finfeed_market_autorefresh_sec')) || 60)
+// 行情数据自动刷新：固定 30 秒，后台静默执行，无任何交互控件
+// （日期类 tab 数据盘后变化低频，30s 轮询足够）
+const AUTO_REFRESH_MS = 30 * 1000
 const lastUpdated = ref('')
 let refreshTimer = null
 // 搜索结果由用户输入驱动，不参与自动刷新
@@ -82,12 +79,11 @@ function fmtClock(d = new Date()) {
 
 function startAutoRefresh() {
   stopAutoRefresh()
-  if (!autoRefresh.value) return
   refreshTimer = setInterval(() => {
     if (document.hidden || loading.value || runningAction.value) return
     if (REFRESH_SKIP_TABS.has(active.value)) return
     load()
-  }, autoRefreshInterval.value * 1000)
+  }, AUTO_REFRESH_MS)
 }
 function stopAutoRefresh() {
   if (refreshTimer) {
@@ -95,24 +91,9 @@ function stopAutoRefresh() {
     refreshTimer = null
   }
 }
-function toggleAutoRefresh(v) {
-  autoRefresh.value = v
-  localStorage.setItem(AUTO_REFRESH_KEY, v ? '1' : '0')
-  if (v) {
-    load()
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-function changeRefreshInterval(v) {
-  autoRefreshInterval.value = Number(v) || 60
-  localStorage.setItem('finfeed_market_autorefresh_sec', String(autoRefreshInterval.value))
-  if (autoRefresh.value) startAutoRefresh()
-}
 function onVisibilityChange() {
-  // 切回页面且开着自动刷新时立即刷新一次，避免看到陈旧盘面
-  if (!document.hidden && autoRefresh.value && !REFRESH_SKIP_TABS.has(active.value)) {
+  // 切回页面时立即刷新一次，避免看到陈旧盘面
+  if (!document.hidden && !REFRESH_SKIP_TABS.has(active.value)) {
     load()
   }
 }
@@ -301,25 +282,11 @@ async function loadAutoStatus() {
   try {
     const r = await api.market('autostatus')
     if (r && r.success) {
-      autoEnabled.value = !!r.data.enabled
       autoLast.value = r.data.last_run || {}
       autoNext.value = r.data.next_run || {}
     }
   } catch (e) {
     /* 自动采集状态不可用时静默降级 */
-  }
-}
-
-async function toggleAuto(v) {
-  try {
-    const r = await api.marketAction({ action: 'autocollect', enable: v ? 1 : 0 })
-    if (r && r.success) {
-      autoEnabled.value = !!r.data.enabled
-      autoLast.value = r.data.last_run || {}
-      autoNext.value = r.data.next_run || {}
-    }
-  } catch (e) {
-    /* 失败时保持原状态 */
   }
 }
 
@@ -526,20 +493,8 @@ onBeforeUnmount(() => {
           prefix-icon="search"
           @enter="load"
         />
-        <AppButton variant="secondary" size="sm" icon="refresh" @click="load">刷新</AppButton>
-        <div class="ff-market-view__autorefresh">
-          <AppSwitch :model-value="autoRefresh" @change="toggleAutoRefresh" />
-          <span class="ff-market-view__autorefresh-label">自动刷新</span>
-          <AppSelect
-            v-if="autoRefresh"
-            :model-value="autoRefreshInterval"
-            :options="[{ label: '30秒', value: 30 }, { label: '60秒', value: 60 }]"
-            size="sm"
-            class="ff-market-view__autorefresh-interval"
-            @update:model-value="changeRefreshInterval"
-          />
-          <span v-if="lastUpdated" class="ff-market-view__autorefresh-time">更新于 {{ lastUpdated }}</span>
-        </div>
+        <!-- 30 秒后台自动刷新：无任何按钮/下拉/开关，仅保留最后更新时间作数据新鲜度提示 -->
+        <span v-if="lastUpdated" class="ff-market-view__autorefresh-time">更新于 {{ lastUpdated }}</span>
       </div>
       <div class="ff-market-view__row ff-market-view__row--actions">
         <AppButton
@@ -557,37 +512,28 @@ onBeforeUnmount(() => {
         </AppButton>
       </div>
 
-      <!-- 后台自动采集状态：开关 + 下次/上次执行 + 跳到最新数据 -->
+      <!-- 后台自动采集状态（默认常开、不可关闭；仅展示下次/上次执行时间 + 跳到最新数据日期） -->
       <div class="ff-market-view__autocollect">
-        <div class="ff-market-view__autocollect-main">
-          <AppIcon name="clock" size="sm" />
-          <span class="ff-market-view__autocollect-label">后台自动采集</span>
-          <AppSwitch :model-value="autoEnabled" @change="toggleAuto" />
-          <span class="ff-market-view__autocollect-state" :class="autoEnabled ? 'is-on' : 'is-off'">
-            {{ autoEnabled ? '已开启' : '已关闭' }}
-          </span>
-          <span v-if="autoEnabled" class="ff-market-view__autocollect-next">
-            下次快照 ~{{ autoNext.snapshot || '—' }}
-          </span>
-        </div>
-        <div class="ff-market-view__autocollect-meta">
-          <span v-if="autoLast.snapshot" class="ff-market-view__autocollect-last">
-            快照：{{ autoLast.snapshot.message }}
-          </span>
-          <span v-if="autoLast.universe" class="ff-market-view__autocollect-last">
-            股票池：{{ autoLast.universe.message }}
-          </span>
-          <button
-            v-if="latestDate"
-            type="button"
-            class="ff-market-view__latest"
-            :disabled="date === latestDate"
-            :title="date === latestDate ? '已是最新数据日期' : `跳到最新数据日期 ${latestDate}`"
-            @click="date = latestDate; markTouched()"
-          >
-            <AppIcon name="history" size="xs" /> 最新数据 {{ latestDate }}
-          </button>
-        </div>
+        <AppIcon name="clock" size="xs" />
+        <span class="ff-market-view__autocollect-next">
+          下次快照 ~{{ autoNext.snapshot || '—' }}
+        </span>
+        <span v-if="autoLast.snapshot" class="ff-market-view__autocollect-last">
+          · 上次快照 {{ autoLast.snapshot.message }}
+        </span>
+        <span v-if="autoLast.universe" class="ff-market-view__autocollect-last">
+          · 股票池 {{ autoLast.universe.message }}
+        </span>
+        <button
+          v-if="latestDate"
+          type="button"
+          class="ff-market-view__latest"
+          :disabled="date === latestDate"
+          :title="date === latestDate ? '已是最新数据日期' : `跳到最新数据日期 ${latestDate}`"
+          @click="date = latestDate; markTouched()"
+        >
+          <AppIcon name="history" size="xs" /> 最新数据 {{ latestDate }}
+        </button>
       </div>
       <!-- 进度区：单一运行中进度条 + 紧凑历史结果列表
            - 进行中：只渲染当前那一条，避免四进度条无意义占位
@@ -757,6 +703,12 @@ onBeforeUnmount(() => {
 
 .ff-market-view__toolbar {
   margin-bottom: var(--ff-space-4);
+  /* .ff-glass 的 backdrop-filter 会创建独立 stacking context，
+     否则 .ff-datepicker 的 z-index 仅作用于该 context 内，被同级 AppTabs
+     按 DOM 顺序覆盖（总览/市场情绪/... 横穿日历浮层）。
+     在 root context 中显式抬高 z-index，让整张工具栏卡片盖住 tabs。 */
+  position: relative;
+  z-index: var(--ff-z-raised);
 }
 
 .ff-market-view__retry {
@@ -784,68 +736,29 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--ff-border);
 }
 
-.ff-market-view__autorefresh {
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  margin-left: auto;
-}
-.ff-market-view__autorefresh-label {
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-secondary);
-  white-space: nowrap;
-}
-.ff-market-view__autorefresh-interval {
-  width: 92px;
-}
 .ff-market-view__autorefresh-time {
+  margin-left: auto;
   font-size: var(--ff-fs-caption);
   font-family: var(--ff-font-mono);
   color: var(--ff-text-tertiary);
   white-space: nowrap;
 }
 
-/* ---------------- 后台自动采集状态面板 ---------------- */
+/* ---------------- 后台自动采集状态行（默认常开、不可关闭，仅做信息展示） ---------------- */
 .ff-market-view__autocollect {
-  margin-top: var(--ff-space-3);
-  padding-top: var(--ff-space-3);
+  margin-top: var(--ff-space-2);
+  padding-top: var(--ff-space-2);
   border-top: 1px dashed var(--ff-border-subtle);
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--ff-space-2);
-}
-.ff-market-view__autocollect-main {
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-3);
-  flex-wrap: wrap;
-  color: var(--ff-text-secondary);
-  font-size: var(--ff-fs-body-sm);
-}
-.ff-market-view__autocollect-label {
-  font-weight: 600;
-  color: var(--ff-text-primary);
-}
-.ff-market-view__autocollect-state {
-  font-weight: 600;
-}
-.ff-market-view__autocollect-state.is-on {
-  color: var(--ff-down-text);
-}
-.ff-market-view__autocollect-state.is-off {
-  color: var(--ff-text-tertiary);
-}
-.ff-market-view__autocollect-next {
-  color: var(--ff-text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-.ff-market-view__autocollect-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-3);
   flex-wrap: wrap;
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
+}
+.ff-market-view__autocollect-next {
+  color: var(--ff-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 .ff-market-view__autocollect-last {
   overflow: hidden;
