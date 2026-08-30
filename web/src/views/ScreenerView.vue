@@ -321,6 +321,8 @@ async function onLoadTemplate() {
 }
 async function onDeleteTemplate() {
   if (!loadTemplateName.value) return
+  // 已保存策略删除后不可恢复，需要二次确认
+  if (!window.confirm(`确认删除策略模板「${loadTemplateName.value}」吗？该操作不可恢复。`)) return
   await store.deleteTemplate(loadTemplateName.value)
   loadTemplateName.value = ''
 }
@@ -586,6 +588,8 @@ function setChart(id, el, option) {
 }
 function resizeAll() {
   Object.values(chartMap).forEach((c) => c.resize())
+  // 跨回桌面断点时收起抽屉态，避免残留遮罩
+  if (window.innerWidth >= 1181 && panelOpen.value) panelOpen.value = false
 }
 
 function scoreDistOption(res) {
@@ -1664,9 +1668,7 @@ onBeforeUnmount(() => {
   .screener-stats { grid-template-columns: repeat(3, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
   .eval-stats { grid-template-columns: repeat(2, 1fr); }
-
-  /* 窄屏：配置面板收进抽屉，顶部出现开关按钮 */
-  .screener-menu-btn { display: none; }
+  /* 窄屏：配置面板收进抽屉，顶部显示开关按钮（≥1181px 由下方规则隐藏） */
 }
 @media (max-width: 1180px) {
   .screener-panel {

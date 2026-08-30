@@ -31,7 +31,7 @@ async function loadFirst() {
   page.value = 1
   finished.value = false
   err.value = ''
-list.value = []
+  list.value = []
   await fetchPage()
 }
 
@@ -96,7 +96,16 @@ function applyPending() {
   const ids = new Set(list.value.map((n) => n.id))
   const fresh = items.filter((n) => !ids.has(n.id))
   if (fresh.length) {
+    // 顶部插入新消息时锚定滚动位置，避免用户正在阅读的内容被顶走
+    const el = contentEl.value
+    const prevHeight = el ? el.scrollHeight : 0
+    const prevTop = el ? el.scrollTop : 0
     list.value = [...fresh, ...list.value]
+    if (el && prevTop > 0) {
+      nextTick(() => {
+        el.scrollTop = prevTop + (el.scrollHeight - prevHeight)
+      })
+    }
   }
   if (isNearTop()) store.markSeen('flash')
 }
@@ -238,6 +247,10 @@ onUnmounted(() => {
 
     <div ref="sentinel" class="ff-flash-view__sentinel">
       <AppSkeleton v-if="loading" variant="text" :lines="2" />
+      <template v-else-if="err && list.length > 0">
+        <span class="ff-flash-view__load-error"><AppIcon name="alert-triangle" size="xs" /> 加载失败：{{ err }}</span>
+        <AppButton variant="ghost" size="sm" icon="refresh" @click="fetchPage">重试</AppButton>
+      </template>
       <span v-else-if="finished && list.length > 0" class="ff-text-muted">
         <AppIcon name="check-circle" size="xs" /> 已加载全部 {{ total }} 条
       </span>
@@ -421,6 +434,13 @@ onUnmounted(() => {
   gap: var(--ff-space-2);
 }
 
+.ff-flash-view__load-error {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-1);
+  color: var(--ff-danger-text);
+}
+
 @media (max-width: 640px) {
   .ff-flash-view__hero {
     flex-wrap: wrap;
@@ -428,6 +448,10 @@ onUnmounted(() => {
   .ff-flash-view__ratio-bar {
     order: 3;
     width: 100%;
+  }
+  /* 固定列宽表格在窄屏放不下：允许横向滑动，避免标题列被裁切 */
+  .ff-flash-view__table {
+    overflow-x: auto;
   }
 }
 </style>

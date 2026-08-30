@@ -225,6 +225,7 @@ export const useEasytdxStore = defineStore('easytdx', {
       this.task = null
       this.recentFuncs = pushRecentFunc(this.recentFuncs, t.func)
       saveRecentFuncs(this.recentFuncs)
+      this.bindRunner() // 快捷任务可先于 run() 被调用，必须确保执行器已创建
       return this.runner.run(t.func, this.params)
     },
 

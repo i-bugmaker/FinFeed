@@ -430,10 +430,28 @@ def api_monitor_status():
     }
 
 
-def api_export(format: str = Query("json"), start: Optional[str] = None, end: Optional[str] = None, favorites: int = Query(0)):
+def api_export(
+    format: str = Query("json"),
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    favorites: int = Query(0),
+    keyword: Optional[str] = None,
+    source: Optional[str] = None,
+    sentiment: Optional[str] = None,
+):
+    """导出新闻。携带任一筛选条件时走 db_query_news，保证导出结果与列表所见一致。"""
     fav_only = favorites == 1
-    if fav_only:
-        news, _ = db_query_news(limit=10000, is_favorite=True)
+    has_filters = bool(keyword) or (source and source != "all") or (sentiment and sentiment != "all")
+    if fav_only or has_filters:
+        news, _ = db_query_news(
+            limit=10000,
+            source=source if source and source != "all" else None,
+            keyword=keyword or None,
+            sentiment=sentiment if sentiment and sentiment != "all" else None,
+            start_ts=_ts_from_date_str(start, end_of_day=False) if start else None,
+            end_ts=_ts_from_date_str(end, end_of_day=True) if end else None,
+            is_favorite=True if fav_only else None,
+        )
     else:
         news = db_get_all_for_export(start, end)
     ts_str = now_bj().strftime("%Y%m%d_%H%M%S")

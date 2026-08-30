@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import ChartPanel from '../ChartPanel.vue'
 import AppIcon from '../../ui/AppIcon.vue'
 import AppButton from '../../ui/AppButton.vue'
+import EasyTdxResultToolbar from './EasyTdxResultToolbar.vue'
 import { columnLabel, cellText, isLink, fullText } from './format'
 
 const props = defineProps({
@@ -13,8 +14,55 @@ const props = defineProps({
   error: { type: String, default: '' }, // 任务失败信息（status=error 时展示）
 })
 
+const emit = defineEmits(['rerun'])
+
 const hasResult = computed(() => !!props.result)
 const type = computed(() => props.result?.type || 'none')
+
+// ---------------- 结果工具条：全屏 / 重跑 ----------------
+const rootEl = ref(null)
+async function toggleFullscreen() {
+  const el = rootEl.value
+  if (!el) return
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await el.requestFullscreen()
+  } catch { /* 用户拒绝或不支持时静默 */ }
+}
+
+// ---------------- 表格排序（客户端） ----------------
+const sortState = ref({ col: -1, dir: 1 })
+watch(() => props.result, () => (sortState.value = { col: -1, dir: 1 }))
+function toggleColSort(i) {
+  if (sortState.value.col === i) {
+    if (sortState.value.dir === 1) sortState.value = { col: i, dir: -1 }
+    else sortState.value = { col: -1, dir: 1 }
+  } else {
+    sortState.value = { col: i, dir: -1 }
+  }
+}
+const sortedTableRows = computed(() => {
+  const rows = props.result?.rows
+  if (type.value !== 'table' || !Array.isArray(rows) || sortState.value.col < 0) return rows || []
+  const ci = sortState.value.col
+  const dir = sortState.value.dir
+  return [...rows].sort((a, b) => {
+    const av = a[ci]
+    const bv = b[ci]
+    const aNum = av !== '' && av != null ? Number(av) : NaN
+    const bNum = bv !== '' && bv != null ? Number(bv) : NaN
+    let cmp
+    if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) cmp = aNum - bNum
+    else cmp = String(av ?? '').localeCompare(String(bv ?? ''), 'zh-CN')
+    return cmp * dir
+  })
+})
+
+// 数值列右对齐（按列名启发式）
+const NUM_COL_RE = /(price|pct|vol|amount|net|ratio|rate|close|open|high|low|count|num|score|yield|return|pnl|drawdown|turnover|momentum|weight|value)/i
+function isNumericCol(col) {
+  return NUM_COL_RE.test(String(col || ''))
+}
 
 // ---------------- 图表 ----------------
 const showChart = computed(
@@ -286,7 +334,7 @@ function isPlainDict(v) {
 </script>
 
 <template>
-  <div class="etdx-result">
+  <div ref="rootEl" class="etdx-result">
     <AppIcon v-if="loading" name="refresh" size="lg" spin class="etdx-result__spin" />
 
     <!-- 执行失败：明确展示错误信息，而非空白占位 -->
@@ -299,6 +347,14 @@ function isPlainDict(v) {
     </div>
 
     <template v-else-if="hasResult">
+      <!-- 结果工具条：复制 / CSV / JSON / 全屏 / 重跑 -->
+      <EasyTdxResultToolbar
+        :result="result"
+        :rerunning="loading"
+        @rerun="emit('rerun')"
+        @fullscreen="toggleFullscreen"
+      />
+
       <!-- 文件下载 -->
       <div v-if="type === 'file'" class="etdx-result__file">
         <AppIcon name="file-text" size="lg" />
@@ -405,11 +461,6 @@ function isPlainDict(v) {
         <div v-if="showChart" class="etdx-result__chart">
           <ChartPanel :option="chartOption" height="320px" />
         </div>
-        <div class="etdx-result__tablemeta">
-          <AppIcon name="list" size="sm" />
-          <span>{{ result.row_count }} 行 × {{ result.columns.length }} 列</span>
-          <span v-if="result.truncated" class="etdx-result__truncated">（已截断显示前 {{ result.rows.length }} 行）</span>
-        </div>
         <div class="etdx-result__tablewrap">
           <table class="ff-table ff-table--sticky">
             <thead>
@@ -417,20 +468,23 @@ function isPlainDict(v) {
                 <th
                   v-for="(col, i) in result.columns"
                   :key="col"
-                  class="ff-table__header"
+                  class="ff-table__header is-sortable"
+                  :class="{ 'is-numeric': isNumericCol(col) }"
                   :title="col"
+                  @click="toggleColSort(i)"
                 >
                   {{ columnLabel(col) }}
+                  <AppIcon v-if="sortState.col === i" :name="sortState.dir === 1 ? 'chevron-up' : 'chevron-down'" size="xs" />
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(row, ri) in result.rows" :key="ri" class="ff-table__row">
+              <tr v-for="(row, ri) in sortedTableRows" :key="ri" class="ff-table__row">
                 <td
                   v-for="(cell, ci) in row"
                   :key="ci"
                   class="ff-table__cell"
-                  :class="cellColorClass(cell, result.columns[ci])"
+                  :class="[cellColorClass(cell, result.columns[ci]), isNumericCol(result.columns[ci]) && 'is-numeric']"
                 >
                   <a
                     v-if="isLink(cell, result.columns[ci])"
@@ -464,6 +518,12 @@ function isPlainDict(v) {
 .etdx-result {
   min-height: 240px;
   padding: var(--ff-space-4);
+}
+/* 全屏查看结果 */
+.etdx-result:fullscreen {
+  background: var(--ff-bg-canvas);
+  overflow: auto;
+  padding: var(--ff-space-5);
 }
 .etdx-result__spin {
   display: block;

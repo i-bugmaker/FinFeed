@@ -7,8 +7,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAiStore } from '../../store/ai'
 import AppIcon from '../../ui/AppIcon.vue'
+import AppButton from '../../ui/AppButton.vue'
+import AppSkeleton from '../../ui/AppSkeleton.vue'
 import TaskProgress from '../../components/ai/TaskProgress.vue'
 import MarkdownView from '../../components/ai/MarkdownView.vue'
+import { toastSuccess, toastError } from '../../composables/useToast'
 
 const router = useRouter()
 const store = useAiStore()
@@ -55,7 +58,14 @@ function fmtTime(ts) {
 
 async function onRetry(t) {
   const r = await store.retryTask(t.task_id)
-  if (!r.ok) window.alert(r.error || '重试失败')
+  if (r?.ok) toastSuccess('已重新提交任务')
+  else toastError(r?.error || '重试失败')
+}
+async function onCancel(t) {
+  if (!window.confirm('确认取消该任务？')) return
+  const ok = await store.cancelTask(t.task_id)
+  if (ok !== false) toastSuccess('任务已取消')
+  else toastError('取消失败，请稍后重试')
 }
 async function retryAllFailed() {
   const fails = store.tasks.filter((t) => t.status === 'failed')
@@ -64,6 +74,7 @@ async function retryAllFailed() {
   busy.value = true
   for (const t of fails) await store.retryTask(t.task_id)
   busy.value = false
+  toastSuccess(`已重新提交 ${fails.length} 个失败任务`)
 }
 
 onMounted(() => {
@@ -84,9 +95,9 @@ onMounted(() => {
         </button>
       </div>
       <span class="tv__sp"></span>
-      <button v-if="failedCount" class="tv__retry-all" :disabled="busy" @click="retryAllFailed">
-        <AppIcon name="refresh" size="sm" /> 批量重试失败（{{ failedCount }}）
-      </button>
+      <AppButton v-if="failedCount" variant="secondary" size="sm" icon="refresh" :loading="busy" :disabled="busy" @click="retryAllFailed">
+        批量重试失败（{{ failedCount }}）
+      </AppButton>
     </div>
 
     <div v-if="filtered.length" class="tv__list">
@@ -107,7 +118,7 @@ onMounted(() => {
         <div v-if="t.status === 'running' || t.status === 'pending'" class="tv__progress">
           <TaskProgress :task="t" />
           <div class="tv__ops">
-            <button class="tv__op tv__op--danger" @click="store.cancelTask(t.task_id)">取消</button>
+            <button class="tv__op tv__op--danger" @click="onCancel(t)">取消</button>
           </div>
           <div v-if="t.task_id === streamingTaskId && streamText" class="tv__stream">
             <div class="tv__stream-head">
@@ -137,10 +148,14 @@ onMounted(() => {
       </div>
     </div>
 
+    <div v-else-if="store.tasksLoading" class="tv__empty">
+      <AppSkeleton variant="text" :lines="5" />
+    </div>
+
     <div v-else class="tv__empty">
       <AppIcon name="activity" size="xl" />
       <p>{{ tab === 'all' ? '暂无分析任务' : '该分类下没有任务' }}</p>
-      <p class="tv__empty-sub">在工作台点击「生成每日复盘」创建首个任务</p>
+      <p class="tv__empty-sub">在工作台选择报告类型后点击「生成」创建首个任务</p>
     </div>
 
     <!-- 日志抽屉 -->

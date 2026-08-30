@@ -102,10 +102,14 @@ onUnmounted(() => {
 async function exportAs(fmt) {
   closeExport()
   try {
+    // 导出必须与列表所见一致：携带当前全部筛选条件
     const res = await api.exportNews(fmt, {
       start: local.value.start || undefined,
       end: local.value.end || undefined,
       favorites: local.value.favorites ? 1 : 0,
+      keyword: local.value.keyword || undefined,
+      source: local.value.source && local.value.source !== 'all' ? local.value.source : undefined,
+      sentiment: local.value.sentiment && local.value.sentiment !== 'all' ? local.value.sentiment : undefined,
     })
     api.downloadBlob(res, `finfeed_news.${fmt}`)
   } catch (e) {

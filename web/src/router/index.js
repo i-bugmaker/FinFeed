@@ -57,7 +57,16 @@ const routes = [
   { path: '/styleguide', name: 'styleguide', component: StyleGuideView, meta: { title: '设计规范' } },
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHashHistory(),
   routes,
 })
+
+// 多标签页场景下用标题区分页面；meta.title 已定义但此前从未被消费
+const BASE_TITLE = document.title || 'FinFeed 实时财经新闻监控'
+router.afterEach((to) => {
+  const t = to.meta?.title
+  document.title = t ? `${t} · FinFeed` : BASE_TITLE
+})
+
+export default router

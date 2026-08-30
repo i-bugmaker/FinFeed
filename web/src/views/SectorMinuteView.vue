@@ -99,6 +99,8 @@ const loadingIndices = ref(false)
 const indicesError = ref(false)
 const refreshing = ref(false)
 const errorMsg = ref('')
+// 窄屏（<980px）标的池抽屉开关
+const mobilePoolOpen = ref(false)
 
 let pollTimer = null
 let stockSearchTimer = null
@@ -645,14 +647,22 @@ const visibleStocks = computed(() => {
         <template v-else>
           <span class="smm__time">数据日期 {{ curDate }}</span>
         </template>
-        <span class="smm__count">{{ selectedCount }} / 15</span>
+        <span class="smm__count">{{ selectedCount }} / {{ MAX_TARGETS }}</span>
+        <button type="button" class="smm__pool-toggle" @click="mobilePoolOpen = true">
+          <AppIcon name="panel-left" size="sm" /> 标的池
+        </button>
       </div>
     </header>
 
     <!-- ══════ 主体：左面板 + 主显示区 ══════ -->
     <div class="smm__body">
+      <!-- 窄屏抽屉遮罩 -->
+      <div v-if="mobilePoolOpen" class="smm__mobile-backdrop" @click="mobilePoolOpen = false" />
       <!-- 左面板 -->
-      <aside class="smm__panel">
+      <aside class="smm__panel" :class="{ 'is-open': mobilePoolOpen }">
+        <button type="button" class="smm__drawer-close" aria-label="关闭" @click="mobilePoolOpen = false">
+          <AppIcon name="x" size="sm" />
+        </button>
         <div class="smm__tabs">
           <button
             type="button"
@@ -1430,11 +1440,65 @@ const visibleStocks = computed(() => {
 }
 
 /* ═══════ 响应式 ═══════ */
+/* 窄屏标的池抽屉控件：桌面端隐藏 */
+.smm__pool-toggle { display: none; }
+.smm__drawer-close { display: none; }
+.smm__mobile-backdrop { display: none; }
+
 @media (max-width: 1180px) {
   .smm__panel { width: 232px; }
 }
 @media (max-width: 980px) {
-  .smm__panel { display: none; }
+  /* 标的池转为左侧抽屉（替代原先的直接 display:none） */
+  .smm__pool-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--ff-border);
+    border-radius: var(--ff-radius-pill, 999px);
+    background: var(--ff-bg-surface);
+    color: var(--ff-text-secondary);
+    font-size: var(--ff-fs-caption, 13px);
+    cursor: pointer;
+  }
+  .smm__mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .smm__panel {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(320px, 86vw);
+    z-index: 90;
+    border-radius: 0;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.24s var(--ff-ease-standard, ease);
+  }
+  .smm__panel.is-open {
+    transform: translateX(0);
+  }
+  .smm__drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin: 8px 8px 0 auto;
+    border: none;
+    border-radius: 8px;
+    background: var(--ff-bg-subtle);
+    color: var(--ff-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
   .smm__cols { flex-direction: column; }
 }
 </style>

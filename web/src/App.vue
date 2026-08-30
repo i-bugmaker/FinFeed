@@ -6,6 +6,7 @@ import { useSSE } from './composables/useSSE'
 import Sidebar from './components/Sidebar.vue'
 import TopBar from './components/TopBar.vue'
 import NewNewsBadge from './components/NewNewsBadge.vue'
+import ToastHost from './components/ToastHost.vue'
 
 const store = useAppStore()
 const router = useRouter()
@@ -53,6 +54,7 @@ onMounted(() => {
     </div>
 
     <NewNewsBadge v-if="isNewsPage" />
+    <ToastHost />
   </div>
 </template>
 

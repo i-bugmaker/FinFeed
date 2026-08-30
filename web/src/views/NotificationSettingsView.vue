@@ -10,6 +10,7 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { alertsApi } from '../api/alerts'
+import { toastSuccess, toastError } from '../composables/useToast'
 import AppCard from '../ui/AppCard.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppIcon from '../ui/AppIcon.vue'
@@ -42,6 +43,7 @@ async function saveSettings(patch) {
     settings.value = res.settings
   } catch (e) {
     console.error(e)
+    toastError('设置保存失败：' + (e?.message || e))
   } finally {
     savingSettings.value = false
   }
@@ -65,7 +67,10 @@ const baseImportance = ref(5)
 const watchlistMin = ref(0)
 function commitSetting(key, value) {
   const num = Number(value)
-  if (Number.isNaN(num) || num < 0 || num > 10) return
+  if (Number.isNaN(num) || num < 0 || num > 10) {
+    toastError('阈值需在 0–10 之间，本次修改未保存')
+    return
+  }
   saveSettings({ [key]: num })
 }
 
@@ -100,20 +105,26 @@ function openEdit(wh) {
   showForm.value = true
 }
 async function submitForm() {
-  if (!form.value.url.trim()) return
+  if (!form.value.url.trim()) {
+    toastError('Webhook 地址为必填项，请填写后保存')
+    return
+  }
   savingChannel.value = true
   try {
     const payload = { ...form.value }
     if (!showExtra.value) payload.extra = ''
     if (editingId.value == null) {
       await alertsApi.createWebhook(payload)
+      toastSuccess(`渠道「${payload.name || typeLabel(payload.type)}」已创建`)
     } else {
       await alertsApi.updateWebhook(editingId.value, payload)
+      toastSuccess(`渠道「${payload.name || typeLabel(payload.type)}」已保存`)
     }
     showForm.value = false
     await loadWebhooks()
   } catch (e) {
     console.error(e)
+    toastError('渠道保存失败：' + (e?.message || e))
   } finally {
     savingChannel.value = false
   }
@@ -122,15 +133,21 @@ async function toggleChannel(wh, v) {
   try {
     await alertsApi.updateWebhook(wh.id, { enabled: v })
     wh.enabled = v
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error(e)
+    toastError('渠道状态切换失败：' + (e?.message || e))
+  }
 }
 async function testChannel(wh) {
   testingId.value = wh.id
   try {
     const res = await alertsApi.testWebhook(wh.id)
     testResult.value = { ok: res.ok, name: wh.name, message: res.message }
+    if (res.ok) toastSuccess(`测试消息已发送至「${wh.name || typeLabel(wh.type)}」`)
+    else toastError(`测试发送失败：${res.message || '未知错误'}`)
   } catch (e) {
     testResult.value = { ok: false, name: wh.name, message: e?.message || '请求失败' }
+    toastError(`测试发送失败：${e?.message || '请求失败'}`)
   } finally {
     testingId.value = null
   }
@@ -140,8 +157,12 @@ async function removeChannel(wh) {
   if (!window.confirm(`确定删除渠道「${wh.name || typeLabel(wh.type)}」？`)) return
   try {
     await alertsApi.deleteWebhook(wh.id)
+    toastSuccess('渠道已删除')
     await loadWebhooks()
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error(e)
+    toastError('删除失败：' + (e?.message || e))
+  }
 }
 
 // ---------------- 主题订阅 ----------------
@@ -152,29 +173,47 @@ const kwInput = computed({
   get: () => topicForm.value.keywords,
   set: (v) => { topicForm.value.keywords = v },
 })
+const savingTopic = ref(false)
 async function submitTopic() {
   const kws = topicForm.value.keywords.split(/[,，、\s]+/).filter(Boolean)
-  if (!topicForm.value.name.trim() || !kws.length) return
+  if (!topicForm.value.name.trim() || !kws.length) {
+    toastError('请填写主题名称和至少一个关键词')
+    return
+  }
+  savingTopic.value = true
   try {
     await alertsApi.createTopic({ name: topicForm.value.name, keywords: kws,
                                   description: topicForm.value.description })
+    toastSuccess(`主题「${topicForm.value.name}」已创建`)
     topicForm.value = { name: '', keywords: '', description: '' }
     showTopicForm.value = false
     await loadTopics()
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error(e)
+    toastError('主题创建失败：' + (e?.message || e))
+  } finally {
+    savingTopic.value = false
+  }
 }
 async function toggleTopic(t, v) {
   try {
     await alertsApi.updateTopic(t.id, { is_enabled: v })
     t.is_enabled = v
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error(e)
+    toastError('主题状态切换失败：' + (e?.message || e))
+  }
 }
 async function removeTopic(t) {
   if (!window.confirm(`确定删除主题「${t.name}」？`)) return
   try {
     await alertsApi.deleteTopic(t.id)
+    toastSuccess(`主题「${t.name}」已删除`)
     await loadTopics()
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error(e)
+    toastError('删除失败：' + (e?.message || e))
+  }
 }
 
 // ---------------- 校准 ----------------
@@ -183,10 +222,14 @@ async function runCalibration() {
   runningCal.value = true
   try {
     await alertsApi.runCalibration()
+    toastSuccess('情感校准已启动，结果稍后自动刷新')
     // 后台线程执行，延迟刷新结果
     setTimeout(refreshCalibration, 15000)
     setTimeout(refreshCalibration, 45000)
-  } catch (e) { console.error(e) } finally {
+  } catch (e) {
+    console.error(e)
+    toastError('校准启动失败：' + (e?.message || e))
+  } finally {
     runningCal.value = false
   }
 }
@@ -203,7 +246,8 @@ async function loadWebhooks() {
 async function loadTopics() {
   topics.value = (await alertsApi.listTopics()).topics
 }
-onMounted(async () => {
+async function loadAll() {
+  loading.value = true
   try {
     const [s, r, ct, wl, lg, cal] = await Promise.all([
       alertsApi.getSettings(),
@@ -222,13 +266,16 @@ onMounted(async () => {
     logs.value = lg.logs
     calibration.value = cal.calibration
     await Promise.all([loadWebhooks(), loadTopics()])
+    loadErr.value = ''
   } catch (e) {
     loadErr.value = e?.message || String(e)
     console.error(e)
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadAll)
 </script>
 
 <template>
@@ -241,7 +288,7 @@ onMounted(async () => {
         <AppEmpty title="加载失败" icon="alert-circle">
           <template #description>{{ loadErr }}</template>
           <template #action>
-            <AppButton variant="secondary" icon="refresh" @click="$router.go(0)">重试</AppButton>
+            <AppButton variant="secondary" icon="refresh" @click="loadAll">重试</AppButton>
           </template>
         </AppEmpty>
       </AppCard>
@@ -314,8 +361,10 @@ onMounted(async () => {
 
         <div v-if="testResult" class="ff-notify-view__test" :class="{ 'is-ok': testResult.ok }">
           <AppIcon :name="testResult.ok ? 'check-circle' : 'alert-circle'" size="xs" />
-          「{{ testResult.name }}」{{ testResult.message }}
-          <AppIcon name="x" size="xs" class="ff-notify-view__test-close" @click="testResult = null" />
+          <span>「{{ testResult.name }}」{{ testResult.message }}</span>
+          <button type="button" class="ff-notify-view__test-close" aria-label="关闭提示" @click="testResult = null">
+            <AppIcon name="x" size="xs" />
+          </button>
         </div>
 
         <div v-if="webhooks.length" class="ff-notify-view__channels">
@@ -384,7 +433,7 @@ onMounted(async () => {
             <AppInput v-model="kwInput" label="关键词（逗号/空格分隔）" placeholder="锂电, 光伏, 储能" />
           </div>
           <div class="ff-notify-view__form-actions">
-            <AppButton size="sm" variant="primary" @click="submitTopic">保存</AppButton>
+            <AppButton size="sm" variant="primary" :loading="savingTopic" :disabled="savingTopic" @click="submitTopic">保存</AppButton>
           </div>
         </div>
 
@@ -607,7 +656,14 @@ onMounted(async () => {
   background: var(--ff-brand-subtle);
 }
 .ff-notify-view__test-close {
+  display: inline-flex;
+  align-items: center;
   margin-left: auto;
+  flex-shrink: 0;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: inherit;
   cursor: pointer;
   opacity: 0.5;
 }

@@ -50,6 +50,26 @@ watch(() => props.open, (v) => {
   }
 })
 
+// 输入变化后结果集改变，高亮归零防止越界
+watch(q, () => (sel.value = 0))
+
+function onKeydown(e) {
+  const n = results.value.length
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    if (n) sel.value = (sel.value + 1) % n
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    if (n) sel.value = (sel.value - 1 + n) % n
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    run(results.value[sel.value])
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    emit('close')
+  }
+}
+
 function run(item) {
   if (!item) return
   emit('close')
@@ -67,7 +87,8 @@ function run(item) {
             <input
               ref="inputEl"
               v-model="q"
-              placeholder="输入命令或搜索最近报告…"
+              placeholder="输入命令或搜索最近报告…（↑↓ 选择 / Enter 执行 / Esc 关闭）"
+              @keydown="onKeydown"
             />
           </div>
           <div class="cp-list">

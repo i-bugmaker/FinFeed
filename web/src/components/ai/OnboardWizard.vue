@@ -10,6 +10,7 @@
  */
 import { ref, watch, computed } from 'vue'
 import AppIcon from '../../ui/AppIcon.vue'
+import AppButton from '../../ui/AppButton.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -150,9 +151,9 @@ async function save() {
             </div>
             <p v-if="!presets.length" class="ow-desc">（暂无预设，请手动填写下方字段）</p>
             <div class="ow-foot">
-              <button class="ow-btn ow-btn--ghost" @click="emit('close')">取消</button>
+              <AppButton variant="ghost" @click="emit('close')">取消</AppButton>
               <!-- 自定义预设 base_url 为空也允许进入下一步，在字段页手动填写 -->
-              <button class="ow-btn ow-btn--primary" @click="step = 2">下一步</button>
+              <AppButton variant="primary" @click="step = 2">下一步</AppButton>
             </div>
           </div>
 
@@ -202,14 +203,14 @@ async function save() {
             <p v-if="error" class="ow-test err">{{ error }}</p>
 
             <div class="ow-foot">
-              <button v-if="mode === 'wizard'" class="ow-btn ow-btn--ghost" @click="step = 1">上一步</button>
-              <button v-else class="ow-btn ow-btn--ghost" @click="emit('close')">取消</button>
-              <button class="ow-btn ow-btn--secondary" :disabled="!canTest || testing" @click="test">
-                {{ testing ? '测试中…' : '测试连接' }}
-              </button>
-              <button class="ow-btn ow-btn--primary" :disabled="!canSave || saving" @click="save">
-                {{ saving ? '保存中…' : isEdit ? '保存修改' : '保存并完成' }}
-              </button>
+              <AppButton v-if="mode === 'wizard'" variant="ghost" @click="step = 1">上一步</AppButton>
+              <AppButton v-else variant="ghost" @click="emit('close')">取消</AppButton>
+              <AppButton variant="secondary" :loading="testing" :disabled="!canTest || testing" @click="test">
+                测试连接
+              </AppButton>
+              <AppButton variant="primary" :loading="saving" :disabled="!canSave || saving" @click="save">
+                {{ isEdit ? '保存修改' : '保存并完成' }}
+              </AppButton>
             </div>
           </div>
 
@@ -218,7 +219,7 @@ async function save() {
             <div class="ow-ok"><AppIcon name="check-circle" size="xl" /></div>
             <p class="ow-desc" style="text-align:center">配置完成！现在可以生成第一份每日复盘报告。</p>
             <div class="ow-foot" style="justify-content:center">
-              <button class="ow-btn ow-btn--primary" @click="save">开始使用</button>
+              <AppButton variant="primary" @click="save">开始使用</AppButton>
             </div>
           </div>
         </div>
@@ -262,13 +263,7 @@ async function save() {
 .ow-test { font-size: 12.5px; color: var(--ff-brand); margin: 4px 0 10px; }
 .ow-test.err { color: var(--ff-up); }
 .ow-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-.ow-btn { height: 38px; padding: 0 20px; border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; border: none; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); }
-.ow-btn--primary { background: var(--ff-brand); color: var(--ff-bg-surface); }
-.ow-btn--primary:hover { background: var(--ff-brand-dark); }
-.ow-btn--primary:disabled { opacity: 0.45; cursor: not-allowed; }
-.ow-btn--secondary { background: var(--ff-bg-subtle); color: var(--ff-text-primary); border: 1px solid var(--ff-border); }
-.ow-btn--secondary:disabled { opacity: 0.45; cursor: not-allowed; }
-.ow-btn--ghost { background: none; color: var(--ff-text-2); }
+/* 标准按钮已统一走 AppButton（D5），此处仅保留弹窗专用形态样式 */
 .ow-done { display: flex; flex-direction: column; align-items: center; padding: 36px 26px; }
 .ow-ok { color: var(--ff-brand); margin-bottom: 12px; }
 .ow-fade-enter-active, .ow-fade-leave-active { transition: opacity 180ms, transform 180ms; }

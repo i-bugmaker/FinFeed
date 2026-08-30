@@ -51,6 +51,21 @@ const SCENES = [
 const currentView = ref('overview')
 const query = ref('')
 const paramsCollapsed = ref(false)
+// 窄屏（<980px）下 rail/params 转为抽屉；桌面端不受影响
+const mobileNavOpen = ref(false)
+const mobileParamsOpen = ref(false)
+function openMobileNav() {
+  mobileParamsOpen.value = false
+  mobileNavOpen.value = true
+}
+function openMobileParams() {
+  mobileNavOpen.value = false
+  mobileParamsOpen.value = true
+}
+function closeMobilePanels() {
+  mobileNavOpen.value = false
+  mobileParamsOpen.value = false
+}
 
 const funcs = computed(() => store.meta?.functions || [])
 const selectedFunc = computed(() => store.selectedFunc)
@@ -96,6 +111,7 @@ function onNavSelect(funcId) {
   const scene = SCENES.find((s) => s.funcIds.includes(funcId))
   if (scene) currentView.value = scene.id
   store.selectFunc(funcId)
+  closeMobilePanels() // 窄屏抽屉内选中功能后自动收起
   if (funcNeedsStock(func) && !store.stock) {
     store.errMsg = '请先在顶部搜索框选择股票标的，再执行「' + func.label + '」'
     return
@@ -251,10 +267,23 @@ onBeforeUnmount(() => store.stopPolling())
       </div>
     </header>
 
+    <!-- ══════ 窄屏功能/参数抽屉开关（桌面端隐藏） ══════ -->
+    <div class="etdx-mobile-bar">
+      <button type="button" class="etdx-mobile-bar__btn" @click="openMobileNav">
+        <AppIcon name="panel-left" size="sm" /> 功能导航
+      </button>
+      <button type="button" class="etdx-mobile-bar__btn" @click="openMobileParams">
+        <AppIcon name="sliders" size="sm" /> 参数设置
+      </button>
+    </div>
+
     <!-- ══════ 主体三栏 ══════ -->
     <div class="etdx-body">
       <!-- 左栏：自选股 + 场景导航 -->
-      <aside class="etdx-rail">
+      <aside class="etdx-rail" :class="{ 'is-open': mobileNavOpen }">
+        <button type="button" class="etdx-drawer-close" aria-label="关闭" @click="closeMobilePanels">
+          <AppIcon name="x" size="sm" />
+        </button>
         <div class="etdx-rail__watch">
           <EasyTdxWatchlist :stock="store.stock" @select="selectStock" />
         </div>
@@ -365,6 +394,7 @@ onBeforeUnmount(() => store.stopPolling())
                       :func="selectedFunc"
                       :loading="false"
                       :stock-names="store.stockNames"
+                      @rerun="run"
                     />
                   </template>
                   <div v-else class="etdx-empty">
@@ -456,6 +486,7 @@ onBeforeUnmount(() => store.stopPolling())
                   :func="selectedFunc"
                   :loading="running"
                   :stock-names="store.stockNames"
+                  @rerun="run"
                 />
               </div>
             </div>
@@ -464,7 +495,10 @@ onBeforeUnmount(() => store.stopPolling())
       </section>
 
       <!-- 右栏：参数面板 -->
-      <aside class="etdx-params" :class="{ 'is-collapsed': paramsCollapsed }">
+      <aside class="etdx-params" :class="{ 'is-collapsed': paramsCollapsed, 'is-open': mobileParamsOpen }">
+        <button type="button" class="etdx-drawer-close" aria-label="关闭" @click="closeMobilePanels">
+          <AppIcon name="x" size="sm" />
+        </button>
         <div class="etdx-params__head">
           <template v-if="!paramsCollapsed">
             <AppIcon name="sliders" size="sm" />
@@ -517,6 +551,13 @@ onBeforeUnmount(() => store.stopPolling())
         </button>
       </aside>
     </div>
+
+    <!-- 窄屏抽屉遮罩 -->
+    <div
+      v-if="mobileNavOpen || mobileParamsOpen"
+      class="etdx-mobile-backdrop"
+      @click="closeMobilePanels"
+    />
 
     <!-- ══════ 底部任务中心 ══════ -->
     <footer class="etdx-taskbar">
@@ -1174,14 +1215,85 @@ onBeforeUnmount(() => store.stopPolling())
 .etdx-taskbar__chip-dot.is-err { background: var(--ff-up); }
 
 /* ═══════════ 响应式 ═══════════ */
+/* 窄屏抽屉开关与遮罩：桌面端隐藏 */
+.etdx-mobile-bar { display: none; }
+.etdx-drawer-close { display: none; }
+.etdx-mobile-backdrop { display: none; }
+
 @media (max-width: 1180px) {
   .etdx-rail { width: 216px; }
   .etdx-params { width: 252px; }
   .etdx-overview__grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 980px) {
-  .etdx-rail { display: none; }
-  .etdx-params { display: none; }
+  /* rail/params 转为左右抽屉，通过顶部开关唤起（替代原先的直接 display:none） */
+  .etdx-mobile-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .etdx-mobile-bar__btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 40px;
+    border: 1px solid var(--ff-border);
+    border-radius: var(--ff-radius-md);
+    background: var(--ff-bg-surface);
+    color: var(--ff-text-secondary);
+    font-size: var(--ff-fs-body-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .etdx-mobile-bar__btn:active {
+    background: var(--ff-bg-hover);
+  }
+  .etdx-mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .etdx-rail,
+  .etdx-params {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    z-index: 90;
+    margin: 0;
+    border-radius: 0;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.24s var(--ff-ease-standard);
+  }
+  .etdx-rail { left: 0; }
+  .etdx-params {
+    left: auto;
+    right: 0;
+    transform: translateX(100%);
+  }
+  .etdx-rail.is-open,
+  .etdx-params.is-open {
+    transform: translateX(0);
+  }
+  .etdx-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin: 8px 8px 0 auto;
+    border: none;
+    border-radius: 8px;
+    background: var(--ff-bg-subtle);
+    color: var(--ff-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
   .etdx-top__meta { display: none; }
 }
 </style>

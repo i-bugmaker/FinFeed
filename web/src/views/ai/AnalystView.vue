@@ -23,6 +23,8 @@ const sending = ref(false)
 const loadingMsgs = ref(false)
 const activeSessionId = ref(null)
 const showCtxMobile = ref(false)
+// 窄屏（≤768px）会话列表抽屉开关：此前移动端完全无法切换/新建历史会话
+const mobileSessionsOpen = ref(false)
 const chatScrollEl = ref(null)
 let abortController = null
 
@@ -91,6 +93,7 @@ async function newSession() {
 }
 async function selectSession(id) {
   activeSessionId.value = id
+  mobileSessionsOpen.value = false // 移动端抽屉内选中会话后自动收起
   loadingMsgs.value = true
   try {
     const r = await api.llm('/sessions/messages', { id })
@@ -147,7 +150,7 @@ async function sendChat() {
 
   const history = chatLog.value
     .slice(0, aiIndex)
-    .filter((m) => !m.pending && m.text)
+    .filter((m) => !m.pending && m.text && !m.error && !m.stopped) // 错误/中止占位不进上下文
     .slice(-12)
     .map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }))
 
@@ -186,10 +189,21 @@ function stopChat() {
     abortController = null
   }
 }
+// 生成中按 Enter 忽略（此前会误触中止，杀掉正在生成的完整回答）
 function onChatEnter() {
-  if (sending.value) stopChat()
-  else sendChat()
+  if (sending.value) return
+  sendChat()
 }
+
+// 输入框自适应高度（textarea），上限约 6 行
+const chatInputEl = ref(null)
+function resizeChatInput() {
+  const el = chatInputEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px'
+}
+watch(chatInput, () => nextTick(resizeChatInput))
 
 // 斜杠命令 /复盘：直接提交复盘简报生成任务（不走对话）
 async function runSlashReview() {
@@ -289,8 +303,11 @@ onBeforeUnmount(() => {
          用视觉隐藏的 h1 保留文档语义与读屏导航锚点 -->
     <h1 class="ff-sr-only">AI 分析师对话</h1>
 
-    <!-- 左：会话列表（桌面常驻，移动端隐藏） -->
-    <aside class="an__sessions">
+    <!-- 左：会话列表（桌面常驻，移动端抽屉） -->
+    <aside class="an__sessions" :class="{ 'is-open': mobileSessionsOpen }">
+      <button type="button" class="an__drawer-close" aria-label="关闭" @click="mobileSessionsOpen = false">
+        <AppIcon name="x" size="sm" />
+      </button>
       <SessionList
         :sessions="store.sessions"
         :active-id="activeSessionId"
@@ -300,6 +317,11 @@ onBeforeUnmount(() => {
         @delete="onDelete"
       />
     </aside>
+    <!-- 移动端会话抽屉遮罩与悬浮按钮 -->
+    <div v-if="mobileSessionsOpen" class="an__sess-backdrop" @click="mobileSessionsOpen = false" />
+    <button class="an__sess-fab" title="历史会话" @click="mobileSessionsOpen = true">
+      <AppIcon name="history" size="md" />
+    </button>
 
     <!-- 中：对话 -->
     <section class="an__chat">
@@ -357,9 +379,11 @@ onBeforeUnmount(() => {
           <button class="an__chip" @click="chatInput += '@'">@ 标的</button>
         </div>
         <div class="an__input">
-          <input
+          <textarea
+            ref="chatInputEl"
             v-model="chatInput"
             class="an__field"
+            rows="1"
             placeholder="输入问题…（Enter 发送 / Shift+Enter 换行）"
             :disabled="sending"
             @input="onInput"
@@ -443,8 +467,8 @@ onBeforeUnmount(() => {
 .an__chips { display: flex; gap: 6px; margin-bottom: 8px; }
 .an__chip { border: 1px solid var(--ff-border); background: var(--ff-bg-surface); border-radius: 12px; padding: 3px 11px; font-size: 11.5px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; font-family: var(--ff-font-mono, ui-monospace, monospace); }
 .an__chip:hover { border-color: var(--ff-brand); color: var(--ff-brand); }
-.an__input { display: flex; gap: 8px; align-items: center; }
-.an__field { flex: 1; height: 38px; border: 1px solid var(--ff-border); border-radius: 10px; padding: 0 13px; font-size: 13.5px; outline: none; background: var(--ff-bg-surface); color: var(--ff-text-primary); transition: border-color 120ms, box-shadow 120ms; }
+.an__input { display: flex; gap: 8px; align-items: flex-end; }
+.an__field { flex: 1; min-height: 38px; max-height: 140px; border: 1px solid var(--ff-border); border-radius: 10px; padding: 8px 13px; font-size: 13.5px; outline: none; background: var(--ff-bg-surface); color: var(--ff-text-primary); transition: border-color 120ms, box-shadow 120ms; resize: none; line-height: 1.5; font-family: inherit; }
 .an__field:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px var(--ff-focus-ring); }
 .an__field:disabled { opacity: 0.6; }
 .an__send { width: 38px; height: 38px; border: none; border-radius: 10px; background: var(--ff-brand); color: var(--ff-bg-surface); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 120ms; flex-shrink: 0; }
@@ -470,9 +494,66 @@ onBeforeUnmount(() => {
   .an__ctx { display: none; }
   .an__ctx-fab { display: flex; position: fixed; right: 18px; bottom: 90px; width: 42px; height: 42px; border-radius: 50%; background: var(--ff-brand); color: var(--ff-bg-surface); border: none; box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35); align-items: center; justify-content: center; z-index: 30; }
 }
+/* 抽屉控件桌面端隐藏（置于媒体查询之前，避免同优先级覆盖移动端样式） */
+.an__sess-fab { display: none; }
+.an__drawer-close { display: none; }
+.an__sess-backdrop { display: none; }
+
 @media (max-width: 768px) {
   .an { height: calc(100vh - 180px); }
-  .an__sessions { display: none; }
+  /* 会话列表转为左侧抽屉，配悬浮按钮唤起（替代原先的直接 display:none） */
+  .an__sessions {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(300px, 84vw);
+    z-index: 90;
+    border-radius: 0;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.24s var(--ff-ease-standard, ease);
+  }
+  .an__sessions.is-open { transform: translateX(0); }
+  .an__sess-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .an__sess-fab {
+    display: flex;
+    position: fixed;
+    left: 18px;
+    bottom: 90px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--ff-bg-surface);
+    border: 1px solid var(--ff-border);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    cursor: pointer;
+    color: var(--ff-text-secondary);
+  }
+  .an__drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin: 8px 8px 0 auto;
+    border: none;
+    border-radius: 8px;
+    background: var(--ff-bg-subtle);
+    color: var(--ff-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
   .an__bubble { max-width: 88%; }
 }
 </style>

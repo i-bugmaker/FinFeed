@@ -20,6 +20,8 @@ const type = ref('all')
 const events = ref([])
 const filters = ref({ types: [], today: todayStr() })
 const loading = ref(false)
+const err = ref('')
+let loadSeq = 0 // 请求序号守卫：防止快速切换日期/分类时旧响应覆盖新数据
 
 const typeOptions = [
   { label: '全部事件', value: 'all', icon: 'calendar' },
@@ -70,7 +72,9 @@ async function loadInit() {
 }
 
 async function loadList() {
+  const mySeq = ++loadSeq
   loading.value = true
+  err.value = ''
   try {
     const res = await api.calendar('/list', {
       type: type.value,
@@ -78,11 +82,15 @@ async function loadList() {
       end: date.value || undefined,
       limit: 500,
     })
+    if (mySeq !== loadSeq) return // 已有更新的请求，丢弃过期响应
     events.value = res.items || res.events || res.list || []
   } catch (e) {
-    events.value = []
+    if (mySeq !== loadSeq) return
+    // 失败时保留旧数据，仅在无数据时展示错误态——绝不把失败伪装成「当日暂无」
+    err.value = e?.message || String(e)
+    if (!events.value.length) events.value = []
   } finally {
-    loading.value = false
+    if (mySeq === loadSeq) loading.value = false
   }
 }
 
@@ -155,6 +163,12 @@ onMounted(async () => {
       <div v-else-if="loading" class="ff-calendar-view__loading">
         <AppSkeleton variant="text" :lines="6" />
       </div>
+      <EmptyState v-else-if="err" text="日历事件加载失败" icon="alert-triangle">
+        <template #description>网络或服务异常（{{ err }}），请重试。</template>
+        <template #action>
+          <AppButton variant="primary" size="sm" icon="refresh" @click="loadList">重试</AppButton>
+        </template>
+      </EmptyState>
       <EmptyState v-else text="当日暂无财经事件数据" icon="calendar" />
     </AppCard>
   </div>

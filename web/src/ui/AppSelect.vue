@@ -7,6 +7,8 @@
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import AppIcon from './AppIcon.vue'
 
+let uid = 0
+
 const props = defineProps({
   modelValue: { type: [String, Number, Array], default: '' },
   options: { type: Array, default: () => [] }, // { label, value, disabled }
@@ -25,6 +27,9 @@ const emit = defineEmits(['update:modelValue', 'change'])
 const open = ref(false)
 const triggerRef = ref(null)
 const menuRef = ref(null)
+const inputId = `ff-select-${++uid}`
+// 键盘导航高亮项（-1 表示未高亮）
+const highlight = ref(-1)
 
 const selected = computed(() => {
   if (props.multiple) {
@@ -65,6 +70,28 @@ function toggle() {
 
 function close() {
   open.value = false
+  highlight.value = -1
+}
+
+function selectableIdx(i, dir) {
+  // 从 i 出发按 dir 找下一个可选项，跳过 disabled
+  const n = props.options.length
+  if (!n) return -1
+  for (let k = 1; k <= n; k++) {
+    const j = ((i + dir * k) % n + n) % n
+    if (!props.options[j]?.disabled) return j
+  }
+  return -1
+}
+
+function moveHighlight(dir) {
+  if (!props.options.length) return
+  const start = highlight.value < 0 ? (dir > 0 ? -1 : 0) : highlight.value
+  const next = selectableIdx(start, dir)
+  if (next >= 0) highlight.value = next
+  nextTick(() => {
+    menuRef.value?.querySelector('.is-highlighted')?.scrollIntoView({ block: 'nearest' })
+  })
 }
 
 function selectOption(opt) {
@@ -96,7 +123,40 @@ function onClickOutside(e) {
   }
 }
 
-function onKeydown(e) {
+// 触发器上的键盘处理：关闭态可展开，展开态做导航
+function onTriggerKeydown(e) {
+  if (props.disabled) return
+  if (!open.value) {
+    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
+      e.preventDefault()
+      toggle()
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        nextTick(() => moveHighlight(e.key === 'ArrowDown' ? 1 : -1))
+      }
+    }
+    return
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    close()
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    moveHighlight(1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    moveHighlight(-1)
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    const opt = props.options[highlight.value]
+    if (opt && !opt.disabled) selectOption(opt)
+  } else if (e.key === 'Tab') {
+    close()
+  }
+}
+
+// document 级兜底：焦点落在菜单项上时也能 Esc 关闭
+function onDocKeydown(e) {
   if (e.key === 'Escape' && open.value) {
     e.preventDefault()
     close()
@@ -108,6 +168,7 @@ function positionMenu() {
   const rect = triggerRef.value.getBoundingClientRect()
   const menu = menuRef.value
   const vw = document.documentElement.clientWidth
+  const vh = document.documentElement.clientHeight
   const margin = 8
 
   // 菜单宽度与触发器保持一致，左右边缘与触发器对齐；
@@ -116,6 +177,12 @@ function positionMenu() {
   menu.style.width = `${menuW}px`
   menu.style.maxWidth = `${menuW}px`
   menu.style.top = `${rect.bottom + 6}px`
+
+  // 下方空间不足时向上翻转
+  const menuH = menu.offsetHeight || 0
+  if (rect.bottom + menuH + 6 > vh && rect.top - menuH - 6 > margin) {
+    menu.style.top = `${Math.max(margin, rect.top - menuH - 6)}px`
+  }
 
   // 默认左边缘对齐触发器左边缘；若右侧超出视口则右边缘贴紧视口内侧。
   const left = Math.min(Math.max(margin, rect.left), vw - margin - menuW)
@@ -126,17 +193,18 @@ function onClear(e) {
   e.stopPropagation()
   if (props.multiple) emit('update:modelValue', [])
   else emit('update:modelValue', '')
+  emit('change', props.multiple ? [] : '')
 }
 
 watch(open, v => {
   if (v) {
     nextTick(positionMenu)
     document.addEventListener('click', onClickOutside, true)
-    document.addEventListener('keydown', onKeydown)
+    document.addEventListener('keydown', onDocKeydown)
     window.addEventListener('resize', positionMenu)
   } else {
     document.removeEventListener('click', onClickOutside, true)
-    document.removeEventListener('keydown', onKeydown)
+    document.removeEventListener('keydown', onDocKeydown)
     window.removeEventListener('resize', positionMenu)
   }
 })
@@ -150,17 +218,20 @@ onUnmounted(() => {
 
 <template>
   <div :class="fieldCls">
-    <label v-if="label" class="ff-field__label">{{ label }}</label>
+    <label v-if="label" class="ff-field__label" :for="inputId">{{ label }}</label>
     <div class="ff-field__control">
       <div
+        :id="inputId"
         ref="triggerRef"
         :class="triggerCls"
         tabindex="0"
         role="combobox"
         :aria-expanded="open"
+        :aria-activedescendant="open && highlight >= 0 ? `${inputId}-opt-${highlight}` : undefined"
         @click="toggle"
+        @keydown="onTriggerKeydown"
       >
-        <span class="ff-select__value" :class="!selected && 'ff-select__value--placeholder'">
+        <span class="ff-select__value" :class="!selected && 'is-placeholder'">
           {{ displayText }}
         </span>
         <span class="ff-select__actions">
@@ -187,16 +258,20 @@ onUnmounted(() => {
           >
             <ul class="ff-menu__items">
               <li
-                v-for="opt in options"
+                v-for="(opt, i) in options"
+                :id="`${inputId}-opt-${i}`"
                 :key="opt.value"
                 :class="[
                   'ff-menu__item',
-                  isSelected(opt) && 'ff-menu__item--active',
-                  opt.disabled && 'ff-menu__item--disabled',
+                  isSelected(opt) && 'is-selected',
+                  i === highlight && 'is-highlighted',
+                  opt.disabled && 'is-disabled',
                 ]"
                 role="option"
                 :aria-selected="isSelected(opt)"
+                :aria-disabled="opt.disabled || undefined"
                 @click="selectOption(opt)"
+                @mouseenter="!opt.disabled && (highlight = i)"
               >
                 <span class="ff-menu__check">
                   <AppIcon v-if="isSelected(opt)" name="check" size="sm" />
@@ -204,7 +279,7 @@ onUnmounted(() => {
                 <span class="ff-menu__item-text">{{ opt.label }}</span>
               </li>
             </ul>
-            <div v-if="!options.length" class="ff-empty ff-empty--xs">
+            <div v-if="!options.length" class="ff-empty ff-empty--compact">
               暂无选项
             </div>
           </div>

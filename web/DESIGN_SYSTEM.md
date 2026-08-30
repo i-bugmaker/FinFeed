@@ -17,6 +17,8 @@
 | 4.2 | `bf11ed9`/`381839b`/`94f8afa` (2026-08-29) | 统一 19/19 视图 h1 标题层级、推广 `.ff-page__header` 骨架、CI 门槛接入 `--fail` 模式 |
 | **4.3** | **本次** | **品牌色定蓝 + 三大模块令牌迁移 + Logo 重绘 + D2/D4/D5/D6/D7/D9 全部闭环** |
 | **4.4** | **本次** | **产品决策：移除全部页面/模块的可见标题与副标题（h1 保留 sr-only）；`start_monitor.bat` 启动前重建 dist** |
+| **4.5** | 2026-08-30 | **交互惯例修复**：弹层 body 滚动锁（`ff-modal-open/ff-drawer-open`）；AppSegmented 选中态 `is-active` 失配修复；AppSelect 键盘导航（↑↓/Enter）+ 菜单向上翻转 + 禁用项 `is-disabled`；AppDrawer `placement="right"` 与 `ff-drawer-right` 过渡补齐；AppTooltip 浮动气泡 `ff-tip--floating` 定位修复；MarkdownView 标题映射修正（`##`→h2 带 data-anchor，报告目录跳转/滚动高亮恢复） |
+| **4.6** | 2026-08-30 | **反馈与焦点体系**：新增全局 `ToastHost`（App.vue 挂载，复用 `.ff-toasts/.ff-toast` 规范，消费 `useToast` 队列；勿再挂载 EasyTdxToast 以免双渲染）；新增 `ui/useFocusTrap.js`——AppModal/AppDrawer 打开时聚焦首控件、Tab 循环锁定、关闭归还焦点；AI 模块标准按钮（向导/工作台生成/报告批量操作/任务重试/设置保存）统一迁移 `AppButton`，chips/tabs/行内小操作按 D9 保留为 scoped 例外；通知设置页全量接入 toast 反馈 |
 
 > ⚠️ **历史遗留**：4.0 重构未同步更新本文档，导致文档在 8/24–8/28 期间停留在 3.0 描述（尤其是品牌色）。本文档已对齐 4.0/4.1 实际实现。
 > **教训**：设计令牌变更必须同提交更新本文档，并跑一次 `scripts/ui_audit.py`。

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useAutoToday, todayStr } from '../composables/useAutoToday'
 import EmptyState from '../components/EmptyState.vue'
@@ -11,6 +12,9 @@ import AppTabs from '../ui/AppTabs.vue'
 import AppSwitch from '../ui/AppSwitch.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+
+const route = useRoute()
+const router = useRouter()
 
 const tabs = [
   { value: 'overview', label: '总览' },
@@ -35,6 +39,26 @@ const summary = ref(null)
 const loading = ref(false)
 const err = ref('')
 const kw = ref('')
+
+// ── URL 状态同步：tab/日期/搜索词落入 query，刷新与分享后不丢 ──
+{
+  const qTab = route.query.tab
+  if (typeof qTab === 'string' && tabs.some((t) => t.value === qTab)) active.value = qTab
+  const qDate = route.query.date
+  if (typeof qDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(qDate)) {
+    date.value = qDate
+    markTouched()
+  }
+  const qKw = route.query.kw
+  if (typeof qKw === 'string') kw.value = qKw
+}
+watch([active, date, kw], ([a, d, k]) => {
+  const q = {}
+  if (a && a !== 'overview') q.tab = a
+  if (d && d !== todayStr()) q.date = d // 当日为默认态，不写 URL
+  if (k) q.kw = k
+  router.replace({ query: q }).catch(() => {})
+})
 
 // 后台自动采集调度状态
 const autoEnabled = ref(false)
@@ -130,9 +154,110 @@ function header(k) {
 function summaryLabel(k) {
   return SUMMARY_MAP[k] || k
 }
+
+// ── 动态数据表的列语义分组：百分比列 / 带符号金额列 / 普通数值列 ──
+const PCT_KEYS = new Set([
+  'pct_chg', 'turnover_ratio', 'turnover', 'main_ratio', 'amplitude',
+  'increase_low', 'increase_high', 'ballot_rate', 'balance_ratio',
+  'org_participate', 'weight',
+])
+const SIGNED_KEYS = new Set([
+  'net_amount', 'main_net', 'super_net', 'big_net', 'mid_net', 'small_net', 'fin_net',
+])
+const NUM_KEYS = new Set([
+  'buy_amount', 'sell_amount', 'deal_amount', 'accum_amount', 'amount',
+  'free_mv', 'circ_mv', 'total_mv', 'limit_amount', 'close_price', 'price',
+  'issue_price', 'high', 'low', 'open', 'close', 'fin_balance', 'fin_buy',
+  'short_balance', 'total_balance', 'profit_low', 'profit_high', 'volume',
+])
+
+function fmtThousand(v) {
+  return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+
 function fmt(k, v) {
-  if (k === 'pct_chg' && typeof v === 'number') return v.toFixed(2)
+  if (typeof v !== 'number') return v
+  if (PCT_KEYS.has(k)) return `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
+  if (SIGNED_KEYS.has(k) || NUM_KEYS.has(k)) return fmtThousand(v)
+  if (k === 'pct_chg') return v.toFixed(2)
   return v
+}
+
+// 单元格样式：数值右对齐 + 涨跌着色（红涨绿跌，仅用于带涨跌语义的列）
+function cellClass(k, v) {
+  const cls = []
+  if (PCT_KEYS.has(k) || SIGNED_KEYS.has(k) || NUM_KEYS.has(k) || typeof v === 'number') cls.push('is-numeric', 'ff-num')
+  if (typeof v === 'number' && (PCT_KEYS.has(k) || SIGNED_KEYS.has(k))) {
+    if (v > 0) cls.push('ff-t-up')
+    else if (v < 0) cls.push('ff-t-down')
+  }
+  return cls
+}
+
+// 摘要卡数值加千分位
+function fmtSummary(k, v) {
+  if (typeof v === 'number') return fmtThousand(v)
+  return v
+}
+
+// ── 动态表客户端排序：点表头切换 降序 → 升序 → 取消 ──
+const sortKey = ref('')
+const sortDir = ref(-1)
+function toggleSort(k) {
+  if (sortKey.value === k) {
+    if (sortDir.value === -1) sortDir.value = 1
+    else {
+      sortKey.value = ''
+      sortDir.value = -1
+    }
+  } else {
+    sortKey.value = k
+    sortDir.value = -1
+  }
+}
+const sortedRows = computed(() => {
+  if (!sortKey.value) return rows.value
+  const k = sortKey.value
+  const dir = sortDir.value
+  return [...rows.value].sort((a, b) => {
+    const av = a[k]
+    const bv = b[k]
+    const aNum = av != null && av !== '' ? Number(av) : NaN
+    const bNum = bv != null && bv !== '' ? Number(bv) : NaN
+    let cmp
+    if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) cmp = aNum - bNum
+    else cmp = String(av ?? '').localeCompare(String(bv ?? ''), 'zh-CN')
+    return cmp * dir
+  })
+})
+
+// ── 个股行下钻：带 6 位代码的行可点击，跳 easy-tdx 查看该标的 ──
+const STOCK_CODE_RE = /^\d{6}/
+function rowStock(row) {
+  const raw = row?.code
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null
+  const s = String(raw).trim()
+  const m = s.match(STOCK_CODE_RE)
+  if (!m) return null
+  const code = m[0]
+  const market = code.startsWith('6')
+    ? 'SH'
+    : code.startsWith('4') || code.startsWith('8')
+      ? 'BJ'
+      : 'SZ'
+  return { code, name: row.name || code, market }
+}
+function rowClickable(row) {
+  return !!rowStock(row)
+}
+function openRowInEasytdx(row) {
+  const s = rowStock(row)
+  if (!s) return
+  // 与智能选股「看行情」相同的交接机制：easy-tdx 挂载时消费 pendingStock
+  try {
+    localStorage.setItem('finfeed.easytdx.pendingStock', JSON.stringify(s))
+  } catch { /* 存储不可用时仍跳转，模块内可手动搜索 */ }
+  router.push('/easytdx')
 }
 
 const sentimentKeys = computed(() =>
@@ -158,6 +283,10 @@ const actionProgress = ref({})
 // 终态/失败结果：{ key: { status, message, result, started } } 一次性展示
 const actionResults = ref({})
 let pollTimer = null
+// 轮询健壮性：连续失败/任务失联计数 + 启动时间（用于超时释放，防止按钮永久锁死）
+let pollMissCount = 0
+let pollStartedAt = 0
+const POLL_MAX_MS = 60 * 60 * 1000
 
 async function loadDates() {
   try {
@@ -197,6 +326,7 @@ async function toggleAuto(v) {
 async function load() {
   loading.value = true
   err.value = ''
+  sortKey.value = '' // 换数据源后排序状态失效
   rows.value = []
   summary.value = null
   data.value = null
@@ -234,6 +364,8 @@ async function load() {
 function runAction(a) {
   // 触发新一轮：清掉上一轮结果并立即进入 loading 态，按钮即时反馈
   runningAction.value = a.key
+  pollMissCount = 0
+  pollStartedAt = Date.now()
   actionResults.value = { ...actionResults.value, [a.key]: null }
   actionProgress.value = {
     ...actionProgress.value,
@@ -268,15 +400,42 @@ function stopPolling() {
   }
 }
 
+// 释放 runningAction 并写入一条结果，避免按钮永久锁死
+function releaseRunning(status, message) {
+  const key = runningAction.value
+  if (!key) return
+  runningAction.value = ''
+  actionResults.value = {
+    ...actionResults.value,
+    [key]: { status, message },
+  }
+  stopPolling()
+}
+
 async function pollActions() {
   if (!runningAction.value) return
+  // 硬超时：异常情况下保证 UI 最终可恢复（任务本身可能仍在后台跑）
+  if (pollStartedAt && Date.now() - pollStartedAt > POLL_MAX_MS) {
+    releaseRunning('error', '状态轮询超时（任务可能仍在后台运行），请稍后刷新数据确认结果')
+    return
+  }
   try {
     const r = await api.marketAction({ action: 'status' })
-    if (!r || !r.success) return
+    if (!r || !r.success) {
+      pollMissCount += 1
+      if (pollMissCount >= 10) releaseRunning('error', '任务状态查询连续失败，已解除锁定，请重新执行')
+      return
+    }
     const tasks = r.data || {}
     const key = runningAction.value
     const t = tasks[key]
-    if (!t) return
+    if (!t) {
+      // 任务 key 消失通常是后端重启导致；连续 5 次缺失判定任务失联
+      pollMissCount += 1
+      if (pollMissCount >= 5) releaseRunning('error', '任务状态失联（服务可能已重启），请重新执行')
+      return
+    }
+    pollMissCount = 0
     actionProgress.value = { ...actionProgress.value, [key]: t.progress }
     if (t.status === 'running') return
     // 终态：done / error
@@ -289,7 +448,9 @@ async function pollActions() {
     }
     stopPolling()
   } catch (e) {
-    // 单次拉取失败不打断轮询；连续失败也仅延迟一次，无副作用
+    // 单次拉取失败不打断轮询；连续失败达到阈值后释放 UI
+    pollMissCount += 1
+    if (pollMissCount >= 10) releaseRunning('error', '任务状态查询连续失败，已解除锁定，请重新执行')
   }
 }
 
@@ -487,13 +648,14 @@ onBeforeUnmount(() => {
           <div v-if="summary" class="ff-market-view__summary">
           <div v-for="(v, k) in summary" :key="k" class="ff-kv">
             <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
-            <span class="ff-kv__value">{{ v }}</span>
+            <span class="ff-kv__value ff-num">{{ fmtSummary(k, v) }}</span>
           </div>
         </div>
 
         <AppSkeleton v-if="loading" variant="text" :lines="8" />
         <div v-else-if="err" class="ff-alert ff-alert--danger">
           <AppIcon name="alert-circle" size="md" /> {{ err }}
+          <AppButton variant="ghost" size="sm" icon="refresh" class="ff-market-view__retry" @click="load">重试</AppButton>
         </div>
 
         <!-- 总览 -->
@@ -553,15 +715,31 @@ onBeforeUnmount(() => {
         </AppCard>
       </div>
 
-      <table v-else-if="rows.length" class="ff-table ff-table--sticky">
+      <table v-else-if="rows.length" class="ff-table ff-table--sticky ff-table--zebra">
         <thead>
           <tr>
-            <th v-for="(v, k) in rows[0]" :key="k" class="ff-table__header">{{ header(k) }}</th>
+            <th
+              v-for="(v, k) in rows[0]"
+              :key="k"
+              class="ff-table__header"
+              :class="[cellClass(k, v).includes('is-numeric') && 'is-numeric', 'is-sortable']"
+              @click="toggleSort(k)"
+            >
+              {{ header(k) }}
+              <AppIcon v-if="sortKey === k" :name="sortDir === 1 ? 'chevron-up' : 'chevron-down'" size="xs" />
+            </th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(r, i) in rows" :key="i" class="ff-table__row">
-            <td v-for="(v, k) in r" :key="k" class="ff-table__cell">{{ fmt(k, v) }}</td>
+          <tr
+            v-for="(r, i) in sortedRows"
+            :key="i"
+            class="ff-table__row"
+            :class="{ 'is-clickable': rowClickable(r) }"
+            :title="rowClickable(r) ? '点击在 easy-tdx 中查看该标的' : undefined"
+            @click="rowClickable(r) && openRowInEasytdx(r)"
+          >
+            <td v-for="(v, k) in r" :key="k" class="ff-table__cell" :class="cellClass(k, v)">{{ fmt(k, v) }}</td>
           </tr>
         </tbody>
       </table>
@@ -579,6 +757,19 @@ onBeforeUnmount(() => {
 
 .ff-market-view__toolbar {
   margin-bottom: var(--ff-space-4);
+}
+
+.ff-market-view__retry {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* 可下钻行：鼠标手型 + 代码列主色提示 */
+.ff-table__row.is-clickable {
+  cursor: pointer;
+}
+.ff-table__row.is-clickable .ff-table__cell:first-child {
+  color: var(--ff-text-brand);
 }
 
 .ff-market-view__row {

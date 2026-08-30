@@ -8,6 +8,9 @@ import { useRouter } from 'vue-router'
 import { useAiStore } from '../../store/ai'
 import AppIcon from '../../ui/AppIcon.vue'
 import AppInput from '../../ui/AppInput.vue'
+import AppButton from '../../ui/AppButton.vue'
+import AppSkeleton from '../../ui/AppSkeleton.vue'
+import { toastSuccess, toastError } from '../../composables/useToast'
 
 const router = useRouter()
 const store = useAiStore()
@@ -40,16 +43,20 @@ async function batchDelete() {
   if (!selected.value.size) return
   if (!window.confirm(`删除选中的 ${selected.value.size} 份报告？`)) return
   busy.value = true
-  await store.deleteReports([...selected.value])
+  const n = selected.value.size
+  const ok = await store.deleteReports([...selected.value])
   selected.value.clear()
   busy.value = false
+  if (ok !== false) toastSuccess(`已删除 ${n} 份报告`)
 }
 async function batchPin(pin) {
   if (!selected.value.size) return
   busy.value = true
+  const n = selected.value.size
   await store.pinReports([...selected.value], pin)
   selected.value.clear()
   busy.value = false
+  toastSuccess(pin ? `已置顶 ${n} 份报告` : `已取消置顶 ${n} 份报告`)
 }
 async function togglePin(r) {
   await store.pinReport(r.id, !r.pinned)
@@ -61,8 +68,9 @@ async function askDelete(r) {
 async function retryReport(r) {
   try {
     await store.retryReport(r)
+    toastSuccess('已重新提交生成任务，可在任务中心查看进度')
   } catch (e) {
-    window.alert('重试失败：' + (e.message || e))
+    toastError('重试失败：' + (e.message || e))
   }
 }
 
@@ -97,8 +105,8 @@ onMounted(async () => {
       <span class="rv__count">共 {{ store.reportsTotal }} 份</span>
       <span class="rv__sp"></span>
       <template v-if="selected.size">
-        <button class="rv__btn" :disabled="busy" @click="batchPin(true)">置顶</button>
-        <button class="rv__btn rv__btn--danger" :disabled="busy" @click="batchDelete">删除（{{ selected.size }}）</button>
+        <AppButton size="sm" variant="secondary" :loading="busy" :disabled="busy" @click="batchPin(true)">置顶</AppButton>
+        <AppButton size="sm" variant="danger" :loading="busy" :disabled="busy" @click="batchDelete">删除（{{ selected.size }}）</AppButton>
       </template>
     </div>
 
@@ -146,10 +154,14 @@ onMounted(async () => {
       </table>
     </div>
 
+    <div v-else-if="store.reportsLoading" class="rv__empty">
+      <AppSkeleton variant="text" :lines="6" />
+    </div>
+
     <div v-else class="rv__empty">
       <AppIcon name="file-text" size="xl" />
       <p>{{ q ? '没有匹配的报告' : '还没有研究报告' }}</p>
-      <button v-if="!q" class="rv__empty-btn" @click="router.push('/ai/tasks')">去生成一份</button>
+      <AppButton v-if="!q" variant="primary" icon="zap" @click="router.push('/ai/tasks')">去生成一份</AppButton>
     </div>
   </div>
 </template>

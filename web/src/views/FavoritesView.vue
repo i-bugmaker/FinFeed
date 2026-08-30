@@ -16,6 +16,7 @@ const page = ref(1)
 const pageSize = 30
 const loading = ref(false)
 const finished = ref(false)
+const err = ref('')
 const sentinel = ref(null)
 let observer = null
 
@@ -24,11 +25,15 @@ async function loadFirst() {
   finished.value = false
   list.value = []
   await fetchPage()
+  // 错误态分支不渲染 sentinel；重试成功后需重新挂上观察器，否则无限滚动失效
+  await nextTick()
+  if (observer && sentinel.value) observer.observe(sentinel.value)
 }
 
 async function fetchPage() {
   if (loading.value || finished.value) return
   loading.value = true
+  err.value = ''
   try {
     const res = await api.favorites({
       page: page.value,
@@ -41,7 +46,8 @@ async function fetchPage() {
     if (list.value.length >= total.value || items.length === 0) finished.value = true
     page.value += 1
   } catch (e) {
-    console.error(e)
+    // 明确区分「加载失败」与「暂无收藏」，失败时绝不渲染成空态
+    err.value = e?.message || String(e)
   } finally {
     loading.value = false
   }
@@ -51,6 +57,12 @@ let kwTimer = null
 function onKwInput() {
   if (kwTimer) clearTimeout(kwTimer)
   kwTimer = setTimeout(() => loadFirst(), 350)
+}
+
+// 取消收藏后即时移除卡片（此前星星熄灭但卡片滞留，操作像没生效）
+function onUnfavorited(item) {
+  list.value = list.value.filter((n) => n.id !== item.id)
+  total.value = Math.max(0, total.value - 1)
 }
 
 onMounted(async () => {
@@ -89,7 +101,20 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <template v-if="!loading && list.length === 0">
+    <!-- 首屏加载失败：必须显式报错，禁止伪装成「收藏夹还是空的」 -->
+    <AppCard v-if="err && list.length === 0 && !loading" class="ff-favorites-view__empty-card">
+      <AppEmpty
+        title="收藏加载失败"
+        :description="`网络或服务异常，无法获取收藏列表（${err}）。请重试。`"
+        icon="alert-triangle"
+      >
+        <template #action>
+          <AppButton variant="primary" icon="refresh" @click="loadFirst">重试</AppButton>
+        </template>
+      </AppEmpty>
+    </AppCard>
+
+    <template v-else-if="!loading && list.length === 0">
       <AppCard class="ff-favorites-view__empty-card">
         <AppEmpty
           :title="keyword ? `未找到包含「${keyword}」的收藏` : '收藏夹还是空的'"
@@ -105,10 +130,14 @@ onUnmounted(() => {
 
     <template v-else>
       <div class="ff-favorites-view__list">
-        <NewsCard v-for="item in list" :key="item.id" :item="item" mode="news" />
+        <NewsCard v-for="item in list" :key="item.id" :item="item" mode="news" @fav="onUnfavorited" />
       </div>
       <div ref="sentinel" class="ff-favorites-view__sentinel">
         <AppSkeleton v-if="loading" variant="text" :lines="2" />
+        <template v-else-if="err">
+          <span class="ff-favorites-view__error"><AppIcon name="alert-triangle" size="xs" /> 加载失败：{{ err }}</span>
+          <AppButton variant="ghost" size="sm" icon="refresh" @click="fetchPage">重试</AppButton>
+        </template>
         <span v-else-if="finished" class="ff-text-muted">
           <AppIcon name="check-circle" size="xs" /> 已加载全部 {{ total }} 条收藏
         </span>
@@ -176,5 +205,12 @@ onUnmounted(() => {
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-sm);
   gap: var(--ff-space-2);
+}
+
+.ff-favorites-view__error {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-1);
+  color: var(--ff-danger-text);
 }
 </style>

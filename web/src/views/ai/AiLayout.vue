@@ -4,7 +4,7 @@
  * 顶部：模块页头（状态徽标 + 全局生成按钮）
  * 次导航：工作台 / 分析师 / 报告 / 任务 / 设置 五个子路由 Tab
  */
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAiStore } from '../../store/ai'
 import AppIcon from '../../ui/AppIcon.vue'
@@ -35,6 +35,32 @@ const commandOpen = computed({
   set: (v) => { store.cmdOpen = v },
 })
 function openCmd() { store.cmdOpen = true }
+
+// Ctrl/Cmd+K 唤起命令面板（按钮与帮助卡一直在暗示这个快捷键）
+function onGlobalKey(e) {
+  if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
+    e.preventDefault()
+    store.cmdOpen = !store.cmdOpen
+  }
+}
+onMounted(() => document.addEventListener('keydown', onGlobalKey))
+onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
+
+// 命令面板「生成每日复盘报告」：真实提交生成任务，再跳任务中心查看进度
+async function onGenerate() {
+  try {
+    await store.submitAnalysis({
+      provider_id: store.status?.default_provider?.id,
+      scope: store.config.scope,
+      window: Number(store.config.window) || 24,
+      focus: store.config.focus || '',
+      report_type: 'review',
+    })
+  } catch (e) {
+    // 提交失败也进任务中心——失败原因由任务列表/错误提示呈现
+  }
+  router.push('/ai/tasks')
+}
 </script>
 
 <template>
@@ -81,7 +107,7 @@ function openCmd() { store.cmdOpen = true }
       :reports="store.reports"
       :model-available="store.modelAvailable"
       @close="store.cmdOpen = false"
-      @generate="router.push('/ai/tasks')"
+      @generate="onGenerate"
     />
   </div>
 </template>

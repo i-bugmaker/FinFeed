@@ -17,6 +17,7 @@ export const useAiStore = defineStore('ai', {
     reportsTotal: 0,
     reportsLoading: false,
     tasks: [], // 任务列表
+    tasksLoading: false, // 任务列表加载中（避免首屏闪现「暂无任务」空态）
     sessions: [], // 会话列表
     activeTask: null, // 运行中任务（供工作台进度条）
     pollTimer: null,
@@ -146,6 +147,7 @@ export const useAiStore = defineStore('ai', {
       }
     },
     async loadTasks() {
+      this.tasksLoading = true
       try {
         const r = await api.llm('/tasks', { limit: 20 })
         this.tasks = r.tasks || []
@@ -155,7 +157,10 @@ export const useAiStore = defineStore('ai', {
         if (this.activeTask?.task_id && this.streamTaskId !== this.activeTask.task_id) {
           this.startTaskStream(this.activeTask.task_id)
         }
-      } catch (e) {}
+      } catch (e) {
+      } finally {
+        this.tasksLoading = false
+      }
     },
     async loadSessions() {
       try {

@@ -17,7 +17,7 @@ const tipRef = ref(null)
 const show = ref(false)
 let timer = null
 
-const cls = computed(() => ['ff-tip', `ff-tip--${props.placement}`])
+const cls = computed(() => ['ff-tip', 'ff-tip--floating', `ff-tip--${props.placement}`])
 
 function enter() {
   clearTimeout(timer)
@@ -86,5 +86,24 @@ onUnmounted(() => clearTimeout(timer))
 <style scoped>
 .ff-tip__trigger {
   display: inline-flex;
+}
+
+/*
+ * Teleport 到 body 的浮动气泡：全局 .ff-tip 是为纯 CSS（data-tip::after）
+ * 变体定义的 position: relative，这里必须显式覆盖为 absolute 并自带气泡外观。
+ */
+.ff-tip--floating {
+  position: absolute;
+  z-index: var(--ff-z-tooltip);
+  padding: var(--ff-space-1-5) var(--ff-space-2-5);
+  background: var(--ff-bg-inverse);
+  color: var(--ff-text-inverse);
+  font-size: var(--ff-fs-caption);
+  font-weight: var(--ff-fw-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+  border-radius: var(--ff-radius-sm);
+  box-shadow: var(--ff-shadow-md);
+  pointer-events: none;
 }
 </style>

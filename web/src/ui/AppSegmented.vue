@@ -29,8 +29,8 @@ function select(v) {
       type="button"
       class="ff-segmented__item"
       :class="[
-        modelValue === opt.value && 'ff-segmented__item--active',
-        opt.disabled && 'ff-segmented__item--disabled',
+        modelValue === opt.value && 'is-active',
+        opt.disabled && 'is-disabled',
       ]"
       role="tab"
       :aria-selected="modelValue === opt.value"

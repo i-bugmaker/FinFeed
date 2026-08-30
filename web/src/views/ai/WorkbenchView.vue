@@ -7,6 +7,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAiStore } from '../../store/ai'
 import AppIcon from '../../ui/AppIcon.vue'
+import AppButton from '../../ui/AppButton.vue'
+import AppSkeleton from '../../ui/AppSkeleton.vue'
 import TaskProgress from '../../components/ai/TaskProgress.vue'
 import OnboardWizard from '../../components/ai/OnboardWizard.vue'
 
@@ -146,7 +148,7 @@ onBeforeUnmount(() => store.stopPolling())
         <b>尚未配置可用的大语言模型</b>
         <span>配置后即可生成每日复盘报告与 AI 分析</span>
       </div>
-      <button class="wb__banner-btn" @click="showWizard = true">立即配置</button>
+      <AppButton variant="secondary" size="sm" icon="settings" @click="showWizard = true">立即配置</AppButton>
     </div>
 
     <!-- 生成面板：报告类型 + 特别关注 + 数据预估 + 一键生成 -->
@@ -168,9 +170,15 @@ onBeforeUnmount(() => store.stopPolling())
         placeholder="输入股票代码，如 600519"
         @keydown.enter="generate"
       />
-      <button class="wb__gen-btn" :disabled="generating || !store.modelAvailable" @click="generate">
-        <AppIcon name="zap" size="sm" /> {{ generating ? '提交中…' : '生成' + activeType.label }}
-      </button>
+      <AppButton
+        variant="primary"
+        icon="zap"
+        :loading="generating"
+        :disabled="generating || !store.modelAvailable"
+        @click="generate"
+      >
+        {{ generating ? '提交中…' : '生成' + activeType.label }}
+      </AppButton>
       <span v-if="estText" class="wb__gen-est">{{ estText }}</span>
     </div>
 
@@ -193,7 +201,7 @@ onBeforeUnmount(() => store.stopPolling())
       <div class="wb__kpi">
         <div class="wb__kpi-label">运行中任务</div>
         <div class="wb__kpi-num">{{ store.runningTasks.length }}<small> 个</small></div>
-        <div class="wb__kpi-sub">{{ activeTask ? '预计 ' + Math.max(10, Math.round((activeTask.progress || 10) / 10) * 10) + 's 完成' : '当前空闲' }}</div>
+        <div class="wb__kpi-sub">{{ activeTask ? '执行中 ' + (activeTask.progress || 0) + '%' : '当前空闲' }}</div>
       </div>
       <div class="wb__kpi">
         <div class="wb__kpi-label">默认模型</div>
@@ -224,7 +232,10 @@ onBeforeUnmount(() => store.stopPolling())
           <h3 class="wb__card-title">最近报告</h3>
           <button class="wb__card-more" @click="router.push('/ai/reports')">全部 →</button>
         </div>
-        <div v-if="store.reports.length" class="wb__list">
+        <div v-if="store.reportsLoading" class="wb__list">
+          <AppSkeleton variant="text" :lines="4" />
+        </div>
+        <div v-else-if="store.reports.length" class="wb__list">
           <div
             v-for="r in store.reports"
             :key="r.id"
@@ -240,10 +251,10 @@ onBeforeUnmount(() => store.stopPolling())
             <AppIcon name="chevron-right" size="sm" class="wb__report-arrow" />
           </div>
         </div>
-        <div v-else class="wb__empty">
+        <div v-else-if="!store.reportsLoading" class="wb__empty">
           <AppIcon name="file-text" size="xl" />
           <p>还没有研究报告</p>
-          <button class="wb__empty-btn" @click="generate">生成第一份复盘</button>
+          <AppButton variant="primary" icon="zap" @click="generate">生成第一份复盘</AppButton>
         </div>
       </div>
 
@@ -257,7 +268,7 @@ onBeforeUnmount(() => store.stopPolling())
           <div class="wb__card-head"><h3 class="wb__card-title">快捷帮助</h3></div>
           <ul class="wb__help">
             <li><span class="kbd">Ctrl</span>+<span class="kbd">K</span> 命令面板</li>
-            <li><span class="kbd">Ctrl</span>+<span class="kbd">↵</span> 发送消息</li>
+            <li><span class="kbd">Enter</span> 发送 / <span class="kbd">Shift</span>+<span class="kbd">Enter</span> 换行</li>
             <li>输入 <code>@标的</code> 引用证券</li>
             <li>输入 <code>/复盘</code> 快速生成</li>
           </ul>
@@ -284,15 +295,11 @@ onBeforeUnmount(() => store.stopPolling())
 .wb__gen-type.on { background: var(--ff-bg-surface); color: var(--ff-brand-dark); box-shadow: 0 1px 4px rgba(16, 40, 30, 0.12); }
 .wb__gen-stock { height: 34px; width: 210px; border: 1px solid var(--ff-border); border-radius: 9px; padding: 0 12px; font-size: 13px; outline: none; background: var(--ff-bg-surface); color: var(--ff-text-primary); }
 .wb__gen-stock:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px var(--ff-focus-ring); }
-.wb__gen-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border: none; border-radius: 9px; background: var(--ff-brand); color: var(--ff-bg-surface); font-size: 13px; font-weight: 600; cursor: pointer; }
-.wb__gen-btn:hover { background: var(--ff-brand-dark); }
-.wb__gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .wb__gen-est { font-size: 11.5px; color: var(--ff-text-3); }
 .wb__banner { display: flex; align-items: center; gap: 12px; background: #fef7e6; border: 1px solid #f5d9a0; border-radius: 12px; padding: 13px 16px; color: #b45309; }
 .wb__banner-text { display: flex; flex-direction: column; gap: 1px; font-size: 13px; flex: 1; }
 .wb__banner-text b { font-size: 14px; }
 .wb__banner-text span { color: #92400e; opacity: 0.85; }
-.wb__banner-btn { height: 30px; padding: 0 14px; border-radius: 8px; border: none; background: #d97706; color: var(--ff-bg-surface); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .wb__actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .wb__act { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 13px; padding: 14px 16px; cursor: pointer; text-align: left; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); }
 .wb__act:hover { border-color: var(--ff-border-brand); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16, 40, 30, 0.08); }
@@ -327,7 +334,6 @@ onBeforeUnmount(() => store.stopPolling())
 .wb__report-arrow { color: var(--ff-text-3); }
 .wb__empty { text-align: center; padding: 26px 10px; color: var(--ff-text-3); }
 .wb__empty p { font-size: 13px; margin: 8px 0 12px; }
-.wb__empty-btn { border: none; background: var(--ff-brand); color: var(--ff-bg-surface); border-radius: 9px; padding: 8px 16px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .wb__insight { font-size: 13px; line-height: 1.7; color: var(--ff-text-secondary); }
 .wb__insight-link { border: none; background: none; color: var(--ff-brand); font-size: 12.5px; font-weight: 600; cursor: pointer; margin-top: 6px; }
 .wb__help { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--ff-text-secondary); }

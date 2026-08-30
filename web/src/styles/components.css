@@ -1012,7 +1012,8 @@
   color: var(--ff-brand-text);
   font-weight: var(--ff-fw-semibold);
 }
-.ff-menu__item:disabled {
+.ff-menu__item:disabled,
+.ff-menu__item.is-disabled {
   color: var(--ff-text-disabled);
   pointer-events: none;
 }
@@ -1570,6 +1571,11 @@
 /* ══════════════════════════════════════════════════════════════════════════
    11. 弹窗 · Modal / Drawer
    ═══════════════════════════════════════════════════════════════════════ */
+/* 弹层打开时锁定背景滚动（AppModal/AppDrawer 会往 body 挂对应类） */
+body.ff-modal-open,
+body.ff-drawer-open {
+  overflow: hidden;
+}
 .ff-overlay {
   position: fixed;
   inset: 0;
@@ -1678,6 +1684,13 @@
   display: flex;
   flex-direction: column;
 }
+/* 右侧抽屉：AppDrawer placement="right" */
+.ff-drawer--right {
+  left: auto;
+  right: 0;
+  border-right: none;
+  border-left: 1px solid var(--ff-border);
+}
 .ff-drawer-enter-active,
 .ff-drawer-leave-active {
   transition: transform var(--ff-dur-slow) var(--ff-ease-standard);
@@ -1685,6 +1698,15 @@
 .ff-drawer-enter-from,
 .ff-drawer-leave-to {
   transform: translateX(-100%);
+}
+/* 右侧抽屉的进出场（AppDrawer placement="right" 使用 name="ff-drawer-right"） */
+.ff-drawer-right-enter-active,
+.ff-drawer-right-leave-active {
+  transition: transform var(--ff-dur-slow) var(--ff-ease-standard);
+}
+.ff-drawer-right-enter-from,
+.ff-drawer-right-leave-to {
+  transform: translateX(100%);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

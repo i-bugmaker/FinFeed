@@ -360,7 +360,9 @@ async function saveNote() {
 }
 
 async function removeStock(code) {
-  // 直接删除，无确认弹窗
+  // 删除不可恢复（监控及其聚合舆情一并消失），必须二次确认
+  const name = stocks.value.find((s) => s.code === code)?.name || code
+  if (!window.confirm(`确认删除对「${name}（${code}）」的监控吗？该操作不可恢复。`)) return
   try {
     await stockMonitorApi.deleteStock(code)
     delete groups.value[code]
@@ -372,6 +374,7 @@ async function removeStock(code) {
     connectFeedResubscribe()
   } catch (e) {
     console.error(e)
+    window.alert('删除失败：' + (e.message || e))
   }
 }
 

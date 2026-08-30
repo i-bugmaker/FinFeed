@@ -91,8 +91,10 @@ const html = computed(() => {
     const h = line.match(/^(#{1,4})\s+(.*)$/)
     if (h) {
       flushList()
-      const lvl = h[1].length + 1
-      const tag = lvl === 2 ? 2 : lvl === 3 ? 3 : lvl === 4 ? 4 : 2
+      // # 与 ## 同级渲染为 h2；## 是报告目录级（带 data-anchor 供 TOC 跳转/高亮），
+      // ### / #### 依次降级为 h3 / h4（此前 #### 被错误升级为 h2）
+      const n = h[1].length
+      const tag = n === 1 ? 2 : n
       const anchor = encodeURIComponent(h[2].trim())
       out.push(
         `<h${tag}${tag === 2 ? ` data-anchor="${anchor}"` : ''}>${inline(h[2])}</h${tag}>`

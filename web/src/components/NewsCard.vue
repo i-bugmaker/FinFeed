@@ -10,6 +10,7 @@ const props = defineProps({
   item: { type: Object, required: true },
   mode: { type: String, default: 'news' }, // 'news' | 'sentiment'
 })
+const emit = defineEmits(['fav']) // 取消收藏时通知父页（收藏列表需即时移除卡片）
 const store = useAppStore()
 const router = useRouter()
 const copied = ref(false)
@@ -32,6 +33,7 @@ async function toggleFav() {
   try {
     const res = await api.toggleFavorite(props.item.id)
     props.item.is_favorite = res.is_favorite
+    if (!res.is_favorite) emit('fav', props.item)
   } catch (e) {
     /* ignore */
   }

@@ -10,7 +10,9 @@ import { api } from '../../api/client'
 import AppIcon from '../../ui/AppIcon.vue'
 import AppInput from '../../ui/AppInput.vue'
 import AppSelect from '../../ui/AppSelect.vue'
+import AppButton from '../../ui/AppButton.vue'
 import OnboardWizard from '../../components/ai/OnboardWizard.vue'
+import { toastSuccess, toastError } from '../../composables/useToast'
 
 const store = useAiStore()
 
@@ -139,6 +141,7 @@ function resetAllPrompts() {
 }
 
 const saveMsg = ref('')
+let promptsLoadFailed = false
 async function loadPrompts() {
   try {
     const p = await api.llm('/prompts')
@@ -149,18 +152,34 @@ async function loadPrompts() {
       const saved = custom[k]
       prompts.value[k] = saved != null && saved !== '' ? saved : defaults[k] || ''
     }
-  } catch (e) {}
+    promptsLoadFailed = false
+  } catch (e) {
+    // 加载失败必须阻断保存：空表单全量提交会把服务端自定义模板覆盖为空
+    promptsLoadFailed = true
+    toastError('Prompt 模板加载失败，为避免覆盖已有配置已禁止保存，请刷新重试')
+  }
 }
 async function savePrompts() {
+  if (promptsLoadFailed) {
+    toastError('模板未加载完成，已阻止保存以保护服务端配置，请刷新页面后重试')
+    return
+  }
   saveMsg.value = ''
   try {
     const payload = {}
     for (const k of Object.keys(prompts.value)) payload['prompt_' + k] = prompts.value[k]
     const r = await api.llmPost('/prompts', payload)
-    saveMsg.value = r && r.success ? 'Prompt 已保存' : '保存失败'
+    if (r && r.success) {
+      saveMsg.value = 'Prompt 已保存'
+      toastSuccess('Prompt 模板已保存')
+    } else {
+      saveMsg.value = '保存失败'
+      toastError('Prompt 保存失败')
+    }
     setTimeout(() => (saveMsg.value = ''), 3000)
   } catch (e) {
     saveMsg.value = '保存失败：' + e.message
+    toastError('Prompt 保存失败：' + e.message)
   }
 }
 
@@ -185,16 +204,16 @@ function saveDefaults() {
     focus: defaults.value.focus || '',
     report_type: defaults.value.report_type || 'review',
   })
-  window.alert('默认值已保存（服务端持久化），生成报告时将使用该范围与窗口')
+  toastSuccess('默认值已保存（服务端持久化），生成报告时将使用该范围与窗口')
 }
 
-onMounted(() => {
+onMounted(async () => {
   store.loadProviders()
   store.loadStatus()
   store.loadInit()
   loadPrompts()
-  // 恢复默认值（服务端优先，localStorage 兜底，与 store 单一数据源同步）
-  store.loadConfig()
+  // 恢复默认值：先等服务端配置回填完成再读，避免拿到 localStorage 旧值
+  await store.loadConfig()
   defaults.value.scope = store.config.scope
   defaults.value.window = store.config.window
   defaults.value.focus = store.config.focus
@@ -225,7 +244,7 @@ onMounted(() => {
         <div v-if="section === 'models'" class="sv__panel">
           <div class="sv__head">
             <h3 class="sv__h3">模型管理</h3>
-            <button class="sv__add" @click="openAdd"><AppIcon name="plus" size="sm" /> 添加模型</button>
+            <AppButton variant="primary" size="sm" icon="plus" @click="openAdd">添加模型</AppButton>
           </div>
           <div v-if="autoTesting" class="sv__autotest">
             <span class="sv__autotest-spin"></span>
@@ -255,7 +274,7 @@ onMounted(() => {
           <div v-else class="sv__empty">
             <AppIcon name="cpu" size="xl" />
             <p>还没有配置任何模型</p>
-            <button class="sv__add" @click="openAdd">添加第一个模型</button>
+            <AppButton variant="primary" size="sm" icon="plus" @click="openAdd">添加第一个模型</AppButton>
           </div>
 
           <!-- 模型配置弹窗（与工作台一致的交互） -->
@@ -334,8 +353,8 @@ onMounted(() => {
                   <span v-if="dirtyCount" class="sv__pbar-state warn">有 {{ dirtyCount }} 个模板已修改，尚未保存</span>
                   <span v-else class="sv__pbar-state">所有模板均为默认内容</span>
                   <div class="sv__pbar-actions">
-                    <button class="sv__btn" @click="resetAllPrompts">全部恢复默认</button>
-                    <button class="sv__add" @click="savePrompts"><AppIcon name="save" size="sm" /> 保存模板</button>
+                    <AppButton variant="ghost" size="sm" @click="resetAllPrompts">全部恢复默认</AppButton>
+                    <AppButton variant="primary" size="sm" icon="save" @click="savePrompts">保存模板</AppButton>
                   </div>
                 </div>
               </div>
@@ -351,7 +370,7 @@ onMounted(() => {
             <AppSelect v-model="defaults.scope" label="默认分析范围" :options="scopeOptions" />
             <AppSelect v-model="defaults.window" label="默认时间窗口" :options="windowOptions" />
             <AppInput v-model="defaults.focus" label="自定义焦点（可选）" placeholder="如：重点关注半导体与新能源" />
-            <button class="sv__btn sv__btn--primary" style="align-self:flex-start" @click="saveDefaults">保存默认值</button>
+            <AppButton variant="primary" style="align-self:flex-start" icon="save" @click="saveDefaults">保存默认值</AppButton>
           </div>
         </div>
       </div>

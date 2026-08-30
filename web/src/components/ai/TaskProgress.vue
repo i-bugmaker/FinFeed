@@ -45,7 +45,8 @@ const statusMeta = computed(() => {
 const pct = computed(() => {
   const t = props.task
   if (!t) return 0
-  if (t.status === 'success' || t.status === 'failed' || t.status === 'cancelled') return 100
+  if (t.status === 'failed' || t.status === 'cancelled') return 0 // 失败/取消不再显示满进度
+  if (t.status === 'success') return 100
   const base = (stageIndex.value / (STAGES.length - 1)) * 100
   return Math.max(1, Math.min(99, Math.round(base + (t.progress || 0) * 0.4)))
 })

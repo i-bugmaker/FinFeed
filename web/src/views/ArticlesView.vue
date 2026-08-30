@@ -28,7 +28,7 @@ async function loadFirst() {
   page.value = 1
   finished.value = false
   err.value = ''
-list.value = []
+  list.value = []
   await fetchPage()
 }
 
@@ -171,6 +171,10 @@ onUnmounted(() => {
 
     <div ref="sentinel" class="ff-articles-view__sentinel">
       <AppSkeleton v-if="loading" variant="text" :lines="2" />
+      <template v-else-if="err && list.length > 0">
+        <span class="ff-articles-view__load-error"><AppIcon name="alert-triangle" size="xs" /> 加载失败：{{ err }}</span>
+        <AppButton variant="ghost" size="sm" icon="refresh" @click="fetchPage">重试</AppButton>
+      </template>
       <span v-else-if="finished && list.length > 0" class="ff-text-muted">
         <AppIcon name="check-circle" size="xs" /> 已加载全部 {{ total }} 条
       </span>
@@ -251,5 +255,19 @@ onUnmounted(() => {
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-sm);
   gap: var(--ff-space-2);
+}
+
+.ff-articles-view__load-error {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-1);
+  color: var(--ff-danger-text);
+}
+
+@media (max-width: 640px) {
+  /* 固定列宽表格在窄屏放不下：允许横向滑动，避免标题列被裁切 */
+  .ff-articles-view__table {
+    overflow-x: auto;
+  }
 }
 </style>
