@@ -438,7 +438,6 @@ onMounted(load)
    （选择器带 .lu-sum__tier 提升优先级，避免被后方基础规则覆盖） */
 .lu-sum__tier .lu-sum__card--down {
   background: linear-gradient(180deg, var(--ff-down-subtle), var(--ff-bg-surface) 68%);
-  border-color: var(--ff-down-border);
 }
 .lu-sum__tier .lu-sum__card--down .lu-sum__card-price {
   color: var(--ff-down-text);
@@ -469,15 +468,14 @@ onMounted(load)
      使晋级 / 断板 / 连跌卡片落在同一尺寸上，梯队之间不再参差 */
   min-height: 196px;
   padding: 13px 14px 12px;
+  /* 扁平卡片：细边框 + 纯色底，不使用阴影／光晕 */
   border: 1px solid var(--ff-border-subtle);
   border-radius: 12px;
   background: var(--ff-bg-surface);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   overflow: hidden;
   cursor: default;
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
     border-color var(--ff-dur-fast) var(--ff-ease-standard),
-    box-shadow var(--ff-dur-base) var(--ff-ease-standard),
     transform var(--ff-dur-base) var(--ff-ease-standard),
     opacity var(--ff-dur-fast) var(--ff-ease-standard);
 }
@@ -502,18 +500,15 @@ onMounted(load)
   background: linear-gradient(90deg, var(--ff-down), var(--ff-down-strong));
 }
 
-/* 高板卡片：浅红渐变底 + 品牌色描边，视觉权重高于普通晋级卡 */
+/* 高板卡片：仅用浅红渐变底提高权重，不加彩色描边／光晕 */
 .lu-sum__tier.is-hot .lu-sum__card {
   background: linear-gradient(180deg, var(--ff-up-subtle), var(--ff-bg-surface) 72%);
-  border-color: var(--ff-up-border);
 }
+/* hover：只做边框加深 + 轻微上浮，不做阴影扩散 */
 .lu-sum__card:hover {
   border-color: var(--ff-border-strong);
-  box-shadow: 0 6px 16px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(15, 23, 42, 0.06);
-  transform: translateY(-2px);
-}
-.lu-sum__card:hover::before {
-  opacity: 1;
+  background: var(--ff-bg-hover);
+  transform: translateY(-1px);
 }
 
 /* 卡片头：股票名称 + 代码（连板高度由梯队头部标注，卡片不重复） */
