@@ -697,12 +697,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ff-market-view {
+  width: 100%;
   max-width: var(--ff-container-max);
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+  min-height: 100%;
 }
 
 .ff-market-view__toolbar {
-  margin-bottom: var(--ff-space-4);
   /* .ff-glass 的 backdrop-filter 会创建独立 stacking context，
      否则 .ff-datepicker 的 z-index 仅作用于该 context 内，被同级 AppTabs
      按 DOM 顺序覆盖（总览/市场情绪/... 横穿日历浮层）。
@@ -746,8 +750,8 @@ onBeforeUnmount(() => {
 
 /* ---------------- 后台自动采集状态行（默认常开、不可关闭，仅做信息展示） ---------------- */
 .ff-market-view__autocollect {
-  margin-top: var(--ff-space-2);
-  padding-top: var(--ff-space-2);
+  margin-top: var(--ff-space-1-5);
+  padding-top: var(--ff-space-1-5);
   border-top: 1px dashed var(--ff-border-subtle);
   display: flex;
   align-items: center;
@@ -800,12 +804,12 @@ onBeforeUnmount(() => {
 
 /* ---------------- 进度区（单条当前进度 + 紧凑历史） ---------------- */
 .ff-market-view__progress {
-  margin-top: var(--ff-space-3);
-  padding-top: var(--ff-space-3);
+  margin-top: var(--ff-space-2);
+  padding-top: var(--ff-space-2);
   border-top: 1px dashed var(--ff-border-subtle);
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-3);
+  gap: var(--ff-space-2);
 }
 .ff-market-view__progress-current {
   display: flex;
@@ -918,6 +922,21 @@ onBeforeUnmount(() => {
 
 .ff-market-view__panel {
   overflow-x: auto;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ff-market-view__panel > :deep(.ff-card__body) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ff-market-view__panel :deep(.ff-empty-state) {
+  padding: var(--ff-space-8) 0;
 }
 
 .ff-market-view__summary {
