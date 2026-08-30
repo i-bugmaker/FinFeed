@@ -15,6 +15,7 @@ const ScreenerView = () => import('../views/ScreenerView.vue')
 const StockMonitorView = () => import('../views/StockMonitorView.vue')
 const LimitUpLadderView = () => import('../views/LimitUpLadderView.vue')
 const NotificationSettingsView = () => import('../views/NotificationSettingsView.vue')
+const MarketHotView = () => import('../views/MarketHotView.vue')
 
 // AI 分析模块（v2.0 重构）：/ai 为布局容器，五个子路由对应
 // 工作台 / 分析师 / 研究报告 / 任务中心 / 设置
@@ -55,6 +56,7 @@ const routes = [
   { path: '/screener', name: 'screener', component: ScreenerView, meta: { title: '智能选股' } },
   { path: '/stock-monitor', name: 'stock-monitor', component: StockMonitorView, meta: { title: '股票监控' } },
   { path: '/limitup-ladder', name: 'limitup-ladder', component: LimitUpLadderView, meta: { title: '连板天地' } },
+  { path: '/market-hot', name: 'market-hot', component: MarketHotView, meta: { title: '市场热榜' } },
   { path: '/notifications', name: 'notifications', component: NotificationSettingsView, meta: { title: '通知设置' } },
   { path: '/styleguide', name: 'styleguide', component: StyleGuideView, meta: { title: '设计规范' } },
 ]

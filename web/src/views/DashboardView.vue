@@ -4,13 +4,14 @@
  *
  * 视觉层级（单列卡片流，统一间距，无独立区块标题）：
  *   1) 顶部工具条：更新时间 + 实时推送状态 + 刷新（轻量，无卡片框）
- *   2) 今日市场速览：单卡 6 格指标（涨停/跌停/炸板/炸板率/封板率/最高连板）
- *   3) 涨跌全景：市场宽度 + 连板概览（完整天梯见「连板天地」模块 /limitup-ladder）
- *   4) 板块排行榜 / 个股榜单（双列）
- *   5) 指数 K 线：上证 / 深证（双列）
- *   6) 市场热榜
- *   7) 新闻舆情分析（可折叠辅助区）
- *   8) 数据源健康状态
+ *   2) 涨跌全景：涨跌停 4 指标 + 市场宽度（衍生率 炸板率/封板率 已并入 tooltip/副信息）
+ *   3) 板块排行榜 / 个股榜单（双列）
+ *   4) 指数 K 线：上证 / 深证（双列）
+ *   5) 新闻舆情分析（可折叠辅助区）
+ *   6) 数据源健康状态
+ *
+ * 「今日市场速览」6 格独立条已并入涨跌全景卡片顶部；
+ * 「市场热榜」已拆为独立模块（/market-hot），从仪表盘移至行情与量化分组。
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api/client'
@@ -23,16 +24,11 @@ import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 import IndexKlineCard from '../components/IndexKlineCard.vue'
-import { useMarketSocket } from '../composables/useMarketSocket'
 
 // ─── 盘面复盘卡片（easy-tdx 行情） ───
 import MarketOverviewCard from '../components/review/MarketOverviewCard.vue'
-import LimitUpMiniCard from '../components/review/LimitUpMiniCard.vue'
 import BoardRankingCard from '../components/review/BoardRankingCard.vue'
 import StockRankingCard from '../components/review/StockRankingCard.vue'
-
-// ─── 市场热榜（同花顺用户关注榜） ───
-import ThsHotList from '../components/ThsHotList.vue'
 
 const store = useAppStore()
 const stats = ref(null)
@@ -41,31 +37,25 @@ const hasStats = computed(
   () => !!stats.value && ((stats.value?.cycle ?? 0) > 0 || !!stats.value?.sentiment_stats),
 )
 
-// ─── 今日市场速览（涨停聚焦指标，60s 后端缓存，与复盘卡同源） ───
+// ─── 涨跌停 4 指标（涨停聚焦，与涨跌全景合并显示） ───
 const luFlow = ref(null)
-const flowLoading = ref(true)
 const flowMetrics = computed(() => {
   const f = luFlow.value
   if (!f) return []
-  const m = f.metrics || {}
-  const rate = (v) => (v == null ? '—' : (Number(v) * 100).toFixed(1) + '%')
   return [
     { label: '涨停', value: f.up ?? '—', tone: 'up', note: '今日封板个股数' },
     { label: '跌停', value: f.lower ?? '—', tone: 'down', note: '今日封跌个股数' },
     { label: '炸板', value: f.open ?? '—', tone: 'warn', note: '封板后开板' },
-    { label: '炸板率', value: rate(m.broken_rate), tone: '', note: '炸板 / (涨停+炸板)' },
-    { label: '封板率', value: rate(m.seal_rate), tone: '', note: '涨停 / (涨停+炸板)' },
-    { label: '最高连板', value: f.maxHeight ? f.maxHeight + ' 板' : '—', tone: 'hot', note: '市场连板高度' },
+    {
+      label: '最高连板',
+      value: f.maxHeight ? f.maxHeight + ' 板' : '—',
+      tone: 'hot',
+      note: '市场连板高度（封板率/炸板率等衍生指标见「连板天地」/limitup-ladder）',
+    },
   ]
 })
 
-/** 梯队个股求和：ladder 载荷结构为 [{ height, number, stocks }] */
-function sumStocks(list) {
-  return (list || []).reduce((n, t) => n + ((t && t.stocks ? t.stocks.length : 0) || 0), 0)
-}
-
 async function fetchFlow() {
-  flowLoading.value = true
   try {
     const [intensityRes, ladderRes] = await Promise.all([
       api.market('thslimitup', { section: 'intensity' }),
@@ -77,18 +67,10 @@ async function fetchFlow() {
       up: la && la.tdx_up_total != null ? la.tdx_up_total : (it ? it.up_total : null),
       open: it ? it.open_total : null,
       lower: la && la.tdx_down_total != null ? la.tdx_down_total : (it ? it.lower_total : null),
-      metrics: it ? (it.metrics || {}) : {},
       maxHeight: la ? la.max_height : 0,
-      // 连板概览：完整天梯已独立为「连板天地」模块（/limitup-ladder），
-      // 此处只保留汇总数字 + 跳转入口，不重复渲染梯队列表
-      advance: sumStocks(la && la.ladder),
-      broken: sumStocks(la && la.broken_ladder),
-      downStreak: sumStocks(la && la.down_ladder),
     }
   } catch (e) {
-    console.error('今日市场速览获取失败', e)
-  } finally {
-    flowLoading.value = false
+    console.error('涨跌停指标获取失败', e)
   }
 }
 
@@ -353,16 +335,6 @@ onUnmounted(() => {
 // 统计更新时间提示
 const updateTime = computed(() => stats.value?.update_time || '')
 
-// ─── 实时行情推送（WebSocket）：仅保留头部连接状态指示灯 ───
-const {
-  connected: liveConnected,
-  connecting: liveConnecting,
-} = useMarketSocket({ autoConnect: true })
-
-const liveConnText = computed(() =>
-  liveConnected.value ? '推送已连接' : liveConnecting.value ? '连接中…' : '已断开（自动重连）',
-)
-
 onMounted(async () => {
   try {
     const [statsRes] = await Promise.all([api.stats(), fetchFlow()])
@@ -384,13 +356,6 @@ onMounted(async () => {
       <span v-if="updateTime" class="ff-dashboard-view__updated">
         <AppIcon name="clock" size="xs" /> 更新于 {{ updateTime }}
       </span>
-      <span
-        class="ff-dashboard-view__live-badge"
-        :class="liveConnected ? 'is-on' : liveConnecting ? 'is-wait' : 'is-off'"
-      >
-        <span class="ff-dashboard-view__live-dot"></span>
-        {{ liveConnText }}
-      </span>
       <span class="ff-dashboard-view__topbar-spacer"></span>
       <AppButton
         variant="tonal"
@@ -403,32 +368,22 @@ onMounted(async () => {
       </AppButton>
     </header>
 
-    <!-- ═══ 今日市场速览：单卡 6 格 ═══ -->
-    <section v-if="flowMetrics.length" class="ff-card ff-dashboard-view__flow">
-      <div
-        v-for="m in flowMetrics"
-        :key="m.label"
-        class="ff-dashboard-view__flow-cell"
-        :class="m.tone ? 'is-' + m.tone : ''"
-        :title="m.note"
-      >
-        <span class="ff-dashboard-view__flow-label">{{ m.label }}</span>
-        <span class="ff-dashboard-view__flow-value ff-num">{{ m.value }}</span>
-      </div>
-    </section>
-
-    <!-- ═══ 涨跌全景：市场宽度 + 连板概览（完整天梯已独立为「连板天地」模块） ═══ -->
-    <AppCard title="涨跌全景" subtitle="市场宽度 · 连板概览">
+    <!-- ═══ 涨跌全景：涨跌停 4 指标 + 市场宽度（连板梯队见「连板天地」/limitup-ladder） ═══ -->
+    <AppCard title="涨跌全景" subtitle="涨跌停 · 市场宽度">
       <div class="ff-dashboard-view__panorama">
+        <div v-if="flowMetrics.length" class="ff-dashboard-view__panorama-top">
+          <div
+            v-for="m in flowMetrics"
+            :key="m.label"
+            class="ff-dashboard-view__panorama-cell"
+            :class="m.tone ? 'is-' + m.tone : ''"
+            :title="m.note"
+          >
+            <span class="ff-dashboard-view__panorama-label">{{ m.label }}</span>
+            <span class="ff-dashboard-view__panorama-value ff-num">{{ m.value }}</span>
+          </div>
+        </div>
         <MarketOverviewCard :refresh-key="panelRefreshKey" />
-        <div class="ff-dashboard-view__panorama-sep" aria-hidden="true"></div>
-        <LimitUpMiniCard
-          :max-height="luFlow?.maxHeight || 0"
-          :advance="luFlow?.advance || 0"
-          :broken="luFlow?.broken || 0"
-          :down-streak="luFlow?.downStreak || 0"
-          :loading="flowLoading"
-        />
       </div>
     </AppCard>
 
@@ -451,16 +406,6 @@ onMounted(async () => {
         <IndexKlineCard code="399001" name="深证成指" />
       </AppCard>
     </div>
-
-    <!-- ═══ 市场热榜 ═══ -->
-    <AppCard
-      title="市场热榜"
-      subtitle="同花顺用户关注榜 · 实时热度"
-      :no-padding="true"
-      class="ff-dashboard-view__hot-card"
-    >
-      <ThsHotList />
-    </AppCard>
 
     <!-- ═══ 新闻舆情（辅助区，可折叠）═══ -->
     <AppCard title="新闻舆情分析" subtitle="已入库新闻的统计辅助视图">
@@ -585,66 +530,60 @@ onMounted(async () => {
   flex: 1 1 auto;
 }
 
-/* ═══ 今日市场速览：单卡分格 ═══ */
-.ff-dashboard-view__flow {
+/* ═══ 涨跌全景：顶部 4 格涨跌停 + 下方市场宽度（与下方 mo__metric 同款卡片，统一观感） ═══ */
+.ff-dashboard-view__panorama-top {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--ff-space-3) var(--ff-space-2);
-  padding: var(--ff-space-4) var(--ff-space-3);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ff-space-3);
 }
-.ff-dashboard-view__flow-cell {
+.ff-dashboard-view__panorama-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
-  padding: var(--ff-space-1) 0;
+  padding: var(--ff-space-2);
+  border: 1px solid var(--ff-border-subtle);
+  border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-subtle);
 }
-.ff-dashboard-view__flow-label {
+.ff-dashboard-view__panorama-label {
   font-size: var(--ff-fs-caption);
   color: var(--ff-text-tertiary);
   line-height: 1;
   white-space: nowrap;
 }
-.ff-dashboard-view__flow-value {
-  font-size: var(--ff-fs-h2);
+.ff-dashboard-view__panorama-value {
+  font-size: var(--ff-fs-h3);
   font-weight: var(--ff-fw-bold);
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
   color: var(--ff-text-primary);
   white-space: nowrap;
 }
-.ff-dashboard-view__flow-cell.is-up .ff-dashboard-view__flow-value {
+.ff-dashboard-view__panorama-cell.is-up .ff-dashboard-view__panorama-value {
   color: var(--ff-text-up);
 }
-.ff-dashboard-view__flow-cell.is-down .ff-dashboard-view__flow-value {
+.ff-dashboard-view__panorama-cell.is-down .ff-dashboard-view__panorama-value {
   color: var(--ff-down-text);
 }
-.ff-dashboard-view__flow-cell.is-warn .ff-dashboard-view__flow-value {
+.ff-dashboard-view__panorama-cell.is-warn .ff-dashboard-view__panorama-value {
   color: var(--ff-warn-text);
 }
-.ff-dashboard-view__flow-cell.is-hot .ff-dashboard-view__flow-value {
+.ff-dashboard-view__panorama-cell.is-hot .ff-dashboard-view__panorama-value {
   color: #ff2d55;
 }
-@media (min-width: 1024px) {
-  .ff-dashboard-view__flow {
-    grid-template-columns: repeat(6, 1fr);
-    padding: var(--ff-space-4) var(--ff-space-4);
-  }
-  .ff-dashboard-view__flow-cell:not(:first-child) {
-    border-left: 1px solid var(--ff-border-subtle);
+@media (min-width: 768px) {
+  .ff-dashboard-view__panorama-top {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
-/* 涨跌全景：市场宽度 + 连板概览 上下布局（完整天梯见「连板天地」模块） */
+/* 涨跌全景：涨跌停 4 指标 + 市场宽度 上下紧凑布局（连板梯队见「连板天地」/limitup-ladder） */
 .ff-dashboard-view__panorama {
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-4);
-}
-.ff-dashboard-view__panorama-sep {
-  height: 1px;
-  background: var(--ff-border-subtle);
+  gap: var(--ff-space-3);
 }
 
 /* 双列卡片网格（板块/个股、指数 K 线） */
@@ -658,11 +597,6 @@ onMounted(async () => {
   .ff-dashboard-view__grid2 {
     grid-template-columns: repeat(2, 1fr);
   }
-}
-
-/* 市场热榜：ThsHotList 自带「同花顺热榜」标题，嵌入卡片后隐藏，避免重复 */
-.ff-dashboard-view__hot-card :deep(.ths__hero) {
-  display: none;
 }
 
 /* 新闻舆情：图表网格（3 + 2） */
@@ -831,57 +765,5 @@ onMounted(async () => {
   color: var(--ff-text-secondary);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-}
-
-/* 头部实时推送指示灯 */
-.ff-dashboard-view__live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ff-space-1);
-  font-size: var(--ff-fs-caption);
-  font-weight: 500;
-  white-space: nowrap;
-  padding: 3px var(--ff-space-2-5);
-  border-radius: var(--ff-radius-pill);
-  border: 1px solid var(--ff-border);
-  background: var(--ff-bg-subtle);
-  color: var(--ff-text-tertiary);
-}
-.ff-dashboard-view__live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ff-text-tertiary);
-  flex-shrink: 0;
-}
-.ff-dashboard-view__live-badge.is-on {
-  color: var(--ff-down-text);
-  background: var(--ff-down-subtle);
-  border-color: var(--ff-down-border);
-}
-.ff-dashboard-view__live-badge.is-on .ff-dashboard-view__live-dot {
-  background: var(--ff-chart-up);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
-  animation: ff-live-pulse 1.6s ease-in-out infinite;
-}
-.ff-dashboard-view__live-badge.is-wait {
-  color: var(--ff-warn-text);
-  background: var(--ff-warn-subtle);
-  border-color: var(--ff-warn-border);
-}
-.ff-dashboard-view__live-badge.is-wait .ff-dashboard-view__live-dot {
-  background: var(--ff-warn);
-}
-.ff-dashboard-view__live-badge.is-off {
-  color: var(--ff-danger-text);
-  background: var(--ff-danger-subtle);
-  border-color: var(--ff-danger-border);
-}
-.ff-dashboard-view__live-badge.is-off .ff-dashboard-view__live-dot {
-  background: var(--ff-danger);
-}
-@keyframes ff-live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
 }
 </style>

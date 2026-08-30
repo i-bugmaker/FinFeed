@@ -114,7 +114,7 @@ onMounted(load)
 .mo {
   display: flex;
   flex-direction: column;
-  gap: var(--ff-space-4);
+  gap: var(--ff-space-3);
 }
 .mo__load {
   min-height: 120px;
@@ -136,7 +136,7 @@ onMounted(load)
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: var(--ff-space-3);
+  padding: var(--ff-space-2);
   border-radius: var(--ff-radius-md);
   background: var(--ff-bg-subtle);
   border: 1px solid var(--ff-border-subtle);

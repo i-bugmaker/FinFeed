@@ -5,8 +5,8 @@ cd /d "%~dp0.."
 python --version >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo  [ERROR] Python not found, please install Python 3.10+
-    echo  Download: https://www.python.org/downloads/
+    echo  [ERROR] 未检测到 Python，请先安装 Python 3.10+
+    echo  下载地址: https://www.python.org/downloads/
     pause
     exit /b 1
 )
@@ -14,14 +14,14 @@ if errorlevel 1 (
 python -c "import httpx, rich, bs4, fastapi, uvicorn, pydantic" >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo  [INFO] Installing dependencies...
+    echo  [INFO] 正在安装依赖...
     pip install -r "%~dp0..\requirements.txt"
     if errorlevel 1 (
-        echo  [ERROR] Failed to install dependencies
+        echo  [ERROR] 依赖安装失败
         pause
         exit /b 1
     )
-    echo  [OK] Dependencies installed
+    echo  [OK] 依赖安装完成
 )
 
 cls
@@ -43,9 +43,9 @@ popd
 python "%~dp0..\main.py" %*
 if errorlevel 42 (
     echo.
-    echo  [Restart] Restarting FinFeed Monitor ...
+    echo  [重启] 正在重启 FinFeed 监控...
     goto run
 )
 echo.
-echo  [Done] Monitor stopped
+echo  [完成] 监控已停止
 pause
