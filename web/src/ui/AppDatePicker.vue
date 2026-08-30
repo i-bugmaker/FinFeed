@@ -4,6 +4,9 @@
  *
  * 触发器点击后展开自绘月历（月份导航 / 今日高亮 / 选中态 / min-max 禁用），
  * 替代原生 input[type=date]，视觉与设计系统一致。输出 ISO（yyyy-mm-dd）。
+ *
+ * 无头模式：trigger=false 时不渲染输入框，仅保留弹层，由外部通过 openPopup()/
+ * closePopup() 控制（AppDateNav 复用本弹层，保持全站日期选择体验一致）。
  */
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import AppIcon from './AppIcon.vue'
@@ -20,6 +23,8 @@ const props = defineProps({
   clearable: { type: Boolean, default: false },
   min: { type: String, default: '' },
   max: { type: String, default: '' },
+  /** 是否渲染输入框触发器；false = 仅弹层（外部控制开合） */
+  trigger: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -105,8 +110,19 @@ function shiftMonth(n) {
 
 function toggleOpen() {
   if (props.disabled || props.readonly) return
-  open.value = !open.value
-  if (open.value) syncView()
+  if (open.value) closePopup()
+  else openPopup()
+}
+
+/** 外部控制：展开弹层（无头模式 trigger=false 时使用） */
+function openPopup() {
+  if (props.disabled || props.readonly) return
+  syncView()
+  open.value = true
+}
+/** 外部控制：收起弹层 */
+function closePopup() {
+  open.value = false
 }
 
 function selectDay(iso) {
@@ -143,14 +159,14 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onEsc)
 })
 
-defineExpose({ focus: () => {} })
+defineExpose({ focus: () => {}, openPopup, closePopup })
 </script>
 
 <template>
   <div ref="rootEl" :class="fieldCls">
     <label v-if="label" class="ff-field__label">{{ label }}</label>
     <div class="ff-field__control">
-      <div :class="wrapperCls" @click="toggleOpen">
+      <div v-if="trigger" :class="wrapperCls" @click="toggleOpen">
         <span class="ff-date-input__icon">
           <AppIcon name="calendar" size="sm" />
         </span>

@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import { useAutoToday, todayStr } from '../composables/useAutoToday'
 import EmptyState from '../components/EmptyState.vue'
 import AppCard from '../ui/AppCard.vue'
-import AppDatePicker from '../ui/AppDatePicker.vue'
+import AppDateNav from '../ui/AppDateNav.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
 import AppBadge from '../ui/AppBadge.vue'
 import AppIcon from '../ui/AppIcon.vue'
@@ -30,19 +30,6 @@ const typeOptions = [
   { label: '新股申购', value: 'ipo', icon: 'zap' },
   { label: '全球宏观', value: 'global', icon: 'globe' },
 ]
-
-function shiftDate(days) {
-  const d = new Date(date.value || todayStr())
-  d.setDate(d.getDate() + days)
-  const pad = (n) => String(n).padStart(2, '0')
-  date.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  markTouched()
-}
-
-function setToday() {
-  date.value = todayStr()
-  markTouched()
-}
 
 const groups = computed(() => {
   const list =
@@ -109,12 +96,13 @@ onMounted(async () => {
 
     <!-- 日期导航与分类选择 Ribbon -->
     <div class="ff-calendar-view__ribbon ff-glass">
-      <div class="ff-calendar-view__date-nav">
-        <AppButton variant="secondary" size="sm" icon="arrow-left" @click="shiftDate(-1)" title="前一天" />
-        <AppButton variant="secondary" size="sm" @click="setToday" :class="{ 'is-today': date === todayStr() }">今天</AppButton>
-        <AppButton variant="secondary" size="sm" icon="arrow-right" @click="shiftDate(1)" title="后一天" />
-        <AppDatePicker v-model="date" class="ff-calendar-view__datepicker" @change="markTouched" />
-      </div>
+      <!-- 日期切换：与多标的分时对比模块共用同一组件（‹ / 日期 / › / 今 + 月历弹层） -->
+      <AppDateNav
+        v-model="date"
+        allow-future
+        title="财经日历当前展示的日期（支持查看未来事件）"
+        @change="markTouched"
+      />
 
       <div class="ff-calendar-view__type-chips">
         <button
@@ -189,24 +177,6 @@ onMounted(async () => {
   border: 1px solid var(--ff-border);
   margin-bottom: var(--ff-space-4);
   flex-wrap: wrap;
-}
-
-.ff-calendar-view__date-nav {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.ff-calendar-view__datepicker {
-  width: 190px;
-}
-
-/* 「今天」按钮选中态：当前日期为今天时高亮，切换日期后高亮消失 */
-.ff-calendar-view__date-nav :deep(.ff-btn.is-today) {
-  background: var(--ff-brand);
-  border-color: var(--ff-brand);
-  color: var(--ff-brand-fg);
-  font-weight: var(--ff-fw-semibold);
 }
 
 .ff-calendar-view__type-chips {

@@ -14,6 +14,7 @@ import { useAppStore } from '../store/app'
 import { sectorMinuteApi } from '@/features/sector-minute/api/sectorMinuteApi'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSegmented from '../ui/AppSegmented.vue'
+import AppDateNav from '../ui/AppDateNav.vue'
 import SectorMinuteChart from '../components/sectorMinute/SectorMinuteChart.vue'
 
 const app = useAppStore()
@@ -36,8 +37,6 @@ const serverDate = ref('')
 const histDone = ref(false) // 历史日期后台抓取是否抓全
 const histHasData = ref(false) // 历史日期是否至少一标的有分时点
 const histNoDataShown = ref(false) // 空数据提示已展示，避免轮询重复 toast
-const dateInputRef = ref(null) // 原生日期选择器
-const WEEK_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const toDateStr = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const parseDateStr = (s) => {
@@ -52,14 +51,6 @@ const minDateStr = () => {
   base.setDate(base.getDate() - 365)
   return toDateStr(base)
 }
-const dateL1 = computed(() => {
-  const d = curDate.value ? parseDateStr(curDate.value) : parseDateStr(todayStr())
-  return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, '0')}月${String(d.getDate()).padStart(2, '0')}日`
-})
-const dateWeek = computed(() => {
-  const d = curDate.value ? parseDateStr(curDate.value) : parseDateStr(todayStr())
-  return WEEK_CN[d.getDay()]
-})
 
 // ---------------- 标的池 ----------------
 const activeTab = ref('board') // board | stock | index
@@ -248,12 +239,9 @@ function persistDate() {
   try { localStorage.setItem('sectorMinute_date', curDate.value) } catch (e) { /* ignore */ }
 }
 
-// 切换数据日期：'' = 今天（实时）；否则历史交易日。切换后按新日期拉取分时。
-function selectDate(dStr) {
-  if ((curDate.value || '') === (dStr || '')) return
-  curDate.value = dStr || ''
+// 日期变化：清空当前图表分时点（保留元数据），卡片显示「加载中…」直至新日期数据到位
+function onDateChanged() {
   histNoDataShown.value = false
-  // 日期变化 → 清空当前图表分时点（保留元数据），卡片显示「加载中…」直至新日期数据到位
   charts.value = charts.value.map((c) => ({
     kind: c.kind, market: c.market, code: c.code, name: c.name, board_type: c.board_type || '',
     pre_close: 0, open: null, high: null, low: null, close: null,
@@ -262,6 +250,22 @@ function selectDate(dStr) {
   persistDate()
   loadCharts()
   if (selected.value.length) startCatchUp()
+}
+
+// 恢复期（读取 localStorage / 服务器日期）不触发重载，避免初始化阶段重复请求
+let dateReady = false
+watch(curDate, () => {
+  if (dateReady) onDateChanged()
+})
+
+// 日期越界提示：不允许未来日期，回溯上限约一年
+function onDateOutOfRange({ reason }) {
+  errorMsg.value = reason === 'max' ? '不能选择未来日期' : '仅支持回溯约一年内的分时数据'
+  setTimeout(() => {
+    if (errorMsg.value === '不能选择未来日期' || errorMsg.value.includes('仅支持回溯')) {
+      errorMsg.value = ''
+    }
+  }, 3000)
 }
 
 // 从本地存储恢复上次选择的数据日期（需在今天基准就绪后调用；越界回退到实时）
@@ -278,49 +282,6 @@ function restoreDateFromStore() {
   } catch (e) {
     curDate.value = ''
   }
-}
-
-// 日期选择器事件：直接选择指定日期（校验范围）
-function onDatePicked(v) {
-  if (!v) return
-  const t = todayStr()
-  if (v > t) {
-    errorMsg.value = '不能选择未来日期'
-    setTimeout(() => { if (errorMsg.value === '不能选择未来日期') errorMsg.value = '' }, 3000)
-    return
-  }
-  if (v < minDateStr()) {
-    errorMsg.value = '仅支持回溯约一年内的分时数据'
-    setTimeout(() => { if (errorMsg.value.includes('仅支持回溯')) errorMsg.value = '' }, 3000)
-    return
-  }
-  selectDate(v)
-}
-
-// 打开原生日期选择器（Chrome/Edge 支持 showPicker）
-function openDatePicker() {
-  const inp = dateInputRef.value
-  if (!inp) return
-  if (inp.showPicker) { try { inp.showPicker() } catch (e) { inp.focus() } }
-  else inp.focus()
-}
-
-// 前一天 / 后一天 / 回到今天
-function prevDay() {
-  const base = curDate.value ? parseDateStr(curDate.value) : parseDateStr(todayStr())
-  base.setDate(base.getDate() - 1)
-  selectDate(toDateStr(base))
-}
-function nextDay() {
-  if (!curDate.value || isTodaySel()) return
-  const base = parseDateStr(curDate.value)
-  base.setDate(base.getDate() + 1)
-  const s = toDateStr(base)
-  const t = todayStr()
-  selectDate(s > t ? t : s)
-}
-function today() {
-  selectDate('')
 }
 
 async function syncSubscriptions() {
@@ -477,6 +438,7 @@ async function init() {
     /* ignore */
   }
   await Promise.all([loadBoards(), loadHealth(), loadIndices()])
+  dateReady = true // 服务器日期与本地恢复已完成，此后 curDate 变化即视为用户主动切换
   if (selected.value.length) syncSubscriptions()
   await loadCharts()
   if (selected.value.length) startCatchUp() // 兜底：恢复自选后若数据未齐，快速补齐
@@ -552,47 +514,15 @@ const visibleStocks = computed(() => {
       <!-- 模块标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
       <h1 class="ff-sr-only">多标的分时对比</h1>
 
-      <!-- 数据日期组件：显示当前分时对应日期，前后切换 + 日期选择 -->
-      <div
-        class="smm__dates"
-        :class="{ 'is-hist': !isTodaySel() }"
+      <!-- 数据日期组件：与财经日历共用 AppDateNav（‹ / 日期 / › / 今 + 月历弹层） -->
+      <AppDateNav
+        v-model="curDate"
+        :today="todayStr()"
+        :min="minDateStr()"
+        :today-value="''"
         title="当前展示数据对应的日期"
-      >
-        <button type="button" class="smm__dbtn" title="前一天" aria-label="前一天" @click="prevDay">‹</button>
-        <button type="button" class="smm__dmain" title="点击选择日期" @click="openDatePicker">
-          <span class="smm__dl1">{{ dateL1 }}</span>
-          <span class="smm__dl2">
-            <span>{{ dateWeek }}</span>
-            <span class="smm__dtag" :class="isTodaySel() ? 'is-live' : 'is-hist'">
-              {{ isTodaySel() ? '今天' : '历史' }}
-            </span>
-          </span>
-        </button>
-        <button
-          type="button"
-          class="smm__dbtn"
-          title="后一天"
-          aria-label="后一天"
-          :disabled="!curDate || curDate >= todayStr()"
-          @click="nextDay"
-        >›</button>
-        <button
-          type="button"
-          class="smm__dtoday"
-          title="回到今天（最新数据）"
-          :disabled="isTodaySel()"
-          @click="today"
-        >今</button>
-        <input
-          ref="dateInputRef"
-          type="date"
-          class="smm__dinput"
-          :min="minDateStr()"
-          :max="todayStr()"
-          aria-label="选择日期"
-          @change="onDatePicked($event.target.value)"
-        />
-      </div>
+        @out-of-range="onDateOutOfRange"
+      />
 
       <div class="smm__controls">
         <AppSegmented
@@ -1031,96 +961,6 @@ const visibleStocks = computed(() => {
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-subtle);
   color: var(--ff-text-secondary);
-}
-
-/* —— 数据日期组件 —— */
-.smm__dates {
-  display: inline-flex;
-  align-items: stretch;
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-pill);
-  background: var(--ff-bg-surface);
-  overflow: hidden;
-  flex: none;
-  transition: border-color var(--ff-dur-fast);
-}
-.smm__dates:hover { border-color: var(--ff-border-strong); }
-.smm__dbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  font-size: 16px;
-  line-height: 1;
-  color: var(--ff-icon-muted);
-  transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
-}
-.smm__dbtn:hover:not(:disabled) { background: var(--ff-bg-hover); color: var(--ff-text-brand); }
-.smm__dbtn:disabled { opacity: 0.35; cursor: default; }
-.smm__dmain {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 2px;
-  min-width: 138px;
-  padding: 3px 10px;
-  border-left: 1px solid var(--ff-border-subtle);
-  border-right: 1px solid var(--ff-border-subtle);
-  text-align: left;
-  transition: background var(--ff-dur-fast);
-}
-.smm__dmain:hover { background: var(--ff-bg-hover); }
-.smm__dl1 {
-  font-family: var(--ff-font-mono, monospace);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ff-text-primary);
-  letter-spacing: 0.2px;
-  line-height: 1;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.smm__dates.is-hist .smm__dl1 { color: var(--ff-text-brand); }
-.smm__dl2 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--ff-text-tertiary);
-  line-height: 1;
-  white-space: nowrap;
-}
-.smm__dtag {
-  display: inline-flex;
-  align-items: center;
-  height: 15px;
-  padding: 0 6px;
-  border-radius: var(--ff-radius-pill);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-.smm__dtag.is-live { background: var(--ff-bg-subtle); color: var(--ff-text-secondary); border: 1px solid var(--ff-border-subtle); }
-.smm__dtag.is-hist { background: var(--ff-bg-brand-subtle); color: var(--ff-text-brand); border: 1px solid var(--ff-brand-border); }
-.smm__dtoday {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ff-text-secondary);
-  transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
-}
-.smm__dtoday:hover:not(:disabled) { background: var(--ff-bg-brand-subtle); color: var(--ff-text-brand); }
-.smm__dtoday:disabled { opacity: 0.35; cursor: default; }
-.smm__dinput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 /* ═══════ 主体 ═══════ */
