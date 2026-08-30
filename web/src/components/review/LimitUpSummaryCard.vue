@@ -434,19 +434,6 @@ onMounted(load)
 .lu-sum__tier.is-down-hot .lu-sum__tier-badge--down {
   background: linear-gradient(90deg, #7c3aed, #312e81);
 }
-/* 连跌卡片：顶线走跌停绿，底色浅绿，现价改用跌停色
-   （选择器带 .lu-sum__tier 提升优先级，避免被后方基础规则覆盖） */
-.lu-sum__tier .lu-sum__card--down {
-  background: linear-gradient(180deg, var(--ff-down-subtle), var(--ff-bg-surface) 68%);
-}
-.lu-sum__tier .lu-sum__card--down .lu-sum__card-price {
-  color: var(--ff-down-text);
-}
-/* 连续跌停 ≥4 天：顶线转深紫，强化极端弱势信号 */
-.lu-sum__tier.is-down-hot .lu-sum__card--down::before {
-  background: linear-gradient(90deg, #7c3aed, #312e81);
-}
-
 /* ================= 梯队卡片网格 =================
    统一列宽 + grid-auto-rows: 1fr —— 同一梯队内所有卡片严格等高，
    行高由该梯队内容最多的一张决定，消除长短卡片参差 */
@@ -467,12 +454,11 @@ onMounted(load)
   /* 统一基线高度：与归因区 3 行基线 + 两行标签基线配套，
      使晋级 / 断板 / 连跌卡片落在同一尺寸上，梯队之间不再参差 */
   min-height: 196px;
-  padding: 13px 14px 12px;
-  /* 扁平卡片：细边框 + 纯色底，不使用阴影／光晕 */
+  padding: 14px 14px 13px;
+  /* 扁平卡片：细边框 + 纯色底，不使用阴影／光晕／顶部色线 */
   border: 1px solid var(--ff-border-subtle);
   border-radius: 12px;
   background: var(--ff-bg-surface);
-  overflow: hidden;
   cursor: default;
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
     border-color var(--ff-dur-fast) var(--ff-ease-standard),
@@ -480,31 +466,18 @@ onMounted(load)
     opacity var(--ff-dur-fast) var(--ff-ease-standard);
 }
 
-/* 顶部 3px 类型色线：晋级红 / 高板橙红 / 断板灰 / 连跌绿 */
-.lu-sum__card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  opacity: 0.85;
-  background: linear-gradient(90deg, var(--ff-up), var(--ff-up-strong));
-  transition: opacity var(--ff-dur-fast) var(--ff-ease-standard);
-}
-.lu-sum__tier.is-hot .lu-sum__card::before {
-  background: linear-gradient(90deg, #ff8a3d, #ff2d55);
-}
-.lu-sum__card--broken::before {
-  background: linear-gradient(90deg, var(--ff-border), var(--ff-text-tertiary));
-}
-.lu-sum__card--down::before {
-  background: linear-gradient(90deg, var(--ff-down), var(--ff-down-strong));
-}
-
-/* 高板卡片：仅用浅红渐变底提高权重，不加彩色描边／光晕 */
+/* 高板卡片：浅红渐变底提供类型区分；不加任何色线／光晕 */
 .lu-sum__tier.is-hot .lu-sum__card {
   background: linear-gradient(180deg, var(--ff-up-subtle), var(--ff-bg-surface) 72%);
 }
-/* hover：只做边框加深 + 轻微上浮，不做阴影扩散 */
+/* 连跌卡片：浅绿渐变底 */
+.lu-sum__tier .lu-sum__card--down {
+  background: linear-gradient(180deg, var(--ff-down-subtle), var(--ff-bg-surface) 72%);
+}
+.lu-sum__tier .lu-sum__card--down .lu-sum__card-price {
+  color: var(--ff-down-text);
+}
+/* hover：只做边框加深 + 背景微变 + 轻微上浮 */
 .lu-sum__card:hover {
   border-color: var(--ff-border-strong);
   background: var(--ff-bg-hover);
