@@ -10,7 +10,9 @@
  * 连板梯队全量渲染只在本模块做一次，规避重复请求与视觉冗余。
  *
  * 自动刷新沿用「行情与量化」分组惯例（与全景行情一致）：
- * 固定 30 秒后台静默轮询，无开关/档位/刷新按钮，仅保留最后更新时间提示。
+ * 仅交易时段（工作日 9:15-11:30 / 13:00-15:00）固定 30 秒后台静默轮询，
+ * 收盘后 / 午休 / 休市日不再发起取数请求，避免无意义的后台刷新与页面重渲染；
+ * 无开关/档位/刷新按钮，仅保留最后更新时间提示。
  */
 import { ref, onMounted, onUnmounted } from 'vue'
 import AppCard from '../ui/AppCard.vue'
@@ -18,6 +20,16 @@ import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
 
 // 固定 30 秒，后台静默执行，无任何交互控件
 const AUTO_REFRESH_MS = 30 * 1000
+
+// 交易时段判断（与后端 finfeed.sector_minute.store.is_trading_time 口径一致）：
+// 工作日 9:15-11:30 / 13:00-15:00 视为交易时段，其余（盘前/午休/收盘后/休市）不自动取数
+function isTradingTime(d = new Date()) {
+  const day = d.getDay()
+  if (day === 0 || day === 6) return false
+  const sec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
+  return (9 * 3600 + 15 * 60 <= sec && sec <= 11 * 3600 + 30 * 60) ||
+    (13 * 3600 <= sec && sec <= 15 * 3600)
+}
 
 // 递增 refreshKey 驱动卡片重新取数（与仪表盘一致的刷新协议）
 const refreshKey = ref(0)
@@ -37,6 +49,8 @@ function fmtClock(d = new Date()) {
 function startAutoRefresh() {
   stopAutoRefresh()
   refreshTimer = setInterval(() => {
+    // 仅交易时段自动取数；收盘 / 午休 / 休市时静默跳过，避免无意义的后台刷新与重渲染
+    if (!isTradingTime()) return
     if (document.hidden || refreshing.value) return
     refresh()
   }, AUTO_REFRESH_MS)

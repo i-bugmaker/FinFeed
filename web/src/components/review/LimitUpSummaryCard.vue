@@ -19,6 +19,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { api } from '../../api/client'
 import AppEmpty from '../../ui/AppEmpty.vue'
+import AppIcon from '../../ui/AppIcon.vue'
 import AppSkeleton from '../../ui/AppSkeleton.vue'
 import { fmtChg, chgClass, fmtPrice, fmtRatio, fmtSignedAmount } from './format'
 
@@ -76,6 +77,13 @@ function brokenReason(s) {
   const r = (s && s.reason ? String(s.reason) : '').trim()
   const tail = `昨日 ${s?.prev_height ?? '—'} 连板 · 今日断板`
   return r ? `${r} · ${tail}` : tail
+}
+
+// 卡片点击 → 新标签打开独立 F10 页面并自动搜索该股票
+// （F10 深链 #/代码 会触发其内置搜索与个股资料加载）
+function openF10(code) {
+  if (!code) return
+  window.open(`/f10/#/${code}`, '_blank', 'noopener')
 }
 
 // 数据日期 / 缓存状态提示条（来自 intensity 载荷的 date / source / fallback / cached_date）
@@ -174,10 +182,13 @@ onMounted(load)
               v-for="(s, i) in t.stocks"
               :key="(s.code || '') + '-' + i"
               class="lu-sum__card"
+              :title="`查看 ${s.name}（${s.code}）F10 个股资料`"
+              @click="openF10(s.code)"
             >
               <header class="lu-sum__card-head">
                 <span class="lu-sum__card-name">{{ s.name }}</span>
                 <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
+                <AppIcon name="external-link" size="xs" class="lu-sum__card-ext" />
               </header>
               <div class="lu-sum__card-quote">
                 <span class="lu-sum__card-price ff-num">{{ fmtPrice(s.price) }}</span>
@@ -199,10 +210,13 @@ onMounted(load)
               v-for="s in t.broken"
               :key="'b' + (s.code || '')"
               class="lu-sum__card lu-sum__card--broken"
+              :title="`查看 ${s.name}（${s.code}）F10 个股资料`"
+              @click="openF10(s.code)"
             >
               <header class="lu-sum__card-head">
                 <span class="lu-sum__card-name">{{ s.name }}</span>
                 <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
+                <AppIcon name="external-link" size="xs" class="lu-sum__card-ext" />
               </header>
               <div class="lu-sum__card-quote">
                 <span class="lu-sum__card-price ff-num">{{ s.price ? fmtPrice(s.price) : '—' }}</span>
@@ -244,10 +258,13 @@ onMounted(load)
               v-for="(s, i) in t.stocks"
               :key="(s.code || '') + '-' + i"
               class="lu-sum__card lu-sum__card--down"
+              :title="`查看 ${s.name}（${s.code}）F10 个股资料`"
+              @click="openF10(s.code)"
             >
               <header class="lu-sum__card-head">
                 <span class="lu-sum__card-name">{{ s.name }}</span>
                 <span class="lu-sum__card-code ff-num">{{ s.code }}</span>
+                <AppIcon name="external-link" size="xs" class="lu-sum__card-ext" />
               </header>
               <div class="lu-sum__card-quote">
                 <span class="lu-sum__card-price ff-num">{{ fmtPrice(s.price) }}</span>
@@ -391,7 +408,7 @@ onMounted(load)
   border: 1px solid var(--ff-border-subtle);
   border-radius: 12px;
   background: var(--ff-bg-surface);
-  cursor: default;
+  cursor: pointer;
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard),
     border-color var(--ff-dur-fast) var(--ff-ease-standard),
     transform var(--ff-dur-base) var(--ff-ease-standard),
@@ -414,6 +431,20 @@ onMounted(load)
   border-color: var(--ff-border-strong);
   background: var(--ff-bg-hover);
   transform: translateY(-1px);
+}
+
+/* 外部链接提示图标：默认隐藏，卡片悬停/聚焦时浮现（清晰点击反馈） */
+.lu-sum__card-ext {
+  flex: 0 0 auto;
+  opacity: 0;
+  color: var(--ff-text-tertiary);
+  transition: opacity var(--ff-dur-fast) var(--ff-ease-standard),
+    color var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.lu-sum__card:hover .lu-sum__card-ext,
+.lu-sum__card:focus-visible .lu-sum__card-ext {
+  opacity: 1;
+  color: var(--ff-brand-text);
 }
 
 /* 卡片头：股票名称 + 代码（连板高度由梯队头部标注，卡片不重复） */
