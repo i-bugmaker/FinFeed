@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>股谱 · 个股 F10</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================== 侧边栏 ============================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">
+      <div class="brand">
+        <span class="brand-logo"><span class="icn" data-icn="logo"></span></span>
+        <span class="brand-text"><b>股谱</b></span>
+      </div>
+      <button class="icon-btn side-close" id="sideClose" data-tip="收起菜单" style="margin-left:auto">
+        <span class="icn" data-icn="close"></span>
+      </button>
+    </div>
+
+    <div class="search-zone">
+      <div class="search-box" id="searchBox">
+        <span class="icn" data-icn="search"></span>
+        <input id="searchInput" type="text" placeholder="股票名称 / 6 位代码" autocomplete="off" spellcheck="false">
+        <button class="search-clear" id="searchClear" hidden aria-label="清空"><span class="icn" data-icn="close"></span></button>
+        <span class="spin sm" id="searchSpin" hidden></span>
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="suggest" id="suggestBox" hidden></div>
+    </div>
+
+    <section class="stock-card" id="stockCard" hidden></section>
+
+    <nav class="module-nav" id="moduleNav"></nav>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- =============================== 主区 =============================== -->
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" data-tip="打开菜单"><span class="icn" data-icn="menu"></span></button>
+      <div class="crumb" id="crumb"></div>
+      <div class="top-actions">
+        <button class="icon-btn" id="refreshBtn" data-tip="刷新当前模块（强制重新抓取）"><span class="icn" data-icn="refresh"></span></button>
+        <button class="btn ghost sm" id="exportBtn" style="height:34px">
+          <span class="icn" data-icn="download"></span>导出
+        </button>
+        <button class="icon-btn" id="helpBtn" data-tip="快捷键（?）"><span class="icn" data-icn="keyboard"></span></button>
+        <button class="icon-btn" id="themeBtn" data-tip="亮 / 暗切换"><span class="icn" data-icn="moon"></span></button>
+      </div>
+    </header>
+
+    <div class="content" id="content">
+      <div class="page" id="page"></div>
+    </div>
+  </main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<div id="layerRoot"></div>
+
+<script src="assets/icons.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/app.js"></script>
+<script>
+  // 静态图标占位填充
+  document.querySelectorAll("[data-icn]").forEach((n) => {
+    n.innerHTML = ICONS[n.dataset.icn] || "";
+  });
+</script>
+</body>
+</html>

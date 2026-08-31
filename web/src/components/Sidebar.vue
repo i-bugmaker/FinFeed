@@ -50,6 +50,7 @@ const groups = [
     items: [
       { href: '/sector-minute', label: '多标的分时对比', icon: 'activity', external: true },
       { href: '/capital', label: '资金流监控', icon: 'bar-chart', external: true },
+      { href: '/f10', label: 'F10 个股资料', icon: 'database', external: true },
     ],
   },
 ]

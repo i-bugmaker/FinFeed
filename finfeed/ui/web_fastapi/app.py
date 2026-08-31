@@ -190,6 +190,39 @@ except Exception as _sm_exc:  # noqa: BLE001
     _sm_start_worker = _sm_stop_worker = None
     logger.warning("板块分时模块未加载（可忽略；安装依赖后重启生效）: %s", _sm_exc)
 
+# ----------------------------------------------------------------------
+# 同花顺 F10 个股资料模块（f10-Web 移植）
+#  - API 前缀：/api/f10/*
+#  - 独立页面：/f10（服务端静态托管模块自带的手写前端）
+#  - 依赖缺失（fastapi/bs4/requests）时优雅降级，不影响 FinFeed 主服务。
+#  注意：/f10 的 StaticFiles 挂载必须先于底部根路由 "/" 的 SPA 挂载，
+#  否则会被 catch-all 吞掉；因此本模块的静态托管也在此统一完成。
+# ----------------------------------------------------------------------
+try:
+    from fastapi.staticfiles import StaticFiles as _f10StaticFiles
+
+    from finfeed.f10 import WEB_DIR as _f10_WEB_DIR
+    from finfeed.f10.server import create_router as _f10_create_router
+
+    app.include_router(_f10_create_router("/api/f10"))
+
+    # LazyImporter 下引入 redirect（避免与主流依赖耦合）
+    from fastapi.responses import RedirectResponse as _f10Redirect
+
+    @app.get("/f10", include_in_schema=False)
+    async def _f10_redirect():
+        """StaticFiles 挂载不带尾部斜杠时被 SPA catch-all 截断，故补一条斜杠跳转。"""
+        return _f10Redirect("/f10/")
+
+    _f10_DIST = Path(_f10_WEB_DIR)
+    if _f10_DIST.exists():
+        app.mount("/f10", _f10StaticFiles(directory=str(_f10_DIST), html=True),
+                  name="f10")
+        logger.info(
+            "已集成同花顺 F10 个股资料模块（/f10, /api/f10/*）")
+except Exception as _f10_exc:  # noqa: BLE001
+    logger.warning("同花顺 F10 模块未加载（可忽略；安装依赖后重启生效）: %s", _f10_exc)
+
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
