@@ -19,6 +19,7 @@ from finfeed.storage.database import (
     db_query_news,
     db_search_news,
     db_toggle_favorite,
+    db_update_news_content,
 )
 from finfeed.ui.web.shared import (
     _build_news_response,
@@ -104,12 +105,20 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
         return {"keyword": q, "count": len(news), "news": [item.to_dict() for item in news]}
 
     @router.get("/api/detail")
-    def detail(id: int = Query(0)) -> dict[str, Any]:
+    async def detail(id: int = Query(0)) -> dict[str, Any]:
         news = db_get_news_by_id(id)
         if not news:
             return {"success": False, "error": "News not found"}
         db_mark_read(id, True)
-        return {"success": True, "news": news.to_dict()}
+        # 若无存储正文且具备原文链接，则随查随补并落库（后台也会批量补齐）
+        if not news.content and news.url and news.url != "#":
+            from finfeed.content_fetch import fetch_article_content
+            content = await fetch_article_content(news.url)
+            if content:
+                db_update_news_content(id, content)
+                news.content = content
+        data = news.to_dict()
+        return {"success": True, "news": data}
 
     @router.post("/api/favorite", response_model=None)
     def favorite(data: dict[str, Any] = Body(default={})) -> Any:

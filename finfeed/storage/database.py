@@ -96,6 +96,7 @@ class NewsDatabase:
                     publish_time TEXT,
                     publish_ts INTEGER DEFAULT 0,
                     intro TEXT DEFAULT '',
+                    content TEXT DEFAULT '',
                     created_at TEXT,
                     category TEXT DEFAULT '',
                     sentiment TEXT DEFAULT 'neutral',
@@ -169,6 +170,7 @@ class NewsDatabase:
             ("duplicate_count", "INTEGER DEFAULT 0"),
             ("duplicate_sources", "TEXT DEFAULT '[]'"),
             ("meta", "TEXT DEFAULT '{}'"),
+            ("content", "TEXT DEFAULT ''"),
         ]
 
         for col_name, col_def in new_columns:
@@ -370,6 +372,7 @@ class NewsDatabase:
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=row["intro"] if row["intro"] is not None else "",
+            content=row["content"] if "content" in row.keys() and row["content"] is not None else "",
             created_at=row["created_at"] if "created_at" in row.keys() and row["created_at"] is not None else "",
             category=row["category"] if row["category"] is not None else "",
             sentiment=(row["sentiment"] if row["sentiment"] is not None else "neutral") or "neutral",
@@ -416,6 +419,7 @@ class NewsDatabase:
                 n.publish_time,
                 n.publish_ts,
                 n.intro or "",
+                n.content or "",
                 now_str,
                 n.category or "",
                 n.sentiment or "neutral",
@@ -448,10 +452,10 @@ class NewsDatabase:
             if has_new_fields:
                 c.executemany(
                     """INSERT OR IGNORE INTO news
-                       (title, url, source, publish_time, publish_ts, intro,
+                       (title, url, source, publish_time, publish_ts, intro, content,
                         created_at, category, sentiment, importance, keywords, stocks, is_read, is_favorite,
                         title_hash, content_simhash, duplicate_count, duplicate_sources, meta)
-                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                        WHERE NOT EXISTS (
                            SELECT 1 FROM news WHERE url = ? AND source = ?
                        )
@@ -460,7 +464,7 @@ class NewsDatabase:
                        ))
                     """,
                     [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
-                      r[14], r[15], r[16], r[17], r[18], r[19], r[20], r[21], r[21]) for r in rows_to_insert]
+                      r[14], r[15], r[16], r[17], r[18], r[19], r[20], r[21], r[22], r[22]) for r in rows_to_insert]
                 )
             else:
                 c.executemany(
@@ -473,7 +477,7 @@ class NewsDatabase:
                        )
                     """,
                     [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13],
-                      r[18], r[19], r[20], r[0]) for r in rows_to_insert]
+                      r[19], r[20], r[21], r[0]) for r in rows_to_insert]
                 )
 
             c.execute(
@@ -1187,6 +1191,31 @@ def db_get_max_news_id(category: Optional[str] = None) -> int:
 def db_get_news_by_id(news_id: int) -> Optional[NewsItem]:
     """根据 ID 获取单条新闻详情"""
     return get_db_manager().get_news_by_id(news_id)
+
+
+def db_update_news_content(news_id: int, content: str) -> bool:
+    """更新单条新闻的正文内容"""
+    if news_id <= 0:
+        return False
+    with get_db_manager().get_db() as c:
+        c.execute("UPDATE news SET content = ? WHERE id = ?", (content or "", news_id))
+        return c.rowcount > 0
+
+
+def db_news_without_content(offset: int = 0, limit: int = 50) -> List[NewsItem]:
+    """查询尚缺正文但提供了原文链接的新闻（用于后台批量补齐）"""
+    with get_db_manager().get_db() as c:
+        try:
+            c.execute(
+                """SELECT * FROM news
+                   WHERE (content IS NULL OR content = '') AND url IS NOT NULL AND url != '#'
+                   ORDER BY id DESC LIMIT ? OFFSET ?""",
+                (limit, offset),
+            )
+            return [NewsDatabaseManager._row_to_news(row) for row in c.fetchall()]
+        except sqlite3.OperationalError:
+            # 老库尚无 content 列时静默返回空，避免阻断主流程
+            return []
 
 
 def db_get_all_for_export(start_date: Optional[str] = None, end_date: Optional[str] = None,

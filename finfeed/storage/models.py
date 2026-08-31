@@ -15,6 +15,7 @@ class NewsItem:
     publish_time: str = ""
     publish_ts: int = 0
     intro: str = ""
+    content: str = ""
     id: Optional[int] = None
     created_at: str = ""
     category: str = ""
@@ -39,6 +40,7 @@ class NewsItem:
             "publish_time": self.publish_time,
             "publish_ts": self.publish_ts,
             "intro": self.intro,
+            "content": self.content,
             "category": self.category,
             "sentiment": self.sentiment,
             "importance": self.importance,

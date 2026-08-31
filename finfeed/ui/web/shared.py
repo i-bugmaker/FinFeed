@@ -206,7 +206,12 @@ def _ts_from_date_str(date_str: str, end_of_day: bool = False) -> Optional[int]:
 
 
 def _build_news_response(news_items: list, total: int, offset: int, limit: int, sources: list) -> dict:
-    news_dicts = [n.to_dict() for n in news_items]
+    # 列表接口不携带正文，保持响应轻量；正文通过 /api/detail 按需获取
+    news_dicts = []
+    for n in news_items:
+        d = n.to_dict()
+        d.pop("content", None)
+        news_dicts.append(d)
     stats = db_get_statistics()
     has_more = len(news_items) >= limit
     next_offset = offset + len(news_items) if has_more else None

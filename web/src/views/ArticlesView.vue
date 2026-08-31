@@ -142,7 +142,9 @@ onUnmounted(() => {
           </tr>
         </thead>
         <tbody>
-          <NewsRow v-for="item in list" :key="item.id" :item="item" :keyword="filters.keyword" />
+          <template v-for="item in list" :key="item.id">
+            <NewsRow :item="item" :keyword="filters.keyword" />
+          </template>
         </tbody>
       </table>
       <EmptyState

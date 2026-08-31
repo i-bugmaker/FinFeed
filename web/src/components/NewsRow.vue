@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useAppStore } from '../store/app'
@@ -11,6 +11,27 @@ const props = defineProps({
   item: { type: Object, required: true },
   keyword: { type: String, default: '' },
 })
+
+const expanded = ref(false)
+const detailContent = ref('')
+const detailLoading = ref(false)
+
+/* 展开时按需加载正文：列表接口不携带正文，经 /api/detail 获取（后端会自动补齐并落库） */
+async function toggle() {
+  expanded.value = !expanded.value
+  markRead()
+  if (expanded.value && !detailContent.value) {
+    detailLoading.value = true
+    try {
+      const res = await api.detail(props.item.id)
+      detailContent.value = res?.news?.content || ''
+    } catch (e) {
+      detailContent.value = ''
+    } finally {
+      detailLoading.value = false
+    }
+  }
+}
 
 const store = useAppStore()
 const router = useRouter()
@@ -105,9 +126,16 @@ function aiAnalyze() {
           :tone="sentTone === 'neutral' ? 'muted' : sentTone"
           size="xs"
         />
-        <a :href="item.url" target="_blank" rel="noopener" @click.stop="markRead">
+        <button
+          class="ff-newsrow__headbtn"
+          :class="{ 'is-expanded': expanded }"
+          :aria-expanded="expanded"
+          :title="expanded ? '收起详情' : '展开详情'"
+          @click="toggle"
+        >
+          <AppIcon :name="expanded ? 'chevron-down' : 'chevron-right'" size="xs" class="ff-newsrow__caret" />
           <HighlightText :text="item.title" :keyword="keyword" />
-        </a>
+        </button>
         <AppBadge v-if="isNew" text="NEW" variant="brand" class="ff-newsrow__new" />
         <button
           class="ff-newsrow__ai"
@@ -117,6 +145,46 @@ function aiAnalyze() {
         >
           <AppIcon name="sparkles" size="sm" />
         </button>
+        <a
+          v-if="item.url"
+          class="ff-newsrow__link"
+          :href="item.url"
+          target="_blank"
+          rel="noopener"
+          title="跳转原文"
+          aria-label="跳转原文"
+          @click.stop
+        >
+          <AppIcon name="external-link" size="sm" />
+        </a>
+      </div>
+    </td>
+  </tr>
+
+  <!-- 详情展开行 -->
+  <tr v-if="expanded" class="ff-table__row ff-newsrow__detail-row">
+    <td class="ff-table__cell" colspan="5">
+      <div class="ff-newsrow__detail">
+        <p v-if="detailLoading" class="ff-newsrow__detail-loading">
+          <AppIcon name="refresh" size="xs" spin /> 正文加载中…
+        </p>
+        <p v-else-if="detailContent" class="ff-newsrow__detail-intro">{{ detailContent }}</p>
+        <p v-else-if="item.intro" class="ff-newsrow__detail-intro">{{ item.intro }}</p>
+        <p v-else class="ff-newsrow__detail-intro ff-newsrow__detail-muted">暂无正文内容，可点击右上角「跳转原文」查看。</p>
+        <div v-if="item.keywords?.length || item.stocks?.length" class="ff-newsrow__detail-tags">
+          <span v-for="k in item.keywords?.slice(0, 5)" :key="k" class="ff-newsrow__detail-tag">#{{ k }}</span>
+          <span v-for="s in item.stocks?.slice(0, 6)" :key="s" class="ff-newsrow__detail-stock">
+            <AppIcon name="trending-up" size="xs" /> {{ s }}
+          </span>
+        </div>
+        <div class="ff-newsrow__detail-actions">
+          <a v-if="item.url" class="ff-newsrow__detail-origin" :href="item.url" target="_blank" rel="noopener">
+            <AppIcon name="external-link" size="sm" /> 查看原文
+          </a>
+          <button class="ff-newsrow__detail-btn" @click="aiAnalyze">
+            <AppIcon name="sparkles" size="sm" /> AI 分析
+          </button>
+        </div>
       </div>
     </td>
   </tr>
@@ -140,20 +208,147 @@ function aiAnalyze() {
   min-width: 0;
 }
 
-.ff-newsrow__title a {
+.ff-newsrow__headbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
   color: var(--ff-text-primary);
-  text-decoration: none;
   font-size: var(--ff-fs-body-lg);
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  text-align: left;
+}
+.ff-newsrow__headbtn .ff-highlight {
+  display: inline;
+}
+.ff-newsrow__headbtn:hover {
+  color: var(--ff-text-brand);
+}
+.ff-newsrow__headbtn.is-expanded {
+  color: var(--ff-text-brand);
+}
+.ff-newsrow__caret {
+  flex-shrink: 0;
+  color: var(--ff-text-tertiary);
+  transition: transform var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-newsrow__headbtn.is-expanded .ff-newsrow__caret {
+  transform: rotate(90deg);
 }
 
-.ff-newsrow__title a:hover {
+.ff-newsrow__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--ff-radius-md);
+  color: var(--ff-icon-muted);
+  cursor: pointer;
+  transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
+}
+.ff-newsrow__link:hover {
+  background: var(--ff-bg-hover);
   color: var(--ff-text-brand);
+}
+
+/* ── 详情展开行 ── */
+.ff-newsrow__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px 6px 34px;
+}
+.ff-newsrow__detail-intro {
+  font-size: var(--ff-fs-body);
+  font-weight: 400;
+  color: var(--ff-text-primary);
+  line-height: 1.75;
+  letter-spacing: 0.015em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  max-width: 92ch;
+}
+.ff-newsrow__detail-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ff-fs-body);
+  color: var(--ff-text-tertiary);
+}
+.ff-newsrow__detail-muted {
+  font-size: var(--ff-fs-body);
+  color: var(--ff-text-tertiary);
+}
+.ff-newsrow__detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ff-space-2);
+}
+.ff-newsrow__detail-tag {
+  font-size: var(--ff-fs-xs);
+  color: var(--ff-text-secondary);
+  background: var(--ff-bg-subtle);
+  padding: 2px 8px;
+  border-radius: var(--ff-radius-pill);
+}
+.ff-newsrow__detail-stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ff-fs-xs);
+  color: var(--ff-text-brand);
+  background: var(--ff-bg-brand-subtle);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--ff-radius-pill);
+}
+.ff-newsrow__detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+}
+.ff-newsrow__detail-origin,
+.ff-newsrow__detail-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--ff-radius-md);
+  font-size: var(--ff-fs-caption);
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+.ff-newsrow__detail-origin {
+  border: 1px solid var(--ff-border-strong);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-secondary);
+}
+.ff-newsrow__detail-origin:hover {
+  background: var(--ff-bg-hover);
+  color: var(--ff-text-primary);
+}
+.ff-newsrow__detail-btn {
+  border: 1px solid var(--ff-brand-border);
+  background: var(--ff-bg-brand-subtle);
+  color: var(--ff-brand);
+}
+.ff-newsrow__detail-btn:hover {
+  background: var(--ff-brand);
+  color: #fff;
 }
 
 .ff-newsrow__sent {

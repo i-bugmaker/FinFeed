@@ -587,6 +587,13 @@ async def _startup(app: FastAPI) -> None:
     # 广播失效导致的 Web 端不实时更新。
     app.state.sse_poll_task = asyncio.create_task(poll_events(news_events))
 
+    # 原文正文后台批量补齐（随查随补 + 周期扫描缺正文的记录；失败不阻断主服务）
+    try:
+        from finfeed.content_fetch import content_backfill_loop
+        app.state.content_backfill_task = asyncio.create_task(content_backfill_loop())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"正文后台补齐任务启动失败（可忽略）: {e}")
+
     # 行情后台自动采集调度器（按交易日时点定时自我完成采集任务）
     try:
         market_scheduler.maybe_autostart()
@@ -617,6 +624,15 @@ async def _shutdown(app: FastAPI) -> None:
             await task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
+
+    backfill = getattr(app.state, "content_backfill_task", None)
+    if backfill is not None:
+        backfill.cancel()
+        try:
+            await backfill
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
     # 关闭行情 WebSocket 推送服务
     try:
         await market_ws.stop()
