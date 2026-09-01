@@ -17,6 +17,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import AppCard from '../ui/AppCard.vue'
 import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
+import { useScrollRestore } from '../composables/useScrollRestore'
 
 // 固定 30 秒，后台静默执行，无任何交互控件
 const AUTO_REFRESH_MS = 30 * 1000
@@ -40,6 +41,10 @@ const dataDate = ref('')
 const totalUp = ref(0)
 
 let refreshTimer = null
+
+// 滚动位置记忆：本模块为长列表（连板梯队 + 连跌梯队全量渲染），点击个股跳转他页后
+// 返回时需回到原浏览位置。默认以路由 path 为 key，离开前留存、挂载后恢复。
+useScrollRestore()
 
 function fmtClock(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0')

@@ -63,6 +63,15 @@ const mergedTiers = computed(() => {
   return [...byHeight.values()].sort((a, b) => b.height - a.height)
 })
 
+// 骨架屏仅在「首次取数、尚无任何内容」时占位。
+// 交易时段每 30 秒的静默轮询若也切骨架屏，整个天梯会被替换成 4 行占位符，
+// 容器内容高度随之塌缩，浏览器立刻把 scrollTop 钳回 0 —— 用户每 30 秒就被
+// 弹回顶部一次。保持旧内容留在原地、数据到位后原地更新，才是真正的静默刷新。
+const hasContent = computed(() =>
+  !!intensity.value || tiers.value.length > 0 || downTiers.value.length > 0,
+)
+const showSkeleton = computed(() => loading.value && !hasContent.value)
+
 function tierClass(t) {
   return {
     'is-hot': t.height >= 4 && (t.stocks || []).length > 0,
@@ -153,7 +162,7 @@ onMounted(load)
 
 <template>
   <div class="lu-sum">
-    <div v-if="loading" class="lu-sum__load">
+    <div v-if="showSkeleton" class="lu-sum__load">
       <AppSkeleton variant="text" :lines="4" />
     </div>
     <div v-else-if="err && !intensity && !tiers.length" class="lu-sum__err">

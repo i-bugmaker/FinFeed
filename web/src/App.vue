@@ -44,7 +44,10 @@ onMounted(() => {
 
     <div class="ff-app__main">
       <TopBar @menu="mobileDrawerOpen = true" />
-      <main class="ff-app__content">
+      <!-- data-scroll-container：应用唯一滚动容器标记。容器为内部滚动（非 window），
+           vue-router 的 scrollBehavior 对其无效，由 useScrollRestore 依赖此标记
+           保存 / 恢复模块滚动位置 -->
+      <main class="ff-app__content" data-scroll-container>
         <router-view v-slot="{ Component }">
           <transition name="ff-page" mode="out-in">
             <component :is="Component" />
