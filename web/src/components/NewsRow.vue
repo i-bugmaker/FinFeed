@@ -36,30 +36,47 @@ async function toggle() {
 const store = useAppStore()
 const router = useRouter()
 
-/* 来源名 -> 稳定颜色（哈希） */
-function hashColor(str) {
+/* 来源配色：从固定调色板按哈希取色。
+   此前用「哈希 → 任意色相」生成随机色，饱和度和明度失控，
+   五颜六色地散落在列表里是主要的视觉噪音来源。
+   改为 8 色协调调色板：色相均匀分布，饱和度/明度收在统一区间。 */
+const SRC_PALETTE = [
+  [214, 68, 45], // 靛蓝
+  [168, 50, 37], // 青绿
+  [28, 72, 44],  // 橙棕
+  [280, 46, 50], // 紫
+  [338, 56, 46], // 玫红
+  [196, 55, 39], // 天蓝
+  [44, 62, 39],  // 琥珀
+  [100, 40, 36], // 草绿
+]
+function srcPalette(str) {
   let h = 0
   for (let i = 0; i < str.length; i++) {
     h = (h << 5) - h + str.charCodeAt(i)
     h |= 0
   }
-  const hue = Math.abs(h) % 360
-  return `hsl(${hue}, 60%, 45%)`
+  return SRC_PALETTE[Math.abs(h) % SRC_PALETTE.length]
 }
-const srcColor = computed(() => hashColor(props.item.source || '未知'))
 const srcStyle = computed(() => {
-  const c = srcColor.value
-  return { color: c, background: c + '1a', borderColor: c + '55' }
+  const [h, s, l] = srcPalette(props.item.source || '未知')
+  return {
+    color: `hsl(${h}, ${s}%, ${l}%)`,
+    background: `hsla(${h}, ${s}%, ${l}%, 0.09)`,
+    borderColor: `hsla(${h}, ${s}%, ${l}%, 0.2)`,
+  }
 })
 
-/* 重要性分级 */
+/* 重要性分级
+   注意：AppBadge 未定义 default/muted 变体，此前会回落到底座样式（--ff-up 实心红），
+   导致「一般 / 较低 / 低」也渲染成红色告警徽标。这里统一改用已定义的语义变体。 */
 const imp = computed(() => {
   const v = props.item.importance ?? 0
-  if (v >= 8.0) return { variant: 'danger', label: '极重要' }
-  if (v >= 6.5) return { variant: 'warn', label: '重要' }
-  if (v >= 5.0) return { variant: 'default', label: '一般' }
-  if (v >= 3.0) return { variant: 'muted', label: '较低' }
-  return { variant: 'muted', label: '低' }
+  if (v >= 8.0) return { variant: 'danger', label: '极重要', accent: 'var(--ff-danger)' }
+  if (v >= 6.5) return { variant: 'warn', label: '重要', accent: 'var(--ff-warn)' }
+  if (v >= 5.0) return { variant: 'neutral', label: '一般', accent: 'var(--ff-brand)' }
+  if (v >= 3.0) return { variant: 'neutral', label: '较低', accent: 'var(--ff-text-tertiary)' }
+  return { variant: 'neutral', label: '低', accent: 'var(--ff-text-tertiary)' }
 })
 
 /* 时间：精确到秒 */
@@ -71,6 +88,12 @@ const sentTone = computed(() => {
   if (s === 'positive') return 'up'
   if (s === 'negative') return 'down'
   return 'neutral'
+})
+
+const sentMeta = computed(() => {
+  if (sentTone.value === 'up') return { label: '利好', icon: 'trending-up' }
+  if (sentTone.value === 'down') return { label: '利空', icon: 'trending-down' }
+  return { label: '中性', icon: 'minus' }
 })
 
 /* 新消息徽标 */
@@ -97,10 +120,79 @@ function aiAnalyze() {
   ].join('')
   router.push({ path: '/ai/analyst', query: { q } })
 }
+
+/* ── 展开动画 ────────────────────────────────────────────────
+   <tr> 无法可靠地做高度过渡，因此动画施加在 <td> 内的包裹层上：
+   高度 0 → scrollHeight → auto，配合透明度形成「下滑」展开。
+   :css="false" 由 JS 全权驱动，避免 Vue 的 CSS 时序与测量冲突。 */
+const ANIM_ENTER = 280
+const ANIM_LEAVE = 200
+
+function prefersReduced() {
+  return typeof window !== 'undefined'
+    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+function settle(el, dur, done) {
+  let finished = false
+  const finish = (e) => {
+    if (finished) return
+    if (e && e.target !== el) return
+    if (e && e.propertyName !== 'height') return
+    finished = true
+    el.removeEventListener('transitionend', finish)
+    done()
+  }
+  if (dur === 0) return finish()
+  el.addEventListener('transitionend', finish)
+  // 兜底：transitionend 未触发时（元素被提前卸载等）也要放行
+  setTimeout(finish, dur + 60)
+}
+
+function onEnter(el, done) {
+  const dur = prefersReduced() ? 0 : ANIM_ENTER
+  el.style.overflow = 'hidden'
+  el.style.height = '0px'
+  el.style.opacity = '0'
+  void el.offsetHeight // 强制回流，锁定起始高度
+  const target = el.scrollHeight
+  el.style.transition = `height ${dur}ms var(--ff-ease-decelerate), opacity ${Math.round(dur * 0.7)}ms var(--ff-ease-standard)`
+  el.style.height = `${target}px`
+  el.style.opacity = '1'
+  settle(el, dur, () => {
+    el.style.height = 'auto'
+    el.style.overflow = ''
+    el.style.transition = ''
+    el.style.opacity = ''
+    done()
+  })
+}
+
+function onLeave(el, done) {
+  const dur = prefersReduced() ? 0 : ANIM_LEAVE
+  el.style.overflow = 'hidden'
+  el.style.height = `${el.scrollHeight}px`
+  el.style.opacity = '1'
+  void el.offsetHeight
+  el.style.transition = `height ${dur}ms var(--ff-ease-accelerate), opacity ${Math.round(dur * 0.8)}ms var(--ff-ease-standard)`
+  el.style.height = '0px'
+  el.style.opacity = '0'
+  settle(el, dur, () => {
+    el.style.height = ''
+    el.style.overflow = ''
+    el.style.transition = ''
+    el.style.opacity = ''
+    done()
+  })
+}
 </script>
 
 <template>
-  <tr class="ff-table__row" :class="{ 'ff-table__row--unread': !item.is_read }" @click="markRead">
+  <tr
+    class="ff-table__row ff-newsrow__row"
+    :class="{ 'ff-newsrow__row--unread': !item.is_read, 'ff-newsrow__row--open': expanded }"
+    @click="markRead"
+  >
     <td class="ff-table__cell ff-table__cell--center">
       <button
         class="ff-newscard__fav"
@@ -161,31 +253,70 @@ function aiAnalyze() {
     </td>
   </tr>
 
-  <!-- 详情展开行 -->
-  <tr v-if="expanded" class="ff-table__row ff-newsrow__detail-row">
-    <td class="ff-table__cell" colspan="5">
-      <div class="ff-newsrow__detail">
-        <p v-if="detailLoading" class="ff-newsrow__detail-loading">
-          <AppIcon name="refresh" size="xs" spin /> 正文加载中…
-        </p>
-        <p v-else-if="detailContent" class="ff-newsrow__detail-intro">{{ detailContent }}</p>
-        <p v-else-if="item.intro" class="ff-newsrow__detail-intro">{{ item.intro }}</p>
-        <p v-else class="ff-newsrow__detail-intro ff-newsrow__detail-muted">暂无正文内容，可点击右上角「跳转原文」查看。</p>
-        <div v-if="item.keywords?.length || item.stocks?.length" class="ff-newsrow__detail-tags">
-          <span v-for="k in item.keywords?.slice(0, 5)" :key="k" class="ff-newsrow__detail-tag">#{{ k }}</span>
-          <span v-for="s in item.stocks?.slice(0, 6)" :key="s" class="ff-newsrow__detail-stock">
-            <AppIcon name="trending-up" size="xs" /> {{ s }}
-          </span>
+  <!-- 详情展开行：前四列留空占位，内容落在「标题」列正下方，与标题精确对齐 -->
+  <tr class="ff-newsrow__detail-row">
+    <td class="ff-newsrow__spacer" aria-hidden="true"></td>
+    <td class="ff-newsrow__spacer" aria-hidden="true"></td>
+    <td class="ff-newsrow__spacer" aria-hidden="true"></td>
+    <td class="ff-newsrow__spacer" aria-hidden="true"></td>
+    <td class="ff-newsrow__detail-cell">
+      <Transition :css="false" @enter="onEnter" @leave="onLeave">
+        <div v-if="expanded" class="nr-wrap">
+          <div class="nr-panel" :style="{ '--nr-accent': imp.accent }">
+            <!-- ① 正文 -->
+            <div class="nr-panel__body">
+              <div v-if="detailLoading" class="nr-skeleton" aria-live="polite" aria-busy="true">
+                <span class="nr-skeleton__line" style="width: 100%"></span>
+                <span class="nr-skeleton__line" style="width: 94%"></span>
+                <span class="nr-skeleton__line" style="width: 72%"></span>
+              </div>
+              <p v-else-if="detailContent" class="nr-panel__text">{{ detailContent }}</p>
+              <p v-else-if="item.intro" class="nr-panel__text">{{ item.intro }}</p>
+              <p v-else class="nr-panel__empty">
+                <AppIcon name="file-text" size="sm" />
+                <span>该条快讯暂无正文，可点击下方「查看原文」获取完整信息。</span>
+              </p>
+            </div>
+
+            <!-- ② 标签 / 关联个股 -->
+            <div v-if="item.keywords?.length || item.stocks?.length" class="nr-panel__tags">
+              <span
+                v-for="k in item.keywords?.slice(0, 6)"
+                :key="`kw-${k}`"
+                class="nr-chip"
+              >#{{ k }}</span>
+              <span
+                v-for="s in item.stocks?.slice(0, 6)"
+                :key="`st-${s}`"
+                class="nr-chip nr-chip--stock"
+              >
+                <AppIcon name="trending-up" size="xs" />{{ s }}
+              </span>
+            </div>
+
+            <!-- ③ 元信息 + 操作 -->
+            <div class="nr-panel__foot">
+              <span class="nr-sent" :class="`nr-sent--${sentTone}`">
+                <AppIcon :name="sentMeta.icon" size="xs" />{{ sentMeta.label }}
+              </span>
+              <div class="nr-panel__actions">
+                <a
+                  v-if="item.url"
+                  class="nr-btn"
+                  :href="item.url"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <AppIcon name="external-link" size="sm" />查看原文
+                </a>
+                <button class="nr-btn nr-btn--primary" @click="aiAnalyze">
+                  <AppIcon name="sparkles" size="sm" />AI 分析
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="ff-newsrow__detail-actions">
-          <a v-if="item.url" class="ff-newsrow__detail-origin" :href="item.url" target="_blank" rel="noopener">
-            <AppIcon name="external-link" size="sm" /> 查看原文
-          </a>
-          <button class="ff-newsrow__detail-btn" @click="aiAnalyze">
-            <AppIcon name="sparkles" size="sm" /> AI 分析
-          </button>
-        </div>
-      </div>
+      </Transition>
     </td>
   </tr>
 </template>
@@ -223,6 +354,7 @@ function aiAnalyze() {
   font-weight: 600;
   line-height: 1.4;
   text-align: left;
+  transition: color var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .ff-newsrow__headbtn .ff-highlight {
   display: inline;
@@ -236,10 +368,14 @@ function aiAnalyze() {
 .ff-newsrow__caret {
   flex-shrink: 0;
   color: var(--ff-text-tertiary);
-  transition: transform var(--ff-dur-fast) var(--ff-ease-standard);
+  transition: transform var(--ff-dur-base) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.ff-newsrow__headbtn:hover .ff-newsrow__caret {
+  color: var(--ff-text-brand);
 }
 .ff-newsrow__headbtn.is-expanded .ff-newsrow__caret {
   transform: rotate(90deg);
+  color: var(--ff-text-brand);
 }
 
 .ff-newsrow__link {
@@ -259,96 +395,206 @@ function aiAnalyze() {
   color: var(--ff-text-brand);
 }
 
-/* ── 详情展开行 ── */
-.ff-newsrow__detail {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 2px 6px 34px;
+/* ══════════════════════════════════════════════════════════
+   展开区 · 引述块（Quote Block）
+
+   刻意不做独立卡片：在 55px 行高的紧凑表格里塞带边框、阴影、
+   圆角的白卡片，形态与表格行差异过大，必然像贴上去的补丁。
+   改为让正文成为标题的延续——
+   · 展开行与内容行共用同一底色，形成一整条连续色带
+   · 只用一条左侧竖线标记内容起点，上接标题行的展开箭头
+   · 无边框 / 无阴影 / 无独立底色，层级完全靠缩进建立
+   ══════════════════════════════════════════════════════════ */
+
+/* 展开行 + 内容行同底色 = 一个连续的视觉整体 */
+.ff-table tbody tr.ff-newsrow__row--open > td,
+.ff-table tbody tr.ff-newsrow__detail-row > td {
+  background: var(--ff-bg-subtle);
+  border-bottom-color: transparent;
 }
-.ff-newsrow__detail-intro {
-  font-size: var(--ff-fs-body);
+/* 压过 .ff-table--hover 的行悬停，否则连续色带会被逐行截断 */
+.ff-table tbody tr.ff-newsrow__detail-row:hover > td {
+  background: var(--ff-bg-subtle);
+}
+
+/* 折叠时行内无内容，兜底压成 0 高，避免残留 1px 空隙 */
+.ff-newsrow__spacer,
+.ff-newsrow__detail-cell {
+  padding: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.nr-wrap {
+  will-change: height; /* 高度由 JS 过渡驱动 */
+}
+
+/* 引述块本体：一条竖线 + 缩进，仅此而已 */
+.nr-panel {
+  /* 左外边距对齐 .ff-table__cell 的 16px 内边距 → 竖线正好落在展开箭头正下方 */
+  margin: 0 0 var(--ff-space-4) var(--ff-space-4);
+  /* 左内边距 18px = 标题文字缩进(caret 14 + gap 6) − 竖线宽 2 → 正文与标题文字左对齐 */
+  padding: var(--ff-space-1) 0 var(--ff-space-2) 18px;
+  border-left: 2px solid var(--nr-accent, var(--ff-brand));
+  border-radius: 0 var(--ff-radius-sm) var(--ff-radius-sm) 0;
+}
+
+/* ① 正文 —— 比标题低一档字号，行高放宽，读作「标题的正文」 */
+.nr-panel__body {
+  padding-bottom: var(--ff-space-3);
+}
+.nr-panel__text {
+  max-width: 74ch;
+  margin: 0;
+  font-size: var(--ff-fs-body-sm);
   font-weight: 400;
-  color: var(--ff-text-primary);
-  line-height: 1.75;
-  letter-spacing: 0.015em;
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+  color: var(--ff-text-secondary);
   white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  max-width: 92ch;
 }
-.ff-newsrow__detail-loading {
-  display: inline-flex;
+.nr-panel__empty {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--ff-fs-body);
+  gap: var(--ff-space-2);
+  margin: 0;
+  font-size: var(--ff-fs-body-sm);
   color: var(--ff-text-tertiary);
 }
-.ff-newsrow__detail-muted {
-  font-size: var(--ff-fs-body);
-  color: var(--ff-text-tertiary);
+
+/* 加载骨架：改用呼吸式明暗，横扫式 shimmer 在浅底上过于跳眼 */
+.nr-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-2);
+  padding: var(--ff-space-1) 0;
 }
-.ff-newsrow__detail-tags {
+.nr-skeleton__line {
+  height: 9px;
+  border-radius: var(--ff-radius-pill);
+  background: var(--ff-border-strong);
+  animation: nr-pulse 1.5s var(--ff-ease-standard) infinite;
+}
+.nr-skeleton__line:nth-child(2) { animation-delay: 0.12s; }
+.nr-skeleton__line:nth-child(3) { animation-delay: 0.24s; }
+@keyframes nr-pulse {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 0.68; }
+}
+
+/* ② 标签 / 关联个股 —— 不再加分隔线，引述块内部靠间距呼吸 */
+.nr-panel__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--ff-space-2);
+  gap: var(--ff-space-1-5);
+  padding-bottom: var(--ff-space-3);
 }
-.ff-newsrow__detail-tag {
-  font-size: var(--ff-fs-xs);
-  color: var(--ff-text-secondary);
-  background: var(--ff-bg-subtle);
-  padding: 2px 8px;
+.nr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 var(--ff-space-2-5);
+  border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.ff-newsrow__detail-stock {
+.nr-chip:hover {
+  color: var(--ff-text-secondary);
+  border-color: var(--ff-border-strong);
+}
+/* 个股用品牌色实心底，与普通关键词形成主次 */
+.nr-chip--stock {
+  border-color: transparent;
+  background: var(--ff-brand-subtle);
+  color: var(--ff-text-brand);
+}
+.nr-chip--stock:hover {
+  color: var(--ff-text-brand);
+  background: var(--ff-brand-subtle-hover);
+}
+
+/* ③ 情绪 + 操作 */
+.nr-panel__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+}
+.nr-sent {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--ff-fs-xs);
-  color: var(--ff-text-brand);
-  background: var(--ff-bg-brand-subtle);
-  font-weight: 500;
-  padding: 2px 8px;
+  height: 24px;
+  padding: 0 var(--ff-space-2-5);
   border-radius: var(--ff-radius-pill);
+  font-size: var(--ff-fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
 }
-.ff-newsrow__detail-actions {
+.nr-sent--up { background: var(--ff-up-subtle); color: var(--ff-up-text); }
+.nr-sent--down { background: var(--ff-down-subtle); color: var(--ff-down-text); }
+.nr-sent--neutral { background: var(--ff-neutral-subtle); color: var(--ff-neutral-text); }
+
+.nr-panel__actions {
   display: flex;
   align-items: center;
-  gap: var(--ff-space-2);
+  gap: var(--ff-space-1-5);
+  margin-left: auto;
 }
-.ff-newsrow__detail-origin,
-.ff-newsrow__detail-btn {
+.nr-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 4px;
   height: 28px;
-  padding: 0 12px;
-  border-radius: var(--ff-radius-md);
-  font-size: var(--ff-fs-caption);
-  font-weight: 500;
-  cursor: pointer;
-  text-decoration: none;
-}
-.ff-newsrow__detail-origin {
-  border: 1px solid var(--ff-border-strong);
+  padding: 0 var(--ff-space-2-5);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius-sm);
   background: var(--ff-bg-surface);
-  color: var(--ff-text-secondary);
+  color: var(--ff-text-tertiary);
+  font-size: var(--ff-fs-xs);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--ff-dur-fast) var(--ff-ease-standard),
+    border-color var(--ff-dur-fast) var(--ff-ease-standard),
+    color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.ff-newsrow__detail-origin:hover {
-  background: var(--ff-bg-hover);
+.nr-btn:hover {
+  background: var(--ff-bg-surface);
+  border-color: var(--ff-border-strong);
   color: var(--ff-text-primary);
 }
-.ff-newsrow__detail-btn {
-  border: 1px solid var(--ff-brand-border);
-  background: var(--ff-bg-brand-subtle);
-  color: var(--ff-brand);
+.nr-btn--primary {
+  border-color: transparent;
+  background: var(--ff-brand-subtle);
+  color: var(--ff-text-brand);
 }
-.ff-newsrow__detail-btn:hover {
+.nr-btn--primary:hover {
   background: var(--ff-brand);
-  color: #fff;
+  border-color: transparent;
+  color: var(--ff-text-inverse);
+}
+
+/* 焦点可见性 */
+.nr-btn:focus-visible,
+.ff-newsrow__headbtn:focus-visible,
+.ff-newsrow__link:focus-visible,
+.ff-newsrow__ai:focus-visible,
+.ff-newscard__fav:focus-visible {
+  outline: 2px solid var(--ff-border-focus);
+  outline-offset: 2px;
 }
 
 .ff-newsrow__sent {
@@ -369,8 +615,8 @@ function aiAnalyze() {
   padding: 0;
   border: none;
   border-radius: var(--ff-radius-md);
-  background: var(--ff-bg-brand-subtle);
-  color: var(--ff-brand);
+  background: var(--ff-brand-subtle);
+  color: var(--ff-text-brand);
   cursor: pointer;
   flex-shrink: 0;
   opacity: 0;
@@ -383,7 +629,7 @@ function aiAnalyze() {
 }
 .ff-newsrow__ai:hover {
   background: var(--ff-brand);
-  color: #fff;
+  color: var(--ff-text-inverse);
 }
 
 .ff-newscard__fav {
@@ -410,10 +656,35 @@ function aiAnalyze() {
   color: var(--ff-icon-warn);
 }
 
-/* ── 移动端适配（D4）：表格行内换行保护 ── */
+@media (prefers-reduced-motion: reduce) {
+  .nr-skeleton__line {
+    animation: none;
+  }
+  .ff-newsrow__caret,
+  .nr-chip,
+  .nr-btn {
+    transition: none;
+  }
+}
+
 @media (max-width: 768px) {
-  .nr__title {
-    overflow-wrap: anywhere;
+  .nr-panel {
+    margin-right: var(--ff-space-3);
+    padding-left: var(--ff-space-3);
+  }
+  .nr-panel__text {
+    line-height: 1.75;
+  }
+  .nr-panel__foot {
+    flex-wrap: wrap;
+    gap: var(--ff-space-2);
+  }
+  .nr-panel__actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .nr-btn {
+    flex: 1 1 auto;
   }
 }
 </style>

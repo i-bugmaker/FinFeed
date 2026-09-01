@@ -111,13 +111,22 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
             return {"success": False, "error": "News not found"}
         db_mark_read(id, True)
         # 若无存储正文且具备原文链接，则随查随补并落库（后台也会批量补齐）
-        if not news.content and news.url and news.url != "#":
-            from finfeed.content_fetch import fetch_article_content
-            content = await fetch_article_content(news.url)
-            if content:
-                db_update_news_content(id, content)
-                news.content = content
+        article_meta = None
+        if news.url and news.url != "#":
+            from finfeed.content_extractor import fetch_article_detail
+            need_fetch = not news.content
+            detail = await fetch_article_detail(
+                news.url, title=news.title, source=news.source,
+            ) if need_fetch else None
+            if need_fetch and detail and detail.text:
+                db_update_news_content(id, detail.text)
+                news.content = detail.text
+                article_meta = detail.to_dict()
         data = news.to_dict()
+        # 结构化正文元数据（供前端展示标题/时间/作者/配图）
+        if article_meta:
+            article_meta["text"] = news.content
+            data["article"] = article_meta
         return {"success": True, "news": data}
 
     @router.post("/api/favorite", response_model=None)

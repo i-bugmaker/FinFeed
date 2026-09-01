@@ -1506,6 +1506,46 @@
   padding: 0;
 }
 
+/* ── 列 / 行修饰符 ──────────────────────────────────────────
+   以下类名在 FlashView / ArticlesView / MarketView 等视图中长期被引用，
+   但此前从未定义，导致「居中」「不换行」「未读强调」等样式全部失效，
+   是表格观感割裂的结构性原因。此处统一补齐。 */
+.ff-table thead th.ff-table__header--center,
+.ff-table tbody td.ff-table__cell--center {
+  text-align: center;
+}
+.ff-table thead th.ff-table__header--right,
+.ff-table tbody td.ff-table__cell--right {
+  text-align: right;
+}
+.ff-table tbody td.ff-table__cell--nowrap {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ff-table tbody td.ff-table__cell--numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 未读行：左侧品牌色导引条 + 略重字重 */
+.ff-table tbody tr.ff-table__row--unread > td {
+  font-weight: var(--ff-fw-medium);
+}
+.ff-table tbody tr.ff-table__row--unread > td:first-child {
+  box-shadow: inset 3px 0 0 var(--ff-brand);
+}
+
+/* 显式开启吸顶表头与行悬停（--sticky / --hover 此前为无效类名） */
+.ff-table--sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: var(--ff-z-raised);
+  background: var(--ff-bg-subtle);
+}
+.ff-table--hover tbody tr:hover {
+  background: var(--ff-bg-hover);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    10. 分页 · Pagination
    ═══════════════════════════════════════════════════════════════════════ */
