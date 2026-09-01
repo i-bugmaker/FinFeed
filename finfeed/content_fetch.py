@@ -129,9 +129,9 @@ _BOILERPLATE_RES: list[re.Pattern[str]] = [
     )
 ]
 
-# 整行仅为日期/时间的「报头行」，如 2026-08-31、08月31日 22:41、2026-08-31 周一 22:41:53
+# 整行仅为日期/时间的「报头行」，如 09月01日 22:30、2026-08-31、2026-08-31 周一 22:41:53
 _RE_DATELINE = re.compile(
-    r"^\s*\d{1,4}\s*[年/.\-]\s*\d{1,2}\s*[月/.\-]\s*\d{1,2}\s*日?"
+    r"^\s*(?:\d{2,4}\s*[年/.\-])?\s*\d{1,2}\s*[月/.\-]\s*\d{1,2}\s*日?"
     r"[\s,，]*(周[一二三四五六日天]|星期[一二三四五六日天])?"
     r"[\s,，]*\d{0,2}\s*[:：]?\s*\d{0,2}\s*[:：]?\s*\d{0,2}\s*$"
 )
@@ -369,7 +369,10 @@ async def backfill_content_batch(limit: int = _BATCH_SIZE, client: httpx.AsyncCl
                 n.url, c, title=getattr(n, "title", None),
                 source=getattr(n, "source", None),
             )
-            if content:
+            # 与 /api/detail 同规则：正文只是标题/摘要的重复时不落库
+            from finfeed.content_extractor import is_duplicate_of_meta
+            if content and not is_duplicate_of_meta(
+                    content, getattr(n, "title", None), getattr(n, "intro", None)):
                 db_update_news_content(n.id, content)
                 filled += 1
             if i < len(items) - 1:

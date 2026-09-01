@@ -50,8 +50,17 @@ _TAIL_NOISE_RE = re.compile(
     r"风险提示|股市有风险|入市需谨慎|投资(?:有|需)?风险|风险自担|"
     r"仅供参考|不代表|扫描二维码|扫码|关注(?:我们|公众号|微信)|"
     r"邮箱[：:]|联系(?:我们|邮箱)|转载(?:请联系|请注明)|"
-    r"(?:媒体|合作)投稿|下载(?:APP|客户端)|打开APP|点击下载)",
+    r"(?:媒体|合作)投稿|下载(?:APP|客户端)|打开APP|点击下载|"
+    # 新浪 7×24 详情页右栏推广位（倒计时 / 口号 / 二维码文案）
+    r"下一条快讯将在|最先掌握财经|海量资讯、精准解读)",
     re.I,
+)
+
+# 整行仅为日期/时间的「报头行」，如 09月01日 22:30、2026年08月31日、2026-08-31 周一 10:00:00
+_RE_DATELINE = re.compile(
+    r"^\s*(?:\d{2,4}\s*[年/.\-])?\s*\d{1,2}\s*[月/.\-]\s*\d{1,2}\s*日?"
+    r"[\s,，]*(周[一二三四五六日天]|星期[一二三四五六日天])?"
+    r"[\s,，]*\d{0,2}\s*[:：]?\s*\d{0,2}\s*[:：]?\s*\d{0,2}\s*$"
 )
 
 # ── 噪声容器签名（专属容器内部再清一遍） ─────────────────────────
@@ -149,7 +158,10 @@ SOURCE_RULES: dict[str, dict[str, Any]] = {
     "金融界": {"html": [".article_content", ".article", "[class*='article-content']"]},
     "汇通网快讯": {"html": [".article-cont", ".article-main", "#article-cont"]},
     "新浪财经7×24": {
-        "html": ["[class*='article-content']", "[class*='news-content']", ".main-content"],
+        # 正文在 #artibody（div.article）；外层 .article-content 包裹左右两栏，
+        # 右栏是倒计时/口号/下载引导等推广位，绝不能作为正文容器首选
+        "html": ["#artibody", ".news-content .article",
+                 "[class*='article-content']", "[class*='news-content']", ".main-content"],
     },
     "富途牛牛快讯": {"html": ["#newsDetail", ".newsDetail", "[class*='newsDetail']"]},
     "英为财情": {"html": ["article", ".articleBody", "[class*='article-content']"]},  # 403 反爬
@@ -260,6 +272,33 @@ def detect_source(url: str) -> str:
         if pat.search(url or ""):
             return name
     return ""
+
+
+# ── 正文去重 ─────────────────────────────────────────────────────
+def _norm_for_dedupe(s: str) -> str:
+    """归一化：仅保留中英文与数字，供正文与标题/摘要的重复比对"""
+    return re.sub(r"[\s\W_]+", "", s or "")
+
+
+def is_duplicate_of_meta(text: str, title: str | None = None,
+                         intro: str | None = None) -> bool:
+    """判断抓到的正文是否只是标题/摘要的重复
+
+    快讯类条目的详情页正文常等于列表页已携带的快讯文本。判据：
+    归一化后正文被「标题+摘要」完整包含（正文不比元信息更长即无新信息）。
+
+    例外：intro 为空时前端没有可回退展示的内容（会显示「暂无正文」占位），
+    此时即使正文与标题相同也落库，保证详情面板有内容可看。
+    """
+    body = _norm_for_dedupe(text)
+    if len(body) < _MIN_CJK:
+        return True
+    if not (intro or "").strip():
+        return False
+    meta = _norm_for_dedupe(f"{title or ''}{intro or ''}")
+    if not meta:
+        return False
+    return body in meta
 
 
 # ── 编码探测 ─────────────────────────────────────────────────────
@@ -374,8 +413,8 @@ def _paragraphs_from_html(fragment: str) -> tuple[list[str], list[str]]:
             txt = " ".join(blk.get_text(" ", strip=True).split())
             if not txt:
                 continue
-        # 尾部噪声段落（免责声明/责任编辑/版权等）直接剔除
-        if _TAIL_NOISE_RE.match(txt):
+        # 尾部噪声段落（免责声明/责任编辑/版权等）与纯日期报头行直接剔除
+        if _TAIL_NOISE_RE.match(txt) or _RE_DATELINE.match(txt):
             continue
         cjk = len(_RE_CJK.findall(txt))
         if cjk < _MIN_CJK and len(txt) < 12:

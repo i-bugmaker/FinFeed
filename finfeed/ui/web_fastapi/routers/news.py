@@ -113,12 +113,15 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
         # 若无存储正文且具备原文链接，则随查随补并落库（后台也会批量补齐）
         article_meta = None
         if news.url and news.url != "#":
-            from finfeed.content_extractor import fetch_article_detail
+            from finfeed.content_extractor import fetch_article_detail, is_duplicate_of_meta
             need_fetch = not news.content
             detail = await fetch_article_detail(
                 news.url, title=news.title, source=news.source,
             ) if need_fetch else None
-            if need_fetch and detail and detail.text:
+            # 正文只是标题/摘要的重复且 intro 已可供展示时不落库，
+            # 避免标题下方整段复读；intro 为空则落库以免前端显示「暂无正文」
+            if need_fetch and detail and detail.text \
+                    and not is_duplicate_of_meta(detail.text, news.title, news.intro):
                 db_update_news_content(id, detail.text)
                 news.content = detail.text
                 article_meta = detail.to_dict()
