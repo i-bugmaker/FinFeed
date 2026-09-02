@@ -28,6 +28,7 @@ from typing import Any, Optional
 from . import config
 from .collector import (
     fetch_board_list,
+    fetch_etf_pool,
     fetch_stock_pool,
     fetch_tick_chart,
     stock_market,
@@ -78,6 +79,8 @@ class SectorStore:
         self._board_lists_ts: float = 0.0
         self._stock_pool: list[StockMeta] = []
         self._stock_pool_ts: float = 0.0
+        self._etf_pool: list[StockMeta] = []
+        self._etf_pool_ts: float = 0.0
         self._last_refresh_ts: float = 0.0
         self._last_error: str = ""
         self._refresh_count: int = 0
@@ -97,7 +100,7 @@ class SectorStore:
             seen: set[str] = set()
             subs: list[Subscription] = []
             for it in items or []:
-                kind = it.get("kind") if it.get("kind") in ("board", "stock", "index") else "board"
+                kind = it.get("kind") if it.get("kind") in ("board", "stock", "index", "etf") else "board"
                 market = int(it.get("market", 0))
                 code = str(it.get("code", "")).strip()
                 name = str(it.get("name", "")).strip()
@@ -257,6 +260,11 @@ class SectorStore:
             self._stock_pool = stocks
             self._stock_pool_ts = time.time()
 
+    def set_etf_pool(self, etfs: list[StockMeta]) -> None:
+        with self._lock:
+            self._etf_pool = etfs
+            self._etf_pool_ts = time.time()
+
     def mark_refreshed(self) -> None:
         with self._lock:
             self._last_refresh_ts = time.time()
@@ -311,6 +319,15 @@ class SectorStore:
     def stock_pool_fresh(self, ttl: int) -> bool:
         with self._lock:
             ts = self._stock_pool_ts
+        return bool(ts) and (time.time() - ts) < ttl
+
+    def get_etf_pool(self) -> list[StockMeta]:
+        with self._lock:
+            return list(self._etf_pool)
+
+    def etf_pool_fresh(self, ttl: int) -> bool:
+        with self._lock:
+            ts = self._etf_pool_ts
         return bool(ts) and (time.time() - ts) < ttl
 
     def health(self) -> dict[str, Any]:
@@ -452,3 +469,11 @@ class RefreshWorker(threading.Thread):
         stocks = fetch_stock_pool()
         if stocks:
             self.store.set_stock_pool(stocks)
+
+    def ensure_etf_pool(self) -> None:
+        """按 TTL 刷新 ETF 池（供 ETF 搜索使用，仅首次/过期时触网）。"""
+        if self.store.etf_pool_fresh(config.ETF_POOL_TTL):
+            return
+        etfs = fetch_etf_pool()
+        if etfs:
+            self.store.set_etf_pool(etfs)

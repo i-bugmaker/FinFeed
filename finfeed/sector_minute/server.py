@@ -311,7 +311,7 @@ def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
                     return Subscription(kind="board", market=int(parts[2]), code=parts[3], board_type=parts[1])
                 except ValueError:
                     return None
-            if parts[0] in ("stock", "index") and len(parts) >= 3:
+            if parts[0] in ("stock", "index", "etf") and len(parts) >= 3:
                 try:
                     return Subscription(kind=parts[0], market=int(parts[1]), code=parts[2])
                 except ValueError:
@@ -377,6 +377,26 @@ def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
             if worker is not None and worker.is_alive():
                 worker.ensure_stock_pool()
         pool = store.get_stock_pool()
+        kw = kw.strip()
+        if kw:
+            pool = [s for s in pool if kw in s.code or kw in s.name]
+        return {
+            "total": len(pool),
+            "items": [
+                {"market": s.market, "code": s.code, "name": s.name,
+                 "price": s.price, "change_pct": s.change_pct}
+                for s in pool
+            ],
+        }
+
+    @router.get("/etfs")
+    def etfs(kw: str = Query("", max_length=32)) -> dict[str, Any]:
+        """ETF 池搜索（按代码/名称模糊匹配，用于 ETF 对比添加）。"""
+
+        with _worker_lock:
+            if worker is not None and worker.is_alive():
+                worker.ensure_etf_pool()
+        pool = store.get_etf_pool()
         kw = kw.strip()
         if kw:
             pool = [s for s in pool if kw in s.code or kw in s.name]

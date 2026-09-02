@@ -11,4 +11,5 @@ export const sectorMinuteApi = Object.freeze({
   setSubscriptions: (items) => http.post(`${BASE_PATH}/subscriptions`, { items }).then((response) => response.data),
   charts: (date = '') => http.get(`${BASE_PATH}/charts`, { params: { date: date || undefined } }).then((response) => response.data),
   stocks: (kw = '') => http.get(`${BASE_PATH}/stocks`, { params: { kw } }).then((response) => response.data),
+  etfs: (kw = '') => http.get(`${BASE_PATH}/etfs`, { params: { kw } }).then((response) => response.data),
 })

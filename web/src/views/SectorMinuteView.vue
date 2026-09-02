@@ -53,12 +53,14 @@ const minDateStr = () => {
 }
 
 // ---------------- 标的池 ----------------
-const activeTab = ref('board') // board | stock | index
+const activeTab = ref('board') // board | stock | index | etf
 const boardType = ref('hy') // hy/hy2/gn/fg/dq
 const stockKw = ref('')
 const stockMarket = ref('') // '' 全部 | '1' 沪 | '0' 深
+const etfKw = ref('')
 const boards = ref([])
 const stocks = ref([])
+const etfs = ref([])
 const indices = ref([])
 const selected = ref([]) // [{kind,market,code,name,board_type}]
 
@@ -86,6 +88,7 @@ const health = ref({})
 const lastUpdateLabel = ref('')
 const loadingBoards = ref(false)
 const loadingStocks = ref(false)
+const loadingEtfs = ref(false)
 const loadingIndices = ref(false)
 const indicesError = ref(false)
 const refreshing = ref(false)
@@ -95,8 +98,10 @@ const mobilePoolOpen = ref(false)
 
 let pollTimer = null
 let stockSearchTimer = null
+let etfSearchTimer = null
 let catchUpTimer = null // 数据补齐轮询：勾选/刷新后快速拉取直到全部到位
 let stockReqSeq = 0 // 请求序号：忽略过期响应，避免快速输入时结果乱序
+let etfReqSeq = 0
 
 const selectedKeys = computed(() => new Set(selected.value.map((s) => `${s.kind}:${s.market}:${s.code}`)))
 const selectedCount = computed(() => selected.value.length)
@@ -108,7 +113,7 @@ const rowsCharts = computed(() =>
     ? charts.value.filter((c) => c.kind === 'board')
     : charts.value,
 )
-const colsStockCharts = computed(() => charts.value.filter((c) => c.kind === 'stock'))
+const colsStockCharts = computed(() => charts.value.filter((c) => c.kind !== 'board'))
 
 // ---------------- 工具 ----------------
 const pctCls = (v) => (v > 0 ? 'is-up' : v < 0 ? 'is-down' : 'is-flat')
@@ -158,6 +163,20 @@ async function loadIndices() {
   }
 }
 
+async function loadEtfs() {
+  const seq = ++etfReqSeq
+  loadingEtfs.value = true
+  try {
+    const data = await sectorMinuteApi.etfs(etfKw.value)
+    if (seq !== etfReqSeq) return // 过期响应直接丢弃
+    etfs.value = data.items || []
+  } catch (e) {
+    if (seq === etfReqSeq) errorMsg.value = e.message || String(e)
+  } finally {
+    if (seq === etfReqSeq) loadingEtfs.value = false
+  }
+}
+
 // 个股关键词输入：防抖自动搜索（支持中文名称/代码）
 function onStockInput() {
   if (activeTab.value !== 'stock') return
@@ -165,6 +184,13 @@ function onStockInput() {
   stockSearchTimer = setTimeout(() => {
     if (stockKw.value.trim()) loadStocks()
   }, 350)
+}
+
+// ETF 关键词输入：防抖自动搜索（空关键词展示全池，便于浏览选择）
+function onEtfInput() {
+  if (activeTab.value !== 'etf') return
+  clearTimeout(etfSearchTimer)
+  etfSearchTimer = setTimeout(loadEtfs, 350)
 }
 
 async function loadCharts() {
@@ -492,6 +518,7 @@ onUnmounted(() => {
   stopPolling()
   stopCatchUp()
   if (stockSearchTimer) clearTimeout(stockSearchTimer)
+  if (etfSearchTimer) clearTimeout(etfSearchTimer)
   if (onVisible) document.removeEventListener('visibilitychange', onVisible)
 })
 
@@ -618,6 +645,14 @@ const visibleStocks = computed(() => {
           >
             指数
           </button>
+          <button
+            type="button"
+            class="smm__tab"
+            :class="activeTab === 'etf' && 'is-active'"
+            @click="activeTab = 'etf'; if (!etfs.length && !loadingEtfs) loadEtfs()"
+          >
+            ETF
+          </button>
         </div>
 
         <!-- 板块池 -->
@@ -699,7 +734,7 @@ const visibleStocks = computed(() => {
         </template>
 
         <!-- 指数池 -->
-        <template v-else>
+        <template v-else-if="activeTab === 'index'">
           <div class="smm__mkrow">
             <span class="smm__lbl">宽基 / 风格指数</span>
             <button type="button" class="smm__chip" :class="{ 'is-on': allIndicesSelected }" @click="toggleAllIndices">
@@ -733,6 +768,41 @@ const visibleStocks = computed(() => {
           </div>
         </template>
 
+        <!-- ETF 池 -->
+        <template v-else-if="activeTab === 'etf'">
+          <div class="smm__search">
+            <AppIcon name="search" size="sm" class="smm__search-icon" />
+            <input
+              v-model="etfKw"
+              type="text"
+              placeholder="搜索 ETF 名称 / 代码"
+              class="smm__input"
+              @input="onEtfInput"
+            />
+          </div>
+          <div v-if="loadingEtfs" class="smm__hint">加载中…</div>
+          <div v-else class="smm__list">
+            <button
+              v-for="e in etfs"
+              :key="e.code"
+              type="button"
+              class="smm__item"
+              :class="{ 'is-on': selectedKeys.has('etf:' + e.market + ':' + e.code) }"
+              @click="toggleTarget({ kind: 'etf', market: e.market, code: e.code, name: e.name })"
+            >
+              <span class="smm__check">
+                <AppIcon v-if="selectedKeys.has('etf:' + e.market + ':' + e.code)" name="check" size="xs" />
+              </span>
+              <span class="smm__item-name">{{ e.name }}</span>
+              <span class="smm__item-code">{{ e.code }}</span>
+              <span class="smm__item-pct" :class="pctCls(e.change_pct)">{{ fmtPct(e.change_pct) }}</span>
+            </button>
+            <div v-if="!etfs.length" class="smm__empty">
+              {{ etfKw.trim() ? '未匹配到 ETF' : '输入关键词搜索，或留空浏览全部' }}
+            </div>
+          </div>
+        </template>
+
         <!-- 底部：已选 + 状态 -->
         <div class="smm__panel-foot">
           <div v-if="selected.length" class="smm__sel">
@@ -743,8 +813,8 @@ const visibleStocks = computed(() => {
                 :key="`${s.kind}:${s.market}:${s.code}`"
                 class="smm__sel-chip"
               >
-                <span class="smm__sel-kind" :class="s.kind === 'stock' ? 'is-stock' : 'is-board'">
-                  {{ s.kind === 'stock' ? '股' : '板' }}
+                <span class="smm__sel-kind" :class="'is-' + (s.kind === 'board' ? 'board' : s.kind)">
+                  {{ s.kind === 'stock' ? '股' : s.kind === 'etf' ? 'E' : s.kind === 'index' ? '指' : '板' }}
                 </span>
                 {{ s.name }}
                 <button
@@ -778,8 +848,8 @@ const visibleStocks = computed(() => {
         <!-- 空状态 -->
         <div v-if="!selected.length" class="smm__empty-main">
           <AppIcon name="activity" size="xl" />
-          <p>在左侧勾选板块、个股或指数，开始多标的分时对比</p>
-          <p class="smm__empty-sub">支持板块-个股-指数混合对比、历史日期回看与左右分屏对标</p>
+          <p>在左侧勾选板块、个股、ETF 或指数，开始多标的分时对比</p>
+          <p class="smm__empty-sub">支持板块-个股-ETF-指数混合对比、历史日期回看与左右分屏对标</p>
         </div>
 
         <!-- 垂直混排 -->
@@ -819,7 +889,7 @@ const visibleStocks = computed(() => {
             <div v-else class="smm__col-empty">未选择板块</div>
           </div>
           <div class="smm__col">
-            <div class="smm__col-head">个股</div>
+            <div class="smm__col-head">个股 / ETF / 指数</div>
             <div v-if="colsStockCharts.length" class="smm__col-list">
               <div v-for="c in colsStockCharts" :key="`s${c.code}`" class="smm__card">
                 <SectorMinuteChart
@@ -834,7 +904,7 @@ const visibleStocks = computed(() => {
                 />
               </div>
             </div>
-            <div v-else class="smm__col-empty">未选择个股</div>
+            <div v-else class="smm__col-empty">未选择个股 / ETF / 指数</div>
           </div>
         </div>
       </main>
@@ -1155,6 +1225,8 @@ const visibleStocks = computed(() => {
 }
 .smm__sel-kind.is-board { background: var(--ff-brand); }
 .smm__sel-kind.is-stock { background: var(--ff-accent-teal); }
+.smm__sel-kind.is-etf { background: var(--ff-warn); }
+.smm__sel-kind.is-index { background: var(--ff-accent-violet); }
 .smm__sel-x {
   display: inline-flex;
   align-items: center;

@@ -30,6 +30,9 @@ BOARD_LIST_TTL: int = int(os.environ.get("SECTOR_MIN_BOARD_LIST_TTL", "60"))
 # 个股池刷新周期（秒）——全市场个股列表(约5500只)成本高，低频刷新。
 STOCK_POOL_TTL: int = int(os.environ.get("SECTOR_MIN_STOCK_POOL_TTL", "300"))
 
+# ETF 池刷新周期（秒）——全市场 ETF 约1700只，低频刷新（对齐个股池）。
+ETF_POOL_TTL: int = int(os.environ.get("SECTOR_MIN_ETF_POOL_TTL", "300"))
+
 # --------------------------------------------------------------------------- #
 # 风控与性能
 # --------------------------------------------------------------------------- #

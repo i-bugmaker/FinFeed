@@ -17,8 +17,9 @@ import logging
 from datetime import date
 from typing import Optional
 
-from easy_tdx import BoardType, MacClient
-from finfeed.capital_dashboard.tdx import ensure_alive, get_client
+from easy_tdx import BoardType, Category, MacClient, SortOrder, SortType
+from easy_tdx.codec.bitmap import PresetField
+from finfeed.capital_dashboard.tdx import call_lock, ensure_alive, get_client
 
 from .models import BoardMeta, StockMeta, TickChart, TickPoint
 
@@ -205,6 +206,50 @@ def fetch_stock_pool(client: MacClient | None = None) -> list[StockMeta]:
                 name=str(s.name),
                 price=round(float(s.price), 2),
                 change_pct=round(float(s.change_pct), 2),
+            )
+        )
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# ETF 池
+# --------------------------------------------------------------------------- #
+
+def fetch_etf_pool(client: MacClient | None = None) -> list[StockMeta]:
+    """获取全部场内 ETF（含代码/名称/现价/涨跌幅），失败返回空列表。
+
+    走 MAC ``Category.ETF`` 全市场分类（约 1700+ 只），一次调用自动分页；
+    涨跌幅由 close/pre_close 计算（协议无直接涨跌幅字段）。
+    """
+    ensure_alive()
+    client = client or get_client()
+    with call_lock():
+        df = _safe(
+            lambda: client.get_stock_quotes_list(
+                Category.ETF,
+                count=5000,
+                sort_type=SortType.CODE,
+                sort_order=SortOrder.ASC,
+                fields=PresetField.BASIC,
+            ),
+            tag="etf_pool",
+        )
+    if df is None or len(df) == 0:
+        return []
+    out: list[StockMeta] = []
+    for _, r in df.iterrows():
+        code = str(r.get("code", "")).strip()
+        if not code:
+            continue
+        price = float(r.get("close", 0.0) or 0.0)
+        pre_close = float(r.get("pre_close", 0.0) or 0.0)
+        out.append(
+            StockMeta(
+                market=int(r.get("market", 1) or 1),
+                code=code,
+                name=str(r.get("name", "")).strip(),
+                price=round(price, 3),
+                change_pct=_pct(price, pre_close),
             )
         )
     return out

@@ -24,6 +24,7 @@
     --brand: #2563eb;            /* 品牌蓝 */
     --brand-ink: #1a56d6;
     --stock: #0e9aa7;            /* 个股青 */
+    --etf: #d97706;              /* ETF 琥珀 */
 
     --up: #e5484d;               /* 涨（红） */
     --up-text: #d9363e;
@@ -192,9 +193,9 @@
   .list-tools .mini-btn.is-on { border-color: #b9cbff; background: var(--brand-subtle); color: var(--brand-ink); }
   .list-tools .mini-btn:disabled { opacity: .5; cursor: default; color: var(--text-3); background: var(--surface-2); border-color: var(--border-subtle); }
 
-  /* 板块 / 个股池：撑满剩余高度并形成滚动容器 */
-  #poolBoard, #poolStock, #poolIndex, #poolSearch { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  #poolStock, #poolIndex, #poolSearch { display: none; }
+  /* 板块 / 个股 / ETF / 指数池：撑满剩余高度并形成滚动容器 */
+  #poolBoard, #poolStock, #poolETF, #poolIndex, #poolSearch { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #poolStock, #poolETF, #poolIndex, #poolSearch { display: none; }
 
   /* 搜索结果：板块 / 个股分区标题 */
   .search-sec { display: flex; align-items: center; gap: 6px; padding: 8px 10px 2px; font-size: 12px; color: var(--text-3); }
@@ -253,6 +254,7 @@
   .smic__badge.is-board { background: var(--brand); }
   .smic__badge.is-stock { background: var(--stock); }
   .smic__badge.is-index { background: #7c5cd6; }
+  .smic__badge.is-etf { background: var(--etf); }
   .smic__name { font-weight: 600; color: var(--text-1); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .smic__code { font-family: var(--font-num); color: var(--text-3); font-size: 11px; }
   .smic__sp { flex: 1; }
@@ -282,7 +284,7 @@
   <header>
     <div class="brand">
       <h1>多标的分时对比</h1>
-      <span class="sub">SECTOR MINUTE · 板块 · 个股 · 指数</span>
+      <span class="sub">SECTOR MINUTE · 板块 · 个股 · ETF · 指数</span>
     </div>
 
     <div class="sep"></div>
@@ -355,13 +357,14 @@
       <div class="tabs">
         <button type="button" class="tab is-active" data-tab="board">板块</button>
         <button type="button" class="tab" data-tab="stock">个股</button>
+        <button type="button" class="tab" data-tab="etf">ETF</button>
         <button type="button" class="tab" data-tab="index">指数</button>
       </div>
 
       <div class="panel-body">
         <div class="search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="kwGlobal" type="text" placeholder="搜索板块 / 个股 / 指数名称或代码">
+          <input id="kwGlobal" type="text" placeholder="搜索板块 / 个股 / ETF / 指数名称或代码">
           <button type="button" class="kw-clear" id="kwClear" title="清除搜索" aria-label="清除搜索" style="display:none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -401,6 +404,11 @@
           <div class="list" id="listIndex"></div>
         </div>
 
+        <!-- ETF 池 -->
+        <div id="poolETF" style="display:none">
+          <div class="list" id="listETF"></div>
+        </div>
+
         <!-- 搜索结果：同时罗列板块 + 个股 -->
         <div id="poolSearch" style="display:none">
           <div class="list" id="listSearch"></div>
@@ -412,8 +420,8 @@
     <div class="main">
       <div class="empty-main" id="emptyState">
         <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        <p>在左侧勾选板块、个股或指数，开始多标的分时对比</p>
-        <p class="sub">支持板块 / 个股 / 指数混合对比、历史日期回看与左右分屏对标</p>
+        <p>在左侧勾选板块、个股、ETF 或指数，开始多标的分时对比</p>
+        <p class="sub">支持板块 / 个股 / ETF / 指数混合对比、历史日期回看与左右分屏对标</p>
       </div>
       <div id="mainArea"></div>
     </div>
@@ -453,6 +461,7 @@ const API = {
   refresh: API_BASE + "/refresh",
   boards:  (t) => API_BASE + "/boards?board_type=" + t,
   stocks:  (kw) => API_BASE + "/stocks?kw=" + encodeURIComponent(kw),
+  etfs:    (kw) => API_BASE + "/etfs?kw=" + encodeURIComponent(kw),
   indices: API_BASE + "/indices",
   subs:    API_BASE + "/subscriptions",
   charts:  (date) => API_BASE + "/charts" + (date ? "?date=" + date : ""),
@@ -492,6 +501,8 @@ const state = {
   boards: [],
   allBoards: [],
   stocks: [],
+  etfs: [],
+  etfLoading: false,         // ETF 池加载状态（首次进入/搜索时懒加载）
   indices: [],
   indicesState: "loading",   // loading | error | ok（指数池加载状态，失败可点击重试）
   selected: [],
@@ -603,6 +614,17 @@ async function loadStocks() {
     renderStockList();
     renderSearchList(); // 搜索面板（若有词）同步刷新个股结果
   } catch (e) { if (seq === stockSeq) toast((e.message || String(e)), true); }
+}
+
+async function loadEtfs() {
+  // 首次进入/搜索时按需拉取全量池（约 1700 只）；关键词过滤由前端完成，与板块/个股一致
+  state.etfLoading = true;
+  try {
+    const data = await fetchJson(API.etfs(""));
+    state.etfs = data.items || [];
+  } catch (e) { toast((e.message || String(e)), true); }
+  state.etfLoading = false;
+  renderEtfList();
 }
 
 async function loadIndices() {
@@ -873,6 +895,20 @@ function renderIndexList() {
   syncSelAllButtons();
   observeSparks(el);
 }
+function renderEtfList() {
+  const el = $("#listETF");
+  if (state.etfLoading && !state.etfs.length) { el.innerHTML = '<div class="empty">正在加载 ETF…</div>'; return; }
+  const kw = (state.boardKw || "").trim();
+  const list = state.etfs.filter((s) => !kw || s.code.includes(kw) || s.name.includes(kw));
+  el.innerHTML = list.map((s) => {
+    const k = "etf:" + s.market + ":" + s.code, on = state.selected.some((x) => keyOf(x) === k);
+    return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "etf", market: s.market, code: s.code, name: s.name })}'>
+      <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+      <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
+      <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
+  }).join("") || '<div class="empty">无匹配 ETF</div>';
+  observeSparks(el);
+}
 
 // 全局搜索：同时合并罗列「板块 + 个股 + 指数」到统一搜索结果面板
 function renderSearchList() {
@@ -883,7 +919,8 @@ function renderSearchList() {
   const bList = (state.allBoards || []).filter((b) => b.code.includes(kw) || b.name.includes(kw));
   const sList = (state.stocks || []).filter((s) => s.code.includes(kw) || s.name.includes(kw));
   const iList = (state.indices || []).filter((i) => i.code.includes(kw) || i.name.includes(kw));
-  if (!bList.length && !sList.length && !iList.length) { el.innerHTML = '<div class="empty">无匹配的板块、个股或指数</div>'; return; }
+  const eList = (state.etfs || []).filter((e) => e.code.includes(kw) || e.name.includes(kw));
+  if (!bList.length && !sList.length && !iList.length && !eList.length) { el.innerHTML = '<div class="empty">无匹配的板块、个股、ETF 或指数</div>'; return; }
 
   let html = "";
   if (bList.length) {
@@ -917,6 +954,17 @@ function renderSearchList() {
         <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
         <span class="item-name">${esc(i.name)}</span><span class="item-code">${i.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
         <span class="item-pct ${numCls(i.change_pct)}">${fmtPct(i.change_pct)}</span></button>`;
+    }).join("");
+  }
+  if (eList.length) {
+    html += `<div class="search-sec"><span class="search-sec-name">ETF</span><span class="search-sec-count">${eList.length}</span></div>`;
+    html += eList.map((e) => {
+      const k = "etf:" + e.market + ":" + e.code;
+      const on = state.selected.some((x) => keyOf(x) === k);
+      return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "etf", market: e.market, code: e.code, name: e.name })}'>
+        <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="item-name">${esc(e.name)}</span><span class="item-code">${e.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
+        <span class="item-pct ${numCls(e.change_pct)}">${fmtPct(e.change_pct)}</span></button>`;
     }).join("");
   }
   el.innerHTML = html;
@@ -1162,11 +1210,20 @@ function retrySparks(keys) {
 /* ---------------- 主体渲染 ---------------- */
 function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
 
+// 类型徽标：板块/个股/指数/ETF 各自的样式与文字
+function kindBadge(kind) {
+  if (kind === "stock") return { cls: "is-stock", label: "股" };
+  if (kind === "index") return { cls: "is-index", label: "指" };
+  if (kind === "etf") return { cls: "is-etf", label: "基" };
+  return { cls: "is-board", label: "板" };
+}
+
 // 单张图表卡片 HTML（idx 为图表 DOM id 后缀，各行内不同布局共用）
 function makeCard(c, idx) {
+  const bd = kindBadge(c.kind);
   return `<div class="card" data-key="${keyOf(c)}"><div class="smic">
     <div class="smic__head">
-      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : c.kind === "index" ? "is-index" : "is-board"}">${c.kind === "stock" ? "股" : c.kind === "index" ? "指" : "板"}</span>
+      <span class="smic__badge ${bd.cls}">${bd.label}</span>
       <span class="smic__name" title="${esc(c.code)}">${esc(c.name || c.code)}</span>
       <span class="smic__code">${esc(c.code)}</span><span class="smic__sp"></span>
       <span class="smic__price ${numCls(c.change_pct)}">${fmtNum(c.close)}</span>
@@ -1185,9 +1242,10 @@ function makeCard(c, idx) {
 
 // 一览（C）缩略卡片：标题 + 迷你分时线 + 涨跌幅
 function makeTile(c) {
+  const bd = kindBadge(c.kind);
   return `<button type="button" class="tile" data-key="${keyOf(c)}">
     <span class="tile-h">
-      <span class="smic__badge ${c.kind === "stock" ? "is-stock" : c.kind === "index" ? "is-index" : "is-board"}">${c.kind === "stock" ? "股" : c.kind === "index" ? "指" : "板"}</span>
+      <span class="smic__badge ${bd.cls}">${bd.label}</span>
       <span class="tile-name">${esc(c.name || c.code)}</span>
       <span class="tile-code">${esc(c.code)}</span>
     </span>
@@ -1239,12 +1297,16 @@ function buildMain() {
   if (state.layout === "columns") {
     const boards = state.chartsData.filter((c) => c.kind === "board");
     const stocks = state.chartsData.filter((c) => c.kind === "stock");
+    const etfs = state.chartsData.filter((c) => c.kind === "etf");
     html += `<div class="cols">
       <div class="col"><div class="col-head">板块</div><div class="col-list">${
         boards.length ? boards.map((c, i) => makeCard(c, i)).join("") : '<div class="col-empty">未选择板块</div>'
       }</div></div>
       <div class="col"><div class="col-head">个股</div><div class="col-list">${
         stocks.length ? stocks.map((c, i) => makeCard(c, boards.length + i)).join("") : '<div class="col-empty">未选择个股</div>'
+      }</div></div>
+      <div class="col"><div class="col-head">ETF</div><div class="col-list">${
+        etfs.length ? etfs.map((c, i) => makeCard(c, boards.length + stocks.length + i)).join("") : '<div class="col-empty">未选择 ETF</div>'
       }</div></div>
     </div>`;
   } else if (state.layout === "grid") {
@@ -1447,7 +1509,10 @@ function chartAt(idx) {
   if (state.layout === "columns") {
     const boards = state.chartsData.filter((c) => c.kind === "board");
     const stocks = state.chartsData.filter((c) => c.kind === "stock");
-    return idx < boards.length ? boards[idx] : stocks[idx - boards.length];
+    const etfs = state.chartsData.filter((c) => c.kind === "etf");
+    if (idx < boards.length) return boards[idx];
+    if (idx < boards.length + stocks.length) return stocks[idx - boards.length];
+    return etfs[idx - boards.length - stocks.length];
   }
   return state.chartsData[idx];
 }
@@ -1457,8 +1522,9 @@ let focusIns = null;
 function openFocus(k) {
   const c = state.chartsData.find((x) => keyOf(x) === k);
   if (!c) return;
-  $("#focusBadge").className = "smic__badge " + (c.kind === "stock" ? "is-stock" : c.kind === "index" ? "is-index" : "is-board");
-  $("#focusBadge").textContent = c.kind === "stock" ? "股" : "板";
+  const bd = kindBadge(c.kind);
+  $("#focusBadge").className = "smic__badge " + bd.cls;
+  $("#focusBadge").textContent = bd.label;
   $("#focusName").textContent = c.name || c.code;
   $("#focusCode").textContent = c.code;
   $("#focusPrice").className = "smic__price " + numCls(c.change_pct);
@@ -1706,17 +1772,23 @@ $$(".tab").forEach((t) => t.addEventListener("click", () => {
   const tab = t.dataset.tab;
   state.activeTab = tab;
   $$(".tab").forEach((x) => x.classList.toggle("is-active", x.dataset.tab === tab));
-  // 首次进入个股池：自动加载全部（含「全部」市场）；首次进入指数池：加载指数列表
+  // 首次进入个股池：自动加载全部（含「全部」市场）；首次进入指数/ETF 池：加载列表
   if (tab === "stock" && !state.stocks.length) loadStocks();
   if (tab === "index" && !state.indices.length) loadIndices();
+  if (tab === "etf" && !state.etfs.length) loadEtfs();
   // 面板显示由当前搜索词决定：有词→统一搜索结果；无词→回到对应 tab 池
   const kw = (state.boardKw || "").trim();
-  if (kw) { $("#poolSearch").style.display = "flex"; $("#poolBoard").style.display = "none"; $("#poolStock").style.display = "none"; $("#poolIndex").style.display = "none"; }
+  if (kw) {
+    $("#poolSearch").style.display = "flex"; $("#poolBoard").style.display = "none"; $("#poolStock").style.display = "none"; $("#poolIndex").style.display = "none"; $("#poolETF").style.display = "none";
+    renderSearchList();
+  }
   else {
     $("#poolSearch").style.display = "none";
     $("#poolBoard").style.display = tab === "board" ? "flex" : "none";
     $("#poolStock").style.display = tab === "stock" ? "flex" : "none";
     $("#poolIndex").style.display = tab === "index" ? "flex" : "none";
+    $("#poolETF").style.display = tab === "etf" ? "flex" : "none";
+    if (tab === "etf") renderEtfList();
   }
 }));
 $("#poolBoard").style.display = "flex";
@@ -1733,10 +1805,12 @@ $("#kwGlobal").addEventListener("input", (e) => {
   if (kw) {
     if (!state.stocks.length) loadStocks(); // 搜索前未加载个股则补充
     if (!state.indices.length) loadIndices(); // 搜索前未加载指数则补充
+    if (!state.etfs.length) loadEtfs(); // 搜索前未加载 ETF 则补充
     $("#poolSearch").style.display = "flex";
     $("#poolBoard").style.display = "none";
     $("#poolStock").style.display = "none";
     $("#poolIndex").style.display = "none";
+    $("#poolETF").style.display = "none";
     renderSearchList();
   } else {
     $("#poolSearch").style.display = "none";
@@ -1744,9 +1818,11 @@ $("#kwGlobal").addEventListener("input", (e) => {
     $("#poolBoard").style.display = tab === "board" ? "flex" : "none";
     $("#poolStock").style.display = tab === "stock" ? "flex" : "none";
     $("#poolIndex").style.display = tab === "index" ? "flex" : "none";
+    $("#poolETF").style.display = tab === "etf" ? "flex" : "none";
     renderBoardList();
     renderStockList();
     renderIndexList();
+    if (tab === "etf") renderEtfList();
   }
   // 有输入内容才显示「清除」叉号
   $("#kwClear").style.display = e.target.value.trim() ? "inline-flex" : "none";
