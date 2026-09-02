@@ -70,6 +70,18 @@ CAL_TYPES: Dict[str, Dict[str, str]] = {
         "desc": "全球宏观经济数据公布：前值 / 预测值 / 公布值",
         "site": "https://forex.eastmoney.com/FC.html",
     },
+    "report": {
+        "label": "业绩预告",
+        "icon": "trending-up",
+        "desc": "上市公司业绩预告与业绩快报：预增、扭亏、预减、首亏等",
+        "site": "https://data.eastmoney.com/bbsj/yjyg.html",
+    },
+    "lift": {
+        "label": "限售解禁",
+        "icon": "lock",
+        "desc": "个股限售股解禁：解禁数量、解禁市值、限售股类型",
+        "site": "https://data.eastmoney.com/dxf/lift-manage.html",
+    },
 }
 
 CAL_TYPE_KEYS: List[str] = list(CAL_TYPES.keys())
@@ -167,6 +179,48 @@ GLOBAL_COL_INDEX = {
     "period": 5, "actual": 6, "forecast": 7, "prev": 8,
     "importance": 9, "trend": 10,
 }
+
+
+# 业绩预告日历
+REPORT_COLUMNS: str = (
+    "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,REPORT_DATE,"
+    "PREDICT_TYPE,PREDICT_FINANCE,PREDICT_AMT_LOWER,PREDICT_AMT_UPPER,"
+    "ADD_AMP_LOWER,ADD_AMP_UPPER,INCREASE_JZ,PREYEAR_SAME_PERIOD,"
+    "PREDICT_CONTENT,TRADE_MARKET,SECURITY_TYPE"
+)
+
+# 业绩方向 -> 一级分类（PREDICT_TYPE 原值常含「预增/预减/扭亏/首亏/续亏/略增/略减/续盈/不确定」等）
+REPORT_CATEGORIES: List[str] = ["预增", "扭亏", "续盈", "略增", "预减", "首亏", "续亏", "略减", "不确定"]
+
+# 利好方向（优先级：命中即高）
+REPORT_POSITIVE_TYPES = ("预增", "扭亏", "续盈", "略增", "预盈")
+# 利空方向
+REPORT_NEGATIVE_TYPES = ("预减", "首亏", "续亏", "略减", "增亏")
+
+REPORT_IMPORTANCE_MAP: Dict[str, int] = {
+    "预增": 3, "扭亏": 3, "续盈": 2, "略增": 2, "预盈": 2,
+    "预减": 3, "首亏": 2, "续亏": 2, "略减": 2, "增亏": 2,
+}
+
+
+# 限售解禁日历
+LIFT_COLUMNS: str = (
+    "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,FREE_DATE,FREE_SHARES_TYPE,"
+    "CURRENT_FREE_SHARES,LIFT_MARKET_CAP,FREE_RATIO"
+)
+
+# 解禁市值（万元）分档 -> 重要性：市值越大抛压风险越高
+LIFT_IMPORTANCE_MARKET_CAP: List[tuple] = [
+    (100000, 3),     # 解禁市值 >= 10 亿：高危
+    (10000, 2),      # 1 亿 ~ 10 亿：中
+]
+
+# 常见限售股类型（实际值动态扩展，仅作索引/筛选建议）
+LIFT_CATEGORIES: List[str] = [
+    "首发原股东限售股份", "首发战略配售股份", "定向增发机构配售股份",
+    "股权激励限售股份", "股权分置限售股份", "公开增发机构配售股份",
+    "追加承诺限售股份", "其它",
+]
 
 
 # 通用

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from .models import CalendarEvent
-from .parsers import parse_finance, parse_global, parse_ipo, parse_stock
+from .parsers import parse_finance, parse_global, parse_ipo, parse_lift, parse_report, parse_stock
 from .sources import (
     EM_DATACENTER,
     EM_DATACENTER_SEC,
@@ -30,6 +30,8 @@ from .sources import (
     EM_MAX_PAGES,
     EM_PAGE_SIZE,
     FINANCE_COLUMNS,
+    LIFT_COLUMNS,
+    REPORT_COLUMNS,
     STOCK_COLUMNS,
     datacenter_headers,
     forex_headers,
@@ -249,11 +251,43 @@ async def fetch_global(client: httpx.AsyncClient, date: str) -> List[CalendarEve
     return parse_global(resp.text, date)
 
 
+# 5. 业绩预告日历
+async def fetch_report(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]:
+    params = {
+        "reportName": "RPT_PUBLIC_OP_NEWPREDICT",
+        "columns": REPORT_COLUMNS,
+        "sortColumns": "NOTICE_DATE",
+        "sortTypes": "1",
+        "filter": f"(NOTICE_DATE>='{date}')(NOTICE_DATE<='{date}')",
+        "source": "WEB",
+        "client": "WEB",
+    }
+    rows = await _dc_query(client, EM_DATACENTER, params, "https://data.eastmoney.com/bbsj/yjyg.html")
+    return parse_report(rows, date)
+
+
+# 6. 限售解禁日历
+async def fetch_lift(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]:
+    params = {
+        "reportName": "RPT_LIFT_STAGE",
+        "columns": LIFT_COLUMNS,
+        "sortColumns": "FREE_DATE",
+        "sortTypes": "1",
+        "filter": f"(FREE_DATE>='{date}')(FREE_DATE<='{date}')",
+        "source": "WEB",
+        "client": "WEB",
+    }
+    rows = await _dc_query(client, EM_DATACENTER, params, "https://data.eastmoney.com/dxf/lift-manage.html")
+    return parse_lift(rows, date)
+
+
 FETCHERS = {
     "finance": fetch_finance,
     "stock": fetch_stock,
     "ipo": fetch_ipo,
     "global": fetch_global,
+    "report": fetch_report,
+    "lift": fetch_lift,
 }
 
 

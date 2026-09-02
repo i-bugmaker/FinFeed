@@ -36,6 +36,8 @@ from .sources import (
     GLOBAL_COUNTRIES,
     IMPORTANCE_LABELS,
     IPO_CATEGORIES,
+    LIFT_CATEGORIES,
+    REPORT_CATEGORIES,
     STOCK_CATEGORIES,
 )
 
@@ -146,6 +148,8 @@ def _init_payload() -> Dict[str, Any]:
             "stock": STOCK_CATEGORIES,
             "ipo": IPO_CATEGORIES,
             "global": GLOBAL_COUNTRIES,
+            "report": REPORT_CATEGORIES,
+            "lift": LIFT_CATEGORIES,
         },
         "importance_labels": IMPORTANCE_LABELS,
         "today": today,

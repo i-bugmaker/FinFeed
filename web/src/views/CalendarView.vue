@@ -10,9 +10,9 @@ import AppBadge from '../ui/AppBadge.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 
-const CAL_TYPE_LABEL = { finance: '财经大事', stock: 'A股要闻', ipo: '新股申购', global: '全球宏观' }
-const CAL_TYPE_VARIANT = { finance: 'brand', stock: 'up', ipo: 'warn', global: 'info' }
-const CAL_TYPE_ORDER = ['finance', 'stock', 'ipo', 'global']
+const CAL_TYPE_LABEL = { finance: '财经大事', stock: 'A股要闻', ipo: '新股申购', global: '全球宏观', report: '业绩预告', lift: '限售解禁' }
+const CAL_TYPE_VARIANT = { finance: 'brand', stock: 'up', ipo: 'warn', global: 'info', report: 'down', lift: 'warn' }
+const CAL_TYPE_ORDER = ['finance', 'stock', 'ipo', 'global', 'report', 'lift']
 
 const { date, markTouched } = useAutoToday()
 
@@ -29,6 +29,8 @@ const typeOptions = [
   { label: 'A股要闻', value: 'stock', icon: 'trending-up' },
   { label: '新股申购', value: 'ipo', icon: 'zap' },
   { label: '全球宏观', value: 'global', icon: 'globe' },
+  { label: '业绩预告', value: 'report', icon: 'bar-chart' },
+  { label: '限售解禁', value: 'lift', icon: 'shield' },
 ]
 
 const groups = computed(() => {
@@ -143,7 +145,13 @@ onMounted(async () => {
             >
               <span class="ff-calendar-view__date ff-num">{{ e.event_date }}</span>
               <span class="ff-calendar-view__cat-badge">{{ e.category }}</span>
-              <span class="ff-calendar-view__title">{{ e.title }}</span>
+              <span class="ff-calendar-view__title">
+                <span
+                  v-if="e.importance >= 2"
+                  class="ff-calendar-view__stars"
+                  :class="{ 'is-high': e.importance >= 3 }"
+                >{{ '★'.repeat(e.importance) }}</span>{{ e.title }}
+              </span>
             </div>
           </div>
         </section>
@@ -303,6 +311,18 @@ onMounted(async () => {
   color: var(--ff-text-primary);
   font-weight: 500;
   line-height: 1.5;
+}
+
+.ff-calendar-view__stars {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--ff-warn);
+  font-size: 11.5px;
+  letter-spacing: 1px;
+}
+
+.ff-calendar-view__stars.is-high {
+  color: var(--ff-down);
 }
 
 .ff-calendar-view__loading {

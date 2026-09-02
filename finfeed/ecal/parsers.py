@@ -23,6 +23,9 @@ from .sources import (
     GLOBAL_IMPORTANCE_MAP,
     IPO_IMPORTANCE,
     IPO_SECURITY_TYPE,
+    LIFT_IMPORTANCE_MARKET_CAP,
+    REPORT_CATEGORIES,
+    REPORT_IMPORTANCE_MAP,
     STOCK_CATEGORY_IMPORTANCE,
     STOCK_CATEGORY_RULES,
 )
@@ -271,9 +274,220 @@ def parse_global(html_text: str, date: str) -> List[CalendarEvent]:
     return out
 
 
+# 5. 业绩预告日历
+def _report_category(pred_type: str) -> str:
+    """业绩方向归类：命中 REPORT_CATEGORIES 同名原值，否则回退到最接近的方向"""
+    for c in REPORT_CATEGORIES:
+        if c == pred_type or c in pred_type:
+            return c
+    # 兜底：按利好 / 利空关键词判定
+    for p in ("预增", "扭亏", "续盈", "略增", "预盈"):
+        if p in pred_type:
+            return p
+    for n in ("预减", "首亏", "续亏", "略减", "增亏"):
+        if n in pred_type:
+            return n
+    return "不确定"
+
+
+def _fmt_amt(v: Any) -> str:
+    """金额值格式化为万元表达（源为元，空/null -> ''）"""
+    if v is None or v == "":
+        return ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return _t(v)
+    return f"{f / 10000:.2f}万元"
+
+
+def _fmt_pct(v: Any) -> str:
+    """幅度百分比（源为百分数数值，空/null -> ''）"""
+    if v is None or v == "":
+        return ""
+    try:
+        return f"{float(v):g}%"
+    except (TypeError, ValueError):
+        return _t(v)
+
+
+def _report_period(date: str) -> str:
+    """由报告期(YYYY-MM-DD)推导简短标签：2026-06-30 -> 2026中报"""
+    if not date:
+        return ""
+    d = _d(date)
+    if not d:
+        return ""
+    m = int(d[5:7])
+    label = {6: "中报", 9: "三季报", 3: "一季报", 12: "年报"}.get(m, "报")
+    return f"{d[:4]}{label}"
+
+
+def parse_report(rows: List[Dict[str, Any]], date: str) -> List[CalendarEvent]:
+    """RPT_PUBLIC_OP_NEWPREDICT -> CalendarEvent（上市公司业绩预告）"""
+    now = int(time.time())
+    out: List[CalendarEvent] = []
+    for r in rows:
+        code = _t(r.get("SECURITY_CODE"))
+        name = _t(r.get("SECURITY_NAME_ABBR"))
+        pred_type = _t(r.get("PREDICT_TYPE"))
+        if not name or not pred_type:
+            continue
+
+        category = _report_category(pred_type)
+        report_date = _d(r.get("REPORT_DATE"))
+        secucode = _t(r.get("SECUCODE"))
+
+        amt_low = _fmt_amt(r.get("PREDICT_AMT_LOWER"))
+        amt_high = _fmt_amt(r.get("PREDICT_AMT_UPPER"))
+        amp_low = _fmt_pct(r.get("ADD_AMP_LOWER"))
+        amp_high = _fmt_pct(r.get("ADD_AMP_UPPER"))
+
+        # 幅度区间文本，用于标题后补充
+        amp_str = ""
+        if amp_low and amp_high and amp_low == amp_high:
+            amp_str = f"（{amp_low}）"
+        elif amp_low and amp_high:
+            amp_str = f"（{amp_low}~{amp_high}）"
+        elif amp_low:
+            amp_str = f"（{amp_low}）"
+        elif amp_high:
+            amp_str = f"（{amp_high}）"
+
+        content = _t(r.get("PREDICT_CONTENT"))
+        finance = _t(r.get("PREDICT_FINANCE"))
+
+        out.append(CalendarEvent(
+            cal_type="report",
+            event_date=date,
+            event_key=f"{code}|{pred_type}|{report_date}|{finance}",
+            title=f"{name} {category}{amp_str}",
+            category=category,
+            sub_type=pred_type,
+            content=content or f"{finance}：{category}",
+            code=code,
+            name=name,
+            period=_report_period(report_date) or report_date,
+            prev_value=_t(r.get("PREYEAR_SAME_PERIOD")) or "",
+            importance=REPORT_IMPORTANCE_MAP.get(category, 2),
+            url=f"https://quote.eastmoney.com/{_quote_slug(secucode, code)}.html" if code else "",
+            updated_ts=now,
+            extra={
+                "secucode": secucode,
+                "report_date": report_date,
+                "finance": finance,
+                "amt_lower": amt_low,
+                "amt_upper": amt_high,
+                "amp_lower": amp_low,
+                "amp_upper": amp_high,
+                "market": _t(r.get("TRADE_MARKET")),
+            },
+        ))
+    return out
+
+
+# 6. 限售解禁日历
+def _fmt_wan(value: Any) -> str:
+    """金额/数量（万元原始值）转易读文本：<1亿用"xxxx万"，>=1亿用"x.xx亿" """
+    if value is None or value == "":
+        return ""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return _t(value)
+    if abs(v) >= 10000:
+        return f"{v / 10000:.2f}亿"
+    return f"{v:.0f}万"
+
+
+def _fmt_ratio(value: Any) -> str:
+    """占比（小数 0.012 -> 1.2%）"""
+    if value is None or value == "":
+        return ""
+    try:
+        v = float(value) * 100
+    except (TypeError, ValueError):
+        return _t(value)
+    return f"{v:.2f}%"
+
+
+def _lift_importance(market_cap: Any) -> int:
+    """解禁市值（万元）决定重要性：抛压越大，风险越高"""
+    try:
+        v = float(market_cap or 0)
+    except (TypeError, ValueError):
+        return 1
+    for th, imp in LIFT_IMPORTANCE_MARKET_CAP:
+        if v >= th:
+            return imp
+    return 1
+
+
+def parse_lift(rows: List[Dict[str, Any]], date: str) -> List[CalendarEvent]:
+    """RPT_LIFT_STAGE -> CalendarEvent（限售股解禁）"""
+    now = int(time.time())
+    out: List[CalendarEvent] = []
+    for r in rows:
+        code = _t(r.get("SECURITY_CODE"))
+        name = _t(r.get("SECURITY_NAME_ABBR"))
+        share_type = _t(r.get("FREE_SHARES_TYPE"))
+        if not code or not name:
+            continue
+
+        free_date = _d(r.get("FREE_DATE")) or date
+        market_cap = r.get("LIFT_MARKET_CAP")  # 万元
+        shares = r.get("CURRENT_FREE_SHARES")  # 万股
+        ratio = r.get("FREE_RATIO")            # 小数
+
+        cap_str = _fmt_wan(market_cap)
+        share_str = _fmt_wan(shares)
+        ratio_str = _fmt_ratio(ratio)
+        secucode = _t(r.get("SECUCODE"))
+
+        # 详情文本：数量/市值/占比
+        parts = []
+        if share_str:
+            parts.append(f"解禁股份 {share_str}")
+        if cap_str:
+            parts.append(f"解禁市值 {cap_str}")
+        if ratio_str:
+            parts.append(f"占总股本 {ratio_str}")
+        content = " · ".join(parts) or f"{share_type}解禁"
+
+        title = f"{name} {share_type}解禁" if share_type else f"{name} 限售解禁"
+        if cap_str and market_cap is not None:
+            title += f"（{cap_str}）"
+
+        out.append(CalendarEvent(
+            cal_type="lift",
+            event_date=free_date,
+            event_key=f"{code}|{share_type}|{free_date}",
+            title=title,
+            category=share_type or "其它",
+            sub_type=share_type or "解禁",
+            content=content,
+            code=code,
+            name=name,
+            importance=_lift_importance(market_cap),
+            url=f"https://quote.eastmoney.com/{_quote_slug(secucode, code)}.html",
+            updated_ts=now,
+            extra={
+                "secucode": secucode,
+                "free_shares": _t(shares) if shares is not None else "",
+                "shares_text": share_str,
+                "market_cap": _t(market_cap) if market_cap is not None else "",
+                "market_cap_text": cap_str,
+                "ratio": ratio_str,
+            },
+        ))
+    return out
+
+
 PARSERS = {
     "finance": parse_finance,
     "stock": parse_stock,
     "ipo": parse_ipo,
     "global": parse_global,
+    "report": parse_report,
+    "lift": parse_lift,
 }
