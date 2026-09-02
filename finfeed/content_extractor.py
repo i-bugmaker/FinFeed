@@ -138,7 +138,10 @@ SOURCE_RULES: dict[str, dict[str, Any]] = {
     "法布财经": {"html": ["article", "[class*='article-content']"]},
     "企查查": {"html": ["[class*='post-detail']", "[class*='article']", ".detail-content"]},
     "每经网": {
-        "html": [".g-article-left", "#ContentBody", ".article-content"],
+        # 正文在 .g-articl-text（站点类名拼写即如此，缺 e）；
+        # .g-article-left 还含面包屑（每经网首页>首发快讯>正文）、
+        # 时间报头与上一篇/下一篇导航，绝不能作为正文容器首选
+        "html": [".g-articl-text", ".g-article-left", "#ContentBody", ".article-content"],
         "title": [".g-article-title", "h1"],
         "time": [".g-article-time", ".time"],
     },
