@@ -43,8 +43,12 @@ popd
 python "%~dp0..\main.py" %*
 if errorlevel 42 (
     echo.
-    echo  [重启] CTRL+R 触发重启，重新构建并运行 FinFeed 监控...
-    goto run
+    echo  [重启] Ctrl+R 触发完全重启：关闭当前控制台，另开一个全新实例...
+    echo  [重启] 新实例将重新构建前端并启动全新监控进程。
+    echo.
+    timeout /t 2 /nobreak >nul
+    start "" "%~f0" %*
+    exit /b 0
 )
 echo.
 echo  [完成] 监控已停止
