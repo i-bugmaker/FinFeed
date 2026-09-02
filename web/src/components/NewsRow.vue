@@ -278,23 +278,7 @@ function onLeave(el, done) {
               </p>
             </div>
 
-            <!-- ② 标签 / 关联个股 -->
-            <div v-if="item.keywords?.length || item.stocks?.length" class="nr-panel__tags">
-              <span
-                v-for="k in item.keywords?.slice(0, 6)"
-                :key="`kw-${k}`"
-                class="nr-chip"
-              >#{{ k }}</span>
-              <span
-                v-for="s in item.stocks?.slice(0, 6)"
-                :key="`st-${s}`"
-                class="nr-chip nr-chip--stock"
-              >
-                <AppIcon name="trending-up" size="xs" />{{ s }}
-              </span>
-            </div>
-
-            <!-- ③ 元信息 + 操作 -->
+            <!-- ② 元信息 + 操作 -->
             <div class="nr-panel__foot">
               <span class="nr-sent" :class="`nr-sent--${sentTone}`">
                 <AppIcon :name="sentMeta.icon" size="xs" />{{ sentMeta.label }}
@@ -445,15 +429,16 @@ function onLeave(el, done) {
 .nr-panel__text {
   max-width: 74ch;
   margin: 0;
-  font-size: var(--ff-fs-body-sm);
+  font-size: 15px;
   font-weight: 400;
-  line-height: 1.85;
-  letter-spacing: 0.01em;
+  line-height: 1.75;
   color: var(--ff-text-secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* 与 AI 分析结果正文（mdv）保持同一渲染观感 */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 .nr-panel__empty {
   display: flex;
@@ -484,46 +469,7 @@ function onLeave(el, done) {
   50% { opacity: 0.68; }
 }
 
-/* ② 标签 / 关联个股 —— 不再加分隔线，引述块内部靠间距呼吸 */
-.nr-panel__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ff-space-1-5);
-  padding-bottom: var(--ff-space-3);
-}
-.nr-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 22px;
-  padding: 0 var(--ff-space-2-5);
-  border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-pill);
-  background: var(--ff-bg-surface);
-  color: var(--ff-text-tertiary);
-  font-size: var(--ff-fs-xs);
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    color var(--ff-dur-fast) var(--ff-ease-standard),
-    border-color var(--ff-dur-fast) var(--ff-ease-standard);
-}
-.nr-chip:hover {
-  color: var(--ff-text-secondary);
-  border-color: var(--ff-border-strong);
-}
-/* 个股用品牌色实心底，与普通关键词形成主次 */
-.nr-chip--stock {
-  border-color: transparent;
-  background: var(--ff-brand-subtle);
-  color: var(--ff-text-brand);
-}
-.nr-chip--stock:hover {
-  color: var(--ff-text-brand);
-  background: var(--ff-brand-subtle-hover);
-}
-
-/* ③ 情绪 + 操作 */
+/* ② 情绪 + 操作 */
 .nr-panel__foot {
   display: flex;
   align-items: center;
@@ -661,7 +607,6 @@ function onLeave(el, done) {
     animation: none;
   }
   .ff-newsrow__caret,
-  .nr-chip,
   .nr-btn {
     transition: none;
   }
