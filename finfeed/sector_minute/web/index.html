@@ -188,6 +188,7 @@
   .spark { flex: none; width: 46px; height: 22px; display: block; margin-left: 2px; }
   .up { color: var(--up-text); } .down { color: var(--down-text); } .flat { color: var(--flat); }
   .empty { padding: 22px 8px; text-align: center; color: var(--text-3); font-size: 13px; }
+  .list-more { padding: 12px 8px 14px; text-align: center; color: var(--text-3); font-size: 12px; letter-spacing: 1px; user-select: none; }
 
   .list-tools { flex: none; display: flex; align-items: center; gap: 8px; padding: 2px 12px 4px; }
   .list-tools .mini-btn.is-on { border-color: #b9cbff; background: var(--brand-subtle); color: var(--brand-ink); }
@@ -528,6 +529,14 @@ let sparkRetries = {};  // key -> 已重试次数（后端瞬时抓取失败/超
 // 批量一旦超过就会有无重试路径的 key 永远空图。
 const SPARK_BATCH = 12;
 const SPARK_MAX_RETRIES = 3;
+
+// 长列表无限滚动分批渲染：板块/个股/ETF/指数/搜索结果全量数据只渲染「已显示」部分，
+// 滚动接近底部时按批追加，避免一次性构建上万 DOM 节点拖慢首屏。
+const LIST_BATCH = 120;
+const LIST_LIMITS = { board: 0, stock: 0, etf: 0, index: 0, search: 0 };
+const LIST_EL_IDS = { board: "listBoard", stock: "listStock", etf: "listETF", index: "listIndex", search: "listSearch" };
+const LIST_RENDERERS = { board: renderBoardList, stock: renderStockList, etf: renderEtfList, index: renderIndexList, search: renderSearchList };
+function resetListLimits(...kinds) { kinds.forEach((k) => { LIST_LIMITS[k] = 0; }); }
 let mainSeq = 0;           // 图表 DOM id 全局自增（增量增删时保证 id 唯一）
 
 /* ---------------- 工具 ---------------- */
@@ -596,6 +605,7 @@ async function loadBoards() {
   try {
     const data = await fetchJson(API.boards(state.boardType));
     state.boards = data.items || [];
+    resetListLimits("board");
     renderBoardList();
   } catch (e) { toast((e.message || String(e)), true); }
 }
@@ -611,6 +621,7 @@ async function loadStocks() {
     const arr = (data.items || []).slice();
     arr.sort((a, b) => (a.market - b.market) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
     state.stocks = arr;
+    resetListLimits("stock");
     renderStockList();
     renderSearchList(); // 搜索面板（若有词）同步刷新个股结果
   } catch (e) { if (seq === stockSeq) toast((e.message || String(e)), true); }
@@ -619,6 +630,7 @@ async function loadStocks() {
 async function loadEtfs() {
   // 首次进入/搜索时按需拉取全量池（约 1700 只）；关键词过滤由前端完成，与板块/个股一致
   state.etfLoading = true;
+  resetListLimits("etf");
   try {
     const data = await fetchJson(API.etfs(""));
     state.etfs = data.items || [];
@@ -629,6 +641,7 @@ async function loadEtfs() {
 
 async function loadIndices() {
   state.indicesState = state.indices.length ? "ok" : "loading";
+  resetListLimits("index");
   try {
     const data = await fetchJson(API.indices);
     state.indices = data.items || [];
@@ -850,14 +863,17 @@ function renderBoardList() {
   if (!state.boards.length && !(state.allBoards || []).length) { el.innerHTML = '<div class="empty">暂无板块数据</div>'; syncSelAllButtons(); return; }
   const kw = state.boardKw.trim();
   const list = visibleBoards();
-  el.innerHTML = list.map((b) => {
+  const lim = LIST_LIMITS.board + LIST_BATCH;
+  el.dataset.total = String(list.length);
+  const slice = list.slice(0, lim);
+  el.innerHTML = slice.map((b) => {
     const k = "board:" + (b.board_type || "hy") + ":1:" + b.code, on = state.selected.some((s) => keyOf(s) === k);
     const tag = kw ? `<span class="item-tag">${BT_NAME[b.board_type] || ""}</span>` : "";
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "board", market: 1, code: b.code, name: b.name, board_type: b.board_type })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       ${tag}<span class="item-name">${esc(b.name)}</span><span class="item-code">${b.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
       <span class="item-pct ${numCls(b.rise_pct)}">${fmtPct(b.rise_pct)}</span></button>`;
-  }).join("") || '<div class="empty">无匹配板块</div>';
+  }).join("") + (list.length > lim ? '<div class="list-more">继续滚动加载更多…</div>' : "") || '<div class="empty">无匹配板块</div>';
   syncSelAllButtons();
   observeSparks(el);
 }
@@ -865,13 +881,16 @@ function renderStockList() {
   const el = $("#listStock");
   if (!state.stocks.length) { el.innerHTML = '<div class="empty">正在加载个股…</div>'; syncSelAllButtons(); return; }
   const list = visibleStocks();
-  el.innerHTML = list.map((s) => {
+  const lim = LIST_LIMITS.stock + LIST_BATCH;
+  el.dataset.total = String(list.length);
+  const slice = list.slice(0, lim);
+  el.innerHTML = slice.map((s) => {
     const k = "stock:" + s.market + ":" + s.code, on = state.selected.some((x) => keyOf(x) === k);
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "stock", market: s.market, code: s.code, name: s.name })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
       <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
-  }).join("") || '<div class="empty">无匹配个股</div>';
+  }).join("") + (list.length > lim ? '<div class="list-more">继续滚动加载更多…</div>' : "") || '<div class="empty">无匹配个股</div>';
   syncSelAllButtons();
   observeSparks(el);
 }
@@ -885,13 +904,16 @@ function renderIndexList() {
   if (!state.indices.length) { el.innerHTML = '<div class="empty">正在加载指数…</div>'; syncSelAllButtons(); return; }
   const kw = (state.boardKw || "").trim();
   const list = state.indices.filter((i) => !kw || i.code.includes(kw) || i.name.includes(kw));
-  el.innerHTML = list.map((i) => {
+  const lim = LIST_LIMITS.index + LIST_BATCH;
+  el.dataset.total = String(list.length);
+  const slice = list.slice(0, lim);
+  el.innerHTML = slice.map((i) => {
     const k = "index:" + i.market + ":" + i.code, on = state.selected.some((x) => keyOf(x) === k);
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "index", market: i.market, code: i.code, name: i.name })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       <span class="item-name">${esc(i.name)}</span><span class="item-code">${i.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
       <span class="item-pct ${numCls(i.change_pct)}">${fmtPct(i.change_pct)}</span></button>`;
-  }).join("") || '<div class="empty">无匹配指数</div>';
+  }).join("") + (list.length > lim ? '<div class="list-more">继续滚动加载更多…</div>' : "") || '<div class="empty">无匹配指数</div>';
   syncSelAllButtons();
   observeSparks(el);
 }
@@ -900,13 +922,16 @@ function renderEtfList() {
   if (state.etfLoading && !state.etfs.length) { el.innerHTML = '<div class="empty">正在加载 ETF…</div>'; return; }
   const kw = (state.boardKw || "").trim();
   const list = state.etfs.filter((s) => !kw || s.code.includes(kw) || s.name.includes(kw));
-  el.innerHTML = list.map((s) => {
+  const lim = LIST_LIMITS.etf + LIST_BATCH;
+  el.dataset.total = String(list.length);
+  const slice = list.slice(0, lim);
+  el.innerHTML = slice.map((s) => {
     const k = "etf:" + s.market + ":" + s.code, on = state.selected.some((x) => keyOf(x) === k);
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "etf", market: s.market, code: s.code, name: s.name })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
       <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
-  }).join("") || '<div class="empty">无匹配 ETF</div>';
+  }).join("") + (list.length > lim ? '<div class="list-more">继续滚动加载更多…</div>' : "") || '<div class="empty">无匹配 ETF</div>';
   observeSparks(el);
 }
 
@@ -922,10 +947,15 @@ function renderSearchList() {
   const eList = (state.etfs || []).filter((e) => e.code.includes(kw) || e.name.includes(kw));
   if (!bList.length && !sList.length && !iList.length && !eList.length) { el.innerHTML = '<div class="empty">无匹配的板块、个股、ETF 或指数</div>'; return; }
 
+  const total = bList.length + sList.length + iList.length + eList.length;
+  const lim = LIST_LIMITS.search + LIST_BATCH;
+  el.dataset.total = String(total);
+  let remain = lim;
   let html = "";
   if (bList.length) {
+    const take = Math.min(remain, bList.length); remain -= take;
     html += `<div class="search-sec"><span class="search-sec-name">板块</span><span class="search-sec-count">${bList.length}</span></div>`;
-    html += bList.map((b) => {
+    html += bList.slice(0, take).map((b) => {
       const k = "board:" + (b.board_type || "hy") + ":1:" + b.code;
       const on = state.selected.some((s) => keyOf(s) === k);
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "board", market: 1, code: b.code, name: b.name, board_type: b.board_type })}'>
@@ -934,9 +964,10 @@ function renderSearchList() {
         <span class="item-pct ${numCls(b.rise_pct)}">${fmtPct(b.rise_pct)}</span></button>`;
     }).join("");
   }
-  if (sList.length) {
+  if (sList.length && remain > 0) {
+    const take = Math.min(remain, sList.length); remain -= take;
     html += `<div class="search-sec"><span class="search-sec-name">个股</span><span class="search-sec-count">${sList.length}</span></div>`;
-    html += sList.map((s) => {
+    html += sList.slice(0, take).map((s) => {
       const k = "stock:" + s.market + ":" + s.code;
       const on = state.selected.some((x) => keyOf(x) === k);
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "stock", market: s.market, code: s.code, name: s.name })}'>
@@ -945,9 +976,10 @@ function renderSearchList() {
         <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
     }).join("");
   }
-  if (iList.length) {
+  if (iList.length && remain > 0) {
+    const take = Math.min(remain, iList.length); remain -= take;
     html += `<div class="search-sec"><span class="search-sec-name">指数</span><span class="search-sec-count">${iList.length}</span></div>`;
-    html += iList.map((i) => {
+    html += iList.slice(0, take).map((i) => {
       const k = "index:" + i.market + ":" + i.code;
       const on = state.selected.some((x) => keyOf(x) === k);
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "index", market: i.market, code: i.code, name: i.name })}'>
@@ -956,9 +988,10 @@ function renderSearchList() {
         <span class="item-pct ${numCls(i.change_pct)}">${fmtPct(i.change_pct)}</span></button>`;
     }).join("");
   }
-  if (eList.length) {
+  if (eList.length && remain > 0) {
+    const take = Math.min(remain, eList.length); remain -= take;
     html += `<div class="search-sec"><span class="search-sec-name">ETF</span><span class="search-sec-count">${eList.length}</span></div>`;
-    html += eList.map((e) => {
+    html += eList.slice(0, take).map((e) => {
       const k = "etf:" + e.market + ":" + e.code;
       const on = state.selected.some((x) => keyOf(x) === k);
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "etf", market: e.market, code: e.code, name: e.name })}'>
@@ -967,6 +1000,7 @@ function renderSearchList() {
         <span class="item-pct ${numCls(e.change_pct)}">${fmtPct(e.change_pct)}</span></button>`;
     }).join("");
   }
+  if (total > lim) html += '<div class="list-more">继续滚动加载更多…</div>';
   el.innerHTML = html;
   observeSparks(el);
 }
@@ -1146,6 +1180,25 @@ function observeSparks(rootEl) {
     if (el._obs) return;
     el._obs = true;
     if (sparkObserver) sparkObserver.observe(el);
+  });
+}
+
+// 长列表无限滚动：滚动接近底部且还有未渲染项时，按批追加渲染
+function bindListInfiniteScroll() {
+  Object.entries(LIST_EL_IDS).forEach(([kind, id]) => {
+    const el = document.getElementById(id);
+    if (!el || el.__scrollBound) return;
+    el.__scrollBound = true;
+    el.addEventListener("scroll", () => {
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+        const total = Number(el.dataset.total) || 0;
+        if (LIST_LIMITS[kind] < total) {
+          LIST_LIMITS[kind] += LIST_BATCH;
+          const fn = LIST_RENDERERS[kind];
+          if (fn) fn();
+        }
+      }
+    });
   });
 }
 function enqueueSpark(k) {
@@ -1719,6 +1772,7 @@ $("#btnsMarket").addEventListener("click", (e) => {
   state.stockMarket = b.dataset.v;
   segButtons($("#btnsMarket")).forEach((x) => x.classList.remove("is-on"));
   b.classList.add("is-on");
+  resetListLimits("stock"); // 市场切换后可见项集合变化，从首批重新渲染
   renderStockList();
 });
 
@@ -1802,6 +1856,8 @@ $("#kwGlobal").addEventListener("input", (e) => {
   state.boardKw = e.target.value;
   state.stockKw = e.target.value;
   const kw = e.target.value.trim();
+  // 搜索词变化：重置搜索结果的无限滚动增量，从首批重新渲染
+  resetListLimits("search");
   if (kw) {
     if (!state.stocks.length) loadStocks(); // 搜索前未加载个股则补充
     if (!state.indices.length) loadIndices(); // 搜索前未加载指数则补充
@@ -1934,6 +1990,8 @@ async function init() {
   startPolling();
   // 刷新按钮可用态由 syncStatus 依据「实时/历史」模式统一管理
   bindDragReorder();
+  // 长列表无限滚动：绑定 板块/个股/ETF/指数/搜索 各列表的滚动追加
+  bindListInfiniteScroll();
   window.addEventListener("resize", () => {
     Object.values(charts).forEach((c) => c.resize());
     if (focusIns) focusIns.resize();
