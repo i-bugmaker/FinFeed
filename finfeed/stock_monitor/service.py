@@ -521,6 +521,65 @@ worker = RefreshWorker()
 
 
 # 舆情聚合
+_ANN_HIGH = 0.9
+_ANN_MID = 0.7
+
+# 公告分类规则：(类别, 等级, 关键词)
+_ANN_RULES = [
+    ("退市风险", "high", ("退市风险", "终止上市", "实施退市风险警示", "*ST", "＊ST")),
+    ("立案调查", "high", ("立案调查", "立案侦查", "涉嫌", "收到调查通知书", "被调查")),
+    ("重组并购", "high", ("重组", "并购", "收购", "借壳", "资产置", "吸收合并", "拟定增")),
+    ("业绩预告", "high", ("业绩预告", "业绩预增", "业绩预减", "预盈", "预亏", "预增", "预减", "扭亏", "业绩快报")),
+    ("业绩修正", "high", ("业绩修正", "业绩预告修正", "上修", "下调业绩")),
+    ("停复牌", "high", ("停牌", "复牌")),
+    ("重大合同", "high", ("重大合同", "中标", "签订合同", "战略合作", "框架协议", "预中标")),
+    ("分红送转", "high", ("利润分配", "分红", "送转", "权益分派", "派发", "每10股", "公积金转增")),
+    ("重大诉讼", "high", ("诉讼", "仲裁", "被起诉", "提起诉讼", "冻结")),
+    ("破产重整", "high", ("破产重整", "破产清算", "预重整", "债务重组")),
+    ("股东增减持", "mid", ("减持", "增持", "股份变动", "持股比例", "权益变动", "大宗交易")),
+    ("股权质押", "mid", ("质押", "解押", "解除质押", "股份质押")),
+    ("回购", "mid", ("回购", "回购计划")),
+    ("监管问询", "mid", ("问询函", "关注函", "监管函", "警示函", "警示", "纪律处分", "通报批评")),
+    ("高管变动", "low", ("辞职", "离任", "聘任", "更换", "换届", "解聘")),
+]
+
+_ANN_IMPORTANCE = {"high": _ANN_HIGH, "mid": _ANN_MID, "low": 0.5}
+
+
+def classify_announcement(title: str, summary: str = "") -> Optional[Dict[str, Any]]:
+    """依据标题/摘要关键词识别公告类型，返回 ``{"ann_type","major","importance"}`` 或 None。
+
+    major=True 表示重大公告（停复牌/重组/业绩预告/立案调查/退市风险等），
+    聚合与前端会将其置顶高亮；
+    次重要子类（股东增减持/质押/回购/监管问询）以 importance=0.7 标记但不置顶。
+    """
+    text = "{} {}".format(title or "", summary or "")
+    for ann_type, level, kws in _ANN_RULES:
+        for kw in kws:
+            if kw and kw in text:
+                return {
+                    "ann_type": ann_type,
+                    "major": level == "high",
+                    "importance": _ANN_IMPORTANCE[level],
+                }
+    return None
+
+
+def _ann_meta(item: Dict[str, Any]) -> Dict[str, Any]:
+    """为公告条目附加类型/重要性元数据（研报与资讯不处理）。"""
+    if item.get("channel") != "announcement":
+        return item
+    meta = classify_announcement(item.get("title", ""), item.get("summary", ""))
+    if meta:
+        item = {**item, **meta}
+    return item
+
+
+def _feed_sort_key(it: Dict[str, Any]) -> tuple:
+    """重大/高重要公告优先，其余按时间倒序。"""
+    return (0 if (it.get("importance") or 0) >= 0.7 else 1, -(it.get("publish_ts") or 0))
+
+
 def _watched_entries(codes: Optional[List[str]]) -> Tuple[List[Dict[str, Any]], List[str]]:
     stocks = store.list_stocks()
     if codes:
@@ -577,7 +636,7 @@ def aggregate_feed(
                 "ref_id": it.get("id"),
             })
         for it in external_by_code.get(code, [])[:limit_per_code]:
-            items.append({
+            items.append(_ann_meta({
                 "source_type": "external",
                 "channel": it.get("channel") or "news",
                 "title": it.get("title", ""),
@@ -587,13 +646,15 @@ def aggregate_feed(
                 "publish_time": it.get("publish_time", ""),
                 "publish_ts": it.get("publish_ts", 0),
                 "ref_id": it.get("id"),
-            })
-        items.sort(key=lambda d: (d.get("publish_ts") or 0), reverse=True)
+            }))
+        items.sort(key=_feed_sort_key)
         counts = {
             "total": len(items),
             "internal": sum(1 for i in items if i["source_type"] == "internal"),
             "external": sum(1 for i in items if i["source_type"] == "external"),
             "announcement": sum(1 for i in items if i.get("channel") == "announcement"),
+            "report": sum(1 for i in items if i.get("channel") == "report"),
+            "major": sum(1 for i in items if i.get("major")),
         }
         groups[code] = {"stock": s, "items": items[:limit_per_code], "counts": counts}
 
@@ -639,7 +700,7 @@ def realtime_new_items(codes: List[str], last_internal_id: int, last_external_id
     new_external_max = last_external_id
     for it in ext_items:
         new_external_max = max(new_external_max, int(it.get("id") or 0))
-        items.append({
+        items.append(_ann_meta({
             "code": it["code"],
             "source_type": "external",
             "channel": it.get("channel") or "news",
@@ -649,9 +710,9 @@ def realtime_new_items(codes: List[str], last_internal_id: int, last_external_id
             "source": it.get("source", ""),
             "publish_time": it.get("publish_time", ""),
             "publish_ts": it.get("publish_ts", 0),
-        })
+        }))
 
-    items.sort(key=lambda d: d.get("publish_ts") or 0, reverse=True)
+    items.sort(key=_feed_sort_key)
     return {
         "items": items[:80],
         "internal_watermark": new_internal_max,
@@ -676,7 +737,10 @@ def _build_analysis_context(code: str) -> Tuple[str, int, Optional[str]]:
     for i, it in enumerate(items, 1):
         src = "系统内" if it.get("source_type") == "internal" else "系统外"
         ch = {"announcement": "公告", "news": "资讯", "flash": "快讯",
-              "article": "财经", "forum": "舆情"}.get(it.get("channel"), it.get("channel"))
+              "article": "财经", "forum": "舆情", "report": "研报"}.get(
+                  it.get("channel"), it.get("channel"))
+        if it.get("channel") == "announcement" and it.get("ann_type"):
+            ch = f"公告·{it['ann_type']}"
         senti = it.get("sentiment") or ""
         line = f"{i}. [{src}|{ch}] ({it.get('publish_time', '')}) {it.get('title', '')}"
         if senti and senti != "neutral":
@@ -690,20 +754,58 @@ def _build_analysis_context(code: str) -> Tuple[str, int, Optional[str]]:
 
 
 _ANALYSIS_PROMPT = """你是一名 A 股卖方分析师。以下是监控股票「{name}（{code}）」聚合的近期舆情消息
-（覆盖系统内抓取的快讯/财经/舆情与系统外公告/资讯，按时间倒序）：
+（覆盖系统内抓取的快讯/财经/舆情与系统外公告/资讯/研报，按重要度优先、其次时间倒序；
+形如「公告·停复牌」标注了公告类型）：
 
 {context}
 
-请基于以上消息完成智能分析，**严格输出以下 JSON（不要输出任何 JSON 之外的内容）**：
+请基于以上消息做**事件级归并联立**：把围绕同一主题的公告 + 相关新闻/研报归并为一条独立「事件」
+（例如一条重组公告 + 几条解读报道归并为「重组事件」），不要逐条平铺。
+**严格输出以下 JSON（不要输出任何 JSON 之外的内容）**：
 {{
   "sentiment": "利好 或 利空 或 中性",
   "impact": "高 或 中 或 低",
   "summary": "一句话总体结论（60 字以内）",
+  "events": [
+    {{"title": "事件标题（如：XX 资产重组获批复）", "direction": "利好 或 利空 或 中性",
+     "sources": ["整合进本事件的 1-3 条消息标题"], "reading": "该事件的解读与依据（60 字以内）"}}
+  ],
   "key_points": ["关键消息解读 1", "关键消息解读 2", "...（3-6 条）"],
-  "analysis": "完整分析（Markdown，300-600 字）：包含消息面解读、情绪倾向及依据、对股价/基本面的影响评估、需要跟踪的后续事件与风险提示"
+  "analysis": "完整分析（Markdown，300-600 字）：开篇用「### 事件级归并」列出每个事件（标题 + ✅多空方向 + 依据），再给出综合情绪倾向、对股价/基本面的影响评估、需跟踪的后续事件与风险提示"
 }}
 
-要求：区分事实与观点；情绪判断需给出消息依据；不得虚构消息中不存在的信息；若消息量过少请如实说明分析局限性。"""
+要求：区分事实与观点；情绪判断需给出消息依据；不得虚构消息中不存在的信息；
+把同一事件的多条消息合并成一条后再解读，避免碎片化；若消息量过少请如实说明分析局限性。"""
+
+
+def _render_analysis_content(parsed: Dict[str, Any], raw: str) -> str:
+    """把 JSON 中的 events 归并结果前置渲染进 analysis 正文（Markdown）。
+
+    未解析出 events 时退回模型原始输出，保证前端 Markdown 面板始终可读。
+    """
+    events = parsed.get("events") if isinstance(parsed.get("events"), list) else []
+    if not events:
+        return parsed.get("analysis") or raw
+    lines = ["### 事件级归并\n"]
+    for ev in events:
+        title = (ev.get("title") or "").strip()
+        if not title:
+            continue
+        direction = (ev.get("direction") or "中性").strip()
+        mark = {"利好": "🟢", "利空": "🔴"}.get(direction, "⚪")
+        lines.append(f"- **{mark} {title}**")
+        reading = (ev.get("reading") or "").strip()
+        if reading:
+            lines.append(f"  - {reading}")
+        sources = ev.get("sources") or []
+        for s in sources[:3]:
+            if s:
+                lines.append(f"  - 关联：《{s}》")
+    body = parsed.get("analysis") or ""
+    if body:
+        lines.append("\n")
+        lines.append(body)
+    return "\n".join(lines)
 
 
 def submit_analysis(code: str) -> Dict[str, Any]:
@@ -751,7 +853,7 @@ def _run_analysis(analysis_id: int, code: str, stock: Dict[str, Any]) -> None:
         parsed = _parse_analysis_json(content)
         store.finish_analysis(
             analysis_id,
-            content=parsed.get("analysis") or content,
+            content=_render_analysis_content(parsed, content),
             sentiment=parsed.get("sentiment", ""),
             impact=parsed.get("impact", ""),
             model=getattr(result, "model", "") or getattr(provider, "model", ""),

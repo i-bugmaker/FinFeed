@@ -29,7 +29,13 @@ const CHANNEL_META = {
   article: { label: '财经', icon: 'newspaper' },
   forum: { label: '舆情', icon: 'chatter' },
   announcement: { label: '公告', icon: 'bookmark' },
+  report: { label: '研报', icon: 'doc' },
   news: { label: '资讯', icon: 'list' },
+}
+
+// 重大公告置顶、其余按时间倒序（与后端 _feed_sort_key 保持一致）
+function feedSortKey(it) {
+  return (it.importance || 0) >= 0.7 ? 0 : 1
 }
 
 const IMPORT_TABS = [
@@ -92,13 +98,20 @@ function ingestItems(items, { prepend = false, catchUp = false } = {}) {
       seenKeys.add(key)
       if (prepend) g.items.unshift(item)
       else g.items.push(item)
-      g.items.sort((a, b) => (b.publish_ts || 0) - (a.publish_ts || 0))
+      g.items.sort((a, b) => {
+        const ga = feedSortKey(a)
+        const gb = feedSortKey(b)
+        if (ga !== gb) return ga - gb
+        return (b.publish_ts || 0) - (a.publish_ts || 0)
+      })
       g.counts = {
         ...g.counts,
         total: g.counts.total + 1,
         internal: g.counts.internal + (item.source_type === 'internal' ? 1 : 0),
         external: g.counts.external + (item.source_type === 'external' ? 1 : 0),
         announcement: g.counts.announcement + (item.channel === 'announcement' ? 1 : 0),
+        report: g.counts.report + (item.channel === 'report' ? 1 : 0),
+        major: g.counts.major + (item.major ? 1 : 0),
       }
       added += 1
     }
@@ -635,6 +648,8 @@ onUnmounted(() => {
           <span class="ff-sm-stat"><b class="c-internal">{{ fmtCount(activeGroup.counts?.internal) }}</b> 系统内</span>
           <span class="ff-sm-stat"><b class="c-external">{{ fmtCount(activeGroup.counts?.external) }}</b> 系统外</span>
           <span class="ff-sm-stat"><b class="c-ann">{{ fmtCount(activeGroup.counts?.announcement) }}</b> 公告</span>
+          <span class="ff-sm-stat"><b>{{ fmtCount(activeGroup.counts?.report) }}</b> 研报</span>
+          <span v-if="activeGroup.counts?.major" class="ff-sm-stat"><b class="c-major">{{ fmtCount(activeGroup.counts?.major) }}</b> 重大</span>
         </div>
 
         <!-- AI 分析面板 -->
@@ -717,7 +732,7 @@ onUnmounted(() => {
               v-for="(it, idx) in activeItems"
               :key="itemKey(it, selectedCode) + idx"
               class="ff-sm-item"
-              :class="{ 'is-catchup': it._catchup, 'is-new': it._realtime }"
+              :class="{ 'is-catchup': it._catchup, 'is-new': it._realtime, 'is-major': it.major }"
             >
               <div class="ff-sm-item__badges">
                 <span
@@ -730,6 +745,8 @@ onUnmounted(() => {
                   <AppIcon :name="channelLabel(it.channel).icon" size="xs" />
                   {{ channelLabel(it.channel).label }}
                 </span>
+                <span v-if="it.channel === 'announcement' && it.major" class="ff-sm-chip is-major-tag">重大</span>
+                <span v-if="it.ann_type" class="ff-sm-chip is-ann-type">{{ it.ann_type }}</span>
                 <span v-if="it.sentiment && it.sentiment !== 'neutral'" class="ff-sm-chip" :class="`is-${sentimentClass(it.sentiment)}`">
                   {{ sentimentText(it.sentiment) }}
                 </span>
@@ -883,6 +900,7 @@ onUnmounted(() => {
 .c-internal { color: var(--ff-brand, var(--p-brand-600)); }
 .c-external { color: var(--p-violet-600); }
 .c-ann { color: var(--p-warn-600); }
+.c-major { color: var(--ff-up); }
 .c-ok { color: var(--p-brand-500); }
 .c-bad { color: var(--ff-up); }
 
@@ -1161,6 +1179,8 @@ onUnmounted(() => {
 .ff-sm-chip.is-up { background: var(--ff-up-subtle); color: var(--ff-up-text, var(--ff-up)); border-color: var(--ff-up-border); }
 .ff-sm-chip.is-down { background: var(--ff-down-subtle); color: var(--ff-down-text, var(--ff-down)); border-color: var(--ff-down-border); }
 .ff-sm-chip.is-impact { background: var(--p-violet-100); color: var(--p-violet-600); border-color: transparent; }
+.ff-sm-chip.is-major-tag { background: var(--ff-up-subtle); color: var(--ff-up); border-color: var(--ff-up-border); font-weight: 700; }
+.ff-sm-chip.is-ann-type { background: var(--p-brand-50); color: var(--p-brand-700); border-color: var(--p-brand-200); }
 .ff-sm-chip.is-model { font-family: var(--ff-font-mono); font-weight: 500; }
 .ff-sm-chip.is-time { font-family: var(--ff-font-mono); font-weight: 400; }
 .ff-sm-chip.is-ok { background: var(--p-brand-50); color: var(--p-brand-700); border-color: var(--p-brand-200); }
@@ -1192,6 +1212,11 @@ onUnmounted(() => {
 }
 .ff-sm-item.is-catchup { border-color: var(--p-warn-400); background: var(--p-warn-50); }
 .ff-sm-item.is-new { border-color: var(--p-brand-300); }
+.ff-sm-item.is-major {
+  border-color: var(--ff-up-border);
+  box-shadow: inset 3px 0 0 var(--ff-up);
+  background: var(--ff-up-subtle, transparent);
+}
 .ff-sm-item__badges {
   flex: none;
   display: flex;

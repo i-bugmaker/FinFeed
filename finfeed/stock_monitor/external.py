@@ -126,6 +126,71 @@ def fetch_stock_announcements(code: str, page_size: int = 15) -> List[Dict[str, 
     return out
 
 
+# 个股研报 / 评级跟踪
+def fetch_stock_reports(code: str, market: str = "", page_size: int = 15) -> List[Dict[str, Any]]:
+    """拉取个股券商研报（东财 reportapi，含机构、评级与评级变动）。
+
+    - title   研报标题
+    - summary 机构全称 + 评级（含评级变动时注明）
+
+    reportapi 个股研报端点（qType=0）要求 ``code`` 为纯数字代码，
+    配合 beginTime/endTime 取近一年数据；``data`` 为数组。
+    """
+    from datetime import timedelta
+
+    end = datetime.now()
+    begin = end - timedelta(days=365)
+    url = "https://reportapi.eastmoney.com/report/list"
+    params = {
+        "code": code,  # 纯数字证券代码，不带市场号
+        "qType": "0",  # 个股研报
+        "pageSize": str(page_size),
+        "pageNo": "1",
+        "beginTime": begin.strftime("%Y-%m-%d"),
+        "endTime": end.strftime("%Y-%m-%d"),
+    }
+    out: List[Dict[str, Any]] = []
+    with httpx.Client(timeout=_TIMEOUT, headers=_HEADERS) as client:
+        resp = client.get(url, params=params)
+        resp.raise_for_status()
+        data = (resp.json() or {}).get("data") or []
+    if not isinstance(data, list):
+        return out
+    for it in data:
+        if str(it.get("stockCode") or "") != code:
+            continue
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        org = (it.get("orgName") or it.get("orgSName") or "").strip()
+        rating = (it.get("emRatingName") or it.get("sRatingName") or "").strip()
+        prev_rating = (it.get("lastEmRatingName") or "").strip()
+        date = (it.get("publishDate") or "")[:10]
+        info_code = it.get("infoCode") or ""
+        parts = []
+        if org:
+            parts.append(f"机构：{org}")
+        if rating:
+            display = rating
+            if prev_rating and prev_rating != rating:
+                display = f"{prev_rating}→{rating}"
+            parts.append(f"评级：{display}")
+        if not parts:
+            parts.append("券商研报")
+        out.append({
+            "code": code,
+            "channel": "report",
+            "title": title,
+            "url": f"https://data.eastmoney.com/report/info/{info_code}.html" if info_code else "",
+            "summary": " ｜ ".join(parts),
+            "source": org or "东方财富研报",
+            "publish_time": f"{date} 00:00:00",
+            "publish_ts": int(datetime.strptime(date, "%Y-%m-%d").timestamp()) if date else 0,
+            "dedup_key": f"report:{info_code or title}",
+        })
+    return out
+
+
 # 全市场股票名单（名称/拼音解析的数据底座）
 _CLIST_FS = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"  # 沪深主板+科创+创业+北交
 
@@ -186,7 +251,7 @@ def resolve_name_online(code: str, market: str) -> Optional[Dict[str, Any]]:
 
 
 def fetch_all_for_codes(entries: List[Dict[str, str]]) -> List[Dict[str, Any]]:
-    """批量拉取外部消息（每只股票 = 资讯 + 公告），单只失败不影响其余。"""
+    """批量拉取外部消息（每只股票 = 资讯 + 公告 + 研报），单只失败不影响其余。"""
     items: List[Dict[str, Any]] = []
     for e in entries:
         code, market = e["code"], e.get("market", "")
@@ -198,4 +263,8 @@ def fetch_all_for_codes(entries: List[Dict[str, str]]) -> List[Dict[str, Any]]:
             items.extend(fetch_stock_announcements(code))
         except Exception as e:  # noqa: BLE001
             logger.warning("外部公告拉取失败 %s: %s", code, e)
+        try:
+            items.extend(fetch_stock_reports(code, market))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("外部研报拉取失败 %s: %s", code, e)
     return items
