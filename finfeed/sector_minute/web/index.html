@@ -544,6 +544,8 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const numCls = (v) => v > 1e-6 ? "up" : v < -1e-6 ? "down" : "flat";
 const fmtPct = (v) => v === null || v === undefined || !Number.isFinite(v) ? "—" : (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+// 分时数据是否有效：价格全为 0 视为无行情（新上市/无成交 ETF），不展示误导性的 0 值
+const hasChartData = (c) => !!(c && c.points && c.points.some((p) => p.price !== 0));
 const fmtNum = (v, d = 2) => v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toFixed(d);
 const fmtVol = (v) => {
   if (!v && v !== 0) return "—";
@@ -783,7 +785,7 @@ function toggleTarget(t) {
   persist();
   applySelection();
   syncSubscriptions();
-  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderSelect();
+  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderEtfList(); renderSelect();
   if (canIncremental()) {
     // 增量：新增单张图表 / 移除单张图表，避免全量重建造成卡顿
     if (exists) removeChartByKey(k);
@@ -812,7 +814,7 @@ function clearAll() {
   persist();
   state.chartsData = [];
   syncSubscriptions(); // 后端订阅置空，停止抓取
-  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderSelect(); buildMain();
+  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderEtfList(); renderSelect(); buildMain();
   toast("已清空对比列表");
 }
 
@@ -927,10 +929,11 @@ function renderEtfList() {
   const slice = list.slice(0, lim);
   el.innerHTML = slice.map((s) => {
     const k = "etf:" + s.market + ":" + s.code, on = state.selected.some((x) => keyOf(x) === k);
+    const na = s.price <= 0; // 无行情（新上市/无成交，close=0）
     return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "etf", market: s.market, code: s.code, name: s.name })}'>
       <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       <span class="item-name">${esc(s.name)}</span><span class="item-code">${s.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
-      <span class="item-pct ${numCls(s.change_pct)}">${fmtPct(s.change_pct)}</span></button>`;
+      <span class="item-pct flat" title="${na ? "该 ETF 暂无行情数据" : ""}">${na ? "—" : fmtPct(s.change_pct)}</span></button>`;
   }).join("") + (list.length > lim ? '<div class="list-more">继续滚动加载更多…</div>' : "") || '<div class="empty">无匹配 ETF</div>';
   observeSparks(el);
 }
@@ -994,10 +997,11 @@ function renderSearchList() {
     html += eList.slice(0, take).map((e) => {
       const k = "etf:" + e.market + ":" + e.code;
       const on = state.selected.some((x) => keyOf(x) === k);
+      const na = e.price <= 0;
       return `<button type="button" class="item${on ? " is-on" : ""}" data-toggle='${JSON.stringify({ kind: "etf", market: e.market, code: e.code, name: e.name })}'>
         <span class="check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
         <span class="item-name">${esc(e.name)}</span><span class="item-code">${e.code}</span><svg class="spark" data-key="${k}" viewBox="0 0 46 22" preserveAspectRatio="none"></svg>
-        <span class="item-pct ${numCls(e.change_pct)}">${fmtPct(e.change_pct)}</span></button>`;
+        <span class="item-pct flat">${na ? "—" : fmtPct(e.change_pct)}</span></button>`;
     }).join("");
   }
   if (total > lim) html += '<div class="list-more">继续滚动加载更多…</div>';
@@ -1026,7 +1030,7 @@ function toggleSelectAll(kind) {
   }
   persist();
   syncSubscriptions();
-  renderBoardList(); renderStockList(); renderIndexList(); renderSelect(); buildMain();
+  renderBoardList(); renderStockList(); renderIndexList(); renderEtfList(); renderSelect(); buildMain();
 }
 
 function renderSelect() {
@@ -1134,6 +1138,11 @@ function drawSpark(el, d) {
   const pts = d && d.points && d.points.length ? d.points : null;
   el.innerHTML = "";
   if (!pts || !pts.length) return;
+  // 无有效行情（价格全为 0，如新上市/无成交 ETF）→ 不画误导性的平直线
+  if (!pts.some((p) => p.price !== 0)) {
+    el.innerHTML = '<text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" fill="#9aa4b2" font-size="10">—</text>';
+    return;
+  }
   const pre = d.pre_close || 0;
   // 统一按「涨跌幅」归一（与主图默认一致）；无昨收退回 min-max
   let vals = pts.map((p) => (pre > 0 ? ((p.price - pre) / pre) * 100 : p.price));
@@ -1274,14 +1283,15 @@ function kindBadge(kind) {
 // 单张图表卡片 HTML（idx 为图表 DOM id 后缀，各行内不同布局共用）
 function makeCard(c, idx) {
   const bd = kindBadge(c.kind);
+  const nd = !hasChartData(c);
   return `<div class="card" data-key="${keyOf(c)}"><div class="smic">
     <div class="smic__head">
       <span class="smic__badge ${bd.cls}">${bd.label}</span>
       <span class="smic__name" title="${esc(c.code)}">${esc(c.name || c.code)}</span>
       <span class="smic__code">${esc(c.code)}</span><span class="smic__sp"></span>
-      <span class="smic__price ${numCls(c.change_pct)}">${fmtNum(c.close)}</span>
-      <span class="smic__pct ${numCls(c.change_pct)}">${fmtPct(c.change_pct)}</span>
-      <span class="smic__amt ${numCls(c.change_amt)}">${c.change_amt > 0 ? "+" : ""}${fmtNum(c.change_amt)}</span>
+      <span class="smic__price flat">${nd ? "—" : fmtNum(c.close)}</span>
+      <span class="smic__pct flat">${nd ? "—" : fmtPct(c.change_pct)}</span>
+      <span class="smic__amt flat">${nd ? "—" : (c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt)}</span>
       <button type="button" class="smic__close" data-remove="${keyOf(c)}" title="从对比列表移除">×</button>
     </div>
     <div class="smic__canvas">
@@ -1296,6 +1306,7 @@ function makeCard(c, idx) {
 // 一览（C）缩略卡片：标题 + 迷你分时线 + 涨跌幅
 function makeTile(c) {
   const bd = kindBadge(c.kind);
+  const nd = !hasChartData(c);
   return `<button type="button" class="tile" data-key="${keyOf(c)}">
     <span class="tile-h">
       <span class="smic__badge ${bd.cls}">${bd.label}</span>
@@ -1303,7 +1314,7 @@ function makeTile(c) {
       <span class="tile-code">${esc(c.code)}</span>
     </span>
     <svg class="tile-spark" viewBox="0 0 140 44" preserveAspectRatio="none"></svg>
-    <span class="tile-f ${numCls(c.change_pct)}">${c.change_pct > 1e-6 ? "+" : ""}${fmtPct(c.change_pct)}　${fmtNum(c.close)}</span>
+    <span class="tile-f flat">${nd ? "—　—" : (c.change_pct > 1e-6 ? "+" : "") + fmtPct(c.change_pct) + "　" + fmtNum(c.close)}</span>
   </button>`;
 }
 
@@ -1312,6 +1323,8 @@ function drawTileSpark(svg, c) {
   const pts = c && c.points && c.points.length ? c.points : null;
   svg.innerHTML = "";
   if (!pts) return;
+  // 无有效行情（价格全为 0）→ 留空，不画误导性的平直线
+  if (!pts.some((p) => p.price !== 0)) return;
   const pre = c.pre_close || 0;
   let vals = pts.map((p) => (pre > 0 ? ((p.price - pre) / pre) * 100 : p.price));
   let lo, hi;
@@ -1438,6 +1451,13 @@ function removeChartByKey(k) {
 function buildChartOption(c) {
   const points = c.points || [];
   const pre_close = c.pre_close || 0;
+  // 无有效行情（价格全为 0，如新上市/无成交 ETF）→ 展示空态而非误导性的平直线
+  if (points.length && !points.some((p) => p.price !== 0)) {
+    return {
+      backgroundColor: "transparent", animation: false,
+      graphic: [{ type: "text", left: "center", top: "middle", style: { text: "暂无数据", fill: "#9aa4b2", fontSize: 12 } }],
+    };
+  }
   const up = (c.change_pct || 0) > 0;
   const times = points.map((p) => String(p.time).slice(0, 5));
   const prices = points.map((p) => p.price);
@@ -1536,20 +1556,21 @@ function updateCharts() {
     if (c) {
       const card = node.closest(".card");
       if (card) {
+        const nd = !hasChartData(c);
         const priceEl = card.querySelector(".smic__price");
         const pctEl = card.querySelector(".smic__pct");
         const amtEl = card.querySelector(".smic__amt");
         if (priceEl) {
-          priceEl.textContent = fmtNum(c.close);
-          priceEl.className = "smic__price " + numCls(c.change_pct);
+          priceEl.textContent = nd ? "—" : fmtNum(c.close);
+          priceEl.className = "smic__price " + (nd ? "flat" : numCls(c.change_pct));
         }
         if (pctEl) {
-          pctEl.textContent = fmtPct(c.change_pct);
-          pctEl.className = "smic__pct " + numCls(c.change_pct);
+          pctEl.textContent = nd ? "—" : fmtPct(c.change_pct);
+          pctEl.className = "smic__pct " + (nd ? "flat" : numCls(c.change_pct));
         }
         if (amtEl) {
-          amtEl.textContent = (c.change_amt && c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt);
-          amtEl.className = "smic__amt " + numCls(c.change_amt);
+          amtEl.textContent = nd ? "—" : (c.change_amt && c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt);
+          amtEl.className = "smic__amt " + (nd ? "flat" : numCls(c.change_amt));
         }
       }
     }
