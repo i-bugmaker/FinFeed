@@ -201,22 +201,24 @@ watch(
   { immediate: true },
 )
 
-// 权重交互：滑块保存「原始偏好值」，实时换算为占比展示；拖动不归一化，
-// 其它滑块不会跟着跳。提交时按占比归一化（buildRequest），
-// 「归一化」按钮把占比写回原始值（合计 100）。
+// 权重交互：滑块即「占比」。拖动一个维度时，其它维度按占比等比缩放，实时保持合计 100%，
+// 滑块位置与右侧百分比始终一致。提交时仍按占比归一化（buildRequest）。
 const weightTotal = computed(() => dimOrder.reduce((s, d) => s + (Number(dimWeights[d]) || 0), 0))
 function weightShare(d) {
   const t = weightTotal.value
   return t > 0 ? ((Number(dimWeights[d]) || 0) / t) * 100 : 0
 }
-function onDimChange() {
+function onDimInput(d, pct) {
   userTouchedWeights.value = true
-}
-function normalizeWeights() {
-  const t = weightTotal.value
-  if (t > 0) {
-    for (const d of dimOrder) dimWeights[d] = Math.round(weightShare(d) * 10) / 10
+  const cap = Math.min(60, Math.max(0, Number(pct) || 0)) // 滑块上限
+  const prev = weightShare(d) // 当前该维度占比（%）
+  if (prev <= 0 || prev >= 100) { dimWeights[d] = cap; return }
+  // 其它维度按占比等比缩放，保持合计 100%，滑块与右侧百分比实时一致
+  const factor = Math.max(0, (100 - cap) / (100 - prev))
+  for (const dd of dimOrder) {
+    if (dd !== d) dimWeights[dd] = Math.round(Math.min(60, weightShare(dd) * factor) * 10) / 10
   }
+  dimWeights[d] = cap
 }
 function resetWeights() {
   if (!store.config?.weights) return
@@ -920,7 +922,6 @@ onBeforeUnmount(() => {
               <AppIcon name="sliders" size="xs" /> ③ 维度权重
               <span class="panel-sec__sp" />
               <template v-if="engineMode === 'linear'">
-                <button type="button" class="panel-link" @click="normalizeWeights">归一化</button>
                 <button type="button" class="panel-link" @click="resetWeights">重置</button>
               </template>
             </h3>
@@ -932,14 +933,14 @@ onBeforeUnmount(() => {
                   min="0"
                   max="60"
                   step="0.5"
-                  :value="dimWeights[d]"
+                  :value="weightShare(d)"
                   class="dim-row__slider"
-                  @input="dimWeights[d] = Number($event.target.value); onDimChange()"
+                  @input="onDimInput(d, $event.target.value)"
                 />
                 <span class="dim-row__val">{{ weightShare(d).toFixed(1) }}%</span>
               </div>
               <p class="panel-sec__hint">
-                滑块为偏好值，右侧为实际占比；「归一化」把占比写回滑块（合计 100%）。
+                拖动任一滑块，其它维度占比实时等比缩放（合计 100%），滑块与右侧百分比一致。
               </p>
             </template>
             <p v-else class="panel-sec__notice">
