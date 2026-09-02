@@ -85,8 +85,31 @@ function isNearTop() {
   return contentEl.value.scrollTop < 80
 }
 
+// 校验新条目是否匹配当前筛选条件（与后端列表过滤语义一致）。
+// 否则选定来源后，SSE 推送的其他来源快讯会被错误地插入到当前列表。
+function matchesActiveFilters(item) {
+  const f = filters.value
+  if (f.source && f.source !== 'all' && item.source !== f.source) return false
+  if (f.sentiment && f.sentiment !== 'all' && (item.sentiment || '').toLowerCase() !== f.sentiment) return false
+  if (f.favorites && !item.is_favorite) return false
+  if (f.keyword) {
+    const kw = f.keyword.toLowerCase()
+    const haystack = [item.title, item.intro, item.content].filter(Boolean).join(' ').toLowerCase()
+    if (!haystack.includes(kw)) return false
+  }
+  if (f.start || f.end) {
+    const ts = item.publish_ts || 0
+    if (!ts) return false
+    if (f.start && ts < new Date(`${f.start}T00:00:00`).getTime() / 1000) return false
+    if (f.end && ts > new Date(`${f.end}T23:59:59`).getTime() / 1000) return false
+  }
+  return true
+}
+
 function applyPending() {
-  const items = store.pendingNews.filter((n) => n.category === 'flash')
+  const items = store.pendingNews.filter(
+    (n) => n.category === 'flash' && matchesActiveFilters(n),
+  )
   if (store.pendingTruncated.flash) {
     store.pendingNews = store.pendingNews.filter((n) => n.category !== 'flash')
     store.pendingTruncated.flash = false
