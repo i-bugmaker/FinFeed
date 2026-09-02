@@ -98,14 +98,17 @@ app.include_router(create_realtime_router(news_events, market_ws.handle_connecti
 app.include_router(create_system_router("2.1.0"))
 app.include_router(create_llm_router())
 
-# LLM 任务事件桥接：领域层 AnalysisService 通过注入的回调发布 stage/delta/done，
-# SSE 订阅注册表位于 llm 路由模块（领域包不感知 UI，依赖方向保持向内）。
+# LLM 任务事件桥接：领域层 AnalysisService / InsightService 通过注入的回调发布
+# stage/delta/done，SSE 订阅注册表位于 llm 路由模块（领域包不感知 UI，
+# 依赖方向保持向内）。两个服务的任务 ID 为独立 uuid，共用同一注册表安全。
+from finfeed.llm.insight import get_service as _get_insight_service  # noqa: E402
 from finfeed.llm.service import get_service as _get_llm_service  # noqa: E402
 from finfeed.ui.web_fastapi.routers.llm import (  # noqa: E402
     publish_llm_task_event as _publish_llm_task_event,
 )
 
 _get_llm_service().set_event_publisher(_publish_llm_task_event)
+_get_insight_service().set_event_publisher(_publish_llm_task_event)
 
 app.include_router(create_calendar_router())
 

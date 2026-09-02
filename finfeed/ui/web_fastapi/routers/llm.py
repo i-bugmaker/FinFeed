@@ -12,6 +12,12 @@ SSE 流式：
   - ``GET /api/llm/task/stream?id=<task_id>`` 推送 stage/delta/done 事件；
   - 领域层 AnalysisService 通过注入的 publisher 回调发布事件，
     本模块维护按 task_id 分组的订阅队列（仅订阅该任务的连接收到增量）。
+
+轻量洞察（连板天梯 AI 分析）：
+  - ``POST /api/llm/insight/limitup`` 提交任务、``GET /api/llm/insight/task`` 查询、
+    ``GET /api/llm/insight/stream`` 订阅增量；
+  - 领域层 finfeed.llm.insight.InsightService 复用同一套事件协议与订阅注册表
+    （任务 ID 为独立 uuid，两个服务的 ID 空间互不重叠）。
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ import json
 import logging
 import queue
 import threading
+import time
 from typing import Any, Dict, Optional, Set
 
 from fastapi import APIRouter, Query
@@ -29,6 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from finfeed.application import llm_service
 from finfeed.llm import collector, store
 from finfeed.llm import config as cfg
+from finfeed.llm import insight as insight_mod
 from finfeed.llm import prompts as llm_prompts
 from finfeed.llm import sessions as _sessions
 from finfeed.llm.client import build_client
@@ -145,6 +153,14 @@ class SessionMessageRequest(_Loose):
 
 class TaskIdRequest(_Loose):
     task_id: str = ""
+
+
+class InsightLimitUpRequest(_Loose):
+    """连板天梯 AI 分析提交参数。"""
+
+    date: str = ""                     # 空 = 当日
+    provider_id: Optional[int] = None  # 空 = 系统默认模型配置
+    refresh: bool = False              # True = 忽略服务端缓存重新分析
 
 
 class ReportPinRequest(_Loose):
@@ -338,6 +354,60 @@ def create_router() -> APIRouter:
     # --------------------------------------------------
     # SSE：任务事件流（stage / delta / reset / done）
     # --------------------------------------------------
+    def _sse_response(
+        task_id: str, q: "queue.Queue[Dict[str, Any]]"
+    ) -> StreamingResponse:
+        """订阅队列 → SSE 响应（重型报告任务与轻量洞察任务共用）。"""
+        stopped = threading.Event()
+
+        async def stream():
+            import asyncio
+
+            events: "asyncio.Queue[tuple[str, Any]]" = asyncio.Queue()
+            running_loop = asyncio.get_running_loop()
+            thread = threading.Thread(
+                target=_pump_stream,
+                args=(q, events, running_loop, stopped),
+                daemon=True,
+                name=f"llm-stream-{task_id}",
+            )
+            thread.start()
+            try:
+                yield 'event: connected\ndata: {"type":"connected"}\n\n'
+                # 连接寿命按真实挂钟时间计（单调时钟），仅作防泄漏兜底；
+                # 高频 delta 事件不再折算进“空闲”计时，避免增量推送把连接提前掐断。
+                started_ts = time.monotonic()
+                while time.monotonic() - started_ts < _STREAM_MAX_LIFETIME:
+                    try:
+                        kind, item = await asyncio.wait_for(events.get(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                        continue
+                    if kind == "ping":
+                        yield ": ping\n\n"
+                    else:
+                        event_name = str(item.get("event") or "message")
+                        if event_name != "status":  # 起始状态不推送，前端靠轮询兜底
+                            yield (
+                                f"event: {event_name}\n"
+                                f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                            )
+                            if event_name == "done":
+                                break
+            finally:
+                stopped.set()
+                _unsubscribe(task_id, q)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @router.get("/api/llm/task/stream")
     def task_stream(id: str = Query(..., min_length=4)) -> StreamingResponse:
         svc = get_service()
@@ -358,55 +428,7 @@ def create_router() -> APIRouter:
                 }
             )
 
-        stopped = threading.Event()
-
-        async def stream():
-            import asyncio
-
-            events: "asyncio.Queue[tuple[str, Any]]" = asyncio.Queue()
-            running_loop = asyncio.get_running_loop()
-            thread = threading.Thread(
-                target=_pump_stream,
-                args=(q, events, running_loop, stopped),
-                daemon=True,
-                name=f"llm-stream-{id}",
-            )
-            thread.start()
-            try:
-                yield 'event: connected\ndata: {"type":"connected"}\n\n'
-                waited = 0.0
-                while waited < _STREAM_MAX_LIFETIME:
-                    try:
-                        kind, item = await asyncio.wait_for(events.get(), timeout=5.0)
-                    except asyncio.TimeoutError:
-                        waited += 5.0
-                        yield ": keep-alive\n\n"
-                        continue
-                    if kind == "ping":
-                        yield ": ping\n\n"
-                    else:
-                        event_name = str(item.get("event") or "message")
-                        if event_name != "status":  # 起始状态不推送，前端靠轮询兜底
-                            yield (
-                                f"event: {event_name}\n"
-                                f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-                            )
-                            if event_name == "done":
-                                break
-                    waited += _STREAM_IDLE_TIMEOUT
-            finally:
-                stopped.set()
-                _unsubscribe(id, q)
-
-        return StreamingResponse(
-            stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+        return _sse_response(id, q)
 
     # --------------------------------------------------
     # POST 操作类
@@ -535,6 +557,72 @@ def create_router() -> APIRouter:
     def reports_clear() -> Dict[str, Any]:
         n = store.clear_reports()
         return _respond({"success": True, "deleted": n})
+
+    # --------------------------------------------------
+    # 轻量洞察：连板天梯「AI 分析」
+    # 不落报告库、不检索新闻，仅对当日盘面快照做一次结构化分析
+    # --------------------------------------------------
+    @router.post("/api/llm/insight/limitup")
+    async def insight_limitup(req: InsightLimitUpRequest) -> Dict[str, Any]:
+        from finfeed.application import limitup_ai
+
+        ensure_tables()
+        date = (req.date or "").strip() or None
+        try:
+            # 快照装配含网络与 DB 读取，放在协程内完成；
+            # 任务线程只负责模型调用，不再触碰事件循环。
+            messages, meta = await limitup_ai.prepare(date)
+        except limitup_ai.SnapshotError as e:
+            raise ApiError(str(e), status_code=400, code="NO_DATA") from e
+        except Exception:
+            logger.exception("涨跌停盘面快照装配失败")
+            raise ApiError(
+                "盘面数据读取失败，请稍后重试", status_code=500, code="INTERNAL_ERROR"
+            ) from None
+
+        result = insight_mod.get_service().submit(
+            messages=messages,
+            kind="limitup",
+            title=f"涨跌停结构 AI 分析 · {meta.get('date') or date or ''}",
+            provider_id=req.provider_id,
+            cache_key=f"limitup:{meta.get('date') or ''}",
+            refresh=bool(req.refresh),
+            meta=meta,
+        )
+        return _respond(result, status=200 if result.get("ok") else 409)
+
+    @router.get("/api/llm/insight/task")
+    def insight_task(id: str = Query("")) -> Dict[str, Any]:
+        if not id:
+            raise ApiError("缺少任务 ID", status_code=400, code="VALIDATION")
+        task = insight_mod.get_service().get_task(id)
+        if not task:
+            raise ApiError("任务不存在或已过期", status_code=404, code="NOT_FOUND")
+        return _respond({"task": task})
+
+    @router.post("/api/llm/insight/cancel")
+    def insight_cancel(req: TaskIdRequest) -> Dict[str, Any]:
+        if not insight_mod.get_service().cancel(req.task_id):
+            raise ApiError("任务不存在或已结束", status_code=404, code="NOT_FOUND")
+        return _respond({"success": True})
+
+    @router.get("/api/llm/insight/stream")
+    def insight_stream(id: str = Query(..., min_length=4)) -> StreamingResponse:
+        task_state = insight_mod.get_service().get_task(id)
+        if not task_state:
+            raise ApiError("任务不存在或已过期", status_code=404, code="NOT_FOUND")
+
+        q = _subscribe(id)
+        # 迟到订阅（含缓存命中）：立即补发终态后关闭
+        if task_state.get("status") in ("success", "failed", "cancelled"):
+            q.put(
+                {
+                    "event": "done",
+                    "status": task_state["status"],
+                    "error": task_state.get("error") or "",
+                }
+            )
+        return _sse_response(id, q)
 
     @router.post("/api/llm/chat")
     def chat(req: ChatRequest) -> Dict[str, Any]:

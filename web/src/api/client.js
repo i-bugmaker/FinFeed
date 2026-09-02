@@ -56,6 +56,37 @@ export const api = {
     es.onerror = () => handlers.onError?.()
     return () => es.close()
   },
+  // 模型配置列表（供 AI 分析选择调用哪个已配置的模型）
+  providers: () => httpLlm.get('/llm/providers').then((r) => r.data),
+
+  /**
+   * 轻量洞察任务（非新闻报告口径）：提交 → SSE 增量 → 任务查询取回全文。
+   * 当前唯一场景：连板天梯「AI 分析」。
+   */
+  insightLimitUp: (payload) => httpLlm.post('/llm/insight/limitup', payload).then((r) => r.data),
+  insightTask: (id) => httpLlm.get('/llm/insight/task', { params: { id } }).then((r) => r.data),
+  insightCancel: (taskId) => httpLlm.post('/llm/insight/cancel', { task_id: taskId }).then((r) => r.data),
+  insightStream(taskId, handlers = {}) {
+    const es = new EventSource(`${API_BASE_URL}/llm/insight/stream?id=${encodeURIComponent(taskId)}`)
+    const bind = (event, fn) => {
+      if (typeof fn !== 'function') return
+      es.addEventListener(event, (e) => {
+        try {
+          fn(e.data ? JSON.parse(e.data) : {})
+        } catch { /* 忽略单条坏帧 */ }
+      })
+    }
+    bind('stage', handlers.onStage)
+    bind('delta', (d) => handlers.onDelta?.(d.text || ''))
+    bind('reset', () => handlers.onReset?.())
+    bind('done', (d) => {
+      handlers.onDone?.(d)
+      es.close()
+    })
+    es.onerror = () => handlers.onError?.()
+    return () => es.close()
+  },
+
   calendar: (path, params) => http.get('/calendar' + path, { params }).then((r) => r.data),
   market: (sub, params) => http.get('/market/' + sub, { params }).then((r) => r.data),
   marketAction: (params) => http.get('/market/action', { params }).then((r) => r.data),

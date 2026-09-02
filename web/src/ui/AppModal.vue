@@ -13,6 +13,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '' },
   size: { type: String, default: 'md' }, // sm / md / lg / xl
+  // 可选：覆盖该尺寸档位的最大宽度（如 '960px'），留空使用 size 档位默认值
+  maxWidth: { type: String, default: '' },
   closable: { type: Boolean, default: true },
   maskClosable: { type: Boolean, default: true },
   showCancel: { type: Boolean, default: true },
@@ -65,7 +67,14 @@ onUnmounted(() => {
   <Teleport to="body">
     <Transition name="ff-modal">
       <div v-show="modelValue" ref="overlayRef" class="ff-overlay" role="presentation" @click.self="onMaskClick">
-        <div class="ff-modal" :class="`ff-modal--${size}`" role="dialog" aria-modal="true" :aria-labelledby="title ? 'ff-modal-title' : undefined">
+        <div
+          class="ff-modal"
+          :class="`ff-modal--${size}`"
+          :style="maxWidth ? { maxWidth } : undefined"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="title ? 'ff-modal-title' : undefined"
+        >
           <div v-if="title || closable" class="ff-modal__header">
             <h3 v-if="title" id="ff-modal-title" class="ff-modal__title">{{ title }}</h3>
             <button v-if="closable" type="button" class="ff-modal__close" aria-label="关闭" @click="close">

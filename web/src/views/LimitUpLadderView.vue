@@ -16,7 +16,9 @@
  */
 import { ref, onMounted, onUnmounted } from 'vue'
 import AppCard from '../ui/AppCard.vue'
+import AppButton from '../ui/AppButton.vue'
 import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
+import LimitUpAiDialog from '../components/review/LimitUpAiDialog.vue'
 import { useScrollRestore } from '../composables/useScrollRestore'
 
 // 固定 30 秒，后台静默执行，无任何交互控件
@@ -39,6 +41,9 @@ const lastUpdated = ref('')
 // 数据日期 / 晋级数量（由卡片取数结果带出，展示在卡片头部）
 const dataDate = ref('')
 const totalUp = ref(0)
+
+// AI 分析弹窗：调用系统已配置的大模型解读当日涨跌停结构
+const showAi = ref(false)
 
 let refreshTimer = null
 
@@ -117,12 +122,24 @@ onUnmounted(() => {
         </span>
       </template>
       <template #actions>
+        <AppButton
+          size="sm"
+          variant="tonal"
+          icon="sparkles"
+          title="用系统配置的大模型分析当日涨跌停结构与潜在行情"
+          @click="showAi = true"
+        >
+          AI 分析
+        </AppButton>
         <span class="ff-limitup-view__updated ff-num">
           最后更新 {{ lastUpdated || '--:--:--' }}
         </span>
       </template>
       <LimitUpSummaryCard :refresh-key="refreshKey" @loaded="onLoaded" />
     </AppCard>
+
+    <!-- AI 分析弹窗：常驻挂载，关闭后仍保留任务进度与结果 -->
+    <LimitUpAiDialog v-model="showAi" :date="dataDate" />
   </div>
 </template>
 
