@@ -26,7 +26,8 @@ if errorlevel 1 (
 
 cls
 
-:: 每次启动前重建前端产物 web/dist —— 源码可能已更新而 dist 过期
+:run
+:: 每次启动（含 CTRL+R 重启）前重建前端产物 web/dist —— 源码可能已更新而 dist 过期
 :: （历史教训：曾因 dist 未重建导致生产界面停留在旧设计）
 echo.
 echo  [INFO] 正在重建前端 web/dist ...
@@ -39,11 +40,10 @@ if errorlevel 1 (
 )
 popd
 
-:run
 python "%~dp0..\main.py" %*
 if errorlevel 42 (
     echo.
-    echo  [重启] 正在重启 FinFeed 监控...
+    echo  [重启] CTRL+R 触发重启，重新构建并运行 FinFeed 监控...
     goto run
 )
 echo.
