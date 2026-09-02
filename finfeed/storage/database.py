@@ -253,17 +253,34 @@ class NewsDatabase:
 
         c.execute("PRAGMA index_list('news')")
         existing_indexes = [row[1] for row in c.fetchall()]
-        if 'idx_url_source' not in existing_indexes:
+        url_source_needs_rebuild = False
+        if 'idx_url_source' in existing_indexes:
+            # 旧版索引是 (url, source) 全量唯一：url='#'（"无原文链接"哨兵）
+            # 每来源只能存在一条，电报式快讯源（法布财经等，所有条目 url='#'）
+            # 除首条外全部被静默丢弃。检测到旧定义时重建为部分唯一索引。
             try:
+                row = c.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_url_source'"
+                ).fetchone()
+                if row and "WHERE" not in (row[0] or "").upper():
+                    url_source_needs_rebuild = True
+            except sqlite3.OperationalError:
+                pass
+        else:
+            url_source_needs_rebuild = True
+        if url_source_needs_rebuild:
+            try:
+                c.execute("DROP INDEX IF EXISTS idx_url_source")
                 c.execute("""
                     DELETE FROM news
-                    WHERE rowid NOT IN (
+                    WHERE url != '#' AND rowid NOT IN (
                         SELECT MIN(rowid)
                         FROM news
+                        WHERE url != '#'
                         GROUP BY url, source
                     )
                 """)
-                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_url_source ON news(url, source)")
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_url_source ON news(url, source) WHERE url != '#'")
             except sqlite3.OperationalError:
                 pass
 
@@ -449,6 +466,13 @@ class NewsDatabase:
             except sqlite3.OperationalError:
                 has_new_fields = False
 
+            # 以 rowid 边界精确圈定本批真正落库的行：
+            # 旧实现按 created_at（秒级）匹配，同一秒内先后两批处理时，
+            # 被查重拦截的条目会误匹配上一批的同名行，导致计数与 id 回填失真
+            before_max_rowid = c.execute(
+                "SELECT COALESCE(MAX(rowid), 0) FROM news"
+            ).fetchone()[0]
+
             if has_new_fields:
                 c.executemany(
                     """INSERT OR IGNORE INTO news
@@ -457,7 +481,9 @@ class NewsDatabase:
                         title_hash, content_simhash, duplicate_count, duplicate_sources, meta)
                        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                        WHERE NOT EXISTS (
-                           SELECT 1 FROM news WHERE url = ? AND source = ?
+                           -- url='#' 是"无原文链接"哨兵：不能参与 URL 查重，
+                           -- 否则同来源第一条 url='#' 记录会永久堵死该来源的所有后续条目
+                           SELECT 1 FROM news WHERE url = ? AND source = ? AND url != '#'
                        )
                        AND (? = '' OR NOT EXISTS (
                            SELECT 1 FROM news WHERE title_hash = ? AND title_hash != ''
@@ -481,8 +507,8 @@ class NewsDatabase:
                 )
 
             c.execute(
-                "SELECT id, title, url, source, title_hash FROM news WHERE created_at = ?",
-                (now_str,)
+                "SELECT id, title, url, source, title_hash FROM news WHERE rowid > ?",
+                (before_max_rowid,)
             )
             recent_rows = {}
             for row in c.fetchall():

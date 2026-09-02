@@ -77,6 +77,9 @@ class FastbullParser(BaseParser):
                 publish_ts=ts,
                 publish_time=pt,
                 intro=intro[:150],
+                # 法布快讯为电报式条目（hasOfficialDetail=0，无详情页），
+                # 标题即全文；url="#" 也无法走详情页补抓，正文在此一并落库
+                content=title,
             ))
 
         return news_list

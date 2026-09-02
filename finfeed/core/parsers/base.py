@@ -244,8 +244,13 @@ class BaseParser(ABC):
 
     def _make_news(self, title: str, url: str = "#", publish_ts: int = 0,
                     publish_time: str = "", intro: str = "",
-                    source_name: Optional[str] = None) -> NewsItem:
-        """构造 NewsItem 对象"""
+                    source_name: Optional[str] = None,
+                    content: str = "") -> NewsItem:
+        """构造 NewsItem 对象
+
+        :param content: 解析时已知的完整正文。适用于无详情页的电报式快讯源
+            （标题即全文），url="#" 的条目无法走详情页补抓通道。
+        """
         if not publish_time:
             publish_time = bj_str_from_ts(publish_ts) if publish_ts else now_bj().strftime("%Y-%m-%d %H:%M:%S")
         return NewsItem(
@@ -255,6 +260,7 @@ class BaseParser(ABC):
             publish_time=publish_time,
             publish_ts=publish_ts,
             intro=intro[:150] if len(intro) > 150 else intro,
+            content=content,
             # 分类标签按来源归属：快讯源 -> "flash"，文章来源 -> "article"。
             # 论坛(UGC)解析器不经过本方法（使用 forum_parsers/base.py 的 _build_news_item，
             # 固定 category="forum"），因此此处仅会出现 flash / article 两种取值。
