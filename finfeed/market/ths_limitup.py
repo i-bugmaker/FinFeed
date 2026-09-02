@@ -45,9 +45,7 @@ from finfeed.storage.database import now_bj
 
 logger = logging.getLogger("news_monitor")
 
-# ---------------------------------------------------------------------------
 # 常量与请求头
-# ---------------------------------------------------------------------------
 _ROOT = "https://data.10jqka.com.cn/"
 _DATA = "https://data.10jqka.com.cn/dataapi"
 _MOBILE = "https://data.10jqka.com.cn/mobileapi/hotspot_focus"
@@ -69,10 +67,8 @@ _POOL_FIELD_MAP = {
 _TTL = 60.0
 _CACHE: Dict[tuple, tuple] = {}  # key -> (ts, result)
 
-# ---------------------------------------------------------------------------
 # 客户端：复用 finfeed.market.client 的限流基础设施（group=ths）
 # 令牌桶限速 + 组级冷却熔断 + 退避重试，规避此前无限速导致的 [WinError 10054] 断连与限流。
-# ---------------------------------------------------------------------------
 _MOBILE_HEADERS = {"Source-id": _SOURCE_ID, "PlatForm": _PLATFORM}
 
 _ths_warm_lock: Optional[asyncio.Lock] = None
@@ -131,9 +127,7 @@ def _data_of(resp: Any) -> Any:
     return resp
 
 
-# ---------------------------------------------------------------------------
 # 工具
-# ---------------------------------------------------------------------------
 def _num(v: Any) -> float:
     try:
         return float(v) if v is not None else 0.0
@@ -178,9 +172,7 @@ async def _cached_get(key: tuple, coro_factory) -> Any:
     return val
 
 
-# ---------------------------------------------------------------------------
 # 原始接口拉取（带缓存）
-# ---------------------------------------------------------------------------
 async def _get_dataapi_pool(kind: str, td: str) -> Dict[str, Any]:
     """dataapi 涨停/炸板/跌停池。返回 {total, list}。
 
@@ -281,9 +273,7 @@ async def _get_trade_status() -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-# ---------------------------------------------------------------------------
 # 字段规整
-# ---------------------------------------------------------------------------
 def _norm_dataapi_pool_item(it: Dict[str, Any]) -> Dict[str, Any]:
     """把 dataapi 涨停/炸板/跌停池个股行规整为命名结构。
 
@@ -468,9 +458,7 @@ def _intensity_metrics(up: int, op: int, lo: int) -> Dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # 持久化行构造
-# ---------------------------------------------------------------------------
 def _pool_persist_rows(td: str, pool_type: str,
                        items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{
@@ -669,9 +657,7 @@ def _sentiment_persist_row(td: str, s: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # DB -> 前端结构（历史回看）
-# ---------------------------------------------------------------------------
 def _row_to_pool_item(r: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "code": r.get("code"), "name": r.get("name"),
@@ -829,7 +815,6 @@ def _build_sentiment_from_db(td: str) -> Optional[Dict[str, Any]]:
     }
 
 
-# ---------------------------------------------------------------------------
 # 容错：子请求级降级 + 模块级多级回退
 #
 # 旧实现是「整模块 try/except」：任一子接口失败即丢弃整个模块，返回 error。
@@ -839,7 +824,6 @@ def _build_sentiment_from_db(td: str) -> Optional[Dict[str, Any]]:
 #                  由调用方用「当日 DB 快照 / 空值」补位，其余子接口照常呈现。
 #   L2 模块级   —— 关键子接口全灭（或实时返回全空，如盘前/非交易日）时，
 #                  _db_fallback 依次尝试 当日 DB → 最近交易日 DB → error。
-# ---------------------------------------------------------------------------
 async def _try_req(label: str, key: tuple, factory, default: Any,
                    degraded: List[str]) -> tuple:
     """单子接口容错取数。返回 (value, ok)；失败不抛出，仅记 degraded 标签。"""
@@ -904,9 +888,7 @@ def _source_tag(degraded: List[str]) -> str:
     return "live_partial" if degraded else "live"
 
 
-# ---------------------------------------------------------------------------
 # 对外：四大模块 fetch（实时 + 子请求降级 + DB 多级回退 + 落库）
-# ---------------------------------------------------------------------------
 async def fetch_limit_up_intensity(trade_date: Optional[str] = None) -> Dict[str, Any]:
     """涨停强度：涨停 / 炸板 / 跌停池 + 衍生指标。"""
     from finfeed.market import store

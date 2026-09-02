@@ -165,4 +165,18 @@ function isLongText(v) {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* 窄屏：列宽下限随容器收缩防溢出；行内键值纵向堆叠便于长文本阅读 */
+@media (max-width: 768px) {
+  .etdx-kv {
+    grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  }
+  .etdx-kv__row {
+    flex-wrap: wrap;
+  }
+  .etdx-kv__v2 {
+    flex-basis: 100%;
+    text-align: left;
+  }
+}
 </style>

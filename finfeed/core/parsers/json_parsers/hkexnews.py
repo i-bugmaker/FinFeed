@@ -49,9 +49,7 @@ class HkexNewsParser(BaseParser):
         self._catch_up_mode = enabled
         self._catch_up_end_ts = end_ts
 
-    # ------------------------------------------------------------
     # 参数与解析辅助
-    # ------------------------------------------------------------
     def _build_params(self, from_date: str, to_date: str, row_range: str = HKEX_DEFAULT_ROW_RANGE) -> Dict[str, str]:
         """构造标题搜索请求参数（from/to 日期格式 YYYYMMDD）"""
         return {
@@ -134,9 +132,7 @@ class HkexNewsParser(BaseParser):
             intro=intro[:150],
         )
 
-    # ------------------------------------------------------------
     # 主解析入口
-    # ------------------------------------------------------------
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         """解析披露易标题搜索接口的 JSON 响应"""
         news_list: list[NewsItem] = []
@@ -171,9 +167,7 @@ class HkexNewsParser(BaseParser):
                 news_list.append(news)
         return news_list
 
-    # ------------------------------------------------------------
     # 补抓支持
-    # ------------------------------------------------------------
     async def fetch_with_catch_up(self, http_client) -> list[NewsItem]:
         """补抓模式：按日切片回溯（最多 7 天，由 catch_up_start_ts 决定）"""
         if not self._catch_up_mode or self.last_ts <= 0:

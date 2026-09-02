@@ -88,9 +88,7 @@ def ensure_tables() -> None:
     logger.info("stock_monitor 数据表已就绪")
 
 
-# ============================================================
 # 监控列表 CRUD
-# ============================================================
 def upsert_stock(code: str, name: str, market: str, board: str, note: str = "") -> bool:
     """新增/更新监控股票；已存在时仅补充名称等元数据，不覆盖备注。"""
     ensure_tables()
@@ -146,9 +144,7 @@ def delete_stock(code: str) -> bool:
         return cur.rowcount > 0
 
 
-# ============================================================
 # 系统外消息缓存
-# ============================================================
 def insert_external_messages(items: List[Dict[str, Any]]) -> int:
     """幂等写入外部消息；返回实际新增条数。"""
     if not items:
@@ -219,9 +215,7 @@ def get_external_max_id(codes: List[str]) -> int:
         return int(c.fetchone()["m"])
 
 
-# ============================================================
 # 系统内消息匹配（news 表实时查询）
-# ============================================================
 def get_internal_messages(
     codes: List[str],
     names: Dict[str, str],
@@ -283,9 +277,7 @@ def get_internal_messages(
     return out
 
 
-# ============================================================
 # AI 分析结果
-# ============================================================
 def create_analysis(code: str) -> int:
     ensure_tables()
     now = now_bj().strftime("%Y-%m-%d %H:%M:%S")

@@ -62,9 +62,7 @@ class SecEdgarParser(BaseParser):
         self._catch_up_mode = enabled
         self._catch_up_end_ts = end_ts
 
-    # ------------------------------------------------------------
     # 参数与解析辅助
-    # ------------------------------------------------------------
     def _headers(self) -> Dict[str, str]:
         """构造请求头：合并 source 配置，确保 UA 带联系信息"""
         headers = dict(self.source.headers or {})
@@ -172,9 +170,7 @@ class SecEdgarParser(BaseParser):
             intro=intro[:150],
         )
 
-    # ------------------------------------------------------------
     # 主解析入口（Atom XML）
-    # ------------------------------------------------------------
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         """解析 EDGAR getcurrent Atom XML 响应"""
         news_list: list[NewsItem] = []
@@ -195,9 +191,7 @@ class SecEdgarParser(BaseParser):
                 news_list.append(news)
         return news_list
 
-    # ------------------------------------------------------------
     # 补抓支持（全文检索 JSON，按日期范围分页）
-    # ------------------------------------------------------------
     def _build_search_params(self, start_date: str, end_date: str, page: int) -> Dict[str, str]:
         """构造全文检索参数（日期格式 YYYY-MM-DD）"""
         return {

@@ -28,11 +28,9 @@ class NewsSource:
     enabled: bool = True
 
 
-# ============================================================
 # 舆情论坛数据源（UGC 用户生成内容：散户讨论、情绪、观点）
 # 说明：财经新闻源已按时效性拆分至 flash_sources.py（快讯）与
 #       article_sources.py（文章），不再在此处维护。
-# ============================================================
 _MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
 _PC_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -228,9 +226,7 @@ FORUM_SOURCES: list[NewsSource] = [
     ),
 ]
 
-# ============================================================
 # 同花顺原创栏目配置
-# ============================================================
 THSYC_CHANNELS = [
     {"name": "原创滚动盘评", "path": "ycall_list"},
     {"name": "盘后点睛",     "path": "djpingpan_list"},
@@ -244,9 +240,7 @@ THSYC_CHANNELS = [
 ]
 THSYC_BASE_URL = "https://yuanchuang.10jqka.com.cn"
 
-# ============================================================
 # 同花顺财经栏目配置（news.10jqka.com.cn）
-# ============================================================
 THSFINANCE_CHANNELS = [
     {"name": "财经要闻", "path": "today_list"},
     {"name": "宏观经济", "path": "cjzx_list"},
@@ -261,15 +255,12 @@ THSFINANCE_CHANNELS = [
 THSFINANCE_BASE_URL = "https://news.10jqka.com.cn"
 
 
-# ============================================================
 # 来源分类体系
-# ------------------------------------------------------------
 # 原单一「财经新闻」分类（FINANCE_NEWS_SOURCES，上方预定义列表，保留作参考/兼容，
 # 已不再被 get_enabled_sources 使用）已按内容时效性拆分为：
 #   - 快讯类（flash）：7×24 实时滚动短消息，见 config/flash_sources.py
 #   - 文章类（article）：长文/深度内容，见 config/article_sources.py
 # 舆情论坛（forum）为独立分类，保持原状。三分类为互斥集合，见 get_source_category()。
-# ============================================================
 
 
 def get_flash_sources() -> list[NewsSource]:

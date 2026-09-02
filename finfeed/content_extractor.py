@@ -524,8 +524,9 @@ async def _extract_api(client: httpx.AsyncClient, url: str, rule: dict[str, Any]
 def _extract_pdf(content: bytes) -> ExtractResult:
     res = ExtractResult(method="pdf")
     try:
-        from pypdf import PdfReader
         import io
+
+        from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(content))
         pages = [page.extract_text() or "" for page in reader.pages]
     except Exception as e:  # noqa: BLE001

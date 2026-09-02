@@ -90,7 +90,6 @@ class SignalTracker:
         self._round = 0
         self._load()
 
-    # ------------------------------------------------------------------
     def _load(self) -> None:
         try:
             if not os.path.exists(SIGNAL_DB):
@@ -127,7 +126,6 @@ class SignalTracker:
         except Exception as exc:  # noqa: BLE001
             logger.warning("信号追踪落盘失败（已忽略）: %s", exc)
 
-    # ------------------------------------------------------------------
     def record_round(self, snapshot, anomalies, rotation) -> None:
         """在每轮采集结束时调用：登记新预测 + 验证已有预测。
 
@@ -223,7 +221,6 @@ class SignalTracker:
             if r % 10 == 0:
                 self._save()
 
-    # ------------------------------------------------------------------
     def summary(self) -> dict[str, Any]:
         with self._lock:
             resolved = [p for p in self._history if p.outcome is not None]

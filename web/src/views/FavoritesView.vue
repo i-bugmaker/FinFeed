@@ -213,4 +213,12 @@ onUnmounted(() => {
   gap: var(--ff-space-1);
   color: var(--ff-danger-text);
 }
+
+/* ── 窄屏适配（≤768px：搜索框占满一行）── */
+@media (max-width: 768px) {
+  .ff-favorites-view__search {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
 </style>

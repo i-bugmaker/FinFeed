@@ -1,6 +1,9 @@
 <script setup>
+// 通用 ECharts 容器：注入统一主题底座（文字/坐标轴/tooltip），
+// 主题切换后自动以新令牌重渲染（canvas 无法消费 CSS var）。
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { echarts } from '@/shared/lib/echarts'
+import { chartBaseTheme, useChartTheme } from '@/composables/useChartTheme'
 
 const props = defineProps({
   option: { type: Object, required: true },
@@ -10,32 +13,9 @@ const el = ref(null)
 let chart = null
 let ro = null
 
-function themeColor(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || undefined
-}
-
-function baseTheme() {
-  const text = themeColor('--ff-text-primary')
-  const muted = themeColor('--ff-text-secondary')
-  const border = themeColor('--ff-border')
-  return {
-    backgroundColor: 'transparent',
-    textStyle: { color: text },
-    title: { textStyle: { color: text }, subtextStyle: { color: muted } },
-    legend: { textStyle: { color: muted } },
-    tooltip: {
-      backgroundColor: themeColor('--ff-bg-surface'),
-      borderColor: border,
-      textStyle: { color: text },
-    },
-    xAxis: { axisLine: { lineStyle: { color: border } }, axisLabel: { color: muted }, splitLine: { lineStyle: { color: themeColor('--ff-bg-subtle') } } },
-    yAxis: { axisLine: { lineStyle: { color: border } }, axisLabel: { color: muted }, splitLine: { lineStyle: { color: themeColor('--ff-bg-subtle') } } },
-  }
-}
-
 function render() {
   if (!chart) return
-  chart.setOption({ ...baseTheme(), ...props.option }, true)
+  chart.setOption({ ...chartBaseTheme(), ...props.option }, true)
 }
 
 function resize() {
@@ -61,6 +41,8 @@ watch(
   () => render(),
   { deep: true },
 )
+// 主题切换 → 以新令牌值重渲染（修复：此前无 watcher，切主题后画布保留旧配色）
+useChartTheme(render)
 </script>
 
 <template>

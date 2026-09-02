@@ -37,9 +37,7 @@ _HISTORY_LIMIT = 8  # 追问/问答携带的历史轮数上限
 _MESSAGE_MAX_CHARS = 4000  # 单条历史消息截断长度
 
 
-# ============================================================
 # 状态与首屏
-# ============================================================
 def status_payload() -> Dict[str, Any]:
     providers = cfg.list_providers()
     default = cfg.get_default_provider()
@@ -100,9 +98,7 @@ def save_prompts(values: Dict[str, str]) -> int:
     return saved
 
 
-# ============================================================
 # 分析默认值（服务端持久化，跨设备共享；localStorage 仅作兜底）
-# ============================================================
 def analysis_defaults() -> Dict[str, Any]:
     try:
         scope = cfg.get_setting("default_scope", "all")
@@ -143,9 +139,7 @@ def save_analysis_defaults(payload: Dict[str, Any]) -> Dict[str, Any]:
     return analysis_defaults()
 
 
-# ============================================================
 # 预估
-# ============================================================
 def preview_estimate(matched: int, max_items: int) -> Dict[str, Any]:
     """粗略估算送分析条数、批次数与耗时"""
     max_items = max(20, min(int(max_items or 500), 5000))
@@ -183,9 +177,7 @@ def provider_test_result(provider, result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-# ============================================================
 # 对话：报告追问 / 自由问答
-# ============================================================
 def _provider_or_error() -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
     """返回 (provider, error_payload)；error 非 None 时调用方应直接中止。"""
     provider = cfg.get_default_provider()
@@ -470,9 +462,7 @@ def _load_recent_news_context(question: str = "", max_items: int = 15) -> str:
     return "\n".join(lines) + "\n"
 
 
-# ============================================================
 # 导出
-# ============================================================
 def export_report(report_id: int, fmt: str = "md") -> Optional[Tuple[str, bytes, str]]:
     """返回 (文件名, 内容字节, Content-Type)"""
     ensure_tables()

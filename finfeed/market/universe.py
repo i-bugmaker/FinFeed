@@ -53,9 +53,7 @@ def _market_of(trade_market: str, sec_type: str) -> str:
     return ""
 
 
-# ---------------------------------------------------------------------------
 # 1. 全量 A 股名录
-# ---------------------------------------------------------------------------
 async def fetch_all_a_shares() -> List[Dict]:
     """拉取全量证券名录并过滤出 A 股。
 
@@ -103,9 +101,7 @@ async def fetch_all_a_shares() -> List[Dict]:
     return rows
 
 
-# ---------------------------------------------------------------------------
 # 2. 在市标的判定
-# ---------------------------------------------------------------------------
 async def _latest_valuation_date() -> str:
     """探测估值报表的最新交易日（1 次请求，pageSize=1）。
 
@@ -183,9 +179,7 @@ async def refresh_active_flags(trade_date: Optional[str] = None) -> Dict[str, in
     return res
 
 
-# ---------------------------------------------------------------------------
 # 3. 板块成分
-# ---------------------------------------------------------------------------
 async def fetch_all_board_members() -> List[tuple]:
     """拉取全量「个股↔核心题材板块」映射。
 
@@ -224,9 +218,7 @@ async def fetch_all_board_members() -> List[tuple]:
     return rows
 
 
-# ---------------------------------------------------------------------------
 # 编排
-# ---------------------------------------------------------------------------
 async def populate_stock_meta() -> int:
     stocks = await fetch_all_a_shares()
     n = store.upsert_stock_meta_full(stocks)

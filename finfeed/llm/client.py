@@ -66,9 +66,7 @@ class ChatResult:
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
-# ============================================================
 # URL 归一化
-# ============================================================
 def normalize_base(url: str) -> str:
     """去掉尾部斜杠与显式端点后缀，得到 base"""
     u = (url or "").strip().rstrip("/")
@@ -127,9 +125,7 @@ def validate_url(url: str) -> Optional[str]:
     return None
 
 
-# ============================================================
 # 客户端
-# ============================================================
 class LLMClient:
     """OpenAI 兼容的最小可用客户端"""
 

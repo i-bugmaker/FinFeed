@@ -173,4 +173,16 @@ onUnmounted(() => {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+/* 窄屏：卡片头 meta 与 actions 允许换行，避免挤压溢出 */
+@media (max-width: 768px) {
+  .ff-limitup-view :deep(.ff-card__header) {
+    flex-wrap: wrap;
+    row-gap: var(--ff-space-1);
+    padding: var(--ff-space-3) var(--ff-space-4);
+  }
+  .ff-limitup-view__head {
+    gap: var(--ff-space-2);
+  }
+}
 </style>

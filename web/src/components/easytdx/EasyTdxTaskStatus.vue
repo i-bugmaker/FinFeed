@@ -176,4 +176,11 @@ watch(
   color: #c5d0db;
   flex: 1;
 }
+
+/* 窄屏：日志区最小高度收窄，避免占用过多可视面积 */
+@media (max-width: 768px) {
+  .etdx-status__logs {
+    min-height: 88px;
+  }
+}
 </style>

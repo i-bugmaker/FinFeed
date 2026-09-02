@@ -18,9 +18,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # 参数值转换
-# ---------------------------------------------------------------------------
 def _parse_stock_line(line: str):
     """解析一行 '市场 代码' → (market_int, code)。市场缺省视为 SH。"""
     line = line.strip()
@@ -128,9 +126,7 @@ def validate_params(func_def: dict, params: dict) -> list[str]:
     return errors
 
 
-# ---------------------------------------------------------------------------
 # 结果序列化
-# ---------------------------------------------------------------------------
 def _jsonify_scalar(v: Any) -> Any:
     if isinstance(v, (pd.Timestamp, _dt.datetime, _dt.date)):
         return str(v)

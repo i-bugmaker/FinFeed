@@ -154,4 +154,11 @@ const option = computed(() => {
 .etdx-chart {
   width: 100%;
 }
+
+/* 窄屏：图表高度收窄（覆盖 ChartPanel 的 inline height，ResizeObserver 自动重绘 canvas） */
+@media (max-width: 768px) {
+  .etdx-chart :deep(.ff-chart) {
+    height: 260px !important;
+  }
+}
 </style>

@@ -24,9 +24,7 @@ from finfeed.utils.time_utils import now_bj
 logger = logging.getLogger("news_monitor")
 
 
-# ---------------------------------------------------------------------------
 # 建表
-# ---------------------------------------------------------------------------
 def ensure_market_tables() -> None:
     """创建事实层所有表（幂等）。在 market service 启动时调用一次。"""
     db = get_db_manager()
@@ -428,9 +426,7 @@ def _add_column(c, table: str, col: str, definition: str) -> None:
         logger.debug(f"列 {col} 已存在或添加失败: {e}")
 
 
-# ---------------------------------------------------------------------------
 # 写：股票池（扩展版，含 alias）
-# ---------------------------------------------------------------------------
 def upsert_stock_meta_full(rows: List[Dict[str, Any]]) -> int:
     """rows: {code, name, industry, market, alias?, list_date?, security_type?, board?}
 
@@ -544,9 +540,7 @@ def get_stock_meta_alias(code: str) -> List[str]:
         return []
 
 
-# ---------------------------------------------------------------------------
 # 写：新闻↔个股关联
-# ---------------------------------------------------------------------------
 def upsert_news_stock_link(rows: List[tuple]) -> int:
     """rows: (news_id, code, match_type, confidence)"""
     if not rows:
@@ -571,9 +565,7 @@ def get_news_stocks(news_id: int) -> List[str]:
         return [r["code"] for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 写：涨跌停池
-# ---------------------------------------------------------------------------
 def upsert_limit_pool(rows: List[Dict[str, Any]]) -> int:
     if not rows:
         return 0
@@ -617,9 +609,7 @@ def get_limit_pool(trade_date: str, direction: str = "up") -> List[Dict[str, Any
         return [dict(r) for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 写：日线
-# ---------------------------------------------------------------------------
 def upsert_daily_bar(rows: List[Dict[str, Any]]) -> int:
     """rows: {code, trade_date, open, high, low, close, volume, amount,
               pct_chg, amplitude, turnover, fq_type?}"""
@@ -666,12 +656,10 @@ def get_daily_bar(code: str, start: Optional[str] = None, end: Optional[str] = N
         return [dict(r) for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 写：K 线缓存（仪表盘多周期 K 线本地持久化，规避 push2his 限流）
 # 与 daily_bar 的区别：daily_bar 仅日线（fq_type=1，供盘后回补/回测），
 # kline_cache 按 (code, klt) 存所有周期（101 日/102 周/103 月/104 季/105 年），
 # 每次刷新以同一 fetched_at 标记整批，供 TTL 判定。
-# ---------------------------------------------------------------------------
 def upsert_kline_cache(rows: List[Dict[str, Any]], klt: int) -> int:
     """rows: {code, trade_date, open, high, low, close, volume, amount,
               pct_chg, amplitude, turnover}（部分字段可缺省，与 upsert_daily_bar 同风格）"""
@@ -761,9 +749,7 @@ def get_kline_cache_state(code: str, klt: int) -> Optional[Dict[str, Any]]:
         }
 
 
-# ---------------------------------------------------------------------------
 # 写：资金流 / 龙虎榜
-# ---------------------------------------------------------------------------
 def upsert_money_flow(rows: List[Dict[str, Any]]) -> int:
     if not rows:
         return 0
@@ -795,9 +781,7 @@ def upsert_money_flow(rows: List[Dict[str, Any]]) -> int:
         return len(data)
 
 
-# ---------------------------------------------------------------------------
 # 写：融资融券 / 业绩预告 / 新股日历（本次新增整合）
-# ---------------------------------------------------------------------------
 def upsert_margin_detail(rows: List[Dict[str, Any]]) -> int:
     if not rows:
         return 0
@@ -941,14 +925,12 @@ def get_billboard(trade_date: str) -> List[Dict[str, Any]]:
         return [dict(r) for r in c.fetchall()]
 
 
-# ===========================================================================
 # 读：全维度事实查询（供 Web 事实层面板）
 #
 # 设计约束：
 #   1. 全部为**只读**查询，绝不触发任何网络采集。页面刷新不应造成东财施压。
 #   2. 所有排行类查询强制 LIMIT，避免把 5191 行资金流一次性塞进浏览器。
 #   3. 金额单位一律保持库内原始单位（元），格式化交给前端，避免精度二次损失。
-# ===========================================================================
 
 # 允许排序的列白名单（防 SQL 注入；这些值来自 URL query）
 _MF_ORDER = {
@@ -1126,9 +1108,7 @@ def get_ipo_calendar(start: Optional[str] = None, end: Optional[str] = None,
         return [dict(r) for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 同花顺热榜快照（按交易日自动采集，供历史日期回看）
-# ---------------------------------------------------------------------------
 def upsert_ths_hotrank(rows: List[Dict[str, Any]]) -> int:
     """批量写入热榜快照（幂等 upsert）。
 
@@ -1230,9 +1210,7 @@ def get_ths_hotrank_dates() -> Dict[str, Any]:
         return {"dates": dates, "latest": latest, "count": len(dates)}
 
 
-# ---------------------------------------------------------------------------
 # 同花顺「涨停聚焦」四模块快照（按交易日自动采集，供历史日期回看）
-# ---------------------------------------------------------------------------
 def _norm_json_str(v: Any) -> str:
     """把可能为 list/dict 的标签字段序列化为字符串，便于 SQLite TEXT 存储。"""
     if isinstance(v, (list, dict)):
@@ -1388,7 +1366,6 @@ def upsert_ths_limitup_sentiment(row: Dict[str, Any]) -> int:
         return 1
 
 
-# ---------------------------------------------------------------------------
 # 全量快照对齐（prune）
 #
 # 四张涨停聚焦表均为「幂等 upsert」语义：只新增/更新，不移除。盘中增量采集下
@@ -1398,7 +1375,6 @@ def upsert_ths_limitup_sentiment(row: Dict[str, Any]) -> int:
 #
 # 约定：仅在实时拉取成功（完整快照）时调用；降级/DB 回退路径绝不调用，
 # 以免用空集合把当日已有快照清空。
-# ---------------------------------------------------------------------------
 def prune_ths_limitup_pool(trade_date: str, pool_type: str,
                            keep_codes: List[str]) -> int:
     """裁剪该日该池中不在本次全量快照内的残留个股。返回删除行数。"""

@@ -480,4 +480,19 @@ onUnmounted(closeStream)
   color: var(--ff-text-tertiary);
   line-height: 1.6;
 }
+
+/* ── 窄屏适配（≤768px：模型选择占满一行 / 正文区收窄加高）── */
+@media (max-width: 768px) {
+  .ai-ana__pick {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+  .ai-ana__acts {
+    flex-wrap: wrap;
+  }
+  .ai-ana__body {
+    max-height: 56vh;
+    padding: var(--ff-space-3);
+  }
+}
 </style>

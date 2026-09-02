@@ -62,9 +62,7 @@ def _norm_value(s: str) -> str:
     return "" if s in ("-", "--", "—", "") else s
 
 
-# ============================================================
 # 1. 财经日历
-# ============================================================
 def parse_finance(rows: List[Dict[str, Any]], date: str) -> List[CalendarEvent]:
     """RPT_CPH_FECALENDAR -> CalendarEvent
 
@@ -121,9 +119,7 @@ def parse_finance(rows: List[Dict[str, Any]], date: str) -> List[CalendarEvent]:
     return out
 
 
-# ============================================================
 # 2. 股市日历
-# ============================================================
 def _stock_category(event_type: str) -> str:
     for keys, cat in STOCK_CATEGORY_RULES:
         for k in keys:
@@ -177,9 +173,7 @@ def _quote_slug(secucode: str, code: str) -> str:
     return "bj" + code
 
 
-# ============================================================
 # 3. 新股申购日历
-# ============================================================
 def parse_ipo(rows: List[Dict[str, Any]], date: str) -> List[CalendarEvent]:
     """RPT_IPO_CALENDAR -> CalendarEvent（新股 / 可转债节点）"""
     now = int(time.time())
@@ -218,9 +212,7 @@ def parse_ipo(rows: List[Dict[str, Any]], date: str) -> List[CalendarEvent]:
     return out
 
 
-# ============================================================
 # 4. 全球经济日历
-# ============================================================
 def parse_global(html_text: str, date: str) -> List[CalendarEvent]:
     """解析 forex.eastmoney.com/FC.html 服务端渲染表格
 

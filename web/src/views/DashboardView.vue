@@ -66,9 +66,9 @@ async function fetchFlow() {
     // 通达信池计数来自盘后采集的 limit_pool 表，盘后任务未跑时为 0。
     // 0 视为「未采集」而非真实值，回退到同花顺涨停聚焦的强度计数，避免涨跌停显示 0。
     luFlow.value = {
-      up: la?.tdx_up_total || it?.up_total ?? null,
+      up: (la?.tdx_up_total || it?.up_total) ?? null,
       open: it ? it.open_total : null,
-      lower: la?.tdx_down_total || it?.lower_total ?? null,
+      lower: (la?.tdx_down_total || it?.lower_total) ?? null,
       maxHeight: la ? la.max_height : 0,
     }
   } catch (e) {

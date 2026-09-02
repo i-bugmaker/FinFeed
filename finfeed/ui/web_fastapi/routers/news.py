@@ -21,7 +21,7 @@ from finfeed.storage.database import (
     db_toggle_favorite,
     db_update_news_content,
 )
-from finfeed.ui.web.shared import (
+from finfeed.ui.web_fastapi.shared import (
     _build_news_response,
     _cache_get,
     _cache_set,

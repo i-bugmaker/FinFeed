@@ -1,7 +1,9 @@
 <script setup>
 // 八维子分雷达图（ECharts），用于个股下钻：维度画像可视化。
+// 颜色经统一主题出口解析语义令牌，并随主题切换重渲染（canvas 无法消费 CSS var）。
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { echarts } from '@/shared/lib/echarts'
+import { chartVar, hexToRgba, useChartTheme } from '@/composables/useChartTheme'
 
 const props = defineProps({
   dims: { type: Object, default: () => ({}) },
@@ -34,6 +36,7 @@ function render() {
     const v = Number(dims[k])
     return Number.isFinite(v) ? v : 0
   })
+  const brand = chartVar('--ff-brand', '#2563eb')
   chart.setOption({
     tooltip: {
       trigger: 'item',
@@ -45,19 +48,19 @@ function render() {
     radar: {
       indicator: indicators,
       radius: '62%',
-      axisName: { color: '#64748b', fontSize: 10 },
-      splitArea: { areaStyle: { color: ['#f8fafc', '#f1f5f9'] } },
-      splitLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      axisName: { color: chartVar('--ff-text-tertiary', '#64748b'), fontSize: 10 },
+      splitArea: { areaStyle: { color: [chartVar('--ff-bg-subtle', '#f8fafc'), chartVar('--ff-bg-muted', '#f1f5f9')] } },
+      splitLine: { lineStyle: { color: chartVar('--ff-border', '#e2e8f0') } },
+      axisLine: { lineStyle: { color: chartVar('--ff-border', '#e2e8f0') } },
     },
     series: [
       {
         type: 'radar',
         symbolSize: 3,
         data: [{ value, name: '维度画像' }],
-        areaStyle: { color: 'rgba(37, 99, 235, 0.25)' },
-        lineStyle: { color: '#2563eb', width: 2 },
-        itemStyle: { color: '#2563eb' },
+        areaStyle: { color: hexToRgba(brand, 0.25) },
+        lineStyle: { color: brand, width: 2 },
+        itemStyle: { color: brand },
       },
     ],
   })
@@ -87,6 +90,8 @@ watch(
   () => render(),
   { deep: true },
 )
+// 主题切换后以新令牌值重渲染
+useChartTheme(render)
 </script>
 
 <template>

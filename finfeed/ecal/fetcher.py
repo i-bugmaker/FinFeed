@@ -43,16 +43,13 @@ logger = logging.getLogger("news_monitor")
 DEFAULT_TIMEOUT = 20.0
 _RE_JSONP = re.compile(r"^[^(]*\((.*)\);?\s*$", re.S)
 
-# ============================================================
 # 持久化连接池（进程级，专治冷 DNS 卡顿）
-# ------------------------------------------------------------
 # 痛点：本机 IPv4-only DNS 解析 eastmoney 域名约 11s，若每次
 # 请求都新建 httpx.AsyncClient，则每次都会触发冷解析。
 # 方案：在独立后台线程常驻一个 asyncio 事件循环 + 一个常驻
 # AsyncClient，所有抓取协程都调度到该 loop 上执行，DNS 仅解析
 # 一次并长期复用连接池。Web 工作线程通过 run_on_pool() 提交
 # 协程并以 future.result() 同步取回结果。
-# ============================================================
 _pool_lock = threading.Lock()
 _pool_thread: Optional[threading.Thread] = None
 _pool_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -137,9 +134,7 @@ def warmup() -> None:
     threading.Thread(target=_worker, name="cal-warmup", daemon=True).start()
 
 
-# ============================================================
 # 工具
-# ============================================================
 def next_day(date: str) -> str:
     return (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -194,9 +189,7 @@ async def _dc_query(
     return rows
 
 
-# ============================================================
 # 1. 财经日历
-# ============================================================
 async def fetch_finance(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]:
     """返回在 date 当天处于进行中的财经事件（含跨天会议）"""
     params = {
@@ -212,9 +205,7 @@ async def fetch_finance(client: httpx.AsyncClient, date: str) -> List[CalendarEv
     return parse_finance(rows, date)
 
 
-# ============================================================
 # 2. 股市日历
-# ============================================================
 async def fetch_stock(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]:
     """RPT_SPECIAL_ALL 已是 5 个子类的全集，一次取回即可"""
     params = {
@@ -230,9 +221,7 @@ async def fetch_stock(client: httpx.AsyncClient, date: str) -> List[CalendarEven
     return parse_stock(rows, date)
 
 
-# ============================================================
 # 3. 新股申购日历
-# ============================================================
 async def fetch_ipo(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]:
     params = {
         "reportName": "RPT_IPO_CALENDAR",
@@ -250,9 +239,7 @@ async def fetch_ipo(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]
     return parse_ipo(rows, date)
 
 
-# ============================================================
 # 4. 全球经济日历
-# ============================================================
 async def fetch_global(client: httpx.AsyncClient, date: str) -> List[CalendarEvent]:
     resp = await client.get(_FC, params={"Date": date}, headers=forex_headers())
     if resp.status_code != 200:
@@ -270,9 +257,7 @@ FETCHERS = {
 }
 
 
-# ============================================================
 # 对外统一入口
-# ============================================================
 async def fetch_day(
     client: httpx.AsyncClient, cal_type: str, date: str
 ) -> List[CalendarEvent]:

@@ -11,13 +11,10 @@
 import logging
 
 from finfeed.alerts import store
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 
-# ============================================================
 # 自选股管理（委托 stock_monitor.store）
-# ============================================================
 
 def add_stock(stock_code: str, stock_name: str = "") -> bool:
     """添加自选股"""
@@ -52,9 +49,7 @@ def is_stock_watched(stock_code: str) -> bool:
     return any(s["code"] == stock_code for s in get_watchlist())
 
 
-# ============================================================
 # 主题订阅管理
-# ============================================================
 
 def add_topic(name: str, keywords: list[str], description: str = "") -> int:
     """添加主题订阅，返回主题 ID（失败返回 0）"""
@@ -77,9 +72,7 @@ def set_topic_enabled(topic_id: int, enabled: bool) -> bool:
     return store.update_topic(topic_id, {"is_enabled": enabled}) is not None
 
 
-# ============================================================
 # 新闻匹配
-# ============================================================
 
 def match_watchlist_news(news_stocks: list[str]) -> list[str]:
     """判断新闻涉及的股票是否在自选股中

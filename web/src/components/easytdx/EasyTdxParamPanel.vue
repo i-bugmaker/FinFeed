@@ -127,6 +127,9 @@ function onStrategyChange(name) {
   display: flex;
   gap: 6px;
 }
+.etdx-param__badges :deep(.ff-badge) {
+  white-space: nowrap;
+}
 .etdx-param__help {
   margin: 8px 0 0;
   font-size: var(--ff-fs-body-sm);
@@ -178,5 +181,17 @@ function onStrategyChange(name) {
 .etdx-param--empty p {
   margin: 0;
   font-size: var(--ff-fs-body-sm);
+}
+
+/* 窄屏：徽章允许换行，头部与底部留白收窄 */
+@media (max-width: 768px) {
+  .etdx-param__badges {
+    flex-wrap: wrap;
+  }
+  .etdx-param__head,
+  .etdx-param__footer {
+    padding-left: var(--ff-space-3);
+    padding-right: var(--ff-space-3);
+  }
 }
 </style>

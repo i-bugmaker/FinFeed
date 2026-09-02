@@ -31,7 +31,6 @@ def _ocr_rapidocr(data: bytes) -> List[str]:
 
     engine = RapidOCR()
     import numpy as np  # noqa: PLC0415
-
     from PIL import Image  # noqa: PLC0415
 
     img = Image.open(io.BytesIO(data)).convert("RGB")
@@ -43,10 +42,8 @@ def _ocr_rapidocr(data: bytes) -> List[str]:
 
 def _ocr_easyocr(data: bytes) -> List[str]:
     import easyocr  # noqa: PLC0415
-
-    from PIL import Image  # noqa: PLC0415
-
     import numpy as np  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
 
     reader = easyocr.Reader(["ch_sim", "en"], gpu=False, verbose=False)
     img = Image.open(io.BytesIO(data)).convert("RGB")
@@ -56,7 +53,6 @@ def _ocr_easyocr(data: bytes) -> List[str]:
 
 def _ocr_pytesseract(data: bytes) -> List[str]:
     import pytesseract  # noqa: PLC0415
-
     from PIL import Image  # noqa: PLC0415
 
     img = Image.open(io.BytesIO(data))

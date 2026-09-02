@@ -31,9 +31,7 @@ from .sources import CAL_TYPE_KEYS
 
 logger = logging.getLogger("news_monitor")
 
-# ============================================================
 # 参数
-# ============================================================
 # TTL 分级（秒）：越接近当下，数据变动越频繁
 TTL_SETTLED = 30 * 86400   # 3 天前：已定型
 TTL_RECENT = 30 * 60       # 近 3 天 ~ 明天：30 分钟
@@ -49,9 +47,7 @@ _inflight: Dict[Tuple[str, str], threading.Event] = {}
 _inflight_lock = threading.Lock()
 
 
-# ============================================================
 # 日期工具
-# ============================================================
 def today_str() -> str:
     return now_bj().strftime("%Y-%m-%d")
 
@@ -96,9 +92,7 @@ def _ttl_for(date: str, today: str) -> int:
     return TTL_FUTURE
 
 
-# ============================================================
 # 同步
-# ============================================================
 def _stale_dates(cal_type: str, dates: List[str], force: bool) -> List[str]:
     if force:
         return list(dates)
@@ -232,9 +226,7 @@ def sync_range(
     }
 
 
-# ============================================================
 # 查询
-# ============================================================
 def get_events(
     cal_type: str = "finance",
     start: str = "",

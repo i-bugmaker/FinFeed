@@ -48,9 +48,7 @@ def _parse_time(time_str: str) -> int:
         return 0
 
 
-# ============================================================
 # 个股资讯
-# ============================================================
 def fetch_stock_news(code: str, market: str, page_size: int = 15) -> List[Dict[str, Any]]:
     """拉取个股相关资讯（东财 getListInfo，type=1 为个股新闻）。"""
     url = "https://np-listapi.eastmoney.com/comm/web/getListInfo"
@@ -84,9 +82,7 @@ def fetch_stock_news(code: str, market: str, page_size: int = 15) -> List[Dict[s
     return out
 
 
-# ============================================================
 # 个股公告
-# ============================================================
 def fetch_stock_announcements(code: str, page_size: int = 15) -> List[Dict[str, Any]]:
     """拉取个股公告（东财 np-anotice-stock，覆盖沪深北全市场）。"""
     url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
@@ -112,7 +108,6 @@ def fetch_stock_announcements(code: str, page_size: int = 15) -> List[Dict[str, 
         ei = it.get("eiTime") or it.get("display_time") or ""
         ts = _parse_time(ei)
         art_code = it.get("art_code") or ""
-        codes = it.get("codes") or []
         col_names = [c.get("column_name") for c in (it.get("columns") or []) if c.get("column_name")]
         out.append({
             "code": code,
@@ -131,9 +126,7 @@ def fetch_stock_announcements(code: str, page_size: int = 15) -> List[Dict[str, 
     return out
 
 
-# ============================================================
 # 全市场股票名单（名称/拼音解析的数据底座）
-# ============================================================
 _CLIST_FS = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"  # 沪深主板+科创+创业+北交
 
 
@@ -173,9 +166,7 @@ def fetch_all_a_names(page_size: int = 100, max_pages: int = 80) -> List[Dict[st
     return out
 
 
-# ============================================================
 # 代码核验 / 名称解析
-# ============================================================
 def resolve_name_online(code: str, market: str) -> Optional[Dict[str, Any]]:
     """通过东财行情接口核验代码是否存在，返回 {code,name} 或 None。
 

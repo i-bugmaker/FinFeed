@@ -56,9 +56,7 @@ _client: Optional[httpx.AsyncClient] = None
 _client_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
-# ---------------------------------------------------------------------------
 # 客户端生命周期
-# ---------------------------------------------------------------------------
 def _get_client() -> httpx.AsyncClient:
     """按事件循环创建/复用客户端（不同线程的 asyncio.run 各自独立连接池）。"""
     global _client, _client_loop
@@ -88,9 +86,7 @@ def _referer_for(url: str) -> str:
     return "https://quote.eastmoney.com/"
 
 
-# ---------------------------------------------------------------------------
 # 限速 / 冷却
-# ---------------------------------------------------------------------------
 async def _throttle(group: str) -> None:
     interval = GROUP_MIN_INTERVAL.get(group, 1.0)
     with _state_lock:
@@ -152,9 +148,7 @@ def group_status() -> Dict[str, Dict[str, Any]]:
         }
 
 
-# ---------------------------------------------------------------------------
 # 核心请求
-# ---------------------------------------------------------------------------
 async def get_json(
     url: str,
     params: Optional[dict] = None,
@@ -229,9 +223,7 @@ async def get_json(
     raise RuntimeError(f"{source} 请求失败: {last_err}") from last_err
 
 
-# ---------------------------------------------------------------------------
 # 会话预热（建立目标站 Cookie，避免首请求被拒）
-# ---------------------------------------------------------------------------
 async def warm(url: str, referer: str, group: str = "ths", timeout: float = 15.0) -> Optional[int]:
     """对目标域做一次轻量 GET 以写入会话 Cookie（不解析 JSON）。
 
@@ -252,9 +244,7 @@ async def warm(url: str, referer: str, group: str = "ths", timeout: float = 15.0
         return None
 
 
-# ---------------------------------------------------------------------------
 # datacenter 统一分页器（事实层主力链路）
-# ---------------------------------------------------------------------------
 async def datacenter_pages(
     report_name: str,
     columns: str = "ALL",

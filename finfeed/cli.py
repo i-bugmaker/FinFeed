@@ -47,7 +47,7 @@ from finfeed.storage.exporter import (
     get_default_export_path,
 )
 from finfeed.ui.terminal import TerminalUI, print_once_result
-from finfeed.ui.web.shared import touch_sse_tick, update_web_state
+from finfeed.ui.web_fastapi.shared import touch_sse_tick, update_web_state
 
 
 async def run_once():
@@ -93,10 +93,7 @@ async def run_continuous(interval: int, web_port: int):
             logger.error(f"SSE tick 触发失败: {e}", exc_info=True)
 
         stats = db_get_statistics()
-        # 注意：db_get_statistics() 返回的字典 key 是 "total_news"，
-        # 历史写法 get("total", 0) 永远拿不到值（恒为 0），导致 TUI/前端
-        # 一直显示「库内 0 条」。这是 2026-08-10 现场定位的 bug，现统一为
-        # 正确 key，且与 ui/web/server.py、ui/web_fastapi/app.py 保持一致。
+        # db_get_statistics() 的 key 是 "total_news"；误用 "total" 会恒为 0
         total_count = stats.get("total_news", 0)
         update_web_state(
             news=[],
@@ -207,9 +204,7 @@ async def run_continuous(interval: int, web_port: int):
     db_set_last_exit_ts(int(time.time()))
 
 
-# ---------------------------------------------------------------------------
 # Web 服务栈启动（FastAPI 单轨，8866）
-# ---------------------------------------------------------------------------
 
 
 def _launch_fastapi(port: int) -> "subprocess.Popen":
@@ -278,7 +273,7 @@ def start_web_stack(port: int) -> "subprocess.Popen | None":
     """启动 Web 服务栈（FastAPI 单轨）。
 
     - 仅 uvicorn(FastAPI) 监听 ``port``（默认 8866），由 ``finfeed.ui.web_fastapi.app`` 提供服务；
-    - 旧的 stdlib ``server.py`` 已退役删除，SSE 广播通道由 ``ui.web.shared`` 承载。
+    - 旧的 stdlib ``server.py`` 已退役删除，SSE 广播通道由 ``ui.web_fastapi.shared`` 承载。
     - 依赖检查：uvicorn/fastapi 缺失时给出明确报错，不再静默降级。
 
     返回 FastAPI 子进程句柄（可能为 ``None``），供退出时回收。
@@ -421,9 +416,7 @@ def _setup_logging():
     logging.getLogger("asyncio").propagate = True
 
 
-# ---------------------------------------------------------------------------
 # 单实例锁（2026-08-24 加固）
-# ---------------------------------------------------------------------------
 
 
 def _pid_alive(pid: int) -> bool:
@@ -571,7 +564,7 @@ def _acquire_monitor_lock(instance: str = "") -> Optional[str]:
                     if not _wait_process_exit(old_pid, FORCE_KILL_WAIT):
                         print("[ERROR] 无法终止旧实例，放弃启动以避免端口冲突与数据竞争。")
                         return None
-                print(f"[重启] 旧实例已停止（状态已保存、端口已释放），继续启动。")
+                print("[重启] 旧实例已停止（状态已保存、端口已释放），继续启动。")
                 time.sleep(0.3)  # 端口等系统资源完全落地的微小余量
             elif old_pid > 0:
                 logger.warning(f"接管失效监控锁{tag}（旧 PID {old_pid}）")
@@ -600,9 +593,7 @@ def _release_monitor_lock(lock_path: Optional[str]) -> None:
         pass
 
 
-# ---------------------------------------------------------------------------
 # Ctrl+R 一键重启热键（2026-08-28）
-# ---------------------------------------------------------------------------
 
 # 重启约定退出码：监控进程以此码退出时，一键脚本据此自动重启。
 RESTART_EXIT_CODE = 42
@@ -722,7 +713,6 @@ def main():
   python main.py --interval 60        # 每60秒抓取一次
   python main.py --once               # 只抓取一次
   python main.py --web-only           # 仅起 Web（无浏览器环境预览新界面）
-  python main.py --web legacy         # 仅旧版 server.py 单轨
   python main.py --export json        # 导出为JSON
   python main.py --export csv         # 导出为CSV
   python main.py --export json --start 2024-01-01 --end 2024-01-31
@@ -748,7 +738,7 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="bars 回补数量上限")
     parser.add_argument(
         "--web", choices=["fastapi"], default="fastapi",
-        help="Web 后端: 仅 FastAPI 单轨（默认，端口见 --port）。旧 stdlib server.py 已退役。",
+        help="Web 后端: 仅 FastAPI 单轨（端口见 --port）。",
     )
     parser.add_argument(
         "--web-only", action="store_true",

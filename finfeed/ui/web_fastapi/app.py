@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FinFeed FastAPI 应用（方案 D 新后端）。
+"""FinFeed FastAPI 应用。
 
 设计要点
 --------
-1. **复用而非重写**：业务函数与 SSE 广播通道复用 ``finfeed.ui.web.shared``
-   共享运行时（SSE 通道 / 缓存 / Web 状态），仅替换 HTTP 传输层为 FastAPI。
+1. **共享运行时**：业务函数与 SSE 广播通道收敛在 ``finfeed.ui.web_fastapi.shared``
+   （SSE 通道 / 缓存 / Web 状态）。
 2. **SSE 桥接**：FastAPI 的 ``StreamingResponse`` 通过 threading.Queue 注册进
-   ``shared._sse_clients``，复用同一条广播通道；monitor 触发的 ``broadcast_new_news``
+   ``shared._sse_clients``；monitor 触发的 ``broadcast_new_news``
    会自动送达本端 SSE 客户端，双水位线/幂等/降级语义不变。
 3. **导出 / 健康检查 / 熔断状态**：与旧实现逐字段对齐。
 """
@@ -30,6 +30,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
+# 告警推送模块（webhook 渠道 / 主题订阅 / 推送日志 / 情感校准）
+from finfeed.alerts.router import router as alerts_router
 from finfeed.application.market_service import MarketService, first_query_value
 from finfeed.config.settings import DEFAULT_WEB_PORT, get_display_name
 from finfeed.config.sources import get_enabled_sources
@@ -44,27 +46,19 @@ from finfeed.integrations.easytdx.router import router as easytdx_router
 
 # 智能选股模块（五维加权评分）
 from finfeed.integrations.screener.router import router as screener_router
+from finfeed.market import alerting as market_alerting
+from finfeed.market import scheduler as market_scheduler
+from finfeed.market import ws_feed as market_ws
 
 # 股票监控模块（导入管理 / 舆情聚合 / AI 分析）
 from finfeed.stock_monitor import service as stock_monitor_service
 from finfeed.stock_monitor.router import router as stock_monitor_router
-
-# 告警推送模块（webhook 渠道 / 主题订阅 / 推送日志 / 情感校准）
-from finfeed.alerts.router import router as alerts_router
-from finfeed.market import alerting as market_alerting
-from finfeed.market import scheduler as market_scheduler
-from finfeed.market import ws_feed as market_ws
 from finfeed.storage.database import (
     db_get_all_for_export,
     db_get_statistics,
     db_query_news,
     get_db,
 )
-
-# ----------------------------------------------------------------------
-# 共享运行时：SSE 广播通道 / Web 状态 / 时间解析（由 finfeed.ui.web.shared 收敛）
-# ----------------------------------------------------------------------
-from finfeed.ui.web.shared import _ts_from_date_str, _web_state, _web_state_lock
 from finfeed.ui.web_fastapi.core.errors import install_exception_handlers
 from finfeed.ui.web_fastapi.routers.calendar import create_router as create_calendar_router
 from finfeed.ui.web_fastapi.routers.llm import create_router as create_llm_router
@@ -78,6 +72,9 @@ from finfeed.ui.web_fastapi.routers.realtime import (
     create_router as create_realtime_router,
 )
 from finfeed.ui.web_fastapi.routers.system import create_router as create_system_router
+
+# 共享运行时：SSE 广播通道 / Web 状态 / 时间解析（finfeed.ui.web_fastapi.shared）
+from finfeed.ui.web_fastapi.shared import _ts_from_date_str, _web_state, _web_state_lock
 from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 
 logger = logging.getLogger("news_monitor")
@@ -125,13 +122,11 @@ app.include_router(screener_router)
 app.include_router(stock_monitor_router)
 app.include_router(alerts_router)
 
-# ----------------------------------------------------------------------
 # 全市场资金流与板块轮动监控大屏集成（可选，依赖 easy-tdx）
 #  - API 前缀：/api/capital/*
 #  - 大屏页面：/capital
 #  - 独立运行：python -m finfeed.capital_dashboard（端口 8090）
 # 依赖缺失或导入失败时优雅降级，不影响 FinFeed 主服务。
-# ----------------------------------------------------------------------
 try:
     from finfeed.capital_dashboard import config as _cap_config
     from finfeed.capital_dashboard.server import (
@@ -159,12 +154,10 @@ try:
 except Exception as _cap_exc:  # noqa: BLE001
     logger.warning("全市场资金流大屏模块未加载（可忽略；安装依赖后重启生效）: %s", _cap_exc)
 
-# ----------------------------------------------------------------------
 # 板块分时模块（web 左侧导航 独立页 /sector-minute）
 #  - API 前缀：/api/sector-minute/*
 #  - 独立页面：/sector-minute（浅色简洁专业风）
 #  - 后台刷新线程随主应用启动/停止
-# ----------------------------------------------------------------------
 try:
     from finfeed.sector_minute import config as _sm_config
     from finfeed.sector_minute.server import (
@@ -193,14 +186,12 @@ except Exception as _sm_exc:  # noqa: BLE001
     _sm_start_worker = _sm_stop_worker = None
     logger.warning("板块分时模块未加载（可忽略；安装依赖后重启生效）: %s", _sm_exc)
 
-# ----------------------------------------------------------------------
 # 同花顺 F10 个股资料模块（f10-Web 移植）
 #  - API 前缀：/api/f10/*
 #  - 独立页面：/f10（服务端静态托管模块自带的手写前端）
 #  - 依赖缺失（fastapi/bs4/requests）时优雅降级，不影响 FinFeed 主服务。
 #  注意：/f10 的 StaticFiles 挂载必须先于底部根路由 "/" 的 SPA 挂载，
 #  否则会被 catch-all 吞掉；因此本模块的静态托管也在此统一完成。
-# ----------------------------------------------------------------------
 try:
     from fastapi.staticfiles import StaticFiles as _f10StaticFiles
 
@@ -247,9 +238,7 @@ async def no_cache_static(request: Request, call_next):
     return response
 
 
-# ----------------------------------------------------------------------
 # 通用工具
-# ----------------------------------------------------------------------
 def parse_query_params(q: Dict[str, List[str]]) -> dict:
     """与旧 server._parse_query_params 逐字段对齐。"""
     def gv(key, default):
@@ -311,9 +300,7 @@ def qdict(request: Request) -> Dict[str, List[str]]:
 app.include_router(create_news_router(parse_query_params, qdict))
 
 
-# ----------------------------------------------------------------------
 # 健康检查 / 统计
-# ----------------------------------------------------------------------
 @app.get("/api/health")
 def api_health():
     health_monitor = get_health_monitor()
@@ -526,9 +513,7 @@ def api_export(
                         headers={"Content-Disposition": f'attachment; filename="finfeed_news_{ts_str}.json"'})
 
 
-# ----------------------------------------------------------------------
 # 市场行情（业务用例已下沉至 finfeed.application.market_service.MarketService）
-# ----------------------------------------------------------------------
 market_service = MarketService()
 
 
@@ -679,18 +664,16 @@ async def lifespan(app: FastAPI):
 app.router.lifespan_context = lifespan
 
 
-# ----------------------------------------------------------------------
 # 托管前端构建产物（Phase 3：FastAPI 静态托管 SPA）
 # 注意：必须注册在所有 /api 路由之后，且不再保留返回 JSON 的 "/" 端点，
 # 以免覆盖 SPA 首页。前端使用 hash 路由，深链直接命中 "/"。
-# ----------------------------------------------------------------------
 _DIST_DIR = Path(__file__).resolve().parent.parent.parent.parent / "web" / "dist"
 if _DIST_DIR.exists():
     app.mount("/", StaticFiles(directory=str(_DIST_DIR), html=True), name="spa")
 
 
 def run(port: int = DEFAULT_WEB_PORT):
-    """启动 FastAPI 服务（双轨：旧 server.py 在 8867 作 fallback）。
+    """启动 FastAPI 服务。
 
     绑定 0.0.0.0（IPv4）以保证 127.0.0.1/localhost 可达；
     Windows 下 :: 默认 IPV6_V6ONLY=1，会导致 IPv4 客户端连接超时。

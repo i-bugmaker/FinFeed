@@ -1,6 +1,6 @@
 # FinFeed Web UI 设计系统
 
-> 版本：**4.3**（品牌色定蓝盖章 + AI/Screener/easytdx 三大模块批量迁移语义令牌 + Logo 重绘为蓝色）
+> 版本：**4.8**（图表主题统一 + 响应式断点清零；基于 4.7 智能选股重构）
 > 适用范围：`web/src` 下全部 Vue 组件与样式
 > 唯一真相源：`web/src/styles/tokens.css`
 
@@ -19,6 +19,8 @@
 | **4.4** | **本次** | **产品决策：移除全部页面/模块的可见标题与副标题（h1 保留 sr-only）；`start_monitor.bat` 启动前重建 dist** |
 | **4.5** | 2026-08-30 | **交互惯例修复**：弹层 body 滚动锁（`ff-modal-open/ff-drawer-open`）；AppSegmented 选中态 `is-active` 失配修复；AppSelect 键盘导航（↑↓/Enter）+ 菜单向上翻转 + 禁用项 `is-disabled`；AppDrawer `placement="right"` 与 `ff-drawer-right` 过渡补齐；AppTooltip 浮动气泡 `ff-tip--floating` 定位修复；MarkdownView 标题映射修正（`##`→h2 带 data-anchor，报告目录跳转/滚动高亮恢复） |
 | **4.6** | 2026-08-30 | **反馈与焦点体系**：新增全局 `ToastHost`（App.vue 挂载，复用 `.ff-toasts/.ff-toast` 规范，消费 `useToast` 队列；勿再挂载 EasyTdxToast 以免双渲染）；新增 `ui/useFocusTrap.js`——AppModal/AppDrawer 打开时聚焦首控件、Tab 循环锁定、关闭归还焦点；AI 模块标准按钮（向导/工作台生成/报告批量操作/任务重试/设置保存）统一迁移 `AppButton`，chips/tabs/行内小操作按 D9 保留为 scoped 例外；通知设置页全量接入 toast 反馈 |
+| **4.7** | 2026-09-02 | **智能选股体验重构（P5）**：ScreenerView 配置面板分组编号（①股票池→⑥模板）+ 底部吸底主 CTA（配置完即跑）；高级参数/模板管理默认折叠；引擎模式卡片化（带一句话说明）；评估闭环入口由左面板底部移入「评估闭环」页签就地运行；`window.confirm` 删除确认改 AppModal；模板/对比/自选等瞬时反馈迁移全局 `useToast` 并增加任务完成提示；「维度列」菜单补点击外部关闭；空态改三步引导 + 一键选股按钮；ECharts 全部颜色经 `cssVar()` 解析语义令牌并随主题切换重渲染；顶栏新增当前配置摘要；权重滑块改显式轨道/拇指样式；输入框边框改 `--ff-border-field`（§3.3）。另修复 `DashboardView.vue` `||`/`??` 混用语法错误（曾阻断整站构建） |
+| **4.8** | 2026-09-02 | **图表主题统一（useChartTheme）+ 响应式断点清零**：新增 `composables/useChartTheme.js`（`chartVar`/`hexToRgba`/`axisLabelStyle`/`chartBaseTheme`/`useChartTheme`）作为全站 ECharts 唯一主题出口；4 个 ECharts 组件（ChartPanel / ScreenerView / DimensionRadar / SectorMinuteChart）迁移统一底座并注册主题切换重绘——修复 ChartPanel 无主题 watcher 缺陷（切换主题后 5 处消费方画布保留旧配色）；15 个组件补齐 `@media (max-width: 768px)` 断点：视图层 5（NotificationSettings / LimitUpAiDialog / Favorites / Reports / LimitUpLadder）、easytdx 6（ParamField / ParamPanel / TaskStatus / KvView / ResultToolbar / ChartView）、UI 基础 4（AppInput / AppSelect / AppDateNav / AppDatePicker）；审计「无断点组件」清零 |
 
 > ⚠️ **历史遗留**：4.0 重构未同步更新本文档，导致文档在 8/24–8/28 期间停留在 3.0 描述（尤其是品牌色）。本文档已对齐 4.0/4.1 实际实现。
 > **教训**：设计令牌变更必须同提交更新本文档，并跑一次 `scripts/ui_audit.py`。

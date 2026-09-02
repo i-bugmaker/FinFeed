@@ -40,9 +40,6 @@ pydantic-core = "==2.46.4"
 [tool.setuptools.packages.find]
 where = ["finfeed"]
 
-[tool.setuptools.package-data]
-"finfeed.ui.web" = ["templates/*.html"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

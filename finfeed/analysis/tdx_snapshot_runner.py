@@ -45,9 +45,7 @@ logger = logging.getLogger("news_monitor")
 _GUBA_RANK_API = "https://emappdata.eastmoney.com/stockrank/getAllCurrentList"
 
 
-# ---------------------------------------------------------------------------
 # 工具：股票代码 → tdx setcode_code
-# ---------------------------------------------------------------------------
 def to_tdx_setcode(code: str) -> str:
     """A股代码 → tdx_ai_listening 所需的 '市场_代码' 格式。
 
@@ -66,9 +64,7 @@ def to_tdx_setcode(code: str) -> str:
     return f"1_{c}" if c.startswith("6") else f"0_{c}"
 
 
-# ---------------------------------------------------------------------------
 # 工具：从 tdx 自由文本抽取整体权重
-# ---------------------------------------------------------------------------
 _WEIGHT_RE = re.compile(r"整体权重[:：]\s*(\d{1,3})")
 _EVENT_WEIGHT_RE = re.compile(r"权重[:：]\s*(\d{1,3})\s*/\s*100")
 
@@ -91,9 +87,7 @@ def parse_overall_weight(text: str) -> Optional[int]:
     return None
 
 
-# ---------------------------------------------------------------------------
 # ① 计算盘后快照目标池（人气榜 TopN + 涨停/跌停 + 指定板块/个股）
-# ---------------------------------------------------------------------------
 async def _fetch_guba_rank(top_n: int) -> List[Dict[str, str]]:
     """盘后人气榜（东财接口，runtime 有网）。返回 [{code, name, reason}]"""
     out: List[Dict[str, str]] = []
@@ -159,9 +153,7 @@ def select_prioritized_pool(top_n: int = 150,
     return dedup
 
 
-# ---------------------------------------------------------------------------
 # ④ 落库：个股权重
-# ---------------------------------------------------------------------------
 def apply_tdx_stock_weights(weight_map: Dict[str, Optional[int]],
                             trade_date: Optional[str] = None,
                             source: str = SOURCE_NAME) -> int:
@@ -183,9 +175,7 @@ def apply_tdx_stock_weights(weight_map: Dict[str, Optional[int]],
     return n
 
 
-# ---------------------------------------------------------------------------
 # ④' 落库：板块权重（直接听板块，不走聚合）
-# ---------------------------------------------------------------------------
 def apply_tdx_sector_weight(board_code: str, board_name: str, sector_type: str,
                             weight: int, trade_date: Optional[str] = None) -> int:
     """板块级 tdx 权重(0-100) → sector_sentiment（直接写入，独立于聚合路径）。"""
@@ -202,9 +192,7 @@ def apply_tdx_sector_weight(board_code: str, board_name: str, sector_type: str,
     return n
 
 
-# ---------------------------------------------------------------------------
 # ⑤ 聚合：板块 + 全市场温度
-# ---------------------------------------------------------------------------
 def compute_market_sentiment(trade_date: Optional[str] = None,
                              source: Optional[str] = None) -> float:
     """由当日 stock_sentiment 汇总全市场舆情温度 → market_sentiment_daily。
@@ -258,9 +246,7 @@ def run_aggregation(trade_date: Optional[str] = None,
     return {"trade_date": td, "sectors_aggregated": n_sect, "market_index": idx}
 
 
-# ---------------------------------------------------------------------------
 # CLI：agent 可 `python -m finfeed.analysis.tdx_snapshot_runner --pool --top-n 150`
-# ---------------------------------------------------------------------------
 def _main():
     import argparse
     p = argparse.ArgumentParser(description="tdx 盘后情绪快照编排")

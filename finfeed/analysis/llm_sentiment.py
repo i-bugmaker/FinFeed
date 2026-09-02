@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""LLM 情感增强（方案D，P4）
+"""LLM 情感增强
 
 post-market 对当日高影响力新闻做一次 LLM 多空情感精修，写入 stock_sentiment(source='llm')，
-经现有聚合与 tdx(方案E)/新闻(方案B) 融合为板块/全市场情绪。
+经现有聚合与 tdx 直采、新闻情感融合为板块/全市场情绪。
 
 设计：
   - 实时流水线仍用词典法（analysis/sentiment.py）保证盘中低延迟；
@@ -95,7 +95,7 @@ def apply_llm_news_scores(news_score_map: Dict[int, float],
 
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="LLM 情感增强（方案D）")
+    p = argparse.ArgumentParser(description="LLM 情感增强")
     p.add_argument("--select", action="store_true", help="输出待 LLM 判分的 Top 新闻 JSON")
     p.add_argument("--apply", type=str, default="", help="读取 {id:score} JSON 落库")
     p.add_argument("--date", type=str, default="")

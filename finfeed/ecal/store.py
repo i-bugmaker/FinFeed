@@ -49,9 +49,7 @@ ON CONFLICT(cal_type, event_date, event_key) DO UPDATE SET
 """
 
 
-# ============================================================
 # 写入
-# ============================================================
 def upsert_events(events: List[CalendarEvent]) -> int:
     """批量幂等写入，返回处理条数"""
     if not events:
@@ -122,9 +120,7 @@ def get_sync_map(cal_type: str, dates: List[str]) -> Dict[str, Tuple[int, str]]:
     return {r["sync_date"]: (r["updated_ts"] or 0, r["status"] or "") for r in rows}
 
 
-# ============================================================
 # 查询
-# ============================================================
 def query_events(
     cal_type: Optional[str] = None,
     start: str = "",

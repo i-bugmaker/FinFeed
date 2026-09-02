@@ -55,9 +55,7 @@ class MarketWSService:
         self._task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
-    # ------------------------------------------------------------------
     # 生命周期
-    # ------------------------------------------------------------------
     def start(self) -> None:
         """启动后台广播循环（幂等）。必须在事件循环内调用（startup 钩子或首次连接）。"""
         try:
@@ -105,9 +103,7 @@ class MarketWSService:
         if not self.running:
             self.start()
 
-    # ------------------------------------------------------------------
     # 连接处理（每个连接一个协程）
-    # ------------------------------------------------------------------
     async def handle_connection(self, websocket) -> None:  # noqa: ANN001
 
         self.ensure_started()
@@ -154,9 +150,7 @@ class MarketWSService:
             if ws is not None:
                 asyncio.ensure_future(self._send(ws, {"type": "pong"}))
 
-    # ------------------------------------------------------------------
     # 广播循环
-    # ------------------------------------------------------------------
     async def _loop_broadcast(self) -> None:
         logger.info(
             f"行情 WS 广播循环已启动（推送间隔 {PUSH_INTERVAL}s / 心跳 {HEARTBEAT}s / 超时 {HEARTBEAT_TIMEOUT}s）"
@@ -228,9 +222,7 @@ class MarketWSService:
         except Exception:  # noqa: BLE001
             pass
 
-    # ------------------------------------------------------------------
     # 实时告警（供 alerting.on_alert_callback 调用）
-    # ------------------------------------------------------------------
     def push_alert(self, record: Dict[str, Any]) -> None:
         """把一条采集告警推送给所有在线客户端（线程安全）。
 
@@ -245,9 +237,7 @@ class MarketWSService:
         except Exception:  # noqa: BLE001
             pass
 
-    # ------------------------------------------------------------------
     # 快照构建（同步，在 to_thread 中执行）
-    # ------------------------------------------------------------------
     def _build_payload(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "ts": time.time(),

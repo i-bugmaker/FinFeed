@@ -44,9 +44,7 @@ router = APIRouter(prefix="/api/stock-monitor", tags=["stock-monitor"])
 SSE_POLL_INTERVAL = 2.5
 
 
-# ---------------------------------------------------------------------------
 # 请求体
-# ---------------------------------------------------------------------------
 class ImportTextRequest(BaseModel):
     text: str
 
@@ -55,18 +53,14 @@ class UpdateStockRequest(BaseModel):
     note: str = ""
 
 
-# ---------------------------------------------------------------------------
 # 监控列表管理
-# ---------------------------------------------------------------------------
 @router.get("/stocks")
 def list_stocks():
     store.ensure_tables()
     return {"stocks": store.list_stocks()}
 
 
-# ---------------------------------------------------------------------------
 # 智能联想（手动输入名称/代码/拼音）
-# ---------------------------------------------------------------------------
 @router.get("/suggest")
 def suggest(
     q: str = Query("", description="输入片段：代码/名称/拼音简称"),
@@ -111,9 +105,7 @@ def delete_stock(code: str):
     return {"ok": True, "deleted": code}
 
 
-# ---------------------------------------------------------------------------
 # 舆情聚合
-# ---------------------------------------------------------------------------
 def _parse_codes(codes: str) -> list[str] | None:
     if not codes or codes.strip().lower() in ("", "all"):
         return None
@@ -205,9 +197,7 @@ def status():
     return service.module_status()
 
 
-# ---------------------------------------------------------------------------
 # AI 分析
-# ---------------------------------------------------------------------------
 @router.post("/analyze/{code}")
 def analyze(code: str):
     """提交一次 AI 智能分析（后台线程执行，轮询 /analyze/task/{id} 获取结果）。"""

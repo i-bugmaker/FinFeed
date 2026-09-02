@@ -201,4 +201,9 @@ onMounted(async () => {
 .rv__empty { text-align: center; padding: 60px 20px; color: var(--ff-text-3); background: var(--ff-bg-surface); border: 1px dashed var(--ff-border); border-radius: 13px; }
 .rv__empty p { font-size: 14px; margin: 10px 0 14px; }
 .rv__empty-btn { border: none; background: var(--ff-brand); color: var(--ff-bg-surface); border-radius: 9px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+/* ── 窄屏适配（≤768px：搜索框占满一行；表格已带 min-width 横向滚动）── */
+@media (max-width: 768px) {
+  .rv__search { width: 100%; flex: 1 1 100%; }
+}
 </style>

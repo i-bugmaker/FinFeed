@@ -43,9 +43,7 @@ def bounded_int(
         return default
 
 
-# ----------------------------------------------------------------------
-# 采集动作依赖的默认实现（与 legacy _get_mk_service/_run_in_thread/_mk_calibrate 等价）
-# ----------------------------------------------------------------------
+# 采集动作依赖的默认实现
 def _default_get_mk_service():
     """延迟导入 market.service，Web 启动时不触发东方财富连接。"""
     from finfeed.market import service as _svc
@@ -106,11 +104,9 @@ class MarketService:
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._kline_cache: Dict[tuple, tuple] = {}
 
-    # ------------------------------------------------------------------
     # 数据可用日期
-    # ------------------------------------------------------------------
     def get_dates(self, fallback_date: str) -> dict:
-        """各行情表的最新交易日期与默认日期（与 legacy._market_dates 对齐）。"""
+        """各行情表的最新交易日期与默认日期。"""
         from finfeed.storage.database import get_db
         out: Dict[str, Any] = {"billboard": None, "limit_pool": None, "sentiment": None}
         with get_db() as c:
@@ -148,11 +144,9 @@ class MarketService:
         out["has_limit_pool"] = out["limit_pool"] is not None
         return out
 
-    # ------------------------------------------------------------------
     # 采集运维动作（快照 / K线 / 股票池 / 情绪校准）
-    # ------------------------------------------------------------------
     def run_action(self, q: Mapping[str, list[str]]) -> dict:
-        """启动/查询后台采集任务（与 legacy._serve_market_action 对齐）。"""
+        """启动/查询后台采集任务。"""
         def gv(key, default):
             v = q.get(key)
             return v[0] if v else default
@@ -203,13 +197,11 @@ class MarketService:
         t.start()
         return {"success": True, "data": {"task_id": task_id, "action": action, "label": label, "status": "running", "message": f"已启动「{label}，后台执行中"}}
 
-    # ------------------------------------------------------------------
     # 指数 K 线 / 分时
     # 分时（trends）：内存 TTL 缓存（300s），日内瞬态数据不入库。
     # K 线（101 日 / 102 周 / 103 月 / 104 季 / 105 年）：本地 SQLite kline_cache
     #   优先 + TTL 定期刷新。每个 (code, klt) 在 TTL 窗口内至多触发一次东财
     #   push2his 请求，其余请求全部命中本地库，规避 600s 冷却限流。
-    # ------------------------------------------------------------------
     async def get_chart_data(self, code, chart_type, klt, ndays, lmt, start, end) -> dict:
         """返回 {rows: [...], reason: 'ok'|'empty'|'rate_limited'|'error', error?: str}。
 
@@ -292,9 +284,7 @@ class MarketService:
             rows = _last_n(cached_rows, lmt) if cached_rows else []
             return {"rows": _strip_fetched(rows), "reason": "error", "error": str(e)[:200]}
 
-    # ------------------------------------------------------------------
     # 行情数据用例分发（action 之外的查询子用例）
-    # ------------------------------------------------------------------
     async def dispatch(self, sub: str, q: Mapping[str, list[str]], date: str) -> Any:
         """执行单个行情查询用例并返回数据（不含 success 包装；未知用例返回 error dict）。"""
         def _int(key: str, default: int, cap: int = 500) -> int:

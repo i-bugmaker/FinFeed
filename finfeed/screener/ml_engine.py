@@ -34,9 +34,7 @@ import pandas as pd
 from . import vector
 from .ic_engine import DIMS, _forward_returns
 
-# ---------------------------------------------------------------------------
 # 后端可用性探测（模块级，仅探测一次）
-# ---------------------------------------------------------------------------
 try:  # noqa: BLE001
     import lightgbm as _lgb  # type: ignore
     _LGBM_AVAILABLE = True
@@ -45,9 +43,7 @@ except Exception:  # noqa: BLE001
     _LGBM_AVAILABLE = False
 
 
-# ---------------------------------------------------------------------------
 # 依赖免费 NumPy 逻辑回归（带 L2 正则，Newton/IRLS 求解）
-# ---------------------------------------------------------------------------
 class _NumpyLogistic:
     """逻辑回归：标准化特征 + 截距（不惩罚）+ L2 惩罚权重。
 
@@ -130,9 +126,7 @@ class MLModel:
     oos_auc: float | None = None
 
 
-# ---------------------------------------------------------------------------
 # 训练集构造
-# ---------------------------------------------------------------------------
 def _build_training_set(history: list[tuple[str, pd.DataFrame]], cfg,
                         dims: tuple[str, ...], horizon: int, top_quantile: float):
     """由历史快照构造 (X, y, dates_array)。
@@ -179,9 +173,7 @@ def _current_features(current_df: pd.DataFrame, cfg, dims: tuple[str, ...]) -> p
     return feat
 
 
-# ---------------------------------------------------------------------------
 # 模型拟合
-# ---------------------------------------------------------------------------
 def _fit_final(X: np.ndarray, y: np.ndarray, cfg) -> MLModel:
     """用全部样本拟合最终模型（自动选择后端）。"""
     engine = getattr(cfg, "engine", None) or {}
@@ -218,9 +210,7 @@ def _fit_final(X: np.ndarray, y: np.ndarray, cfg) -> MLModel:
     return MLModel(model, "numpy_logistic", DIMS, n_train=len(y))
 
 
-# ---------------------------------------------------------------------------
 # walk-forward 评估（OOS 诊断，杜绝乐观偏差）
-# ---------------------------------------------------------------------------
 def _auc(y: np.ndarray, p: np.ndarray) -> float:
     """二分类 AUC（Mann-Whitney U / 秩均值，无 sklearn 依赖）。"""
     y = np.asarray(y).ravel()
@@ -263,9 +253,7 @@ def _walkforward_eval(X: np.ndarray, y: np.ndarray, dates: np.ndarray,
     }
 
 
-# ---------------------------------------------------------------------------
 # 主入口：一次完整 ML 层推理（训练 + 预测当前截面）
-# ---------------------------------------------------------------------------
 def run_ml_layer(cfg, store=None, current_df: pd.DataFrame | None = None,
                  end_date: str | None = None,
                  history: list[tuple[str, pd.DataFrame]] | None = None
@@ -327,9 +315,7 @@ def run_ml_layer(cfg, store=None, current_df: pd.DataFrame | None = None,
     return ml_prob, diag, "trained"
 
 
-# ---------------------------------------------------------------------------
 # 便捷包装（供测试 / 显式调用）
-# ---------------------------------------------------------------------------
 def train_walkforward(history: list[tuple[str, pd.DataFrame]], cfg,
                       dims: tuple[str, ...] = DIMS,
                       horizon: int | None = None,
@@ -358,9 +344,7 @@ def predict_ml(model: MLModel, current_df: pd.DataFrame, cfg,
     return pd.Series(proba, index=current_df.index, name="ml_prob")
 
 
-# ---------------------------------------------------------------------------
 # 历史加载（与 ic_engine.load_history 同源，避免重复实现 / 双重 IO）
-# ---------------------------------------------------------------------------
 def _load_history_shared(store, cfg, end_date: str | None = None):
     """延迟导入 ic_engine.load_history，避免模块循环依赖。"""
     from .ic_engine import load_history

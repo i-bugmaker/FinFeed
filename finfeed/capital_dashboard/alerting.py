@@ -118,7 +118,6 @@ class CapitalAlertManager:
         # 采集失败计数（对接 market.alerting，避免重复实现）
         self._market_alerting = self._lazy_market_alerting()
 
-    # ------------------------------------------------------------------
     @staticmethod
     def _lazy_market_alerting():
         try:
@@ -127,7 +126,6 @@ class CapitalAlertManager:
         except Exception:  # noqa: BLE001
             return None
 
-    # ------------------------------------------------------------------
     def record_collection_failure(self, task: str, error: str) -> None:
         """采集失败：优先走 market.alerting（冷却/Webhook/WS），否则仅记日志。"""
         if self._market_alerting is not None:
@@ -138,7 +136,6 @@ class CapitalAlertManager:
                 pass
         logger.warning("[采集失败] %s: %s", task, error)
 
-    # ------------------------------------------------------------------
     def evaluate(self, snapshot, anomalies) -> list[AlertRecord]:
         """对一轮快照 + 异常报告评估规则，生成并分发告警。"""
         now = time.time()
@@ -196,7 +193,6 @@ class CapitalAlertManager:
             dispatched.append(r)
         return dispatched
 
-    # ------------------------------------------------------------------
     def get_recent(self, limit: int = 50) -> list[dict]:
         items = list(self._recent)
         items.reverse()
@@ -212,7 +208,6 @@ class CapitalAlertManager:
             "market_alerting": self._market_alerting is not None,
         }
 
-    # ------------------------------------------------------------------
     def _is_watched(self, code: str) -> bool:
         try:
             from finfeed.alerts import subscription as sub

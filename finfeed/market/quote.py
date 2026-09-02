@@ -72,9 +72,7 @@ def _fmt_time(v) -> str:
         return ""
 
 
-# ---------------------------------------------------------------------------
 # 市场宽度
-# ---------------------------------------------------------------------------
 async def fetch_market_breadth_push2() -> Optional[Dict[str, int]]:
     """备用链路：push2 ulist 指数成分涨跌家数。
 
@@ -106,9 +104,7 @@ async def fetch_market_breadth_push2() -> Optional[Dict[str, int]]:
         return None
 
 
-# ---------------------------------------------------------------------------
 # 涨跌停 / 炸板池
-# ---------------------------------------------------------------------------
 async def fetch_limit_pool(trade_date: str, direction: str = "up") -> List[Dict]:
     """拉取涨停 / 跌停 / 炸板池。
 
@@ -181,9 +177,7 @@ async def fetch_limit_pool(trade_date: str, direction: str = "up") -> List[Dict]
     return out
 
 
-# ---------------------------------------------------------------------------
 # 盘后编排
-# ---------------------------------------------------------------------------
 async def collect_daily_market(trade_date: Optional[str] = None) -> Dict:
     """盘后采集：全市场快照（资金流+宽度）+ 涨停/跌停/炸板池，填充 market_sentiment_daily。"""
     td = trade_date or now_bj().strftime("%Y-%m-%d")

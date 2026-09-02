@@ -38,9 +38,7 @@ class AnalysisCancelled(Exception):
     """用户主动取消"""
 
 
-# ============================================================
 # 确定性统计
-# ============================================================
 def _stock_names(codes: List[str]) -> Dict[str, str]:
     if not codes:
         return {}
@@ -200,9 +198,7 @@ def stats_to_markdown(stats: Dict[str, Any]) -> str:
     return "\n".join(md)
 
 
-# ============================================================
 # 主流程
-# ============================================================
 def _safe_format(template: str, default: str, **kw) -> str:
     """用模板格式化；若用户自定义模板缺少占位符导致 KeyError，回退内置默认。"""
     try:
@@ -397,6 +393,7 @@ def run_analysis(
 
     def _map_digests() -> str:
         """多批时逐批压缩为要点，返回拼接后的要点文本（含失败占位）。"""
+        nonlocal prompt_tokens, completion_tokens
         digests: List[str] = []
         for i, chunk in enumerate(chunks, 1):
             _check()

@@ -1238,7 +1238,7 @@ def db_news_without_content(offset: int = 0, limit: int = 50) -> List[NewsItem]:
                    ORDER BY id DESC LIMIT ? OFFSET ?""",
                 (limit, offset),
             )
-            return [NewsDatabaseManager._row_to_news(row) for row in c.fetchall()]
+            return [NewsDatabase._row_to_news(row) for row in c.fetchall()]
         except sqlite3.OperationalError:
             # 老库尚无 content 列时静默返回空，避免阻断主流程
             return []

@@ -1,19 +1,12 @@
-"""Web 共享运行时：FastAPI 新后端与 legacy HTTP 服务共用的状态与纯函数。
+"""Web 共享运行时：FastAPI 后端唯一的进程内共享状态与纯函数。
 
-为什么需要这个模块
-------------------
-``finfeed.ui.web.server``（legacy 双栈 HTTP 服务）与 ``finfeed.ui.web_fastapi``
-（FastAPI 新后端）双轨并行，但以下状态必须保持**进程内唯一实例**：
+收敛以下必须保持**进程内唯一实例**的状态：
 
 - **SSE 广播通道**（``_sse_clients`` / 分类水位线 / tick 哨兵）：monitor 主进程
   广播的新数据必须送达 FastAPI 进程注册的浏览器 SSE 客户端；
-- **API 缓存**（``_api_cache``）：两端共享同一缓存实例，避免数据口径不一致；
+- **API 缓存**（``_api_cache``）；
 - **Web 运行状态**（``_web_state``）：``/api/stats`` 展示的运行态；
-- **来源展示名缓存**：舆情/快讯/文章三类的来源名，两端共用同一份构建结果。
-
-本模块收敛上述共享符号：legacy server 从本模块导入（自身行为不变），
-新后端直接依赖本模块——从而解除新后端对 legacy HTTP 服务的耦合，
-为 legacy 的最终退役收敛耦合面。
+- **来源展示名缓存**：舆情/快讯/文章三类的来源名。
 """
 
 import logging
@@ -367,8 +360,8 @@ def broadcast_new_news(batch_limit: int = BROADCAST_BATCH_LIMIT) -> Dict[str, in
 def update_web_state(news, stats, cycle, total, new_count, status, force_broadcast=False):
     """更新 Web 仪表盘共享状态（线程安全）。
 
-    ⚠️ 本函数**只负责状态**（供 /api/stats 展示），不再承担「计算增量」的职责。
-    增量推送统一由 broadcast_new_news() 基于数据库自增 id 完成。
+    本函数只负责状态（供 /api/stats 展示）；增量推送统一由
+    broadcast_new_news() 基于数据库自增 id 完成。
 
     force_broadcast: 保留参数以兼容既有调用方；为 True 时触发一次
                      broadcast_new_news()（幂等，不会重复推送）。

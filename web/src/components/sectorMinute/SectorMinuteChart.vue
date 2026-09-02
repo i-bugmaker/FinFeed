@@ -7,6 +7,7 @@
  */
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { echarts } from '@/shared/lib/echarts'
+import { chartVar as themeColor, useChartTheme } from '@/composables/useChartTheme'
 import AppIcon from '../../ui/AppIcon.vue'
 
 const props = defineProps({
@@ -25,13 +26,6 @@ const el = ref(null)
 let chartIns = null // ECharts 实例（勿与模板 props.chart 混淆，避免变量名遮蔽）
 let ro = null
 let selfHover = false // 防止联动回环
-
-function themeColor(name) {
-  return (
-    getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
-    undefined
-  )
-}
 
 // 涨跌状态
 const state = computed(() => {
@@ -290,6 +284,8 @@ watch(
   () => render(),
   { deep: false },
 )
+// 主题切换 → 以新令牌值重渲染（统一主题出口；theme prop 变化由上方 watch 覆盖）
+useChartTheme(render)
 watch(
   () => props.hoverIndex,
   (v) => {

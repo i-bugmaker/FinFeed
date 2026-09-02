@@ -59,9 +59,7 @@ def _truthy(v, default: int = 1) -> int:
     return 1 if str(v).strip().upper() in _TRUE_TOKENS else 0
 
 
-# ---------------------------------------------------------------------------
 # 融资融券
-# ---------------------------------------------------------------------------
 async def fetch_margin_detail(trade_date: str) -> List[Dict]:
     """某交易日两融个股明细。两融数据 T+1 发布，当日盘后通常取不到。"""
     raw = await datacenter_pages(
@@ -113,9 +111,7 @@ async def collect_margin_detail(trade_date: Optional[str] = None,
     return 0
 
 
-# ---------------------------------------------------------------------------
 # 业绩预告
-# ---------------------------------------------------------------------------
 async def fetch_earnings_forecast(since: str) -> List[Dict]:
     """自 since（含）以来公告的业绩预告。"""
     raw = await datacenter_pages(
@@ -158,9 +154,7 @@ async def collect_earnings_forecast(days: int = 30) -> int:
     return n
 
 
-# ---------------------------------------------------------------------------
 # 新股申购日历
-# ---------------------------------------------------------------------------
 async def fetch_ipo_calendar(since: str) -> List[Dict]:
     raw = await datacenter_pages(
         RP_IPO_APPLY,
@@ -204,9 +198,7 @@ async def collect_ipo_calendar(back_days: int = 30) -> int:
     return n
 
 
-# ---------------------------------------------------------------------------
 # 编排
-# ---------------------------------------------------------------------------
 async def collect_all_reference(trade_date: Optional[str] = None) -> Dict[str, int]:
     return {
         "margin": await collect_margin_detail(trade_date),

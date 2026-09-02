@@ -110,9 +110,7 @@ def window_bounds(hours: int, end_ts: Optional[int] = None) -> Tuple[int, int]:
     return end - hours * 3600, end
 
 
-# ============================================================
 # 预览
-# ============================================================
 def preview_window(hours: int = 24, scope: str = SCOPE_ALL,
                    min_importance: float = 0.0) -> Dict[str, Any]:
     """统计窗口内数据量与结构分布，不取正文"""
@@ -166,9 +164,7 @@ def preview_window(hours: int = 24, scope: str = SCOPE_ALL,
     }
 
 
-# ============================================================
 # 采集
-# ============================================================
 def collect(hours: int = 24, scope: str = SCOPE_ALL, min_importance: float = 0.0,
             max_items: int = 500, order: str = ORDER_IMPORTANCE,
             end_ts: Optional[int] = None) -> Tuple[List[NewsRecord], Dict[str, Any]]:
@@ -259,8 +255,8 @@ def collect_for_stock(code: str, hours: int = 48, max_items: int = 300,
     db = get_db_manager()
     with db.get_db() as c:
         c.execute(
-            f"SELECT COUNT(*) AS n FROM news WHERE publish_ts >= ? AND publish_ts <= ? "
-            f"AND (stocks LIKE ? OR id IN (SELECT news_id FROM news_stock_link WHERE code = ?))",
+            "SELECT COUNT(*) AS n FROM news WHERE publish_ts >= ? AND publish_ts <= ? "
+            "AND (stocks LIKE ? OR id IN (SELECT news_id FROM news_stock_link WHERE code = ?))",
             [start_ts, real_end, f'%"{code}"%', code],
         )
         scanned = c.fetchone()["n"]

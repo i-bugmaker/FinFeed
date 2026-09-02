@@ -325,4 +325,12 @@ onUnmounted(() => {
 .ff-select__arrow--open {
   transform: rotate(180deg);
 }
+
+/* 窄屏：清除按钮放大触控热区（移动端点按精度更低） */
+@media (max-width: 768px) {
+  .ff-select__clear {
+    width: 24px;
+    height: 24px;
+  }
+}
 </style>

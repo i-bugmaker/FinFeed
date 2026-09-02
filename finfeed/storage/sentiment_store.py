@@ -4,7 +4,7 @@
 
 负责 stock_sentiment / sector_sentiment / market_sentiment_daily / sector_members
 四张聚合表的读写与聚合计算。所有写入均按 (code/date/source) 幂等 upsert，
-支持方案E(第三方直采)、方案D(LLM聚合)、方案A(人气榜)多源汇入后再聚合。
+支持第三方直采、LLM 聚合、人气榜等多源汇入后再聚合。
 """
 
 import json
@@ -21,9 +21,7 @@ def _now() -> str:
     return now_bj().strftime("%Y-%m-%d %H:%M:%S")
 
 
-# ---------------------------------------------------------------------------
 # 板块成分映射
-# ---------------------------------------------------------------------------
 def upsert_sector_member(sector_code: str, sector_name: str, sector_type: str,
                          code: str, name: str = "", weight: float = 0.0) -> None:
     """写入一条板块-成分股关系（幂等）"""
@@ -84,9 +82,7 @@ def get_sectors_of_stock(code: str) -> List[Dict[str, Any]]:
         return [{"sector_code": r["sector_code"], "sector_name": r["sector_name"], "sector_type": r["sector_type"]} for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 个股情绪
-# ---------------------------------------------------------------------------
 def upsert_stock_sentiment(records: List[Dict[str, Any]]) -> int:
     """批量写入个股情绪。records 字段:
     code, trade_date, sentiment_score, sentiment_label, heat,
@@ -164,9 +160,7 @@ def get_top_heat_stocks(trade_date: str, limit: int = 50, source: Optional[str] 
         return [dict(r) for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 板块情绪
-# ---------------------------------------------------------------------------
 def upsert_sector_sentiment(records: List[Dict[str, Any]]) -> int:
     if not records:
         return 0
@@ -252,9 +246,7 @@ def aggregate_sector_from_stocks(trade_date: str, sector_type: Optional[str] = N
         return 0
 
 
-# ---------------------------------------------------------------------------
 # 全市场每日舆情温度
-# ---------------------------------------------------------------------------
 def upsert_market_sentiment(trade_date: str, sentiment_index: float = 0.0,
                             up_limit: int = 0, down_limit: int = 0, breadth: int = 0,
                             forum_heat: float = 0.0, news_sentiment: float = 0.0) -> None:
@@ -299,9 +291,7 @@ def get_market_sentiment_range(start_date: str, end_date: str) -> List[Dict[str,
         return [dict(r) for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 散户情绪指数（自建·聚合全路 UGC 舆情源）
-# ---------------------------------------------------------------------------
 def _ensure_forum_table() -> None:
     """确保 forum_sentiment_daily 表存在（自愈式，兼容未走 market 初始化启动路径）"""
     db = get_db_manager()

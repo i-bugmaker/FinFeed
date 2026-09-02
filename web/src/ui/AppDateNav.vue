@@ -306,4 +306,19 @@ function onPicked(v) {
   width: 0;
   height: 0;
 }
+
+/* 窄屏：整体压缩宽度，避免在窄容器内挤压相邻控件 */
+@media (max-width: 768px) {
+  .ff-datenav__main {
+    min-width: 116px;
+    padding: 3px 8px;
+  }
+  .ff-datenav__l1 {
+    font-size: 13px;
+  }
+  .ff-datenav__btn,
+  .ff-datenav__today {
+    width: 28px;
+  }
+}
 </style>

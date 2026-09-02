@@ -5,7 +5,7 @@
 提供 Web 界面和终端输出功能。
 
 子模块:
-    - web: Web 共享运行时（ui.web.shared）与 FastAPI 后端（ui.web_fastapi）
+    - web_fastapi: FastAPI 后端与 Web 共享运行时（web_fastapi.shared）
     - terminal: 终端输出格式化
 """
 

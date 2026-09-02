@@ -171,9 +171,7 @@ def build_config(req: ScreenerRequest, base: ScreenerConfig | None = None) -> Sc
     return cfg
 
 
-# ---------------------------------------------------------------------------
 # 模板存储（JSON 落盘）
-# ---------------------------------------------------------------------------
 
 def _tpl_path(name: str) -> Path:
     safe = "".join(c for c in name if c.isalnum() or c in ("_", "-", "."))
@@ -224,9 +222,7 @@ def delete_template(name: str) -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
 # 策略对比
-# ---------------------------------------------------------------------------
 
 def compare_configs(cfg_a: ScreenerConfig, cfg_b: ScreenerConfig) -> dict[str, Any]:
     """对比两套配置的差异（权重 / 引擎 / 过滤 / 评级）。"""

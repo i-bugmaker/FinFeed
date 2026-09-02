@@ -68,9 +68,7 @@ def get_all_codes(active_only: bool = True, board_name: Optional[str] = None) ->
         return [r["code"] for r in c.fetchall()]
 
 
-# ---------------------------------------------------------------------------
 # 编排
-# ---------------------------------------------------------------------------
 async def run_universe(trade_date: Optional[str] = None) -> Dict[str, int]:
     return await universe.populate_all(trade_date)
 
@@ -143,9 +141,7 @@ async def backfill_bars(beg: str, end: Optional[str] = None,
     )
 
 
-# ---------------------------------------------------------------------------
 # 自检
-# ---------------------------------------------------------------------------
 def diagnose() -> Dict[str, Any]:
     """链路自检：端点组冷却状态 + 各事实表行数 + 最新交易日覆盖。"""
     db = get_db_manager()

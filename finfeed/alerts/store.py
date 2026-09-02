@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from finfeed.storage.database import get_db
 from finfeed.utils.time_utils import now_bj
@@ -80,9 +80,7 @@ def ensure_tables() -> None:
     logger.info("alerts 数据表已就绪")
 
 
-# ============================================================
 # Webhook 渠道 CRUD
-# ============================================================
 
 WEBHOOK_TYPES = ("dingtalk", "wecom", "feishu", "telegram", "serverchan")
 
@@ -201,9 +199,7 @@ def delete_webhook(webhook_id: int) -> bool:
         return deleted > 0
 
 
-# ============================================================
 # 全局设置（key-value，带默认值）
-# ============================================================
 
 SETTING_DEFAULTS: Dict[str, str] = {
     "enabled": "1",                     # 告警推送总开关
@@ -248,9 +244,7 @@ def update_settings(data: dict) -> dict:
     return get_settings()
 
 
-# ============================================================
 # 推送日志（幂等去重）
-# ============================================================
 
 def filter_fresh(news_ids: List[int], webhook_id: int) -> List[int]:
     """过滤出尚未推送过该渠道的新闻 id（唯一键约束保证不重复推送）。"""
@@ -316,9 +310,7 @@ def prune_push_log(keep_days: int = 7) -> int:
         return c.rowcount
 
 
-# ============================================================
 # 主题订阅（关键词组合）
-# ============================================================
 
 def list_topics(enabled_only: bool = False) -> List[dict]:
     ensure_tables()

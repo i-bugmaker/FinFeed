@@ -1,11 +1,15 @@
 <script setup>
-// 智能选股 · Web 工作台（P4 重构版）
-// 左侧：策略配置面板（引擎/权重/过滤/输出/模板/对比）；右侧：结果/图表/评估 三个页签。
-// 引擎支持：线性固定 / IC 客观加权 / 自动 / ML / 混合（后端 engine.mode 特性开关）。
+// 智能选股 · Web 工作台（P5 体验重构版）
+// 布局：左侧配置面板（分组 + 底部主 CTA）+ 右侧结果区（统计 / 诊断 / 三页签）。
+// 交互：全局 toast 反馈、任务完成提示、删除二次确认弹窗、列菜单外点关闭、
+//       高级参数与模板默认折叠降低噪声、评估闭环入口移入页签、空态一键快速选股。
+// 图表：所有 ECharts 颜色经 cssVar 解析语义令牌，随亮暗主题重渲染。
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { echarts } from '@/shared/lib/echarts'
 import { useScreenerStore } from '../store/screener'
+import { chartVar, axisLabelStyle, useChartTheme } from '@/composables/useChartTheme'
+import { toastSuccess, toastError } from '../composables/useToast'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppBadge from '../ui/AppBadge.vue'
@@ -18,17 +22,6 @@ import DimensionRadar from '../features/screener/components/DimensionRadar.vue'
 
 const store = useScreenerStore()
 const router = useRouter()
-
-// ECharts 渲染在 canvas 上，fillStyle 不支持 CSS var()，
-// 必须解析出真实色值（主题切换后下次 setOption 生效）
-function cssVar(name, fallback) {
-  try {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-    return v || fallback
-  } catch {
-    return fallback
-  }
-}
 
 // ═════════════════════════════ 策略配置 ═════════════════════════════
 const ENGINE_MODES = [
@@ -84,13 +77,14 @@ const visibleDimCols = reactive({
   quality: true, sentiment: false, growth: false, reversal: false,
 })
 
-// 模板 / 对比
-const templateName = ref('')
-const loadTemplateName = ref('')
-const compareTemplate = ref('')
+// 折叠区状态（会话级，不持久化）：高级参数 / 模板管理 默认收起
+const advancedOpen = ref(false)
+const templateOpen = ref(false)
 const showCompare = ref(false)
 const showStrategy = ref(false)   // 选股策略说明弹窗
 const panelOpen = ref(false)      // 窄屏下配置面板抽屉开关
+const showDelConfirm = ref(false) // 模板删除二次确认
+const pendingDeleteName = ref('')
 
 // 表格
 const activeTab = ref('result')
@@ -100,6 +94,7 @@ const searchText = ref('')
 const tierFilter = ref('all')
 const selectedStock = ref(null)
 const showColMenu = ref(false)
+const colsMenuRef = ref(null)
 const showDetail = computed({
   get: () => !!selectedStock.value,
   set: (v) => { if (!v) selectedStock.value = null },
@@ -264,23 +259,29 @@ function buildRequest() {
 async function onRun() {
   store.errMsg = ''
   expandedRows.value = new Set()
+  // 窄屏抽屉态下点击运行即收起面板，让结果立即可见
+  if (typeof window !== 'undefined' && window.innerWidth <= 1180) panelOpen.value = false
   await store.run({ top: top.value, technical: technical.value, request: buildRequest() })
 }
 
 // ═════════════════════════════ 模板 ═════════════════════════════
+const templateName = ref('')
+const loadTemplateName = ref('')
+const compareTemplate = ref('')
 const templateOptions = computed(() => store.templates.map((t) => ({ label: t.name, value: t.name })))
 
 async function onSaveTemplate() {
   const name = templateName.value.trim()
   if (!name) {
-    store.errMsg = '请输入模板名'
+    toastError('请先输入模板名')
     return
   }
   try {
     await store.saveTemplate(name, buildRequest())
-    store.errMsg = ''
+    templateName.value = ''
+    toastSuccess(`模板「${name}」已保存`)
   } catch (e) {
-    store.errMsg = '保存模板失败：' + (e.message || e)
+    toastError('保存模板失败：' + (e.message || e))
   }
 }
 
@@ -295,7 +296,7 @@ function applyRequest(req) {
     if (u.price_range[0] != null) minPrice.value = u.price_range[0]
     if (u.price_range[1] != null) maxPrice.value = u.price_range[1]
   }
-  if (Array.isArray(u.pe_ttm_range) && u.pe_ttm_range.length === 2 && u.pe_ttm_range[1] != null) peMax.value = u.pe_ttm_range[1]
+  if (Array.isArray(u.pe_ttm_range) && u.price_range.length === 2 && u.pe_ttm_range[1] != null) peMax.value = u.pe_ttm_range[1]
   if (u.min_amount != null) minAmountYi.value = u.min_amount / 1e8
   if (u.min_turnover != null) minTurnover.value = u.min_turnover
   if (Array.isArray(u.float_cap_range) && u.float_cap_range.length === 2 && u.float_cap_range[0] != null) minCircCapYi.value = u.float_cap_range[0] / 1e8
@@ -316,32 +317,45 @@ async function onLoadTemplate() {
   const tpl = store.templates.find((t) => t.name === loadTemplateName.value)
   if (!tpl) return
   applyRequest(tpl.request)
+  toastSuccess(`已应用模板「${tpl.name}」，开始选股…`)
   // 应用后自动跑一次，省去再点「开始选股」
   await onRun()
 }
-async function onDeleteTemplate() {
+
+function askDeleteTemplate() {
   if (!loadTemplateName.value) return
-  // 已保存策略删除后不可恢复，需要二次确认
-  if (!window.confirm(`确认删除策略模板「${loadTemplateName.value}」吗？该操作不可恢复。`)) return
-  await store.deleteTemplate(loadTemplateName.value)
-  loadTemplateName.value = ''
+  pendingDeleteName.value = loadTemplateName.value
+  showDelConfirm.value = true
+}
+async function confirmDeleteTemplate() {
+  const name = pendingDeleteName.value
+  showDelConfirm.value = false
+  if (!name) return
+  try {
+    await store.deleteTemplate(name)
+    loadTemplateName.value = ''
+    toastSuccess(`模板「${name}」已删除`)
+  } catch (e) {
+    toastError('删除模板失败：' + (e.message || e))
+  }
 }
 
 async function onCompare() {
   if (!compareTemplate.value) {
-    store.errMsg = '请选择对比模板'
+    toastError('请选择要对比的模板')
     return
   }
   const tpl = store.templates.find((t) => t.name === compareTemplate.value)
   if (!tpl) return
-  store.errMsg = ''
   await store.compare(buildRequest(), tpl.request)
-  showCompare.value = true
+  if (store.compareResult) showCompare.value = true
+  else toastError(store.errMsg || '对比失败')
 }
 
 async function onEvaluate() {
   await store.evaluate({ request: buildRequest() })
-  activeTab.value = 'evaluate'
+  if (store.evalErr) toastError(store.evalErr)
+  else activeTab.value = 'evaluate'
 }
 
 // ═════════════════════════════ 表格 ═════════════════════════════
@@ -434,6 +448,13 @@ function openDetail(row) {
   selectedStock.value = row
 }
 
+// 列开关菜单：点击外部区域自动关闭
+function onDocClick(e) {
+  if (showColMenu.value && colsMenuRef.value && !colsMenuRef.value.contains(e.target)) {
+    showColMenu.value = false
+  }
+}
+
 // ═════════════════════════════ 自选 / 跳转 / 最近任务 ═════════════════════════════
 // 与 easy-tdx 模块共用同一份 localStorage 自选股列表（finfeed.easytdx.watchlist）
 const WATCHLIST_KEY = 'finfeed.easytdx.watchlist'
@@ -444,14 +465,6 @@ function marketTag(market) {
   return m === 1 ? 'SH' : m === 2 ? 'BJ' : 'SZ'
 }
 
-const toastMsg = ref('')
-let toastTimer = null
-function showToast(msg) {
-  toastMsg.value = msg
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { toastMsg.value = '' }, 2200)
-}
-
 function addWatch(row) {
   let list = []
   try {
@@ -459,15 +472,15 @@ function addWatch(row) {
     if (Array.isArray(raw)) list = raw
   } catch { /* 损坏则重建 */ }
   if (list.some((s) => s.code === row.code)) {
-    showToast(`${row.name} 已在自选`)
+    toastError(`${row.name} 已在自选`)
     return
   }
   list.push({ name: row.name, code: row.code, market: marketTag(row.market) })
   try {
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list))
-    showToast(`已加入自选：${row.name}`)
+    toastSuccess(`已加入自选：${row.name}`)
   } catch {
-    showToast('加入自选失败（存储不可用）')
+    toastError('加入自选失败（存储不可用）')
   }
 }
 
@@ -540,6 +553,7 @@ function exportCsv() {
   a.download = `智能选股_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(a.href)
+  toastSuccess(`已导出 ${rows.length} 只标的`)
 }
 
 // ═════════════════════════════ 格式化 ═════════════════════════════
@@ -570,6 +584,12 @@ function chgClass(v) {
   return v > 0 ? 'is-up' : v < 0 ? 'is-down' : ''
 }
 const engineModeLabel = computed(() => ENGINE_MODES.find((m) => m.value === engineMode.value)?.label || engineMode.value)
+
+// 顶栏配置摘要（桌面端常显，让用户随时知道当前策略范围）
+const configSummary = computed(() => {
+  const bs = BOARD_OPTIONS.filter((b) => boards[b.key]).map((b) => b.label).join(' / ') || '未选板块'
+  return `${engineModeLabel.value} · ${bs} · 前 ${top.value} 只`
+})
 
 // ═════════════════════════════ ECharts ═════════════════════════════
 const scoreDistRef = ref(null)
@@ -602,11 +622,11 @@ function scoreDistOption(res) {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 40, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: bins.map((b) => `${b.from}-${b.to}`), axisLabel: { fontSize: 10, color: '#64748b' } },
-    yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10, color: '#64748b' } },
+    xAxis: { type: 'category', data: bins.map((b) => `${b.from}-${b.to}`), axisLabel: axisLabelStyle() },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: axisLabelStyle() },
     series: [{
       name: '数量', type: 'bar', data: counts, barWidth: '70%',
-      itemStyle: { color: cssVar('--ff-brand', '#e11d48'), borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: chartVar('--ff-brand', '#2563eb'), borderRadius: [3, 3, 0, 0] },
     }],
   }
 }
@@ -616,10 +636,10 @@ function boardPieOption(res) {
   const data = Object.entries(counts).map(([name, value]) => ({ name, value }))
   return {
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, textStyle: { fontSize: 11, color: '#64748b' } },
+    legend: { bottom: 0, textStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
     series: [{
       type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
-      itemStyle: { borderColor: cssVar('--ff-bg-surface', '#ffffff'), borderWidth: 2 },
+      itemStyle: { borderColor: chartVar('--ff-bg-surface', '#ffffff'), borderWidth: 2 },
       data,
     }],
   }
@@ -631,11 +651,11 @@ function tierBarOption(res) {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 40, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: names, axisLabel: { fontSize: 11, color: '#64748b' } },
-    yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10, color: '#64748b' } },
+    xAxis: { type: 'category', data: names, axisLabel: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: axisLabelStyle() },
     series: [{
       type: 'bar', data: counts, barWidth: '46%',
-      itemStyle: { color: cssVar('--ff-brand', '#e11d48'), borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: chartVar('--ff-brand', '#2563eb'), borderRadius: [3, 3, 0, 0] },
     }],
   }
 }
@@ -650,18 +670,18 @@ function dimAvgOption(res) {
   ))
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v) => Number(v).toFixed(1) },
-    legend: { top: 0, textStyle: { fontSize: 11, color: '#64748b' } },
+    legend: { top: 0, textStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
     grid: { left: 44, right: 16, top: 30, bottom: 30 },
-    xAxis: { type: 'category', data: dimOrder.map((d) => DIM_LABELS[d]), axisLabel: { fontSize: 10, color: '#64748b' } },
-    yAxis: { type: 'value', max: 100, axisLabel: { fontSize: 10, color: '#64748b' } },
+    xAxis: { type: 'category', data: dimOrder.map((d) => DIM_LABELS[d]), axisLabel: axisLabelStyle() },
+    yAxis: { type: 'value', max: 100, axisLabel: axisLabelStyle() },
     series: [
       {
         name: '入选组均分', type: 'bar', data: avg(strong), barWidth: '32%',
-        itemStyle: { color: cssVar('--ff-brand', '#e11d48'), borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: chartVar('--ff-brand', '#2563eb'), borderRadius: [3, 3, 0, 0] },
       },
       {
         name: '全体均分', type: 'bar', data: avg(res.scores), barWidth: '32%',
-        itemStyle: { color: '#94a3b8', borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: chartVar('--ff-text-tertiary', '#94a3b8'), borderRadius: [3, 3, 0, 0] },
       },
     ],
   }
@@ -671,12 +691,12 @@ function layersOption(ev) {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 44, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: keys, axisLabel: { fontSize: 11, color: '#64748b' } },
-    yAxis: { type: 'value', name: '前瞻收益 %', axisLabel: { fontSize: 10, color: '#64748b' } },
+    xAxis: { type: 'category', data: keys, axisLabel: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    yAxis: { type: 'value', name: '前瞻收益 %', axisLabel: axisLabelStyle() },
     series: [{
       type: 'bar', data: keys.map((k) => ev.layers[k]), barWidth: '52%',
       itemStyle: {
-        color: (p) => (p.data >= 0 ? '#e11d48' : cssVar('--ff-down', '#16a34a')),
+        color: (p) => (p.data >= 0 ? chartVar('--ff-up', '#e11d48') : chartVar('--ff-down', '#059669')),
         borderRadius: [3, 3, 0, 0],
       },
     }],
@@ -687,15 +707,15 @@ function dimIcOption(ev) {
   const dims = Object.keys(pd)
   const colors = dims.map((d) => {
     const icir = pd[d].icir
-    if (icir < 0.5) return '#e11d48'
-    if (icir < 1.0) return '#b45309'
-    return cssVar('--ff-brand', '#e11d48')
+    if (icir < 0.5) return chartVar('--ff-danger', '#dc2626')
+    if (icir < 1.0) return chartVar('--ff-warn', '#d97706')
+    return chartVar('--ff-brand', '#2563eb')
   })
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 44, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: dims.map((d) => DIM_LABELS[d] || d), axisLabel: { fontSize: 11, color: '#64748b' } },
-    yAxis: { type: 'value', name: 'ICIR', axisLabel: { fontSize: 10, color: '#64748b' } },
+    xAxis: { type: 'category', data: dims.map((d) => DIM_LABELS[d] || d), axisLabel: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    yAxis: { type: 'value', name: 'ICIR', axisLabel: axisLabelStyle() },
     series: [{
       type: 'bar', data: dims.map((d) => pd[d].icir), barWidth: '46%',
       itemStyle: { color: (p) => colors[p.dataIndex], borderRadius: [3, 3, 0, 0] },
@@ -727,6 +747,22 @@ watch(activeTab, (t) => {
 watch(result, () => { if (activeTab.value === 'charts') nextTick(renderCharts) })
 watch(() => store.evalResult, () => { if (activeTab.value === 'evaluate') nextTick(renderEvalCharts) })
 
+// 主题切换后以新令牌值重渲染当前可见图表（统一主题出口，canvas 无法消费 CSS var）
+useChartTheme(() => {
+  if (activeTab.value === 'charts') renderCharts()
+  if (activeTab.value === 'evaluate') renderEvalCharts()
+})
+
+// 任务终态提示：运行中 → 成功/失败时给出明确反馈（从历史载入不触发）
+watch(() => store.task?.status, (s, prev) => {
+  if (prev !== 'running') return
+  if (s === 'success') {
+    toastSuccess(`选股完成：入选 ${store.strongCount} 只 · 关注 ${store.watchCount} 只`)
+    activeTab.value = 'result'
+  }
+  if (s === 'error') toastError(store.errMsg || '选股任务失败')
+})
+
 // 引擎诊断展示
 const engineDiag = computed(() => {
   const r = result.value
@@ -744,10 +780,12 @@ onMounted(() => {
   store.loadConfig()
   store.loadRecent()
   window.addEventListener('resize', resizeAll)
+  document.addEventListener('click', onDocClick)
 })
 onBeforeUnmount(() => {
   store.stopPolling()
   window.removeEventListener('resize', resizeAll)
+  document.removeEventListener('click', onDocClick)
   Object.values(chartMap).forEach((c) => c.dispose())
 })
 </script>
@@ -757,31 +795,35 @@ onBeforeUnmount(() => {
     <!-- 模块页头按产品要求移除，h1 保留 sr-only 保文档语义 -->
     <h1 class="ff-sr-only">智能选股</h1>
 
-    <!-- ═══════ 顶部 ═══════ -->
+    <!-- ═══════ 顶部运行栏 ═══════ -->
     <header class="screener-top ff-glass">
-      <div class="screener-controls">
+      <div class="screener-top__left">
         <button type="button" class="screener-strategy-btn screener-menu-btn" @click="panelOpen = !panelOpen">
-          <AppIcon name="panel-left" size="xs" /> 策略配置
+          <AppIcon name="panel-left" size="xs" /> 筛选条件
+        </button>
+        <AppButton
+          variant="primary"
+          icon="play"
+          class="screener-run-top"
+          :loading="loading"
+          :disabled="loading"
+          @click="onRun"
+        >
+          {{ loading ? '选股中…' : '开始选股' }}
+        </AppButton>
+        <!-- 桌面端：当前配置摘要，随时可见 -->
+        <span class="screener-summary" :title="configSummary">
+          <AppIcon name="sliders" size="xs" />
+          {{ configSummary }}
+        </span>
+      </div>
+      <div class="screener-top__right">
+        <button type="button" class="screener-strategy-btn" @click="showRecent = true">
+          <AppIcon name="clock" size="xs" /> 最近选股
         </button>
         <button type="button" class="screener-strategy-btn" @click="showStrategy = true">
           <AppIcon name="info" size="xs" /> 选股策略
         </button>
-        <button type="button" class="screener-strategy-btn" @click="showRecent = true">
-          <AppIcon name="clock" size="xs" /> 最近选股
-        </button>
-        <label class="screener-field">
-          <span class="screener-field__label">显示前</span>
-          <input v-model.number="top" type="number" min="10" max="300" class="screener-field__input screener-field__input--sm" />
-          <span class="screener-field__unit">只</span>
-        </label>
-        <label class="screener-field screener-field--switch" title="开启后对候选股额外抓取日K线，计算年化已实现波动率、均线多头排列（MA20/MA60）、距52周高点回撤等技术指标，用于质量维度评分与详情展示；每只标的一次网络请求，耗时更长（仅富化前 N 只）。关闭则用当日振幅作波动率代理，速度快。">
-          <AppSwitch v-model="technical" />
-          <span class="screener-field__label">技术面富化</span>
-          <AppIcon name="info" size="xs" class="screener-field__hint" />
-        </label>
-        <AppButton variant="primary" icon="play" :loading="loading" :disabled="loading" @click="onRun">
-          {{ loading ? '选股中…' : '开始选股' }}
-        </AppButton>
       </div>
     </header>
 
@@ -806,150 +848,186 @@ onBeforeUnmount(() => {
       <!-- ── 左：配置面板 ── -->
       <div v-if="panelOpen" class="screener-backdrop" @click="panelOpen = false" />
       <aside class="screener-panel" :class="{ 'is-open': panelOpen }">
-        <!-- 引擎模式 -->
-        <section class="panel-sec">
-          <h3 class="panel-sec__title"><AppIcon name="settings" size="xs" /> 引擎模式</h3>
-          <div class="panel-seg">
-            <button
-              v-for="m in ENGINE_MODES"
-              :key="m.value"
-              type="button"
-              class="panel-seg__btn"
-              :class="{ 'is-on': engineMode === m.value }"
-              @click="engineMode = m.value"
-            >
-              {{ m.label }}
+        <div class="screener-panel__scroll">
+          <!-- ① 股票池过滤 -->
+          <section class="panel-sec">
+            <h3 class="panel-sec__title"><AppIcon name="target" size="xs" /> ① 股票池过滤</h3>
+            <div class="panel-boards">
+              <button
+                v-for="b in BOARD_OPTIONS"
+                :key="b.key"
+                type="button"
+                class="screener-board-chip"
+                :class="{ 'is-on': boards[b.key] }"
+                @click="boards[b.key] = !boards[b.key]"
+              >
+                {{ b.label }}
+              </button>
+            </div>
+            <label class="panel-switch">
+              <AppSwitch v-model="excludeSt" />
+              <span class="panel-switch__label">剔除 ST / 退市</span>
+            </label>
+            <div class="panel-grid2">
+              <label class="panel-field">
+                <span class="panel-field__label">价格下限</span>
+                <input v-model.number="minPrice" type="number" class="panel-field__input" />
+              </label>
+              <label class="panel-field">
+                <span class="panel-field__label">价格上限</span>
+                <input v-model.number="maxPrice" type="number" class="panel-field__input" />
+              </label>
+              <label class="panel-field">
+                <span class="panel-field__label">PE_TTM 上限</span>
+                <input v-model.number="peMax" type="number" class="panel-field__input" />
+              </label>
+              <label class="panel-field">
+                <span class="panel-field__label">成交额下限</span>
+                <input v-model.number="minAmountYi" type="number" min="0" step="0.5" class="panel-field__input" />
+              </label>
+              <label class="panel-field">
+                <span class="panel-field__label">换手率下限</span>
+                <input v-model.number="minTurnover" type="number" step="0.1" class="panel-field__input" />
+              </label>
+              <label class="panel-field">
+                <span class="panel-field__label">流通市值下限</span>
+                <input v-model.number="minCircCapYi" type="number" min="0" step="1" class="panel-field__input" />
+              </label>
+            </div>
+          </section>
+
+          <!-- ② 策略引擎 -->
+          <section class="panel-sec">
+            <h3 class="panel-sec__title"><AppIcon name="cpu" size="xs" /> ② 策略引擎</h3>
+            <div class="engine-cards">
+              <button
+                v-for="m in ENGINE_MODES"
+                :key="m.value"
+                type="button"
+                class="engine-card"
+                :class="{ 'is-on': engineMode === m.value }"
+                @click="engineMode = m.value"
+              >
+                <span class="engine-card__label">{{ m.label }}</span>
+                <span class="engine-card__hint">{{ ENGINE_HINTS[m.value] }}</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- ③ 维度权重（仅线性模式可调） -->
+          <section class="panel-sec">
+            <h3 class="panel-sec__title">
+              <AppIcon name="sliders" size="xs" /> ③ 维度权重
+              <span class="panel-sec__sp" />
+              <template v-if="engineMode === 'linear'">
+                <button type="button" class="panel-link" @click="normalizeWeights">归一化</button>
+                <button type="button" class="panel-link" @click="resetWeights">重置</button>
+              </template>
+            </h3>
+            <template v-if="engineMode === 'linear'">
+              <div v-for="d in dimOrder" :key="d" class="dim-row">
+                <span class="dim-row__label">{{ DIM_LABELS[d] }}</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="0.5"
+                  :value="dimWeights[d]"
+                  class="dim-row__slider"
+                  @input="dimWeights[d] = Number($event.target.value); onDimChange()"
+                />
+                <span class="dim-row__val">{{ weightShare(d).toFixed(1) }}%</span>
+              </div>
+              <p class="panel-sec__hint">
+                滑块为偏好值，右侧为实际占比；「归一化」把占比写回滑块（合计 100%）。
+              </p>
+            </template>
+            <p v-else class="panel-sec__notice">
+              当前引擎（{{ engineModeLabel }}）下权重由引擎客观计算，无需手动调整；切换到「线性固定」可自定义权重。
+            </p>
+          </section>
+
+          <!-- ④ 高级参数（默认折叠） -->
+          <section class="panel-sec panel-sec--collapse">
+            <button type="button" class="panel-sec__head" @click="advancedOpen = !advancedOpen">
+              <AppIcon name="zap" size="xs" /> ④ 高级参数
+              <span class="panel-sec__sp" />
+              <AppIcon :name="advancedOpen ? 'chevron-up' : 'chevron-down'" size="xs" />
             </button>
-          </div>
-          <p class="panel-sec__hint">{{ ENGINE_HINTS[engineMode] }}</p>
-        </section>
+            <div v-show="advancedOpen" class="panel-sec__content">
+              <label class="panel-switch">
+                <AppSwitch v-model="orthogonalize" />
+                <span class="panel-switch__label">维度正交化（去冗余，提升 ICIR）</span>
+              </label>
+              <label class="panel-field">
+                <span class="panel-field__label">前瞻期 horizon</span>
+                <input v-model.number="horizon" type="number" min="5" max="60" class="panel-field__input" />
+                <span class="panel-field__unit">日</span>
+              </label>
+              <label v-if="engineMode === 'ml' || engineMode === 'blend'" class="panel-field">
+                <span class="panel-field__label">ML 强势分位 top</span>
+                <input v-model.number="topQuantile" type="number" min="0.1" max="0.5" step="0.05" class="panel-field__input" />
+              </label>
+              <label v-if="engineMode === 'blend'" class="panel-field">
+                <span class="panel-field__label">混合系数 α</span>
+                <input v-model.number="blendAlpha" type="number" min="0" max="1" step="0.05" class="panel-field__input" />
+                <span class="panel-field__unit">线性占比</span>
+              </label>
+              <p class="panel-sec__hint">保持默认即可获得稳健结果；不确定含义时无需修改。</p>
+            </div>
+          </section>
 
-        <!-- 维度权重（线性模式可调） -->
-        <section class="panel-sec">
-          <h3 class="panel-sec__title">
-            <AppIcon name="sliders" size="xs" /> 维度权重
-            <span class="panel-sec__sp" />
-            <button type="button" class="panel-link" @click="normalizeWeights">归一化</button>
-            <button type="button" class="panel-link" @click="resetWeights">重置</button>
-          </h3>
-          <div v-for="d in dimOrder" :key="d" class="dim-row">
-            <span class="dim-row__label">{{ DIM_LABELS[d] }}</span>
-            <input
-              type="range"
-              min="0"
-              max="60"
-              step="0.5"
-              :disabled="engineMode !== 'linear'"
-              :value="dimWeights[d]"
-              class="dim-row__slider"
-              @input="dimWeights[d] = Number($event.target.value); onDimChange()"
-            />
-            <span class="dim-row__val">{{ weightShare(d).toFixed(1) }}%</span>
-          </div>
-          <p v-if="engineMode !== 'linear'" class="panel-sec__hint">
-            非线性模式下权重由引擎客观计算（IC/ML），此处禁用。
-          </p>
-          <p v-else class="panel-sec__hint">
-            滑块为偏好值，右侧为实际占比；「归一化」把占比写回滑块（合计 100%）。
-          </p>
-        </section>
+          <!-- ⑤ 输出与数据 -->
+          <section class="panel-sec">
+            <h3 class="panel-sec__title"><AppIcon name="list" size="xs" /> ⑤ 输出与数据</h3>
+            <label class="panel-field">
+              <span class="panel-field__label">显示前</span>
+              <input v-model.number="top" type="number" min="10" max="300" class="panel-field__input" />
+              <span class="panel-field__unit">只</span>
+            </label>
+            <label class="panel-switch panel-switch--stack">
+              <span class="panel-switch__row">
+                <AppSwitch v-model="technical" />
+                <span class="panel-switch__label">技术面富化</span>
+              </span>
+              <span class="panel-switch__desc">对候选股抓取日 K 线，计算年化波动率、均线排列、距 52 周高点回撤，评分更准但耗时更长（仅富化前 N 只）。</span>
+            </label>
+          </section>
 
-        <!-- 引擎参数 -->
-        <section class="panel-sec">
-          <h3 class="panel-sec__title"><AppIcon name="zap" size="xs" /> 引擎参数</h3>
-          <label class="panel-switch">
-            <AppSwitch v-model="orthogonalize" />
-            <span class="panel-switch__label">维度正交化（去冗余，提升 ICIR）</span>
-          </label>
-          <label class="panel-field">
-            <span class="panel-field__label">前瞻期 horizon</span>
-            <input v-model.number="horizon" type="number" min="5" max="60" class="panel-field__input" />
-            <span class="panel-field__unit">日</span>
-          </label>
-          <label v-if="engineMode === 'ml' || engineMode === 'blend'" class="panel-field">
-            <span class="panel-field__label">ML 强势分位 top</span>
-            <input v-model.number="topQuantile" type="number" min="0.1" max="0.5" step="0.05" class="panel-field__input" />
-          </label>
-          <label v-if="engineMode === 'blend'" class="panel-field">
-            <span class="panel-field__label">混合系数 α</span>
-            <input v-model.number="blendAlpha" type="number" min="0" max="1" step="0.05" class="panel-field__input" />
-            <span class="panel-field__unit">线性占比</span>
-          </label>
-        </section>
-
-        <!-- 股票池过滤 -->
-        <section class="panel-sec">
-          <h3 class="panel-sec__title"><AppIcon name="target" size="xs" /> 股票池过滤</h3>
-          <div class="panel-boards">
-            <button
-              v-for="b in BOARD_OPTIONS"
-              :key="b.key"
-              type="button"
-              class="screener-board-chip"
-              :class="{ 'is-on': boards[b.key] }"
-              @click="boards[b.key] = !boards[b.key]"
-            >
-              {{ b.label }}
+          <!-- ⑥ 模板与对比（默认折叠） -->
+          <section class="panel-sec panel-sec--collapse">
+            <button type="button" class="panel-sec__head" @click="templateOpen = !templateOpen">
+              <AppIcon name="save" size="xs" /> ⑥ 模板与对比
+              <span class="panel-sec__sp" />
+              <AppIcon :name="templateOpen ? 'chevron-up' : 'chevron-down'" size="xs" />
             </button>
-          </div>
-          <label class="panel-switch">
-            <AppSwitch v-model="excludeSt" />
-            <span class="panel-switch__label">剔除 ST / 退市</span>
-          </label>
-          <div class="panel-grid2">
-            <label class="panel-field">
-              <span class="panel-field__label">价格下限</span>
-              <input v-model.number="minPrice" type="number" class="panel-field__input" />
-            </label>
-            <label class="panel-field">
-              <span class="panel-field__label">价格上限</span>
-              <input v-model.number="maxPrice" type="number" class="panel-field__input" />
-            </label>
-            <label class="panel-field">
-              <span class="panel-field__label">PE_TTM 上限</span>
-              <input v-model.number="peMax" type="number" class="panel-field__input" />
-            </label>
-            <label class="panel-field">
-              <span class="panel-field__label">成交额下限</span>
-              <input v-model.number="minAmountYi" type="number" min="0" step="0.5" class="panel-field__input" />
-              <span class="panel-field__unit">亿</span>
-            </label>
-            <label class="panel-field">
-              <span class="panel-field__label">换手率下限</span>
-              <input v-model.number="minTurnover" type="number" step="0.1" class="panel-field__input" />
-              <span class="panel-field__unit">%</span>
-            </label>
-            <label class="panel-field">
-              <span class="panel-field__label">流通市值下限</span>
-              <input v-model.number="minCircCapYi" type="number" min="0" step="1" class="panel-field__input" />
-              <span class="panel-field__unit">亿</span>
-            </label>
-          </div>
-        </section>
+            <div v-show="templateOpen" class="panel-sec__content">
+              <div class="panel-tpl-row">
+                <AppSelect v-model="loadTemplateName" :options="templateOptions" placeholder="选择模板" size="sm" class="panel-tpl-select" />
+                <AppButton variant="secondary" size="sm" @click="onLoadTemplate">应用</AppButton>
+                <button type="button" class="panel-icon-btn" title="删除模板" @click="askDeleteTemplate">
+                  <AppIcon name="trash" size="xs" />
+                </button>
+              </div>
+              <div class="panel-tpl-row">
+                <input v-model="templateName" type="text" placeholder="新模板名" class="panel-field__input panel-field__input--grow" />
+                <AppButton variant="secondary" size="sm" icon="save" @click="onSaveTemplate">保存</AppButton>
+              </div>
+              <div class="panel-tpl-row">
+                <AppSelect v-model="compareTemplate" :options="templateOptions" placeholder="对比模板" size="sm" class="panel-tpl-select" />
+                <AppButton variant="secondary" size="sm" icon="bar-chart" :loading="store.comparing" @click="onCompare">对比</AppButton>
+              </div>
+              <p class="panel-sec__hint">应用模板后自动开始选股；保存会把当前全部配置存为可复用策略。</p>
+            </div>
+          </section>
+        </div>
 
-        <!-- 模板 -->
-        <section class="panel-sec">
-          <h3 class="panel-sec__title"><AppIcon name="save" size="xs" /> 模板</h3>
-          <div class="panel-tpl-row">
-            <input v-model="templateName" type="text" placeholder="新模板名" class="panel-field__input" />
-            <AppButton variant="secondary" size="sm" icon="save" @click="onSaveTemplate">保存</AppButton>
-          </div>
-          <div class="panel-tpl-row">
-            <AppSelect v-model="loadTemplateName" :options="templateOptions" placeholder="选择模板" size="sm" class="panel-tpl-select" />
-            <AppButton variant="secondary" size="sm" @click="onLoadTemplate">应用</AppButton>
-            <button type="button" class="panel-icon-btn" title="删除模板" @click="onDeleteTemplate">
-              <AppIcon name="trash" size="xs" />
-            </button>
-          </div>
-          <div class="panel-tpl-row">
-            <AppSelect v-model="compareTemplate" :options="templateOptions" placeholder="对比模板" size="sm" class="panel-tpl-select" />
-            <AppButton variant="secondary" size="sm" icon="bar-chart" :loading="store.comparing" @click="onCompare">对比</AppButton>
-          </div>
-          <button type="button" class="panel-eval-btn" :disabled="store.evaluating" @click="onEvaluate">
-            <AppIcon name="target" size="xs" />
-            {{ store.evaluating ? '评估中…' : '运行评估闭环' }}
-          </button>
-        </section>
+        <!-- 主 CTA：配置完顺手就跑，核心闭环一步完成 -->
+        <div class="screener-panel__cta">
+          <AppButton variant="primary" size="lg" block icon="play" :loading="loading" :disabled="loading" @click="onRun">
+            {{ loading ? '选股中…' : '开始选股' }}
+          </AppButton>
+        </div>
       </aside>
 
       <!-- ── 右：结果区 ── -->
@@ -972,14 +1050,6 @@ onBeforeUnmount(() => {
             <span class="screener-stat__label">关注</span>
             <span class="screener-stat__value">{{ store.watchCount }}</span>
           </div>
-          <div v-if="result.snapshot_time" class="screener-stat">
-            <span class="screener-stat__label">快照时间</span>
-            <span class="screener-stat__value screener-stat__value--sm">{{ result.snapshot_time }}</span>
-          </div>
-          <div v-if="result.data_source" class="screener-stat">
-            <span class="screener-stat__label">数据源</span>
-            <span class="screener-stat__value screener-stat__value--sm">{{ result.data_source }}</span>
-          </div>
         </div>
 
         <!-- 引擎诊断条 -->
@@ -991,6 +1061,11 @@ onBeforeUnmount(() => {
               <span class="engine-diag__w-label">{{ DIM_LABELS[d] || d }}</span>
               <span class="engine-diag__w-bar"><span class="engine-diag__w-fill" :style="{ width: fmtWeight(w) }" /></span>
             </span>
+          </span>
+          <span v-if="result?.snapshot_time || result?.data_source" class="engine-diag__meta">
+            <template v-if="result?.snapshot_time">快照 {{ result.snapshot_time }}</template>
+            <template v-if="result?.snapshot_time && result?.data_source"> · </template>
+            <template v-if="result?.data_source">{{ result.data_source }}</template>
           </span>
         </div>
 
@@ -1012,8 +1087,14 @@ onBeforeUnmount(() => {
           <div class="screener-card__body screener-card__body--table">
             <div v-if="!result" class="screener-empty">
               <AppIcon name="filter" size="xl" />
-              <p>点击「开始选股」运行引擎</p>
-              <p class="screener-empty__hint">支持线性固定 / IC 客观加权 / ML / 混合引擎，模板可保存复用</p>
+              <p class="screener-empty__title">三步选出候选股</p>
+              <p class="screener-empty__hint">
+                ① 左侧选择股票池与策略引擎　→　② 点击「开始选股」　→　③ 在下方表格查看评分与评级
+              </p>
+              <AppButton variant="primary" icon="play" :loading="loading" :disabled="loading" @click="onRun">
+                使用当前配置立即选股
+              </AppButton>
+              <p class="screener-empty__sub">熟悉后可在左侧「模板与对比」中保存策略，一键复用</p>
             </div>
             <template v-else>
               <!-- 筛选工具条 -->
@@ -1032,7 +1113,7 @@ onBeforeUnmount(() => {
                     @click="tierFilter = t.v"
                   >{{ t.l }}</button>
                 </div>
-                <div class="screener-toolbar__cols">
+                <div ref="colsMenuRef" class="screener-toolbar__cols">
                   <button type="button" class="screener-card__toggle" @click="showColMenu = !showColMenu">
                     <AppIcon name="columns" size="xs" /> 维度列
                   </button>
@@ -1184,12 +1265,21 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <!-- 评估页签 -->
+        <!-- 评估页签（入口就地化：不再藏在左面板底部） -->
         <section v-show="activeTab === 'evaluate'" class="screener-card screener-card--grow">
           <div class="screener-card__body screener-eval">
+            <div class="eval-head">
+              <p class="eval-head__text">
+                对当前策略做无未来函数的历史验证（RankIC / ICIR / 分层收益）；
+                快照库需持续积累历史交易日，数据不足时评估自动启用。
+              </p>
+              <AppButton variant="secondary" size="sm" icon="target" :loading="store.evaluating" @click="onEvaluate">
+                {{ store.evaluating ? '评估中…' : '运行评估闭环' }}
+              </AppButton>
+            </div>
             <div v-if="store.evalErr" class="screener-status__err">{{ store.evalErr }}</div>
             <div v-else-if="!store.evalResult" class="screener-empty screener-empty--sm">
-              <p>点击左侧「运行评估闭环」，对当前引擎做无未来函数的历史验证</p>
+              <p>点击上方「运行评估闭环」，验证当前引擎的历史有效性</p>
             </div>
             <template v-else-if="store.evalResult.error">
               <div class="screener-empty screener-empty--sm">
@@ -1349,6 +1439,20 @@ onBeforeUnmount(() => {
       </div>
     </AppModal>
 
+    <!-- ═══════ 删除模板二次确认弹窗（替代 window.confirm，统一系统风格） ═══════ -->
+    <AppModal
+      v-model="showDelConfirm"
+      title="删除策略模板"
+      size="sm"
+      ok-text="确认删除"
+      cancel-text="取消"
+      @ok="confirmDeleteTemplate"
+    >
+      <p class="del-confirm__text">
+        确认删除模板「<strong>{{ pendingDeleteName }}</strong>」吗？该操作不可恢复。
+      </p>
+    </AppModal>
+
     <!-- ═══════ 最近选股记录弹窗 ═══════ -->
     <AppModal v-model="showRecent" title="最近选股记录" size="lg" :show-ok="false" cancel-text="关闭">
       <div v-if="!store.recent.length" class="screener-empty screener-empty--sm">
@@ -1369,11 +1473,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </AppModal>
-
-    <!-- 全局轻提示 -->
-    <transition name="toast-fade">
-      <div v-if="toastMsg" class="screener-toast">{{ toastMsg }}</div>
-    </transition>
   </div>
 </template>
 
@@ -1388,31 +1487,27 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* ── 顶部（仅操作控件，右对齐）── */
+/* ── 顶部运行栏 ── */
 .screener-top {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--ff-space-4);
-  padding: var(--ff-space-3) var(--ff-space-4);
+  padding: var(--ff-space-2-5, 10px) var(--ff-space-4);
   background: var(--ff-bg-surface);
   border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg);
   box-shadow: var(--ff-shadow-sm);
 }
-.screener-controls { display: flex; align-items: center; gap: var(--ff-space-4); }
-.screener-field { display: flex; align-items: center; gap: var(--ff-space-2); font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); }
-.screener-field__label { font-weight: 500; white-space: nowrap; }
-.screener-field__input {
-  height: 36px; border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md);
-  padding: 0 10px; font-size: var(--ff-fs-body); color: var(--ff-text-primary);
-  background: var(--ff-bg-surface); transition: border-color var(--ff-dur-fast);
+.screener-top__left, .screener-top__right { display: flex; align-items: center; gap: var(--ff-space-2); min-width: 0; }
+.screener-summary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: var(--ff-radius-pill);
+  background: var(--ff-bg-subtle); color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-caption); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 52ch;
 }
-.screener-field__input:focus { outline: none; border-color: var(--ff-border-focus); }
-.screener-field__input--sm { width: 64px; text-align: center; }
-.screener-field__unit { color: var(--ff-text-tertiary); font-size: var(--ff-fs-caption); }
-.screener-field__hint { color: var(--ff-text-tertiary); cursor: help; opacity: 0.7; }
 .screener-strategy-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px;
   border: 1px solid var(--ff-border-strong); border-radius: var(--ff-radius-md);
@@ -1421,7 +1516,6 @@ onBeforeUnmount(() => {
   transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); white-space: nowrap;
 }
 .screener-strategy-btn:hover { border-color: var(--ff-brand); background: var(--ff-bg-hover); }
-.screener-field--switch { gap: var(--ff-space-1-5); cursor: pointer; }
 
 /* ── 板块 chip ── */
 .screener-board-chip {
@@ -1454,10 +1548,15 @@ onBeforeUnmount(() => {
 
 /* ── 左侧配置面板 ── */
 .screener-panel {
-  flex: none; width: 348px; overflow-y: auto;
+  flex: none; width: 348px; overflow: hidden;
   background: var(--ff-bg-surface); border: 1px solid var(--ff-border);
   border-radius: var(--ff-radius-lg); box-shadow: var(--ff-shadow-sm);
-  display: flex; flex-direction: column; gap: 2px; padding: var(--ff-space-2) 0;
+  display: flex; flex-direction: column;
+}
+.screener-panel__scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: var(--ff-space-2) 0; }
+.screener-panel__cta {
+  flex: none; padding: var(--ff-space-3) var(--ff-space-4);
+  border-top: 1px solid var(--ff-border-subtle); background: var(--ff-bg-surface);
 }
 .panel-sec { padding: var(--ff-space-3) var(--ff-space-4); border-bottom: 1px solid var(--ff-border-subtle); display: flex; flex-direction: column; gap: var(--ff-space-2); }
 .panel-sec:last-child { border-bottom: none; }
@@ -1465,49 +1564,93 @@ onBeforeUnmount(() => {
 .panel-sec__title > svg { color: var(--ff-text-brand); }
 .panel-sec__sp { margin-left: auto; }
 .panel-sec__hint { font-size: var(--ff-fs-caption); color: var(--ff-text-tertiary); line-height: 1.5; margin: 0; }
+.panel-sec__notice {
+  font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); line-height: 1.55; margin: 0;
+  padding: var(--ff-space-2) var(--ff-space-3);
+  background: var(--ff-bg-subtle); border: 1px dashed var(--ff-border);
+  border-radius: var(--ff-radius-md);
+}
 .panel-link { background: none; border: none; color: var(--ff-brand); font-size: var(--ff-fs-caption); cursor: pointer; padding: 0; }
 .panel-link:hover { text-decoration: underline; }
 
-.panel-seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-.panel-seg__btn {
-  height: 30px; padding: 0 2px; border: 1px solid var(--ff-border);
-  border-radius: var(--ff-radius-md); background: var(--ff-bg-surface);
-  color: var(--ff-text-secondary); font-size: 12px;
-  font-weight: 500; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1;
+/* 折叠区头部 */
+.panel-sec--collapse { padding: 0; }
+.panel-sec__head {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: var(--ff-space-3) var(--ff-space-4);
+  background: none; border: none; cursor: pointer;
+  font-size: var(--ff-fs-body-sm); font-weight: 600; color: var(--ff-text-secondary);
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard);
 }
-.panel-seg__btn:hover { border-color: var(--ff-brand); color: var(--ff-brand); }
-.panel-seg__btn.is-on { background: var(--ff-brand); border-color: var(--ff-brand); color: var(--ff-bg-surface); }
+.panel-sec__head:hover { background: var(--ff-bg-hover); color: var(--ff-text-primary); }
+.panel-sec__head > svg:first-child { color: var(--ff-text-brand); }
+.panel-sec--collapse + .panel-sec:not(.panel-sec--collapse) { border-top: 1px solid var(--ff-border-subtle); }
+.panel-sec__content { display: flex; flex-direction: column; gap: var(--ff-space-2); padding: 0 var(--ff-space-4) var(--ff-space-3); }
+
+/* 引擎卡片（带说明，降低理解成本） */
+.engine-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.engine-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 7px 10px; text-align: left;
+  border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md);
+  background: var(--ff-bg-surface); cursor: pointer;
+  transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.engine-card:last-child { grid-column: 1 / -1; }
+.engine-card:hover { border-color: var(--ff-brand); background: var(--ff-bg-hover); }
+.engine-card.is-on { border-color: var(--ff-brand); background: var(--ff-bg-brand-soft, var(--ff-bg-subtle)); box-shadow: 0 0 0 1px var(--ff-brand) inset; }
+.engine-card__label { font-size: var(--ff-fs-body-sm); font-weight: 600; color: var(--ff-text-primary); }
+.engine-card.is-on .engine-card__label { color: var(--ff-text-brand); }
+.engine-card__hint { font-size: 11px; color: var(--ff-text-tertiary); line-height: 1.35; }
 
 .dim-row { display: flex; align-items: center; gap: 8px; }
 .dim-row__label { width: 56px; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); flex: none; }
-.dim-row__slider { flex: 1; accent-color: var(--ff-brand); height: 4px; }
-.dim-row__slider:disabled { opacity: 0.4; }
+.dim-row__slider {
+  flex: 1; appearance: none; -webkit-appearance: none; height: 4px;
+  background: var(--ff-border); border-radius: var(--ff-radius-pill);
+  outline: none; cursor: pointer;
+}
+.dim-row__slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--ff-brand); border: 2px solid var(--ff-bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); cursor: pointer;
+  transition: transform var(--ff-dur-fast) var(--ff-ease-standard);
+}
+.dim-row__slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.dim-row__slider::-moz-range-track { height: 4px; background: var(--ff-border); border-radius: var(--ff-radius-pill); }
+.dim-row__slider::-moz-range-thumb {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--ff-brand); border: 2px solid var(--ff-bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); cursor: pointer;
+}
 .dim-row__val { width: 44px; text-align: right; font-size: var(--ff-fs-caption); font-variant-numeric: tabular-nums; color: var(--ff-text-primary); flex: none; }
 
 .panel-switch { display: flex; align-items: center; gap: 8px; font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); cursor: pointer; }
 .panel-switch__label { font-size: var(--ff-fs-caption); }
+.panel-switch--stack { flex-direction: column; align-items: stretch; gap: 4px; }
+.panel-switch__row { display: flex; align-items: center; gap: 8px; }
+.panel-switch__desc { font-size: var(--ff-fs-caption); color: var(--ff-text-tertiary); line-height: 1.5; }
 
 .panel-field { display: flex; align-items: center; gap: 6px; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); }
 .panel-field__label { min-width: 78px; white-space: nowrap; }
 .panel-field__input {
-  width: 92px; height: 28px; border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md);
+  width: 92px; height: 28px; border: 1px solid var(--ff-border-field); border-radius: var(--ff-radius-md);
   padding: 0 8px; font-size: var(--ff-fs-body-sm); color: var(--ff-text-primary);
   background: var(--ff-bg-surface);
 }
 .panel-field__input:focus { outline: none; border-color: var(--ff-border-focus); }
+.panel-field__input--grow { flex: 1; width: auto; }
 .panel-field__unit { color: var(--ff-text-tertiary); white-space: nowrap; }
 .panel-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ff-space-2); }
 /* 两列布局：标签在上、输入框全宽在下，避免 label+input 横向溢出 */
 .panel-grid2 .panel-field { flex-direction: column; align-items: stretch; gap: 2px; }
 .panel-grid2 .panel-field__label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .panel-grid2 .panel-field__input { width: 100%; box-sizing: border-box; }
-.panel-grid2 .panel-field__unit { display: none; }
 
 .panel-boards { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .panel-tpl-row { display: flex; align-items: center; gap: 6px; }
-.panel-tpl-row .panel-field__input { flex: 1; width: auto; }
 .panel-tpl-select { flex: 1; min-width: 0; }
 .panel-icon-btn {
   width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center;
@@ -1515,17 +1658,9 @@ onBeforeUnmount(() => {
   color: var(--ff-text-tertiary); cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
 }
 .panel-icon-btn:hover { color: var(--ff-danger-text); border-color: var(--ff-danger-border); }
-.panel-eval-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 32px; border: 1px dashed var(--ff-border-strong); border-radius: var(--ff-radius-md);
-  background: var(--ff-bg-subtle); color: var(--ff-text-brand); font-size: var(--ff-fs-caption);
-  font-weight: 600; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard);
-}
-.panel-eval-btn:hover { border-color: var(--ff-brand); background: var(--ff-bg-hover); }
-.panel-eval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── 统计卡（紧凑，给结果表留空间）── */
-.screener-stats { flex: none; display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--ff-space-2); }
+.screener-stats { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--ff-space-2); }
 .screener-stat {
   display: flex; flex-direction: column; gap: 2px;
   padding: 6px 10px; background: var(--ff-bg-surface);
@@ -1539,18 +1674,19 @@ onBeforeUnmount(() => {
 .screener-stat--watch .screener-stat__value { color: var(--ff-warn-text); }
 .screener-stat--observe .screener-stat__value { color: var(--ff-neutral-text); }
 
-/* ── 引擎诊断条（紧凑）── */
+/* ── 引擎诊断条（紧凑；快照/数据源元信息并入行尾）── */
 .engine-diag {
   flex: none; display: flex; align-items: center; gap: var(--ff-space-2);
   padding: 5px 12px; background: var(--ff-bg-surface);
   border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md);
   flex-wrap: wrap;
 }
-.engine-diag__weights { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; }
+.engine-diag__weights { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
 .engine-diag__w { display: flex; align-items: center; gap: 4px; min-width: 56px; }
-.engine-diag__w-label { font-size: 11px; color: var(--ff-text-tertiary); }
+.engine-diag__w-label { font-size: 11px; color: var(--ff-text-tertiary); white-space: nowrap; }
 .engine-diag__w-bar { flex: 1; height: 3px; border-radius: var(--ff-radius-pill); background: var(--ff-bg-subtle); overflow: hidden; min-width: 34px; }
 .engine-diag__w-fill { display: block; height: 100%; border-radius: var(--ff-radius-pill); background: var(--ff-brand); }
+.engine-diag__meta { font-size: 11px; color: var(--ff-text-tertiary); white-space: nowrap; flex: none; }
 
 /* ── 页签 ── */
 .screener-tabs { flex: none; display: flex; align-items: center; gap: var(--ff-space-2); }
@@ -1569,14 +1705,16 @@ onBeforeUnmount(() => {
 }
 .screener-card__toggle:hover { background: var(--ff-bg-hover); color: var(--ff-text-primary); }
 
-/* ── 空状态 ── */
+/* ── 空状态（带三步引导 + 一键开始）── */
 .screener-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ff-space-3); padding: var(--ff-space-10) var(--ff-space-4); color: var(--ff-text-tertiary); font-size: var(--ff-fs-body); text-align: center; }
-.screener-empty__hint { font-size: var(--ff-fs-caption); color: var(--ff-text-tertiary); }
+.screener-empty__title { margin: 0; font-size: var(--ff-fs-h3); font-weight: 600; color: var(--ff-text-primary); }
+.screener-empty__hint { margin: 0; font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); line-height: 1.7; }
+.screener-empty__sub { margin: 0; font-size: var(--ff-fs-caption); color: var(--ff-text-tertiary); }
 .screener-empty--sm { padding: var(--ff-space-6) var(--ff-space-4); font-size: var(--ff-fs-body-sm); }
 
 /* ── 工具栏 ── */
 .screener-toolbar { flex: none; display: flex; align-items: center; gap: var(--ff-space-3); padding: 8px var(--ff-space-4); border-bottom: 1px solid var(--ff-border-subtle); flex-wrap: wrap; }
-.screener-toolbar__search { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md); padding: 0 10px; height: 30px; color: var(--ff-text-tertiary); }
+.screener-toolbar__search { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ff-border-field); border-radius: var(--ff-radius-md); padding: 0 10px; height: 30px; color: var(--ff-text-tertiary); }
 .screener-toolbar__input { border: none; outline: none; background: transparent; font-size: var(--ff-fs-body-sm); width: 140px; color: var(--ff-text-primary); }
 .screener-toolbar__tiers { display: flex; gap: 6px; }
 .screener-toolbar__count { margin-left: auto; font-size: var(--ff-fs-caption); color: var(--ff-text-tertiary); }
@@ -1630,6 +1768,12 @@ onBeforeUnmount(() => {
 
 /* ── 评估 ── */
 .screener-eval { display: flex; flex-direction: column; gap: var(--ff-space-4); }
+.eval-head {
+  display: flex; align-items: center; gap: var(--ff-space-3);
+  padding: var(--ff-space-3); border: 1px dashed var(--ff-border-strong);
+  border-radius: var(--ff-radius-md); background: var(--ff-bg-subtle);
+}
+.eval-head__text { flex: 1; min-width: 0; margin: 0; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); line-height: 1.6; }
 .eval-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--ff-space-3); }
 .eval-alert { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--ff-radius-md); background: var(--ff-warn-subtle); color: var(--ff-warn-text); border: 1px solid var(--ff-warn-border); font-size: var(--ff-fs-caption); }
 .eval-alert--info { background: var(--ff-bg-subtle); color: var(--ff-text-brand); border-color: var(--ff-border-strong); }
@@ -1663,17 +1807,21 @@ onBeforeUnmount(() => {
 .drill__text { font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); line-height: 1.6; margin: 0; }
 .drill__tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* ── 删除确认 ── */
+.del-confirm__text { margin: 0; font-size: var(--ff-fs-body); color: var(--ff-text-secondary); line-height: 1.6; }
+.del-confirm__text strong { color: var(--ff-text-primary); }
+
 /* ── 响应式 ── */
 @media (max-width: 1180px) {
-  .screener-stats { grid-template-columns: repeat(3, 1fr); }
+  .screener-stats { grid-template-columns: repeat(4, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
   .eval-stats { grid-template-columns: repeat(2, 1fr); }
-  /* 窄屏：配置面板收进抽屉，顶部显示开关按钮（≥1181px 由下方规则隐藏） */
+  /* 窄屏：配置面板收进抽屉；顶栏显示「筛选条件」+「开始选股」 */
 }
 @media (max-width: 1180px) {
   .screener-panel {
     position: fixed; left: 0; top: 0; bottom: 0; width: min(360px, 88vw);
-    z-index: 60; border-radius: 0; overflow-y: auto;
+    z-index: 60; border-radius: 0; overflow: hidden;
     transform: translateX(-100%);
     transition: transform 0.24s var(--ff-ease-standard);
     box-shadow: var(--ff-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.24));
@@ -1685,13 +1833,20 @@ onBeforeUnmount(() => {
   }
 }
 @media (min-width: 1181px) {
-  .screener-menu-btn { display: none; }
+  .screener-menu-btn, .screener-run-top { display: none; }
 }
 @media (max-width: 860px) {
   .screener-body { flex-direction: column; overflow-y: auto; }
-  .screener-panel { width: 100%; }
-  .screener-top { flex-direction: column; align-items: flex-start; }
-  .screener-controls { flex-wrap: wrap; }
+  .screener-stats { grid-template-columns: repeat(2, 1fr); }
+  .screener-top { flex-wrap: wrap; }
+  .screener-summary { display: none; }
+  .screener-table-wrap { overflow-x: auto; }
+  .screener-table { min-width: 720px; }
+  /* 窄屏：权重条横向滚动，标签不换行挤压 */
+  .engine-diag__weights { flex-wrap: nowrap; overflow-x: auto; }
+  .engine-diag__w { flex: none; min-width: 0; }
+  .engine-diag__w-label { white-space: nowrap; }
+  .engine-diag__meta { flex-basis: 100%; }
 }
 
 /* ── 维度分热力单元格 ── */
@@ -1733,15 +1888,4 @@ onBeforeUnmount(() => {
 .recent-item__time { font-variant-numeric: tabular-nums; color: var(--ff-text-secondary); min-width: 140px; }
 .recent-item__meta { color: var(--ff-text-tertiary); font-size: var(--ff-fs-caption); }
 .recent-item__sp { flex: 1; }
-
-/* ── 全局轻提示 ── */
-.screener-toast {
-  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-  z-index: 90; padding: 9px 18px; border-radius: 999px;
-  background: var(--ff-text-primary, #1e293b); color: var(--ff-bg-surface, #fff);
-  font-size: var(--ff-fs-body-sm); font-weight: 500;
-  box-shadow: var(--ff-shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.2));
-}
-.toast-fade-enter-active, .toast-fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-.toast-fade-enter-from, .toast-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
 </style>

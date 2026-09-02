@@ -350,4 +350,16 @@ defineExpose({ focus: () => {}, openPopup, closePopup })
 .ff-field--error .ff-date-input:focus-within {
   box-shadow: var(--ff-focus-ring-error);
 }
+
+/* 窄屏：操作按钮放大触控热区（移动端点按精度更低） */
+@media (max-width: 768px) {
+  .ff-date-input__clear {
+    width: 26px;
+    height: 26px;
+  }
+  .ff-datepicker__foot-btn {
+    flex: 1;
+    height: 32px;
+  }
+}
 </style>

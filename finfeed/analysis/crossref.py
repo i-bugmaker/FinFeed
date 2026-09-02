@@ -28,9 +28,7 @@ _CODE_RE = re.compile(r"(?<!\d)(60\d{4}|688\d{3}|00\d{4}|30\d{4})(?!\d)")
 _CODE_SECURE = re.compile(r"\b(60\d{4}|688\d{3}|00\d{4}|30\d{4})\.(SH|SZ|sh|sz)\b")
 
 
-# ---------------------------------------------------------------------------
 # Aho-Corasick 自动机（纯 Python，无第三方依赖）
-# ---------------------------------------------------------------------------
 class _ACNode:
     __slots__ = ("goto", "fail", "output")
 
@@ -128,9 +126,7 @@ def get_recognizer() -> EntityRecognizer:
     return _RECOGNIZER
 
 
-# ---------------------------------------------------------------------------
 # 单条新闻实体抽取
-# ---------------------------------------------------------------------------
 def extract_entities(text: str) -> List[Tuple[str, str, float]]:
     """返回 [(code, match_type, confidence)]。merge 代码正则 + 名称自动机。"""
     if not text:
@@ -170,9 +166,7 @@ def enrich_news_stocks(news_id: int, title: str, intro: str = "") -> int:
     return market_store.upsert_news_stock_link(rows)
 
 
-# ---------------------------------------------------------------------------
 # 历史回填
-# ---------------------------------------------------------------------------
 def backfill_news_stock_link(batch: int = 2000) -> int:
     """对历史新闻批量回填 news_stock_link。返回累计写入条数。"""
     db = get_db_manager()
@@ -196,9 +190,7 @@ def backfill_news_stock_link(batch: int = 2000) -> int:
     return total
 
 
-# ---------------------------------------------------------------------------
 # 情感闭环校准（T+1 回测）
-# ---------------------------------------------------------------------------
 def calibrate_sentiment(lookback_days: int = 180) -> Dict:
     """以关联个股 T+1 收盘涨跌幅为真值，校准情感标签与各新闻源。
 

@@ -16,7 +16,7 @@ from typing import Any, Protocol
 from fastapi import APIRouter, Request, WebSocket
 from fastapi.responses import StreamingResponse
 
-from finfeed.ui.web.shared import (
+from finfeed.ui.web_fastapi.shared import (
     SSE_CLIENT_QUEUE_MAXSIZE,
     _broadcast_watermarks,
     _last_broadcast_ts,

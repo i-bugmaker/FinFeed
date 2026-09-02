@@ -162,4 +162,18 @@ async function copy() {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* 窄屏：meta 信息独占一行，操作按钮行收窄留白、允许横向滚动 */
+@media (max-width: 768px) {
+  .etdx-rtb__meta {
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+  .etdx-rtb__actions {
+    flex-wrap: wrap;
+  }
+  .etdx-rtb__btn {
+    padding: 4px 8px;
+  }
+}
 </style>

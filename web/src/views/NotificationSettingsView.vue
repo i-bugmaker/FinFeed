@@ -723,4 +723,46 @@ onMounted(loadAll)
   color: var(--ff-text-tertiary);
   margin-bottom: var(--ff-space-2);
 }
+
+/* ── 窄屏适配（≤768px：卡片头换行 / 渠道行纵向堆叠 / 日志标题换行）── */
+@media (max-width: 768px) {
+  .ff-notify-view__card {
+    padding: var(--ff-space-3);
+  }
+  .ff-notify-view__card-head {
+    flex-wrap: wrap;
+    row-gap: var(--ff-space-2);
+  }
+  .ff-notify-view__card-head > .ff-text-muted {
+    flex-basis: 100%;
+    order: 3;
+  }
+  .ff-notify-view__card-head > .app-button {
+    margin-left: auto;
+  }
+  .ff-notify-view__channel,
+  .ff-notify-view__topic {
+    flex-wrap: wrap;
+  }
+  .ff-notify-view__channel-main,
+  .ff-notify-view__topic > div:first-child {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .ff-notify-view__channel-actions {
+    flex-wrap: wrap;
+  }
+  .ff-notify-view__topic-kw {
+    display: block;
+    margin-left: 0;
+    margin-top: 2px;
+  }
+  .ff-notify-view__log {
+    flex-wrap: wrap;
+  }
+  .ff-notify-view__log-title {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+}
 </style>

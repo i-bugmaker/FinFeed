@@ -46,9 +46,7 @@ from finfeed.ui.web_fastapi.core.errors import ApiError
 
 logger = logging.getLogger("news_monitor")
 
-# ============================================================
 # 任务事件订阅注册表（SSE）
-# ============================================================
 _STREAM_QUEUE_SIZE = 256
 _STREAM_IDLE_TIMEOUT = 15.0  # 无事件时的心跳间隔（秒）
 _STREAM_MAX_LIFETIME = 2100.0  # 单连接最长寿命（秒），兜底防泄漏
@@ -91,9 +89,7 @@ def _unsubscribe(task_id: str, q: queue.Queue) -> None:
                 _stream_queues.pop(task_id, None)
 
 
-# ============================================================
 # 请求模型（extra=allow：容忍前端携带的多余字段）
-# ============================================================
 class _Loose(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -201,9 +197,7 @@ class PromptsSaveRequest(_Loose):
         return values
 
 
-# ============================================================
 # 工具
-# ============================================================
 def _respond(data: Dict[str, Any], status: int = 200):
     """200 返回 dict（FastAPI 自动序列化）；非 200 显式携带状态码。"""
     if status == 200:
@@ -222,9 +216,7 @@ def _require(
 def create_router() -> APIRouter:
     router = APIRouter(tags=["llm"])
 
-    # --------------------------------------------------
     # 报告导出（二进制响应）
-    # --------------------------------------------------
     @router.get("/api/llm/report/export")
     def export_report(id: int = Query(0), fmt: str = Query("md")) -> Response:
         result = llm_service.export_report(id, fmt)
@@ -236,9 +228,7 @@ def create_router() -> APIRouter:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    # --------------------------------------------------
     # GET 查询类
-    # --------------------------------------------------
     @router.get("/api/llm/status")
     def status() -> Dict[str, Any]:
         ensure_tables()
@@ -351,9 +341,7 @@ def create_router() -> APIRouter:
         _require(rep, "报告不存在")
         return _respond({"report": rep})
 
-    # --------------------------------------------------
     # SSE：任务事件流（stage / delta / reset / done）
-    # --------------------------------------------------
     def _sse_response(
         task_id: str, q: "queue.Queue[Dict[str, Any]]"
     ) -> StreamingResponse:
@@ -430,9 +418,7 @@ def create_router() -> APIRouter:
 
         return _sse_response(id, q)
 
-    # --------------------------------------------------
     # POST 操作类
-    # --------------------------------------------------
     @router.post("/api/llm/provider/save")
     def provider_save(req: ProviderSaveRequest) -> Dict[str, Any]:
         ensure_tables()
@@ -558,10 +544,8 @@ def create_router() -> APIRouter:
         n = store.clear_reports()
         return _respond({"success": True, "deleted": n})
 
-    # --------------------------------------------------
     # 轻量洞察：连板天梯「AI 分析」
     # 不落报告库、不检索新闻，仅对当日盘面快照做一次结构化分析
-    # --------------------------------------------------
     @router.post("/api/llm/insight/limitup")
     async def insight_limitup(req: InsightLimitUpRequest) -> Dict[str, Any]:
         from finfeed.application import limitup_ai

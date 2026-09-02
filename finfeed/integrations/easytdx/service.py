@@ -222,9 +222,7 @@ def _safe_filename(task: dict, func_def: dict) -> str:
     return f"{base}_{ts}{ext}"
 
 
-# ---------------------------------------------------------------------------
 # 派发执行
-# ---------------------------------------------------------------------------
 def _dispatch(func_def: dict, params: dict):
     client = func_def["client"]
     if client in ("tdx", "mac", "ex"):

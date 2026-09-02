@@ -69,9 +69,7 @@ def _cal_type(qs: Dict[str, List[str]], default: str = "all") -> str:
     return t if t in CAL_TYPE_KEYS or t == "all" else default
 
 
-# ============================================================
 # GET
-# ============================================================
 def handle_get(path: str, qs: Dict[str, List[str]]) -> Response:
     if not path.startswith("/api/calendar"):
         return None
@@ -109,9 +107,7 @@ def handle_get(path: str, qs: Dict[str, List[str]]) -> Response:
         return 500, {"error": f"{type(e).__name__}: {e}"}
 
 
-# ============================================================
 # POST
-# ============================================================
 def handle_post(path: str, body: Dict[str, Any]) -> Response:
     if not path.startswith("/api/calendar"):
         return None
@@ -140,9 +136,7 @@ def handle_post(path: str, body: Dict[str, Any]) -> Response:
         return 500, {"error": f"{type(e).__name__}: {e}"}
 
 
-# ============================================================
 # 具体实现
-# ============================================================
 def _init_payload() -> Dict[str, Any]:
     today = service.today_str()
     return {
@@ -190,9 +184,7 @@ def _filters(qs: Dict[str, List[str]]) -> Dict[str, Any]:
     }
 
 
-# ============================================================
 # 导出（由 server 层直接写响应体）
-# ============================================================
 _EXPORT_FIELDS = [
     ("event_date", "日期"), ("event_time", "时间"), ("category", "分类"),
     ("sub_type", "类型"), ("code", "代码"), ("name", "名称"),

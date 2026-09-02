@@ -18,7 +18,7 @@ import logging
 import re
 
 import httpx
-from bs4 import BeautifulSoup, Comment, NavigableString
+from bs4 import BeautifulSoup
 
 from finfeed.storage.database import (
     db_news_without_content,

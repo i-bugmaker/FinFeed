@@ -148,4 +148,12 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 .ff-field--disabled .ff-input__suffix-btn {
   cursor: not-allowed;
 }
+
+/* 窄屏：后缀操作按钮放大触控热区（移动端点按精度更低） */
+@media (max-width: 768px) {
+  .ff-input__suffix-btn {
+    width: 28px;
+    height: 28px;
+  }
+}
 </style>

@@ -187,4 +187,18 @@ function isStockHidden(param) {
 .etdx-field__textarea:focus {
   border-color: var(--ff-border-brand);
 }
+
+/* 窄屏：bool 行提示独占一行、徽章允许换行，避免挤压溢出 */
+@media (max-width: 768px) {
+  .etdx-field__bool {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .etdx-field__bool-hint {
+    flex-basis: 100%;
+  }
+  .etdx-field__stock-badge {
+    flex-wrap: wrap;
+  }
+}
 </style>

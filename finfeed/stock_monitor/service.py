@@ -26,9 +26,7 @@ from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("stock_monitor")
 
-# ---------------------------------------------------------------------------
 # 代码规范化与校验
-# ---------------------------------------------------------------------------
 _CODE_RE = re.compile(r"(?<![\dA-Za-z])(?:sh|sz|bj|SH|SZ|BJ)?[:.]?(\d{6})(?![\dA-Za-z])")
 _PREFIXED_RE = re.compile(r"(?:sh|sz|bj)[:.]?(\d{6})", re.IGNORECASE)
 
@@ -152,9 +150,7 @@ def validate_code(raw: str) -> Dict[str, Any]:
     return out
 
 
-# ---------------------------------------------------------------------------
 # 名称 / 拼音简称解析（导入支持「股票名称」「拼音缩写」两种输入）
-# ---------------------------------------------------------------------------
 _UNIVERSE_META_KEY = "stock_monitor_universe_synced_at"
 _UNIVERSE_TTL_SEC = 7 * 86400  # 全市场名单 7 天同步一次
 
@@ -368,9 +364,7 @@ def suggest_stocks(query: str, limit: int = 8) -> List[Dict[str, Any]]:
     return out
 
 
-# ---------------------------------------------------------------------------
 # 导入（手动 / 文本批量 / OCR）
-# ---------------------------------------------------------------------------
 def parse_and_import(text: str) -> Dict[str, Any]:
     """从文本解析并批量导入监控列表。
 
@@ -458,9 +452,7 @@ def import_image(data: bytes) -> Dict[str, Any]:
     return {"ok": True, "engine": r.get("engine", ""), "text": text, **imported}
 
 
-# ---------------------------------------------------------------------------
 # 外部消息刷新
-# ---------------------------------------------------------------------------
 REFRESH_INTERVAL_SEC = int(os.environ.get("FINFEED_WATCH_REFRESH_SEC", "300"))
 
 
@@ -528,15 +520,12 @@ class RefreshWorker:
 worker = RefreshWorker()
 
 
-# ---------------------------------------------------------------------------
 # 舆情聚合
-# ---------------------------------------------------------------------------
 def _watched_entries(codes: Optional[List[str]]) -> Tuple[List[Dict[str, Any]], List[str]]:
     stocks = store.list_stocks()
     if codes:
         wanted = set(codes)
         stocks = [s for s in stocks if s["code"] in wanted]
-    names = {s["code"]: s.get("name", "") for s in stocks}
     return stocks, [s["code"] for s in stocks]
 
 
@@ -670,9 +659,7 @@ def realtime_new_items(codes: List[str], last_internal_id: int, last_external_id
     }
 
 
-# ---------------------------------------------------------------------------
 # AI 智能分析
-# ---------------------------------------------------------------------------
 _ANALYSIS_MSG_LIMIT = 40  # 参与单次分析的最大消息条数
 
 
@@ -793,9 +780,7 @@ def _parse_analysis_json(text: str) -> Dict[str, Any]:
         return {}
 
 
-# ---------------------------------------------------------------------------
 # 模块状态
-# ---------------------------------------------------------------------------
 def module_status() -> Dict[str, Any]:
     stocks = store.list_stocks()
     return {

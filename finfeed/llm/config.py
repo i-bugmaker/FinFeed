@@ -21,9 +21,7 @@ from .schema import ensure_tables
 
 logger = logging.getLogger("news_monitor")
 
-# ============================================================
 # 常见服务预设（仅用于前端一键填充，不含任何密钥）
-# ============================================================
 PRESETS: List[Dict[str, str]] = [
     {"key": "openai", "label": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
     {"key": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
@@ -118,9 +116,7 @@ def _row_to_provider(row) -> LLMProvider:
     )
 
 
-# ============================================================
 # 查询
-# ============================================================
 def list_providers() -> List[LLMProvider]:
     ensure_tables()
     db = get_db_manager()
@@ -165,9 +161,7 @@ def get_default_provider() -> Optional[LLMProvider]:
         return _row_to_provider(row) if row else None
 
 
-# ============================================================
 # 写入
-# ============================================================
 def save_provider(data: Dict[str, Any]) -> LLMProvider:
     """新增或更新供应商配置
 
@@ -358,9 +352,7 @@ def provider_from_payload(data: Dict[str, Any]) -> LLMProvider:
     )
 
 
-# ============================================================
 # 提示词自定义（持久化在 llm_settings 表，key 形如 prompt_map_system）
-# ============================================================
 def get_setting(key: str, default: str = "") -> str:
     """读取一条自定义设置；不存在返回 default。"""
     ensure_tables()
