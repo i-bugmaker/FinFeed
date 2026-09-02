@@ -422,7 +422,7 @@ onMounted(async () => {
   color: var(--ff-text-primary);
 }
 .ths__hero-title :deep(.ff-icon) {
-  color: #ff6a3d;
+  color: var(--ff-hot);
 }
 .ths__hero-sub {
   margin: var(--ff-space-1) 0 0;
@@ -503,11 +503,11 @@ onMounted(async () => {
   color: var(--ff-brand-text);
 }
 .ths__banner--warn {
-  background: color-mix(in srgb, #ff9f2e 12%, transparent);
-  color: #b9701a;
+  background: color-mix(in srgb, var(--ff-hot) 12%, transparent);
+  color: var(--ff-hot-text);
 }
 .ths__banner--warn :deep(.ff-icon) {
-  color: #d98324;
+  color: var(--ff-hot-text);
 }
 .ths__subtabs {
   flex: 1 1 auto;
@@ -585,19 +585,19 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 .ths__rank.is-1 {
-  background: linear-gradient(135deg, #ff7a45, #ff4d4f);
-  color: #fff;
+  background: var(--ff-hot-strong);
+  color: var(--ff-hot-fg);
 }
 .ths__rank.is-2 {
-  background: linear-gradient(135deg, #ffa940, #ff7a45);
-  color: #fff;
+  background: color-mix(in srgb, var(--ff-hot) 26%, var(--ff-bg-surface));
+  color: var(--ff-hot-text);
 }
 .ths__rank.is-3 {
-  background: linear-gradient(135deg, #ffc53d, #ffa940);
-  color: #fff;
+  background: color-mix(in srgb, var(--ff-hot) 12%, var(--ff-bg-surface));
+  color: var(--ff-hot-text);
 }
 .ths__rank-chg {
-  font-size: 10px;
+  font-size: var(--ff-fs-micro);
   font-weight: var(--ff-fw-semibold);
   font-variant-numeric: tabular-nums;
 }
@@ -635,7 +635,7 @@ onMounted(async () => {
   margin-top: 4px;
 }
 .ths__tag {
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   line-height: 1.6;
   padding: 0 6px;
   border-radius: var(--ff-radius-sm);
@@ -644,8 +644,8 @@ onMounted(async () => {
   white-space: nowrap;
 }
 .ths__tag--pop {
-  background: color-mix(in srgb, #ff6a3d 16%, transparent);
-  color: #d9431f;
+  background: color-mix(in srgb, var(--ff-hot) 16%, transparent);
+  color: var(--ff-hot-text);
   font-weight: var(--ff-fw-medium);
 }
 .ths__tag--etf {
@@ -683,7 +683,7 @@ onMounted(async () => {
 .ths__rank--sm {
   width: 20px;
   height: 20px;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   flex: 0 0 auto;
 }
 .ths__topic-title {

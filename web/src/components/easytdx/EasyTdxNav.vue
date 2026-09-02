@@ -158,7 +158,7 @@ function onSceneClick(scene) {
 }
 .etdx-nav__group-head {
   margin: 4px 4px 0;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--ff-text-tertiary);
@@ -168,7 +168,7 @@ function onSceneClick(scene) {
 }
 .etdx-nav__hits-title {
   margin: 4px 4px 0;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--ff-text-tertiary);
@@ -229,7 +229,7 @@ function onSceneClick(scene) {
   padding: 0 7px;
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-subtle);
-  font-size: 10.5px;
+  font-size: var(--ff-fs-micro);
   font-family: var(--ff-font-mono, monospace);
   color: var(--ff-text-tertiary);
 }
@@ -274,7 +274,7 @@ function onSceneClick(scene) {
 }
 .etdx-nav__item-tag {
   flex: none;
-  font-size: 10px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   padding: 0 6px;
   border-radius: 4px;

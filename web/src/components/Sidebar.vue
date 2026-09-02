@@ -249,7 +249,7 @@ onUnmounted(() => {
 }
 
 .ff-sidebar__group-title {
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -271,7 +271,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   border-radius: var(--ff-radius-md);
   color: var(--ff-text-secondary);
-  font-size: 13.5px;
+  font-size: var(--ff-fs-caption);
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
@@ -327,7 +327,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-family: var(--ff-font-mono);
   font-weight: 700;
   min-width: 18px;
@@ -365,7 +365,7 @@ onUnmounted(() => {
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-subtle);
   border: 1px solid var(--ff-border);
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-secondary);
   align-self: flex-start;
@@ -419,7 +419,7 @@ onUnmounted(() => {
 .ff-sidebar__live-text {
   letter-spacing: 0.03em;
   font-family: var(--ff-font-mono);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -432,7 +432,7 @@ onUnmounted(() => {
   gap: 5px;
   padding: 4px 10px;
   border-radius: var(--ff-radius-pill);
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   white-space: nowrap;
   border: 1px solid var(--ff-border);
   background: var(--ff-bg-subtle);
@@ -469,7 +469,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
   font-family: var(--ff-font-mono);
   font-variant-numeric: tabular-nums;
@@ -501,7 +501,7 @@ onUnmounted(() => {
 /* 移动抽屉内同样启用 footer */
 @media (max-width: 680px) {
   .ff-sidebar__clock {
-    font-size: 11px;
+    font-size: var(--ff-fs-xs);
   }
 }
 </style>

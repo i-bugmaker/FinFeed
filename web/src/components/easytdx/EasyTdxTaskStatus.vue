@@ -149,7 +149,7 @@ watch(
   justify-content: center;
 }
 .etdx-status__logs-empty {
-  color: #6b7785;
+  color: var(--ff-text-secondary);
   margin: 0;
 }
 .etdx-status__log {
@@ -164,16 +164,16 @@ watch(
   width: 52px;
 }
 .etdx-status__log.lvl-info .etdx-status__log-level {
-  color: #7fb3ff;
+  color: var(--ff-info-text);
 }
 .etdx-status__log.lvl-warning .etdx-status__log-level {
-  color: #f0c040;
+  color: var(--ff-warn-text);
 }
 .etdx-status__log.lvl-error .etdx-status__log-level {
-  color: var(--ff-up);
+  color: var(--ff-danger-text);
 }
 .etdx-status__log-msg {
-  color: #c5d0db;
+  color: var(--ff-text-secondary);
   flex: 1;
 }
 

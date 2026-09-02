@@ -183,7 +183,7 @@ onUnmounted(() => {
 }
 
 .ff-favorites-view__count {
-  font-size: 13px;
+  font-size: var(--ff-fs-caption);
   color: var(--ff-text-secondary);
 }
 

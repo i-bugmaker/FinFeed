@@ -169,35 +169,35 @@ const html = computed(() => {
 </template>
 
 <style scoped>
-.mdv { font-size: 14px; line-height: 1.7; color: var(--ff-text-primary); word-break: break-word; }
-.mdv :deep(h2) { font-size: 17px; font-weight: 700; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid var(--ff-brand); }
-.mdv :deep(h3) { font-size: 15px; font-weight: 600; margin: 16px 0 8px; }
-.mdv :deep(h4) { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: var(--ff-text-secondary); }
+.mdv { font-size: var(--ff-fs-body-sm); line-height: 1.7; color: var(--ff-text-primary); word-break: break-word; }
+.mdv :deep(h2) { font-size: var(--ff-fs-h3); font-weight: 700; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid var(--ff-brand); }
+.mdv :deep(h3) { font-size: var(--ff-fs-body); font-weight: 600; margin: 16px 0 8px; }
+.mdv :deep(h4) { font-size: var(--ff-fs-body-sm); font-weight: 600; margin: 14px 0 6px; color: var(--ff-text-secondary); }
 .mdv :deep(p) { margin: 8px 0; }
 .mdv :deep(ul), .mdv :deep(ol) { margin: 8px 0; padding-left: 22px; }
 .mdv :deep(li) { margin: 4px 0; }
 .mdv :deep(strong) { font-weight: 700; }
-.mdv :deep(.c-brand) { color: var(--ff-brand, #ff5f3b); font-weight: 700; }
-.mdv :deep(.c-red) { color: #e14c4c; font-weight: 700; }
-.mdv :deep(.c-green) { color: #2fa36b; font-weight: 700; }
-.mdv :deep(.c-orange) { color: #e8833a; font-weight: 700; }
-.mdv :deep(.c-blue) { color: #2f7fe8; font-weight: 700; }
-.mdv :deep(.c-gray) { color: #8a919f; font-weight: 700; }
-.mdv :deep(.c-purple) { color: #8b5cf6; font-weight: 700; }
-.mdv :deep(code) { font-family: var(--ff-font-mono, ui-monospace, monospace); font-size: 12.5px; background: var(--ff-bg-subtle); padding: 1px 6px; border-radius: 5px; }
+.mdv :deep(.c-brand) { color: var(--ff-brand-text, #ff5f3b); font-weight: 700; }
+.mdv :deep(.c-red) { color: var(--ff-up-text); font-weight: 700; }
+.mdv :deep(.c-green) { color: var(--ff-down-text); font-weight: 700; }
+.mdv :deep(.c-orange) { color: var(--ff-hot-text); font-weight: 700; }
+.mdv :deep(.c-blue) { color: var(--ff-text-link); font-weight: 700; }
+.mdv :deep(.c-gray) { color: var(--ff-text-secondary); font-weight: 700; }
+.mdv :deep(.c-purple) { color: var(--ff-accent-violet); font-weight: 700; }
+.mdv :deep(code) { font-family: var(--ff-font-mono, ui-monospace, monospace); font-size: var(--ff-fs-caption); background: var(--ff-bg-subtle); padding: 1px 6px; border-radius: 5px; }
 .mdv :deep(pre) { background: var(--ff-bg-subtle); border: 1px solid var(--ff-border); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
-.mdv :deep(pre code) { background: none; padding: 0; font-size: 12.5px; line-height: 1.6; }
+.mdv :deep(pre code) { background: none; padding: 0; font-size: var(--ff-fs-caption); line-height: 1.6; }
 .mdv :deep(blockquote) { margin: 10px 0; padding: 8px 14px; border-left: 3px solid var(--ff-border-brand); background: var(--ff-bg-subtle); border-radius: 0 8px 8px 0; color: var(--ff-text-secondary); }
 .mdv :deep(hr) { border: none; border-top: 1px dashed var(--ff-border); margin: 16px 0; }
 .mdv :deep(a) { color: var(--ff-brand); text-decoration: underline; text-underline-offset: 2px; }
-.mdv :deep(table) { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
-.mdv :deep(th) { background: var(--ff-bg-subtle); font-weight: 600; text-align: left; padding: 7px 10px; border: 1px solid var(--ff-border); color: var(--ff-text-secondary); font-size: 12px; }
+.mdv :deep(table) { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: var(--ff-fs-caption); }
+.mdv :deep(th) { background: var(--ff-bg-subtle); font-weight: 600; text-align: left; padding: 7px 10px; border: 1px solid var(--ff-border); color: var(--ff-text-secondary); font-size: var(--ff-fs-xs); }
 .mdv :deep(td) { padding: 7px 10px; border: 1px solid var(--ff-border); }
 .mdv :deep(.md-table) { overflow-x: auto; }
-.mdv--compact { font-size: 13px; line-height: 1.6; }
-.mdv--compact :deep(h2) { font-size: 15px; margin: 12px 0 6px; }
+.mdv--compact { font-size: var(--ff-fs-caption); line-height: 1.6; }
+.mdv--compact :deep(h2) { font-size: var(--ff-fs-body); margin: 12px 0 6px; }
 .mdv--compact :deep(p) { margin: 6px 0; }
-.mdv--compact :deep(table) { font-size: 12px; }
+.mdv--compact :deep(table) { font-size: var(--ff-fs-xs); }
 
 /* ── 移动端适配（D4）：代码块横向滚动 ── */
 @media (max-width: 768px) {

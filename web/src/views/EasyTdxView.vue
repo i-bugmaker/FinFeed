@@ -772,7 +772,7 @@ onBeforeUnmount(() => store.stopPolling())
   font-weight: 700;
 }
 .etdx-hero__mk {
-  font-size: 10.5px;
+  font-size: var(--ff-fs-micro);
   font-weight: 600;
   color: #fff;
   background: var(--ff-bg-brand);
@@ -792,7 +792,7 @@ onBeforeUnmount(() => store.stopPolling())
   min-width: 150px;
 }
 .etdx-hero__px {
-  font-size: 28px;
+  font-size: var(--ff-fs-2xl);
   font-weight: 700;
   font-family: var(--ff-font-mono, monospace);
   letter-spacing: -0.02em;
@@ -1174,7 +1174,7 @@ onBeforeUnmount(() => store.stopPolling())
   max-width: 300px;
   color: var(--ff-text-tertiary);
   font-family: var(--ff-font-mono, monospace);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
 }
 .etdx-taskbar__log--err {
   color: var(--ff-up-text);
@@ -1196,7 +1196,7 @@ onBeforeUnmount(() => store.stopPolling())
   padding: 3px 10px;
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-subtle);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
   transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
 }

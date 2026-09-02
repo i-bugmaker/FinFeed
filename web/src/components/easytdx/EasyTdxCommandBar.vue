@@ -92,7 +92,7 @@ function onClearStock() {
 }
 .etdx-cmdbar__title h1 {
   font-size: var(--ff-fs-title-sm);
-  font-weight: 800;
+  font-weight: var(--ff-fw-bold);
   color: var(--ff-text-primary);
   line-height: 1.3;
 }

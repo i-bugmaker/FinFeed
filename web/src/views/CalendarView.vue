@@ -203,7 +203,7 @@ onMounted(async () => {
   gap: 5px;
   padding: 4px 10px;
   border-radius: var(--ff-radius-sm);
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   font-weight: 500;
   color: var(--ff-text-secondary);
   background: none;
@@ -225,7 +225,7 @@ onMounted(async () => {
 
 .ff-calendar-view__count-badge {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
   font-family: var(--ff-font-mono);
 }
@@ -265,7 +265,7 @@ onMounted(async () => {
 }
 
 .ff-calendar-view__group-count {
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-tertiary);
 }
@@ -277,7 +277,7 @@ onMounted(async () => {
   align-items: center;
   padding: 12px 18px;
   border-bottom: 1px solid var(--ff-border-subtle);
-  font-size: 13.5px;
+  font-size: var(--ff-fs-caption);
   transition: background var(--ff-dur-fast);
 }
 
@@ -291,7 +291,7 @@ onMounted(async () => {
 
 .ff-calendar-view__date {
   color: var(--ff-text-tertiary);
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
 }
 
 .ff-calendar-view__cat-badge {
@@ -301,7 +301,7 @@ onMounted(async () => {
   padding: 2px 8px;
   border-radius: var(--ff-radius-xs);
   border: 1px solid var(--ff-border-subtle);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -317,7 +317,7 @@ onMounted(async () => {
   display: inline-block;
   margin-right: 6px;
   color: var(--ff-warn);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   letter-spacing: 1px;
 }
 

@@ -95,8 +95,8 @@
          苹方 / 鸿蒙 / 微软雅黑 / 思源黑体；浏览器逐字选择首个可渲染字体。
        · 数据数字统一走等宽 + 表格数字（tabular-nums），保证列对齐。
        · 每个「文字角色」= 字号 + 字重 + 行高 + 字距 的组合，见下方令牌。
-       · 字号采用 1.2 模块化刻度（12 · 13 · 15 · 17 · 19 · 24 · 26 · 32），
-         兼顾金融终端的信息密度与可读性。
+       · 字号采用 1.2 模块化刻度（11 · 12 · 13 · 14 · 15 · 17 · 19 · 24 · 26 · 32），
+         兼顾金融终端的信息密度与可读性；中文地板 12px，拉丁/数字角标 11px。
      ══════════════════════════════════════════════════════════════ */
   --ff-font-sans:
     'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -105,12 +105,18 @@
   --ff-font-display: var(--ff-font-sans);
   --ff-font-mono:
     'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace,
-    'Roboto Mono', 'Menlo', 'Consolas', monospace;
+    'Roboto Mono', 'Menlo', 'Consolas',
+    'PingFang SC', 'Microsoft YaHei', monospace;
+    /* ⚠️ CJK 字体必须排在 generic monospace 之前：等宽栈里渲染中文时，
+       若没有显式中文字体，Windows 会回退到宋体（小字号锯齿发虚）。
+       拉丁/数字仍由 JetBrains Mono / Consolas 渲染，中文落雅黑/苹方。 */
   --ff-font-cjk:
     'PingFang SC', 'HarmonyOS Sans SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans CN', sans-serif;
 
-  /* —— 字号刻度（模块化 1.2） —— */
+  /* —— 字号刻度（模块化 1.2）——
+     全站字号地板：中文 12px（--ff-fs-xs），拉丁/数字角标 11px（--ff-fs-micro）。
+     禁止出现 <11px 的字号。 */
   --ff-fs-display: 32px;     /* Hero / 落地页主标题 */
   --ff-fs-2xl: 26px;         /* 超大统计数字 */
   --ff-fs-h1: 24px;          /* 页面主标题 */
@@ -121,7 +127,9 @@
   --ff-fs-body: 15px;        /* 正文基准 */
   --ff-fs-body-sm: 14px;     /* 辅助正文 */
   --ff-fs-caption: 13px;     /* 标注 / 脚注 */
-  --ff-fs-overline: 11.5px;  /* 眉题 / 标签 */
+  --ff-fs-xs: 12px;          /* 中文小字地板：徽章 / 元信息（中文禁用更小字号） */
+  --ff-fs-micro: 11px;       /* 拉丁/数字角标专用地板（计数、序号、箭头；禁用于中文） */
+  --ff-fs-overline: 12px;    /* 眉题 / 标签（原 11.5px，v4.5 收敛到刻度） */
   /* 数据数字专用字号（等宽对齐） */
   --ff-fs-data-lg: 18px;
   --ff-fs-data: 15px;
@@ -130,7 +138,6 @@
   --ff-fs-lg: 18px;
   --ff-fs-md: 16px;
   --ff-fs-sm: 14px;
-  --ff-fs-xs: 12px;
 
   /* —— 行高刻度（按角色微调：标题紧、正文舒） —— */
   --ff-lh-display: 1.15;
@@ -400,6 +407,16 @@
   --ff-warn-border: #fde68a;
   --ff-warn-text: #b45309;
 
+  /* 热度 / 涨停榜橙（ThsHotList / ThsLimitUp 等榜单场景）
+     v4.5 可访问性修正：原硬编码 #ff6a3d(2.85) / #d98324(2.91) / 白字黄底(1.58)
+     均未达 WCAG AA；现文字级 ≥6.3:1、徽章白字 5.18:1、图标描边 3.56:1。 */
+  --ff-hot: #ea580c;                /* 图标 / 描边 / 图表（≥3:1） */
+  --ff-hot-strong: #c2410c;         /* 徽章实底（白字 5.18:1） */
+  --ff-hot-fg: #ffffff;
+  --ff-hot-subtle: #fff7ed;         /* 浅底 */
+  --ff-hot-border: #fed7aa;
+  --ff-hot-text: #9a3412;           /* 文字级（白底 7.31 / 浅底 6.88） */
+
   /* 危险 */
   --ff-danger: #dc2626;
   --ff-danger-hover: #b91c1c;
@@ -580,6 +597,14 @@
   --ff-warn-subtle: rgba(245, 158, 11, 0.15);
   --ff-warn-border: rgba(245, 158, 11, 0.35);
   --ff-warn-text: #fde68a;
+
+  /* 热度 / 涨停榜橙（暗色） */
+  --ff-hot: #fb923c;
+  --ff-hot-strong: #c2410c;
+  --ff-hot-fg: #ffffff;
+  --ff-hot-subtle: rgba(251, 146, 60, 0.15);
+  --ff-hot-border: rgba(251, 146, 60, 0.35);
+  --ff-hot-text: #fdba74;
 
   /* 危险 */
   --ff-danger: #ef4444;

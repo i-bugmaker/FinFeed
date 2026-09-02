@@ -177,12 +177,25 @@ v4.1 已按 WCAG 2.1 AA 修正，改前 → 改后（on `--ff-bg-surface`）：
 - 西文 / UI：`Inter` → `system-ui` → `-apple-system` → `Segoe UI`
 - 中文回退：苹方 → 鸿蒙 → 微软雅黑 → 思源黑体（浏览器逐字选择首个可渲染字体）
 - **数据数字**：`JetBrains Mono` + `tabular-nums`，保证列表列对齐
+  ⚠️ 等宽栈内**必须**在 generic `monospace` 之前显式列出 CJK 字体
+  （现栈已含 `'PingFang SC', 'Microsoft YaHei'`）：等宽场景常混排中文
+  （TDX 字段值、抽屉明细等），若缺中文字体，Windows 会回退到宋体，
+  小字号下锯齿发虚。v4.5 已修复，勿再删。
 - `font-synthesis: none` 禁止伪粗体/伪斜体（CJK 无真斜体）
+- Web 字体**自托管**（`public/fonts/` + `src/styles/fonts.css`，latin 子集
+  可变字体共约 80KB），不再依赖 Google Fonts CDN；中文不打 webfont。
 
 ### 4.2 字阶（模块化 1.2）
 
-`display 32 · 2xl 26 · h1 24 · h2 19 · h3 17 · h4 16 · body-lg 17 · body 15 · body-sm 14 · caption 13 · overline 11.5`
+`display 32 · 2xl 26 · h1 24 · h2 19 · h3 17 · h4 16 · body-lg 17 · body 15 · body-sm 14 · caption 13 · xs 12 · micro 11`
 数据字号：`data-lg 18 / data 15 / data-sm 13`
+
+**字号地板（v4.5 硬约束）**：
+- 中文文本最小 **12px**（`--ff-fs-xs`）；11px（`--ff-fs-micro`）仅限
+  拉丁字母 / 数字 / 符号角标（计数、序号、时间、箭头），**禁止用于中文**。
+- 全站禁止出现 <11px 的字号；`ui_audit.py` 会拦截一切绕过令牌的
+  `font-size: Npx` 硬编码（白名单仅 tokens.css 与 StyleGuideView.vue）。
+  历史 252 处硬编码已于 v4.5 迁移完毕（`scripts/migrate_font_sizes.py`）。
 
 ### 4.3 角色化组合
 
@@ -201,7 +214,7 @@ v4.1 已按 WCAG 2.1 AA 修正，改前 → 改后（on `--ff-bg-surface`）：
 | 辅助正文 | `.ff-body-sm` | 14 | 400 | 1.55 | — |
 | 标注 | `.ff-caption` | 13 | 400 | 1.50 | — |
 | 标签 | `.ff-label` | 13 | 600 | 1.50 | 0.04em |
-| 眉题 | `.ff-overline` | 11.5 | 700 | 1.40 | 0.09em |
+| 眉题 | `.ff-overline` | 12 | 700 | 1.40 | 0.09em |
 | 数据数字 | `.ff-num` (+`--lg/--sm`) | 15/18/13 | 500 | — | 0 |
 
 > ⚠️ **落地率低**：上述工具类中，除 `.ff-num`（93 处）外，其余在 89 个组件中总共只用了约 15 次，`.ff-page__header` 定义了却从未使用。各视图仍在自写标题样式。见 §10 技术债 D2。
@@ -210,7 +223,12 @@ v4.1 已按 WCAG 2.1 AA 修正，改前 → 改后（on `--ff-bg-surface`）：
 
 - 亮色：`subpixel-antialiased`（边缘锐利、字重饱满）
 - 暗色：`antialiased`（避免彩边光晕），正文字距由 `-0.006em` 放宽到 `0`
-- Web 字体经 `preconnect` + `display=swap` 加载，弱网不阻塞渲染
+- Web 字体自托管 + `display=swap`，不阻塞渲染（见 §4.1）
+- **小字中文字重**：微软雅黑仅 Regular/Bold 两档，`font-weight: 600` 在
+  Windows 上直接落 Bold；≤13px 的中文徽章/标签/表头用 600，700 只留给
+  标题、大数字与拉丁角标（v4.5 已全量清理）
+- **图表文字**：ECharts canvas 无浏览器最小字号兜底，轴标/图例一律 ≥11px
+  （`chartFont()`，见 `composables/useChartTheme.js`），轴标用次级文本色
 
 ---
 

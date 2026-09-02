@@ -1,7 +1,7 @@
 /**
  * useChartTheme — ECharts 统一主题出口
  *
- * 背景：ECharts 渲染在 canvas 上，无法消费 CSS 变量（var(--ff-*)）。
+ * 背景：ECharts 渲染在 canvas 上，无法消费 CSS 变量（--ff-* 语义令牌）。
  * 所有图表颜色必须经 getComputedStyle 解析语义令牌，并在主题切换后重渲染。
  *
  * 用法：
@@ -34,9 +34,14 @@ export function hexToRgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
 }
 
-/** 常用坐标轴标签样式（统一 10px / 三级文本色）。 */
+/** 图表文字字号地板：canvas 渲染无浏览器最小字号兜底，轴标/图例 ≥11px 保证可读。 */
+export function chartFont(px = 11) {
+  return Math.max(11, Math.round(px))
+}
+
+/** 常用坐标轴标签样式（统一 11px / 次级文本色）。 */
 export function axisLabelStyle() {
-  return { fontSize: 10, color: chartVar('--ff-text-tertiary', '#64748b') }
+  return { fontSize: chartFont(11), color: chartVar('--ff-text-secondary', '#475569') }
 }
 
 /**

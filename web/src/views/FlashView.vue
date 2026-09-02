@@ -312,13 +312,13 @@ onUnmounted(() => {
 }
 
 .ff-flash-view__stat-label {
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-tertiary);
   font-weight: 500;
 }
 
 .ff-flash-view__stat-val {
-  font-size: 14px;
+  font-size: var(--ff-fs-body-sm);
   font-weight: 700;
   color: var(--ff-text-primary);
 }

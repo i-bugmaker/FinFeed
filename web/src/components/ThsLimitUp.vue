@@ -657,7 +657,7 @@ onMounted(async () => {
   color: var(--ff-text-primary);
 }
 .lu__hero-title :deep(.ff-icon) {
-  color: #ff6a3d;
+  color: var(--ff-hot);
 }
 .lu__hero-sub {
   margin: var(--ff-space-1) 0 0;
@@ -708,11 +708,11 @@ onMounted(async () => {
   color: var(--ff-brand-text);
 }
 .lu__banner--warn {
-  background: color-mix(in srgb, #ff9f2e 12%, transparent);
-  color: #b9701a;
+  background: color-mix(in srgb, var(--ff-hot) 12%, transparent);
+  color: var(--ff-hot-text);
 }
 .lu__banner--warn :deep(.ff-icon) {
-  color: #d98324;
+  color: var(--ff-hot-text);
 }
 .lu__loading {
   padding: var(--ff-space-5);
@@ -776,7 +776,7 @@ onMounted(async () => {
   color: var(--ff-text-up);
 }
 .lu__metric--open .lu__metric-val {
-  color: #d98324;
+  color: var(--ff-hot-text);
 }
 .lu__metric--lower .lu__metric-val {
   color: var(--ff-down-text);
@@ -842,12 +842,12 @@ onMounted(async () => {
   display: inline-block;
   margin-top: 4px;
   max-width: 100%;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   line-height: 1.6;
   padding: 0 6px;
   border-radius: var(--ff-radius-sm);
-  background: color-mix(in srgb, #ff6a3d 14%, transparent);
-  color: #d9431f;
+  background: color-mix(in srgb, var(--ff-hot) 14%, transparent);
+  color: var(--ff-hot-text);
   white-space: normal;
   word-break: break-all;
 }
@@ -905,8 +905,8 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 .lu__tier-height.is-hot {
-  background: linear-gradient(135deg, #ff7a45, #ff4d4f);
-  color: #fff;
+  background: var(--ff-hot-strong);
+  color: var(--ff-hot-fg);
   border-radius: var(--ff-radius-sm);
   padding: 2px 8px;
 }
@@ -955,7 +955,7 @@ onMounted(async () => {
 .lu__chip-reason {
   display: block;
   width: 100%;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
   line-height: 1.4;
   word-break: break-all;
@@ -1032,8 +1032,8 @@ onMounted(async () => {
 }
 .lu__cell.is-active {
   z-index: 3;
-  border-color: #ff6a3d;
-  box-shadow: 0 0 0 2px #ff6a3d;
+  border-color: var(--ff-hot);
+  box-shadow: 0 0 0 2px var(--ff-hot);
 }
 .lu__cell-name {
   font-size: var(--ff-fs-caption);
@@ -1051,13 +1051,13 @@ onMounted(async () => {
   color: var(--ff-text-up);
 }
 .lu__cell-num i {
-  font-size: 10px;
+  font-size: var(--ff-fs-xs);
   font-style: normal;
   font-weight: var(--ff-fw-medium);
   margin-left: 1px;
 }
 .lu__cell-high {
-  font-size: 10px;
+  font-size: var(--ff-fs-xs);
   line-height: 1.1;
   color: var(--ff-text-secondary);
   white-space: nowrap;
@@ -1066,7 +1066,7 @@ onMounted(async () => {
   max-width: 100%;
 }
 .lu__cell-chg {
-  font-size: 10px;
+  font-size: var(--ff-fs-micro);
   font-weight: var(--ff-fw-semibold);
 }
 
@@ -1146,7 +1146,7 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
 }
 .lu__sc-plate {
@@ -1262,7 +1262,7 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
 }
 .lu__vane-tags {

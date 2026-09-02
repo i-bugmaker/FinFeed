@@ -148,14 +148,14 @@ const option = computed(() => {
         type: 'category',
         data: times,
         boundaryGap: false,
-        axisLabel: { hideOverlap: true, color: chartVar('--ff-text-tertiary'), fontSize: 10 },
+        axisLabel: { hideOverlap: true, color: chartVar('--ff-text-secondary'), fontSize: chartFont(10) },
         axisLine: { lineStyle: { color: chartVar('--ff-border') } },
       },
       yAxis: {
         scale: true,
         type: 'value',
         splitLine: { lineStyle: { type: 'dashed', color: chartVar('--ff-bg-subtle') } },
-        axisLabel: { color: chartVar('--ff-text-tertiary'), fontSize: 10 },
+        axisLabel: { color: chartVar('--ff-text-secondary'), fontSize: chartFont(10) },
       },
       series: [
         {
@@ -179,7 +179,7 @@ const option = computed(() => {
             silent: true,
             symbol: 'none',
             lineStyle: { type: 'dashed', color: chartVar('--ff-text-tertiary') },
-            label: { formatter: '基准', color: chartVar('--ff-text-tertiary'), fontSize: 10 },
+            label: { formatter: '基准', color: chartVar('--ff-text-tertiary'), fontSize: chartFont(10) },
             data: [{ yAxis: base }],
           },
           z: 2,
@@ -247,7 +247,7 @@ const option = computed(() => {
         type: 'category',
         data: dates,
         gridIndex: 1,
-        axisLabel: { hideOverlap: true, color: chartVar('--ff-text-tertiary'), fontSize: 10 },
+        axisLabel: { hideOverlap: true, color: chartVar('--ff-text-secondary'), fontSize: chartFont(10) },
         axisLine: { lineStyle: { color: chartVar('--ff-border') } },
       },
     ],
@@ -257,7 +257,7 @@ const option = computed(() => {
         type: 'value',
         gridIndex: 0,
         splitLine: { lineStyle: { type: 'dashed', color: chartVar('--ff-bg-subtle') } },
-        axisLabel: { color: chartVar('--ff-text-tertiary'), fontSize: 10 },
+        axisLabel: { color: chartVar('--ff-text-secondary'), fontSize: chartFont(10) },
       },
       {
         scale: true,
@@ -265,7 +265,7 @@ const option = computed(() => {
         gridIndex: 1,
         splitNumber: 2,
         splitLine: { show: false },
-        axisLabel: { color: chartVar('--ff-text-tertiary'), fontSize: 10 },
+        axisLabel: { color: chartVar('--ff-text-secondary'), fontSize: chartFont(10) },
       },
     ],
     dataZoom: [

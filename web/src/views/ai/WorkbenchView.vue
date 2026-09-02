@@ -138,28 +138,28 @@ onBeforeUnmount(() => store.stopPolling())
 <style scoped>
 .wb { display: flex; flex-direction: column; gap: 16px; }
 .wb__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.wb__head-title { font-size: 17px; font-weight: 700; color: var(--ff-text-primary); margin: 0; }
+.wb__head-title { font-size: var(--ff-fs-h3); font-weight: 700; color: var(--ff-text-primary); margin: 0; }
 .wb__head-actions { display: flex; align-items: center; gap: 10px; }
-.wb__link { border: none; background: none; color: var(--ff-brand); font-size: 13px; font-weight: 600; cursor: pointer; }
+.wb__link { border: none; background: none; color: var(--ff-brand); font-size: var(--ff-fs-caption); font-weight: 600; cursor: pointer; }
 .wb__banner { display: flex; align-items: center; gap: 12px; background: #fef7e6; border: 1px solid #f5d9a0; border-radius: 12px; padding: 13px 16px; color: #b45309; }
-.wb__banner-text { display: flex; flex-direction: column; gap: 1px; font-size: 13px; flex: 1; }
-.wb__banner-text b { font-size: 14px; }
+.wb__banner-text { display: flex; flex-direction: column; gap: 1px; font-size: var(--ff-fs-caption); flex: 1; }
+.wb__banner-text b { font-size: var(--ff-fs-body-sm); }
 .wb__banner-text span { color: #92400e; opacity: 0.85; }
 .wb__task { background: var(--ff-bg-surface); border: 1px solid var(--ff-border-brand); border-radius: 13px; padding: 13px 16px; }
 .wb__task-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.wb__task-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--ff-brand-dark); background: var(--ff-bg-brand-subtle); padding: 3px 10px; border-radius: 10px; }
-.wb__task-title { flex: 1; font-size: 13px; color: var(--ff-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb__task-link { border: none; background: none; color: var(--ff-brand); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.wb__task-badge { display: inline-flex; align-items: center; gap: 5px; font-size: var(--ff-fs-xs); font-weight: 600; color: var(--ff-brand-dark); background: var(--ff-bg-brand-subtle); padding: 3px 10px; border-radius: 10px; }
+.wb__task-title { flex: 1; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb__task-link { border: none; background: none; color: var(--ff-brand); font-size: var(--ff-fs-caption); font-weight: 600; cursor: pointer; }
 .wb__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
 .wb__report { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--ff-border); border-radius: 11px; cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard); }
 .wb__report:hover { border-color: var(--ff-border-brand); background: var(--ff-bg-brand-subtle); }
 .wb__report-ic { color: var(--ff-brand); flex-shrink: 0; }
 .wb__report-main { flex: 1; min-width: 0; }
-.wb__report-title { font-size: 13px; font-weight: 600; color: var(--ff-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb__report-meta { font-size: 11px; color: var(--ff-text-3); margin-top: 1px; }
-.wb__report-status { font-size: 10.5px; color: var(--ff-brand); font-weight: 600; }
+.wb__report-title { font-size: var(--ff-fs-caption); font-weight: 600; color: var(--ff-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb__report-meta { font-size: var(--ff-fs-xs); color: var(--ff-text-3); margin-top: 1px; }
+.wb__report-status { font-size: var(--ff-fs-xs); color: var(--ff-brand); font-weight: 600; }
 .wb__report-status.pin { color: var(--ff-brand); }
 .wb__report-arrow { color: var(--ff-text-3); }
 .wb__empty { text-align: center; padding: 30px 10px; color: var(--ff-text-3); }
-.wb__empty p { font-size: 13px; margin: 8px 0 12px; }
+.wb__empty p { font-size: var(--ff-fs-caption); margin: 8px 0 12px; }
 </style>

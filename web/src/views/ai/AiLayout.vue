@@ -100,19 +100,19 @@ function onGenerate() {
 .ail { max-width: var(--ff-container-max, 1400px); margin: 0 auto; padding: 0 24px 40px; display: flex; flex-direction: column; gap: 16px; }
 .ail__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 8px; }
 .ail__right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.ail__model { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ff-text-secondary); background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 20px; padding: 5px 13px; }
+.ail__model { display: inline-flex; align-items: center; gap: 7px; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 20px; padding: 5px 13px; }
 .ail__dot { width: 8px; height: 8px; border-radius: 50%; }
 .ail__dot.ok { background: var(--ff-down); }
 .ail__dot.bad { background: var(--ff-up); }
-.ail__model-name { font-size: 11px; color: var(--ff-text-3); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ail__kbd { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ff-border); background: var(--ff-bg-surface); border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); }
+.ail__model-name { font-size: var(--ff-fs-xs); color: var(--ff-text-3); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ail__kbd { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ff-border); background: var(--ff-bg-surface); border-radius: 8px; padding: 5px 10px; font-size: var(--ff-fs-xs); font-weight: 600; color: var(--ff-text-2); cursor: pointer; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); }
 .ail__kbd:hover { border-color: var(--ff-brand); color: var(--ff-brand); }
 .ail__nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--ff-bg-subtle); border-radius: 12px; padding: 4px 8px 4px 4px; border: 1px solid var(--ff-border); }
 .ail__tabs { display: flex; gap: 4px; flex-wrap: nowrap; min-width: 0; overflow-x: auto; }
-.ail__tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--ff-text-2); text-decoration: none; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); white-space: nowrap; }
+.ail__tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 9px; font-size: var(--ff-fs-caption); font-weight: 600; color: var(--ff-text-2); text-decoration: none; transition: background-color var(--ff-dur-fast) var(--ff-ease-standard), border-color var(--ff-dur-fast) var(--ff-ease-standard), color var(--ff-dur-fast) var(--ff-ease-standard), box-shadow var(--ff-dur-fast) var(--ff-ease-standard), transform var(--ff-dur-fast) var(--ff-ease-standard); white-space: nowrap; }
 .ail__tab:hover { color: var(--ff-text-primary); }
 .ail__tab.on { background: var(--ff-bg-surface); color: var(--ff-brand-dark); box-shadow: 0 1px 4px rgba(16, 40, 30, 0.12); }
-.ail__badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--ff-brand); color: var(--ff-bg-surface); font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.ail__badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--ff-brand); color: var(--ff-bg-surface); font-size: var(--ff-fs-micro); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .ail__content { min-height: 0; }
 
 @media (max-width: 900px) {

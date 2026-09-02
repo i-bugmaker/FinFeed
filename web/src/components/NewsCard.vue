@@ -169,7 +169,7 @@ function aiAnalyze() {
   align-items: center;
   gap: var(--ff-space-2);
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
 }
 
 .ff-newscard__importance {

@@ -7,7 +7,7 @@
  */
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { echarts } from '@/shared/lib/echarts'
-import { chartVar as themeColor, useChartTheme } from '@/composables/useChartTheme'
+import { chartVar as themeColor, chartFont, useChartTheme } from '@/composables/useChartTheme'
 import AppIcon from '../../ui/AppIcon.vue'
 
 const props = defineProps({
@@ -110,7 +110,7 @@ function buildOption() {
           show: true,
           formatter: props.normalized ? '昨收 0.00%' : '昨收 ' + fmtNum(pre_close),
           color: preColor,
-          fontSize: 10,
+          fontSize: chartFont(10),
           position: 'insideEndTop',
         },
         lineStyle: { color: preColor, type: 'dashed', width: 1 },
@@ -120,7 +120,7 @@ function buildOption() {
 
   const commonAxis = {
     axisLine: { lineStyle: { color: axisColor } },
-    axisLabel: { color: mutedColor, fontSize: 10 },
+    axisLabel: { color: mutedColor, fontSize: chartFont(10) },
     splitLine: { lineStyle: { color: axisColor, opacity: 0.35 } },
   }
 
@@ -136,7 +136,7 @@ function buildOption() {
       confine: true,
       backgroundColor: themeColor('--ff-bg-surface') || '#ffffff',
       borderColor: themeColor('--ff-border') || '#e7e2d8',
-      textStyle: { color: textColor, fontSize: 12 },
+      textStyle: { color: textColor, fontSize: chartFont(12) },
       formatter(params) {
         const i = params[0]?.dataIndex ?? 0
         const p = points[i]
@@ -164,7 +164,7 @@ function buildOption() {
         data: times,
         boundaryGap: false,
         axisLine: { lineStyle: { color: axisColor } },
-        axisLabel: { color: mutedColor, fontSize: 10, interval: Math.max(1, Math.floor(times.length / 5) - 1) },
+        axisLabel: { color: mutedColor, fontSize: chartFont(10), interval: Math.max(1, Math.floor(times.length / 5) - 1) },
         axisTick: { show: false },
         splitLine: { show: false },
         markArea: lunchArea ? { silent: true, data: lunchArea } : undefined,
@@ -179,7 +179,7 @@ function buildOption() {
         scale: true,
         axisLabel: {
           color: mutedColor,
-          fontSize: 10,
+          fontSize: chartFont(10),
           formatter: (v) => (props.normalized ? v.toFixed(1) + '%' : fmtNum(v)),
         },
         splitLine: {
@@ -357,7 +357,7 @@ watch(
   height: 20px;
   padding: 0 4px;
   border-radius: var(--ff-radius-xs);
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 700;
   color: #fff;
 }
@@ -375,7 +375,7 @@ watch(
 .smic__code {
   font-family: var(--ff-font-mono, monospace);
   color: var(--ff-text-tertiary);
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
 }
 .smic__sp { flex: 1; }
 .smic__price {
@@ -394,7 +394,7 @@ watch(
 .smic__amt {
   font-family: var(--ff-font-mono, monospace);
   color: var(--ff-text-tertiary);
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-variant-numeric: tabular-nums;
 }
 .smic__close {

@@ -429,7 +429,7 @@ function onLeave(el, done) {
 .nr-panel__text {
   max-width: 74ch;
   margin: 0;
-  font-size: 15px;
+  font-size: var(--ff-fs-body);
   font-weight: 400;
   line-height: 1.75;
   color: var(--ff-text-secondary);

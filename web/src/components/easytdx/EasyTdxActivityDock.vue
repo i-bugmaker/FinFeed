@@ -224,7 +224,7 @@ function loadRecentTask(t) {
 .etdx-dock__chip-time {
   color: var(--ff-text-tertiary);
   font-family: var(--ff-font-mono, monospace);
-  font-size: 10.5px;
+  font-size: var(--ff-fs-micro);
 }
 .etdx-dock__body {
   flex: 1;

@@ -615,7 +615,7 @@ onMounted(loadAll)
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-subtle);
   border: 1px solid var(--ff-border-subtle);
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-secondary);
   white-space: nowrap;

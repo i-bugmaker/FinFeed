@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-tertiary);
   letter-spacing: 0.08em;
@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
   gap: 3px;
   padding: 2px 8px;
   border-radius: var(--ff-radius-pill);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-brand);
   transition: background var(--ff-dur-fast);

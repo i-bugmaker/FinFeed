@@ -490,7 +490,7 @@ onMounted(load)
   min-width: 0;
 }
 .lu-sum__card-price {
-  font-size: 17px;
+  font-size: var(--ff-fs-h3);
   font-weight: var(--ff-fw-bold);
   line-height: 1.2;
   color: var(--ff-text-up);

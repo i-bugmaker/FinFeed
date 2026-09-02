@@ -52,7 +52,7 @@ const kpis = computed(() => {
   white-space: nowrap;
 }
 .etdx-kpi__value {
-  font-size: 22px;
+  font-size: var(--ff-fs-h1);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--ff-text-primary);

@@ -177,14 +177,14 @@ onUnmounted(() => {
 }
 
 .ff-sentiment-view__gauge-val {
-  font-size: 32px;
-  font-weight: 800;
+  font-size: var(--ff-fs-display);
+  font-weight: var(--ff-fw-bold);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .ff-sentiment-view__gauge-label {
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-secondary);
   margin-top: 4px;
@@ -201,7 +201,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: var(--ff-fs-caption);
 }
 
 .ff-sentiment-view__ratio-title {
@@ -213,7 +213,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: var(--ff-fs-caption);
 }
 
 .ff-sentiment-view__ratio-bar {
@@ -248,7 +248,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   font-weight: 500;
   font-family: var(--ff-font-mono);
   padding: 2px 8px;

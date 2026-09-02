@@ -8,7 +8,7 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } 
 import { useRouter } from 'vue-router'
 import { echarts } from '@/shared/lib/echarts'
 import { useScreenerStore } from '../store/screener'
-import { chartVar, axisLabelStyle, useChartTheme } from '@/composables/useChartTheme'
+import { chartVar, chartFont, axisLabelStyle, useChartTheme } from '@/composables/useChartTheme'
 import { toastSuccess, toastError } from '../composables/useToast'
 import AppIcon from '../ui/AppIcon.vue'
 import AppButton from '../ui/AppButton.vue'
@@ -638,7 +638,7 @@ function boardPieOption(res) {
   const data = Object.entries(counts).map(([name, value]) => ({ name, value }))
   return {
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, textStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    legend: { bottom: 0, textStyle: { fontSize: chartFont(11), color: chartVar('--ff-text-secondary', '#475569') } },
     series: [{
       type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
       itemStyle: { borderColor: chartVar('--ff-bg-surface', '#ffffff'), borderWidth: 2 },
@@ -653,7 +653,7 @@ function tierBarOption(res) {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 40, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: names, axisLabel: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    xAxis: { type: 'category', data: names, axisLabel: { fontSize: chartFont(11), color: chartVar('--ff-text-secondary', '#475569') } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: axisLabelStyle() },
     series: [{
       type: 'bar', data: counts, barWidth: '46%',
@@ -672,7 +672,7 @@ function dimAvgOption(res) {
   ))
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v) => Number(v).toFixed(1) },
-    legend: { top: 0, textStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    legend: { top: 0, textStyle: { fontSize: chartFont(11), color: chartVar('--ff-text-secondary', '#475569') } },
     grid: { left: 44, right: 16, top: 30, bottom: 30 },
     xAxis: { type: 'category', data: dimOrder.map((d) => DIM_LABELS[d]), axisLabel: axisLabelStyle() },
     yAxis: { type: 'value', max: 100, axisLabel: axisLabelStyle() },
@@ -693,7 +693,7 @@ function layersOption(ev) {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 44, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: keys, axisLabel: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    xAxis: { type: 'category', data: keys, axisLabel: { fontSize: chartFont(11), color: chartVar('--ff-text-secondary', '#475569') } },
     yAxis: { type: 'value', name: '前瞻收益 %', axisLabel: axisLabelStyle() },
     series: [{
       type: 'bar', data: keys.map((k) => ev.layers[k]), barWidth: '52%',
@@ -716,7 +716,7 @@ function dimIcOption(ev) {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 44, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: 'category', data: dims.map((d) => DIM_LABELS[d] || d), axisLabel: { fontSize: 11, color: chartVar('--ff-text-tertiary', '#64748b') } },
+    xAxis: { type: 'category', data: dims.map((d) => DIM_LABELS[d] || d), axisLabel: { fontSize: chartFont(11), color: chartVar('--ff-text-secondary', '#475569') } },
     yAxis: { type: 'value', name: 'ICIR', axisLabel: axisLabelStyle() },
     series: [{
       type: 'bar', data: dims.map((d) => pd[d].icir), barWidth: '46%',
@@ -1602,7 +1602,7 @@ onBeforeUnmount(() => {
 .engine-card.is-on { border-color: var(--ff-brand); background: var(--ff-bg-brand-soft, var(--ff-bg-subtle)); box-shadow: 0 0 0 1px var(--ff-brand) inset; }
 .engine-card__label { font-size: var(--ff-fs-body-sm); font-weight: 600; color: var(--ff-text-primary); }
 .engine-card.is-on .engine-card__label { color: var(--ff-text-brand); }
-.engine-card__hint { font-size: 11px; color: var(--ff-text-tertiary); line-height: 1.35; }
+.engine-card__hint { font-size: var(--ff-fs-xs); color: var(--ff-text-tertiary); line-height: 1.35; }
 
 .dim-row { display: flex; align-items: center; gap: 8px; }
 .dim-row__label { width: 56px; font-size: var(--ff-fs-caption); color: var(--ff-text-secondary); flex: none; }
@@ -1668,9 +1668,9 @@ onBeforeUnmount(() => {
   border: 1px solid var(--ff-border); border-radius: var(--ff-radius-md);
   min-height: 0;
 }
-.screener-stat__label { font-size: 11px; color: var(--ff-text-tertiary); }
-.screener-stat__value { font-size: 17px; font-weight: 700; font-family: var(--ff-font-mono); font-variant-numeric: tabular-nums; color: var(--ff-text-primary); line-height: 1.15; }
-.screener-stat__value--sm { font-size: 12px; font-weight: 600; line-height: 1.35; }
+.screener-stat__label { font-size: var(--ff-fs-xs); color: var(--ff-text-tertiary); }
+.screener-stat__value { font-size: var(--ff-fs-h3); font-weight: 700; font-family: var(--ff-font-mono); font-variant-numeric: tabular-nums; color: var(--ff-text-primary); line-height: 1.15; }
+.screener-stat__value--sm { font-size: var(--ff-fs-xs); font-weight: 600; line-height: 1.35; }
 .screener-stat--strong .screener-stat__value { color: var(--ff-up-text); }
 .screener-stat--watch .screener-stat__value { color: var(--ff-warn-text); }
 .screener-stat--observe .screener-stat__value { color: var(--ff-neutral-text); }
@@ -1684,10 +1684,10 @@ onBeforeUnmount(() => {
 }
 .engine-diag__weights { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
 .engine-diag__w { display: flex; align-items: center; gap: 4px; min-width: 56px; }
-.engine-diag__w-label { font-size: 11px; color: var(--ff-text-tertiary); white-space: nowrap; }
+.engine-diag__w-label { font-size: var(--ff-fs-xs); color: var(--ff-text-tertiary); white-space: nowrap; }
 .engine-diag__w-bar { flex: 1; height: 3px; border-radius: var(--ff-radius-pill); background: var(--ff-bg-subtle); overflow: hidden; min-width: 34px; }
 .engine-diag__w-fill { display: block; height: 100%; border-radius: var(--ff-radius-pill); background: var(--ff-brand); }
-.engine-diag__meta { font-size: 11px; color: var(--ff-text-tertiary); white-space: nowrap; flex: none; }
+.engine-diag__meta { font-size: var(--ff-fs-xs); color: var(--ff-text-tertiary); white-space: nowrap; flex: none; }
 
 /* ── 页签 ── */
 .screener-tabs { flex: none; display: flex; align-items: center; gap: var(--ff-space-2); }
@@ -1730,7 +1730,7 @@ onBeforeUnmount(() => {
 .screener-table th.is-center, .screener-table td.is-center { text-align: center; }
 .screener-table th.is-sortable { cursor: pointer; user-select: none; }
 .screener-table th.is-sortable:hover { color: var(--ff-text-brand); }
-.screener-table__sort { font-size: 9px; margin-left: 2px; color: var(--ff-text-brand); }
+.screener-table__sort { font-size: var(--ff-fs-micro); margin-left: 2px; color: var(--ff-text-brand); }
 .screener-row { cursor: pointer; transition: background var(--ff-dur-fast); }
 .screener-row:hover { background: var(--ff-bg-hover); }
 .screener-row--strong { background: var(--ff-up-subtle); }
@@ -1786,7 +1786,7 @@ onBeforeUnmount(() => {
 .strategy-doc :deep(th), .strategy-doc :deep(td) { padding: 6px 8px; border: 1px solid var(--ff-border); text-align: left; font-size: var(--ff-fs-caption); }
 .strategy-doc :deep(th) { background: var(--ff-bg-subtle); font-weight: 600; }
 .strategy-doc :deep(blockquote) { margin: var(--ff-space-3) 0; padding: var(--ff-space-3) var(--ff-space-4); border-left: 3px solid var(--ff-brand); background: var(--ff-bg-subtle); color: var(--ff-text-secondary); border-radius: 0 var(--ff-radius-md) var(--ff-radius-md) 0; }
-.strategy-doc :deep(code) { background: var(--ff-bg-subtle); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.strategy-doc :deep(code) { background: var(--ff-bg-subtle); padding: 1px 5px; border-radius: 4px; font-size: var(--ff-fs-xs); }
 
 /* ── 对比弹窗 ── */
 .cmp { display: flex; flex-direction: column; gap: var(--ff-space-4); }

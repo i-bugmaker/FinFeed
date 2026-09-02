@@ -1095,7 +1095,7 @@ const visibleStocks = computed(() => {
 }
 .smm__item-code {
   font-family: var(--ff-font-mono, monospace);
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-tertiary);
 }
 .smm__item-pct {
@@ -1138,7 +1138,7 @@ const visibleStocks = computed(() => {
   padding: 3px 6px 3px 3px;
   border-radius: var(--ff-radius-pill);
   background: var(--ff-bg-subtle);
-  font-size: 11.5px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-secondary);
 }
 .smm__sel-kind {
@@ -1148,7 +1148,7 @@ const visibleStocks = computed(() => {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  font-size: 10px;
+  font-size: var(--ff-fs-micro);
   font-weight: 700;
   color: #fff;
   flex: none;

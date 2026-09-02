@@ -150,15 +150,15 @@ function buildCandle(t) {
         return p.axisValue
       },
     },
-    legend: { data: ['MA5', 'MA10', 'MA20'], top: 0, right: 10, textStyle: { color: 'var(--ff-text-3)', fontSize: 11 } },
+    legend: { data: ['MA5', 'MA10', 'MA20'], top: 0, right: 10, textStyle: { color: chartVar('--ff-text-secondary', '#475569'), fontSize: chartFont(11) } },
     grid,
     xAxis: [
-      { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: 'var(--ff-border)' } }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10.5 } },
+      { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: chartVar('--ff-border', '#e2e8f0') } }, axisLabel: { color: chartVar('--ff-text-secondary', '#475569'), fontSize: chartFont(10.5) } },
       ...(volIdx >= 0 ? [{ type: 'category', gridIndex: 1, data: x, axisLabel: { show: false } }] : []),
     ],
     yAxis: [
-      { scale: true, splitLine: { lineStyle: { color: 'var(--ff-bg-subtle)' } }, axisLabel: { formatter: (v) => Number(v).toFixed(2) } },
-      ...(volIdx >= 0 ? [{ gridIndex: 1, splitLine: { show: false }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10 } }] : []),
+      { scale: true, splitLine: { lineStyle: { color: chartVar('--ff-bg-subtle', '#f1f5f9') } }, axisLabel: { formatter: (v) => Number(v).toFixed(2) } },
+      ...(volIdx >= 0 ? [{ gridIndex: 1, splitLine: { show: false }, axisLabel: { color: chartVar('--ff-text-secondary', '#475569'), fontSize: chartFont(10) } }] : []),
     ],
     dataZoom: [{ type: 'inside', xAxisIndex: volIdx >= 0 ? [0, 1] : 0 }, { type: 'slider', height: 16, xAxisIndex: volIdx >= 0 ? [0, 1] : 0 }],
     series,
@@ -188,8 +188,8 @@ function buildFund(t) {
       },
     },
     grid: { left: 70, right: 16, top: 24, bottom: 30 },
-    xAxis: { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: 'var(--ff-border)' } }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10.5 } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: 'var(--ff-bg-subtle)' } }, axisLabel: { color: 'var(--ff-text-3)', fontSize: 10, formatter: (v) => (Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : Math.abs(v) >= 1e4 ? (v / 1e4).toFixed(0) + '万' : v) } },
+    xAxis: { type: 'category', data: x, boundaryGap: true, axisLine: { lineStyle: { color: chartVar('--ff-border', '#e2e8f0') } }, axisLabel: { color: chartVar('--ff-text-secondary', '#475569'), fontSize: chartFont(10.5) } },
+    yAxis: { type: 'value', splitLine: { lineStyle: { color: 'var(--ff-bg-subtle)' } }, axisLabel: { color: chartVar('--ff-text-secondary', '#475569'), fontSize: chartFont(10), formatter: (v) => (Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : Math.abs(v) >= 1e4 ? (v / 1e4).toFixed(0) + '万' : v) } },
     series: [
       {
         name: columnLabel(cols[dataCol]),

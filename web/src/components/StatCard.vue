@@ -102,7 +102,7 @@ function go() {
   flex-shrink: 0;
 }
 .ff-statcard__label {
-  font-size: 13px;
+  font-size: var(--ff-fs-caption);
   color: var(--ff-text-secondary);
   font-weight: 500;
   white-space: nowrap;
@@ -124,7 +124,7 @@ function go() {
 }
 
 .ff-statcard__value {
-  font-size: 24px;
+  font-size: var(--ff-fs-h1);
   font-weight: 700;
   line-height: 1.2;
   color: var(--ff-text-primary);
@@ -134,7 +134,7 @@ function go() {
 }
 
 .ff-statcard__sub {
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-tertiary);
   white-space: nowrap;
   overflow: hidden;

@@ -108,7 +108,7 @@ const sentimentOption = computed(() => {
       left: 'center',
       top: '34%',
       textStyle: { fontSize: 18, fontWeight: 700, color: chartVar('--ff-text-primary') },
-      subtextStyle: { fontSize: 11, color: chartVar('--ff-text-tertiary') },
+      subtextStyle: { fontSize: chartFont(11), color: chartVar('--ff-text-tertiary') },
     },
     tooltip: { trigger: 'item', formatter: '{b}：{c} 条（{d}%）' },
     legend: { bottom: 0, left: 'center', icon: 'circle', itemWidth: 8, itemHeight: 8 },
@@ -123,7 +123,7 @@ const sentimentOption = computed(() => {
           show: true,
           formatter: '{d}%',
           color: chartVar('--ff-text-secondary'),
-          fontSize: 12,
+          fontSize: chartFont(12),
           fontWeight: 500,
         },
         labelLine: { length: 8, length2: 6 },
@@ -170,13 +170,13 @@ const trendOption = computed(() => {
       type: 'category',
       data: xs,
       boundaryGap: false,
-      axisLabel: { fontSize: 10, color: chartVar('--ff-text-tertiary'), hideOverlap: true },
+      axisLabel: { fontSize: chartFont(10), color: chartVar('--ff-text-secondary'), hideOverlap: true },
       axisLine: { lineStyle: { color: chartVar('--ff-border') } },
     },
     yAxis: {
       type: 'value',
       splitLine: { lineStyle: { type: 'dashed', color: chartVar('--ff-bg-subtle') } },
-      axisLabel: { fontSize: 10, color: chartVar('--ff-text-tertiary') },
+      axisLabel: { fontSize: chartFont(10), color: chartVar('--ff-text-secondary') },
     },
     series: [
       {
@@ -213,12 +213,12 @@ const importanceOption = computed(() => {
     xAxis: {
       type: 'value',
       splitLine: { lineStyle: { type: 'dashed', color: chartVar('--ff-bg-subtle') } },
-      axisLabel: { fontSize: 10, color: chartVar('--ff-text-tertiary') },
+      axisLabel: { fontSize: chartFont(10), color: chartVar('--ff-text-secondary') },
     },
     yAxis: {
       type: 'category',
       data: cats,
-      axisLabel: { fontSize: 11, color: chartVar('--ff-text-secondary') },
+      axisLabel: { fontSize: chartFont(11), color: chartVar('--ff-text-secondary') },
     },
     series: [
       {
@@ -228,7 +228,7 @@ const importanceOption = computed(() => {
           itemStyle: { color: palette[cats[i]] || chartVar('--ff-chart-primary'), borderRadius: [0, 4, 4, 0] },
         })),
         barMaxWidth: 16,
-        label: { show: true, position: 'right', fontSize: 10, color: chartVar('--ff-text-tertiary') },
+        label: { show: true, position: 'right', fontSize: chartFont(10), color: chartVar('--ff-text-secondary') },
       },
     ],
   }
@@ -283,7 +283,7 @@ const categoryOption = computed(() => {
         center: ['50%', '40%'],
         avoidLabelOverlap: true,
         itemStyle: { borderColor: chartVar('--ff-bg-surface'), borderWidth: 2, borderRadius: 4 },
-        label: { show: true, formatter: '{d}%', fontSize: 11, color: chartVar('--ff-text-secondary') },
+        label: { show: true, formatter: '{d}%', fontSize: chartFont(11), color: chartVar('--ff-text-secondary') },
         data: entries.map((e, i) => ({
           name: e[0],
           value: e[1],

@@ -21,14 +21,9 @@
     <meta property="og:image" content="/og-image.png" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <!-- Web 字体：Inter（西文/界面）+ JetBrains Mono（数据等宽）
-         系统字体为回退；display=swap 保证离线/弱网时不阻塞渲染 -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-    />
+    <!-- Web 字体：自托管可变字体（src/styles/fonts.css + public/fonts/）。
+         Inter（西文/界面）+ JetBrains Mono（数据等宽），latin 子集共约 80KB，
+         display=swap 不阻塞渲染；中文走系统字体栈（tokens.css --ff-font-sans）。 -->
 
     <title>FinFeed 实时财经新闻监控</title>
   </head>

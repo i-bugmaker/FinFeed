@@ -21,12 +21,18 @@ PX_SPACING = re.compile(
 )
 TRANS_ALL = re.compile(r"transition:\s*all")
 OUTLINE_NONE = re.compile(r"outline\s*:\s*(?:none|0)")
+FONT_SIZE_PX = re.compile(r"font-size\s*:\s*(\d+(?:\.\d+)?)px")
 MEDIA = re.compile(r"@media")
 DARK = re.compile(r"data-theme|prefers-color-scheme")
 FOCUS = re.compile(r":focus(?:-visible)?")
 EMOJI = re.compile(
     "[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F000-\U0001F2FF]"
 )
+
+# 硬编码 font-size 白名单：令牌定义本体 / 演示刻度的样式指南页。
+# 自 v4.5 起全站字号必须引用 --ff-fs-* 令牌（含 --ff-fs-micro 11px 地板），
+# CI 对白名单之外出现的任何 font-size: Npx 直接失败。
+FONT_SIZE_ALLOW = {"styles/tokens.css", "views/StyleGuideView.vue"}
 
 
 def walk(root):
@@ -84,6 +90,9 @@ def main():
         elif f.endswith(".vue"):
             style = "".join(re.findall(r"<style[^>]*>(.*?)</style>", t, re.S))
             local_defined |= set(TOKEN_DEF.findall(style))
+            # 模板/脚本中以引号出现的自定义属性名是动态定义位：
+            # 如 :style="{ '--nr-accent': accent }"（运行时注入，带回退值）
+            local_defined |= set(re.findall(r"['\"](--[\w-]+)['\"]", t))
 
     use_count = collections.Counter()
     use_loc = collections.defaultdict(collections.Counter)
@@ -98,9 +107,15 @@ def main():
     total_undef = sum(undef.values())
 
     # ── 2. 逐文件指标 ──────────────────────────────────────────────────
+    fs_violations = []  # (file, line, value)
     per_file = []
     for f, t in docs.items():
         style = t if f.endswith(".css") else "".join(re.findall(r"<style[^>]*>(.*?)</style>", t, re.S))
+        rel = f[len(root) + 1:] if f.startswith(root + "/") else f
+        if rel not in FONT_SIZE_ALLOW:
+            for m in FONT_SIZE_PX.finditer(style):
+                line = style.count("\n", 0, m.start()) + 1
+                fs_violations.append((f, line, m.group(0)))
         per_file.append(
             {
                 "file": f,
@@ -108,6 +123,9 @@ def main():
                 "hex_style": len(HEX.findall(style)),
                 "rgba": len(RGBA.findall(t)),
                 "px": len(PX_SPACING.findall(t)),
+                "fs_px": len(FONT_SIZE_PX.findall(style))
+                if (f[len(root) + 1:] if f.startswith(root + "/") else f) not in FONT_SIZE_ALLOW
+                else 0,
                 "trans_all": len(TRANS_ALL.findall(t)),
                 "outline_none": len(OUTLINE_NONE.findall(t)),
                 "media": len(MEDIA.findall(t)),
@@ -188,6 +206,19 @@ def main():
         print(f"    {r['file'][len(root) + 1:]:<56} {r['lines']:>5} 行")
     print(f"    合计 {len(no_resp)} 个组件无任何断点适配")
 
+    print("\n" + "-" * W)
+    print("6. 硬编码 font-size（v4.5 起一律引用 --ff-fs-* 令牌；中文地板 12 / 角标 11）")
+    print("-" * W)
+    fs_total = len(fs_violations)
+    if fs_violations:
+        for f, line, val in fs_violations[:40]:
+            print(f"    {f[len(root) + 1:]}:{line}  {val}")
+        if fs_total > 40:
+            print(f"    … 共 {fs_total} 处（仅显示前 40）")
+        print(f"    合计 {fs_total} 处硬编码字号")
+    else:
+        print("    ✔ 未发现硬编码字号")
+
     print("\n" + "=" * W)
     print("审计结束（只读，未修改任何文件）")
     print("=" * W)
@@ -197,6 +228,9 @@ def main():
         return 1
     if args.fail and any(r["undef_tok"] for r in per_file):
         print("[FAIL] 存在含失效令牌引用的文件，CI 门槛未通过", file=sys.stderr)
+        return 1
+    if args.fail and fs_total > 0:
+        print(f"[FAIL] 存在 {fs_total} 处硬编码 font-size，CI 门槛未通过", file=sys.stderr)
         return 1
     return 0
 

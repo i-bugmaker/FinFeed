@@ -334,7 +334,7 @@ const selectOptions = [
 .ff-styleguide__type-tag {
   flex: 0 0 64px;
   font-family: var(--ff-font-mono);
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-tertiary);
   background: var(--ff-bg-subtle);
@@ -412,7 +412,7 @@ const selectOptions = [
 }
 
 .ff-styleguide__icon-name {
-  font-size: 10px;
+  font-size: var(--ff-fs-micro);
   line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;

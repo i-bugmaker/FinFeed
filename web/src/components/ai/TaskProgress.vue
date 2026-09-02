@@ -85,7 +85,7 @@ const doneCount = computed(() => (props.task?.status === 'success' ? STAGES.leng
 
 <style scoped>
 .tp { width: 100%; }
-.tp__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; margin-bottom: 6px; }
+.tp__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--ff-fs-caption); margin-bottom: 6px; }
 .tp__msg { color: var(--ff-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tp__pct { font-family: var(--ff-font-mono, ui-monospace, monospace); font-weight: 600; color: var(--ff-text-primary); }
 .tp--err .tp__msg { color: var(--ff-up); }
@@ -96,7 +96,7 @@ const doneCount = computed(() => (props.task?.status === 'success' ? STAGES.leng
 .tp--run .tp__seg.active { background: var(--ff-brand-light); animation: tp-pulse 1.4s infinite ease-in-out; }
 .tp--err .tp__seg.on { background: var(--ff-up); }
 .tp__labels { display: flex; gap: 3px; margin-top: 5px; }
-.tp__label { flex: 1; text-align: center; font-size: 10.5px; color: var(--ff-text-3); transition: color 200ms; }
+.tp__label { flex: 1; text-align: center; font-size: var(--ff-fs-xs); color: var(--ff-text-3); transition: color 200ms; }
 .tp__label.on { color: var(--ff-text-secondary); font-weight: 600; }
 @keyframes tp-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
 </style>

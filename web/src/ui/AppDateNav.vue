@@ -215,7 +215,7 @@ function onPicked(v) {
   align-items: center;
   justify-content: center;
   width: 30px;
-  font-size: 16px;
+  font-size: var(--ff-fs-h4);
   line-height: 1;
   color: var(--ff-icon-muted);
   transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
@@ -240,7 +240,7 @@ function onPicked(v) {
 .ff-datenav__main:disabled { cursor: default; }
 
 .ff-datenav__l1 {
-  font-size: 14px;
+  font-size: var(--ff-fs-body-sm);
   font-weight: 700;
   color: var(--ff-text-primary);
   letter-spacing: 0.2px;
@@ -253,7 +253,7 @@ function onPicked(v) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--ff-fs-xs);
   color: var(--ff-text-tertiary);
   line-height: 1;
   white-space: nowrap;
@@ -265,7 +265,7 @@ function onPicked(v) {
   height: 15px;
   padding: 0 6px;
   border-radius: var(--ff-radius-pill);
-  font-size: 10px;
+  font-size: var(--ff-fs-micro);
   font-weight: 600;
   letter-spacing: 0.5px;
 }
@@ -290,7 +290,7 @@ function onPicked(v) {
   align-items: center;
   justify-content: center;
   width: 30px;
-  font-size: 12px;
+  font-size: var(--ff-fs-xs);
   font-weight: 600;
   color: var(--ff-text-secondary);
   transition: background var(--ff-dur-fast), color var(--ff-dur-fast);
@@ -314,7 +314,7 @@ function onPicked(v) {
     padding: 3px 8px;
   }
   .ff-datenav__l1 {
-    font-size: 13px;
+    font-size: var(--ff-fs-caption);
   }
   .ff-datenav__btn,
   .ff-datenav__today {

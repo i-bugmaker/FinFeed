@@ -439,25 +439,25 @@ onUnmounted(closeStream)
    选择器带类型前缀提升特异性，确保覆盖 MarkdownView 的共享默认值，
    仅作用于本弹窗，不影响报告/对话等其他使用处。 */
 .ai-ana__body :deep(div.mdv) {
-  font-size: 15px;
+  font-size: var(--ff-fs-body);
   line-height: 1.75;
   color: var(--ff-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-.ai-ana__body :deep(div.mdv) h2 { font-size: 18px; }
-.ai-ana__body :deep(div.mdv) h3 { font-size: 16px; }
-.ai-ana__body :deep(div.mdv) h4 { font-size: 15px; }
+.ai-ana__body :deep(div.mdv) h2 { font-size: var(--ff-fs-data-lg); }
+.ai-ana__body :deep(div.mdv) h3 { font-size: var(--ff-fs-h4); }
+.ai-ana__body :deep(div.mdv) h4 { font-size: var(--ff-fs-body); }
 .ai-ana__body :deep(div.mdv) p { margin: 9px 0; }
 .ai-ana__body :deep(div.mdv) ul,
 .ai-ana__body :deep(div.mdv) ol { margin: 9px 0; padding-left: 24px; }
 .ai-ana__body :deep(div.mdv) li { margin: 5px 0; }
-.ai-ana__body :deep(div.mdv) code { font-size: 13.5px; }
-.ai-ana__body :deep(div.mdv) pre { font-size: 13px; }
-.ai-ana__body :deep(div.mdv) pre code { font-size: 13px; }
-.ai-ana__body :deep(div.mdv) table { font-size: 13.5px; }
-.ai-ana__body :deep(div.mdv) th { font-size: 12.5px; padding: 8px 12px; }
+.ai-ana__body :deep(div.mdv) code { font-size: var(--ff-fs-caption); }
+.ai-ana__body :deep(div.mdv) pre { font-size: var(--ff-fs-caption); }
+.ai-ana__body :deep(div.mdv) pre code { font-size: var(--ff-fs-caption); }
+.ai-ana__body :deep(div.mdv) table { font-size: var(--ff-fs-caption); }
+.ai-ana__body :deep(div.mdv) th { font-size: var(--ff-fs-caption); padding: 8px 12px; }
 .ai-ana__body :deep(div.mdv) td { padding: 8px 12px; }
 /* 流式光标 */
 .ai-ana__caret {
