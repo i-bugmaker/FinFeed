@@ -1913,6 +1913,11 @@ $("#poolIndex").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-toggle]"); if (!btn) return;
   toggleTarget(JSON.parse(btn.dataset.toggle));
 });
+// ETF 池：勾选加入对比
+$("#poolETF").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-toggle]"); if (!btn) return;
+  toggleTarget(JSON.parse(btn.dataset.toggle));
+});
 // 搜索结果面板：板块 + 个股 + 指数 均可勾选
 $("#poolSearch").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-toggle]"); if (!btn) return;
