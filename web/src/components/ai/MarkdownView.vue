@@ -22,6 +22,11 @@ function escapeHtml(s) {
 
 function inline(text) {
   let s = escapeHtml(text)
+  // 彩色标记 ==色::文本== / ==文本==（安全：纯文本标记，不引入 HTML）
+  // 支持色名：红/绿/橙/蓝/灰/紫；无前缀时用品牌强调色
+  const COLOR_NAMES = { 红: 'red', 绿: 'green', 橙: 'orange', 蓝: 'blue', 灰: 'gray', 紫: 'purple' }
+  s = s.replace(/==(红|绿|橙|蓝|灰|紫)::(.+?)==/g, (m, c, t) => `<span class="c-${COLOR_NAMES[c]}">${t}</span>`)
+  s = s.replace(/==(.+?)==/g, '<span class="c-brand">$1</span>')
   // 代码段 `code`
   s = s.replace(/`([^`]+)`/g, '<code>$1</code>')
   // 粗体 **x** 与 __x__
@@ -172,6 +177,13 @@ const html = computed(() => {
 .mdv :deep(ul), .mdv :deep(ol) { margin: 8px 0; padding-left: 22px; }
 .mdv :deep(li) { margin: 4px 0; }
 .mdv :deep(strong) { font-weight: 700; }
+.mdv :deep(.c-brand) { color: var(--ff-brand, #ff5f3b); font-weight: 700; }
+.mdv :deep(.c-red) { color: #e14c4c; font-weight: 700; }
+.mdv :deep(.c-green) { color: #2fa36b; font-weight: 700; }
+.mdv :deep(.c-orange) { color: #e8833a; font-weight: 700; }
+.mdv :deep(.c-blue) { color: #2f7fe8; font-weight: 700; }
+.mdv :deep(.c-gray) { color: #8a919f; font-weight: 700; }
+.mdv :deep(.c-purple) { color: #8b5cf6; font-weight: 700; }
 .mdv :deep(code) { font-family: var(--ff-font-mono, ui-monospace, monospace); font-size: 12.5px; background: var(--ff-bg-subtle); padding: 1px 6px; border-radius: 5px; }
 .mdv :deep(pre) { background: var(--ff-bg-subtle); border: 1px solid var(--ff-border); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
 .mdv :deep(pre code) { background: none; padding: 0; font-size: 12.5px; line-height: 1.6; }

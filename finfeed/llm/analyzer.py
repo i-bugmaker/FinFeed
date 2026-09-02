@@ -14,6 +14,7 @@
 
 import json
 import logging
+import re
 import time
 from collections import Counter, defaultdict
 from typing import Any, Callable, Dict, List, Optional
@@ -24,8 +25,8 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 from . import collector, context, prompts
 from .cleanup import clean_report_body
 from .client import LLMClient, LLMError, estimate_tokens
-from .collector import NewsRecord
-from .config import get_prompts
+from .collector import NewsRecord, _focus_keywords, _reorder_by_focus
+from .config import agent_system, get_prompts
 from .decorate import decorate_report_body
 
 logger = logging.getLogger("news_monitor")
@@ -224,7 +225,33 @@ def _build_sources(records: List[NewsRecord]) -> List[Dict[str, Any]]:
     ]
 
 
-def run_analysis(
+def _narrow_by_focus(records: List[NewsRecord], focus: str, max_rel: int = 30, max_other: int = 6) -> List[NewsRecord]:
+    """快讯分析：把素材真正收窄到与 focus 相关的少量资讯。
+
+    仅保留「相关条目 + 少量无关兜底」，从而让单批即可容纳（total_chunks==1），
+    单条快讯分析不再触发分批压缩（MAP）。
+    """
+    if not focus or not records:
+        return records
+    kws = _focus_keywords(focus)
+    if not kws:
+        return records
+
+    def score(r: NewsRecord) -> int:
+        hay = f"{r.title} {r.intro} {' '.join(r.stocks)} {' '.join(r.keywords)}"
+        return sum(2 if w in r.title else (1 if w in hay else 0) for w in kws)
+
+    scored = [(score(r), r) for r in records]
+    rel = [r for s, r in scored if s > 0]
+    irr = [r for s, r in scored if s <= 0]
+    rel.sort(key=lambda x: x.publish_ts)
+    irr.sort(key=lambda x: x.publish_ts)
+    rel = rel[:max_rel]
+    irr = [_ for _ in irr[:max_other]]
+    return rel + irr
+
+
+def _run_legacy(
     client: LLMClient,
     *,
     hours: int = 24,
@@ -237,11 +264,12 @@ def run_analysis(
     chunk_chars: int = 8000,
     max_chunks: int = 20,
     focus: str = "",
+    news_id: Optional[int] = None,
     progress: Optional[ProgressFn] = None,
     should_cancel: Optional[CancelFn] = None,
     on_delta: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
-    """执行一次完整分析，返回报告 payload
+    """执行一次完整分析（review/stock/sentiment 原逻辑），返回报告 payload
 
     report_type: review 复盘简报（map-reduce/单轮）｜stock 个股深度｜sentiment 舆情研判
     on_delta: 生成正文阶段的增量回调，用于 SSE 渐进输出。
@@ -300,6 +328,11 @@ def run_analysis(
             max_items=max_items,
             order=order,
         )
+    # 复盘简报 + 携带特定快讯关注点时：把素材真正收窄到与该快讯相关的少量资讯，
+    # 使报告围绕该快讯展开、且单批即可容纳（total_chunks==1，不触发分批压缩）
+    if report_type == "review" and focus.strip():
+        records = _narrow_by_focus(records, focus)
+        meta["focus_reordered"] = True
     if not records:
         if report_type == "stock":
             raise LLMError(
@@ -451,7 +484,7 @@ def run_analysis(
             ).replace("【关联资讯清单】", f"【{material_label}】")
             + focus_note
         )
-        body = _generate_final(P["stock_system"], user, cap=None)
+        body = _generate_final(agent_system("stock", P["stock_system"]), user, cap=None)
     elif report_type == "sentiment":
         _p("reduce", 30, "正在生成舆情研判报告…")
         material = "\n".join(chunks[0]) if total_chunks == 1 else _map_digests()
@@ -468,7 +501,7 @@ def run_analysis(
             )
             + focus_note
         )
-        body = _generate_final(P["sentiment_system"], user, cap=None)
+        body = _generate_final(agent_system("sentiment", P["sentiment_system"]), user, cap=None)
     elif total_chunks == 1:
         # ---------- 复盘简报：单批直接成文 ----------
         _check()
@@ -487,7 +520,7 @@ def run_analysis(
             )
             + focus_note
         )
-        body = _generate_final(P["reduce_system"], user, cap=None)
+        body = _generate_final(agent_system("review", P["reduce_system"]), user, cap=None)
         _p("reduce", 92, "报告生成完成")
     else:
         # ---------- 复盘简报：MAP + REDUCE ----------
@@ -507,7 +540,7 @@ def run_analysis(
             )
             + focus_note
         )
-        body = _generate_final(P["reduce_system"], user, cap=None)
+        body = _generate_final(agent_system("review", P["reduce_system"]), user, cap=None)
         _p("reduce", 92, "报告生成完成")
 
     # ---------- 拼装 ----------
@@ -518,6 +551,11 @@ def run_analysis(
         title = f"FinFeed 个股诊断 · {stock_name}({stock_code}) · {generated_at[:16]}"
     elif report_type == "sentiment":
         title = f"FinFeed 市场舆情研判 · {generated_at[:16]}"
+    elif focus.strip():
+        focus_title = focus.strip().split("|")[0].split("｜")[0].strip()
+        if len(focus_title) > 26:
+            focus_title = focus_title[:26] + "…"
+        title = f"快讯分析 · {focus_title} · {generated_at[:16]}"
     else:
         title = f"FinFeed 近{meta['hours']}小时资讯复盘 · {generated_at[:16]}"
 
@@ -545,7 +583,12 @@ def run_analysis(
     )
 
     body = decorate_report_body(clean_report_body(body))
-    content = header + stats_to_markdown(stats) + "\n---\n\n" + body.strip() + "\n" + footer
+    is_flash = report_type == "review" and focus.strip() != ""
+    if is_flash:
+        # 快讯/财经 AI 分析：聚焦单条快讯，去除全市场"数据概览"冗余段，报告更纯净
+        content = header + body.strip() + "\n" + footer
+    else:
+        content = header + stats_to_markdown(stats) + "\n---\n\n" + body.strip() + "\n" + footer
 
     return {
         "title": title,
@@ -567,3 +610,53 @@ def run_analysis(
         "end_ts": meta["end_ts"],
         "model": client.model,
     }
+
+
+# 顶层分发器：命中专用分析器（如 flash 单次直成文）则调用，否则回退 _run_legacy。
+def run_analysis(
+    client: LLMClient,
+    *,
+    hours: int = 24,
+    scope: str = collector.SCOPE_ALL,
+    report_type: str = "review",
+    stock_code: str = "",
+    min_importance: float = 0.0,
+    max_items: int = 500,
+    order: str = collector.ORDER_IMPORTANCE,
+    chunk_chars: int = 8000,
+    max_chunks: int = 20,
+    focus: str = "",
+    news_id: Optional[int] = None,
+    progress: Optional[ProgressFn] = None,
+    should_cancel: Optional[CancelFn] = None,
+    on_delta: Optional[Callable[[str], None]] = None,
+    **kw,
+) -> Dict[str, Any]:
+    """执行一次分析：get_analyzer(report_type) 命中则用专用分析器，否则沿用旧引擎。
+
+    新增报告类型 = 在 analyzers.py 新增 Analyzer 子类并 register_analyzer()，
+    无需改动本函数与其他调用方。
+    """
+    if report_type not in prompts.REPORT_TYPES:
+        report_type = "review"
+    from . import analyzers
+
+    a = analyzers.get_analyzer(report_type)
+    if a is not None:
+        return a.run(
+            client=client, hours=hours, scope=scope, report_type=report_type,
+            stock_code=stock_code, min_importance=min_importance, max_items=max_items,
+            order=order, chunk_chars=chunk_chars, max_chunks=max_chunks, focus=focus,
+            news_id=news_id, progress=progress, should_cancel=should_cancel,
+            on_delta=on_delta, **kw,
+        )
+    return _run_legacy(
+        client=client, hours=hours, scope=scope, report_type=report_type,
+        stock_code=stock_code, min_importance=min_importance, max_items=max_items,
+        order=order, chunk_chars=chunk_chars, max_chunks=max_chunks, focus=focus,
+        news_id=news_id, progress=progress, should_cancel=should_cancel,
+        on_delta=on_delta, **kw,
+    )
+
+
+from . import analyzers as _  # noqa: F401, E402 —— 触发分析器注册

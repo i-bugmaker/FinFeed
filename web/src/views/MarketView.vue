@@ -491,8 +491,15 @@ onBeforeUnmount(() => {
           class="ff-market-view__field"
           label="股票代码 / 名称"
           prefix-icon="search"
-          @enter="load"
         />
+        <AppButton
+          v-if="active === 'search'"
+          variant="tonal"
+          size="sm"
+          icon="search"
+          :loading="loading"
+          @click="load"
+        >查询</AppButton>
         <!-- 30 秒后台自动刷新：无任何按钮/下拉/开关，仅保留最后更新时间作数据新鲜度提示 -->
         <span v-if="lastUpdated" class="ff-market-view__autorefresh-time">更新于 {{ lastUpdated }}</span>
       </div>

@@ -87,16 +87,11 @@ function onDocClick(e) {
   if (!exportRoot.value) return
   if (!exportRoot.value.contains(e.target)) closeExport()
 }
-function onEsc(e) {
-  if (e.key === 'Escape') closeExport()
-}
 onMounted(() => {
   document.addEventListener('click', onDocClick)
-  document.addEventListener('keydown', onEsc)
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
-  document.removeEventListener('keydown', onEsc)
 })
 
 async function exportAs(fmt) {

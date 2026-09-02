@@ -48,6 +48,23 @@ def _filter_flash_only(news_list: list[NewsItem], source_stats: dict[str, int]) 
 console = Console()
 
 
+class _Clock:
+    """实时时钟：作为 header 的可渲染节点，每次被重绘时读取当前北京时间。
+
+    挂在 Live 渲染树中，由 autorefresh（1Hz）反复重新渲染（无需 tick 循环），
+    从而每秒更新标题栏时间。按渲染取值天然线程安全，也避免在 Text 上做原地
+    改写——不同 rich 版本对“清空/重写”缺统一 API（曾误用 Text.clear() 致启动即崩）。
+    时间串恒定 19 字符，宽度稳定，秒数跳变不引起 Align.center 横向重排。
+    """
+
+    def __rich_console__(self, console, options):
+        yield Text.assemble(
+            ("⚡ FinFeed 实时监控", "bold bright_white"),
+            ("  │  ", "dim"),
+            (now_bj().strftime("%Y-%m-%d %H:%M:%S"), "bright_cyan"),
+        )
+
+
 def build_news_table(news_list: list[NewsItem], max_rows: int = 0) -> Table:
     """构建新闻表格"""
     table = Table(
@@ -82,7 +99,7 @@ def build_news_table(news_list: list[NewsItem], max_rows: int = 0) -> Table:
         else:
             title_display.append(title)
 
-        source_tag = Text(f"[{source}]", style=source_color)
+        source_tag = Text(source, style=source_color)
 
         table.add_row(
             str(idx + 1),
@@ -105,13 +122,9 @@ def build_display(
     status: str,
     web_port: int = DEFAULT_WEB_PORT,
     restart_hotkey: bool = False,
+    clock: Optional[_Clock] = None,
 ) -> Layout:
     """构建完整的终端布局"""
-    # 时间戳固定 19 字符（YYYY-MM-DD HH:MM:SS），宽度恒定避免 Align.center 在秒数跳变时重排；
-    # 历史写法用裸 now_str()，秒位从 X→X+1 会引发 header 偶发横向 1px 抖动。
-    now_str = now_bj().strftime("%Y-%m-%d %H:%M:%S")
-    assert len(now_str) == 19, "时间戳格式必须固定 19 字符"
-
     news_list, source_stats = _filter_flash_only(news_list, source_stats)
 
     if "补抓" in status or "离线" in status:
@@ -127,15 +140,21 @@ def build_display(
 
     # 第二行同样做了字段宽度补齐：cycle(右对齐 6 字符)、total_news(右对齐 7)、new_count(右对齐 5)，
     # 防止 cycle 由 2 位 → 3 位（如 999 → 1000）时整行重新分栏。
+    # 第一行：传入 _Clock 时由 Live autorefresh 每秒重绘最新时间；缺省则一次性组装静态时间。
+    title_line = (
+        Align.center(clock)
+        if clock is not None
+        else Align.center(
+            Text.assemble(
+                ("⚡ FinFeed 实时监控", "bold bright_white"),
+                ("  │  ", "dim"),
+                (now_bj().strftime("%Y-%m-%d %H:%M:%S"), "bright_cyan"),
+            )
+        )
+    )
     header_panel = Panel(
         Group(
-            Align.center(
-                Text.assemble(
-                    ("⚡ FinFeed 实时监控", "bold bright_white"),
-                    ("  │  ", "dim"),
-                    (now_str, "bright_cyan"),
-                )
-            ),
+            title_line,
             Align.center(
                 Text.assemble(
                     (f"第 {cycle:>6d} 轮" if cycle > 0 else "   准备中", "magenta"),
@@ -237,6 +256,9 @@ class TerminalUI:
         # Live 自身自带刷新线程（refresh_per_second），本 TUI 数据更新粒度 5s，
         # 把 auto-refresh 降到 1Hz 已经够响应 size 变更；再高就是无意义重绘抖动源。
         self._refresh_per_second = 1
+        # 实时时钟：可渲染节点，Live autorefresh 每秒重绘时读当前时间，无需 tick 循环
+        # （解决时间仅随数据 5s 才跳）。
+        self._clock = _Clock()
 
     def update_data(
         self,
@@ -293,6 +315,7 @@ class TerminalUI:
             status=self._status,
             web_port=self._web_port,
             restart_hotkey=self._restart_hotkey,
+            clock=self._clock,
         )
 
     def _size_changed(self) -> bool:

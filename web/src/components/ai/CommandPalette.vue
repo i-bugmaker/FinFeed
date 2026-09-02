@@ -20,8 +20,7 @@ const inputEl = ref(null)
 const sel = ref(0)
 
 const COMMANDS = [
-  { id: 'workbench', label: '打开 AI 分析工作台', icon: 'dashboard', group: '页面', action: () => router.push('/ai') },
-  { id: 'analyst', label: '打开分析师工作区', icon: 'chatter', group: '页面', action: () => router.push('/ai/analyst') },
+  { id: 'workbench', label: '打开报告中心', icon: 'dashboard', group: '页面', action: () => router.push('/ai') },
   { id: 'reports', label: '打开研究报告', icon: 'file-text', group: '页面', action: () => router.push('/ai/reports') },
   { id: 'tasks', label: '打开任务中心', icon: 'activity', group: '页面', action: () => router.push('/ai/tasks') },
   { id: 'settings', label: '打开 AI 设置', icon: 'settings', group: '页面', action: () => router.push('/ai/settings') },
@@ -53,23 +52,6 @@ watch(() => props.open, (v) => {
 // 输入变化后结果集改变，高亮归零防止越界
 watch(q, () => (sel.value = 0))
 
-function onKeydown(e) {
-  const n = results.value.length
-  if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    if (n) sel.value = (sel.value + 1) % n
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    if (n) sel.value = (sel.value - 1 + n) % n
-  } else if (e.key === 'Enter') {
-    e.preventDefault()
-    run(results.value[sel.value])
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    emit('close')
-  }
-}
-
 function run(item) {
   if (!item) return
   emit('close')
@@ -87,8 +69,7 @@ function run(item) {
             <input
               ref="inputEl"
               v-model="q"
-              placeholder="输入命令或搜索最近报告…（↑↓ 选择 / Enter 执行 / Esc 关闭）"
-              @keydown="onKeydown"
+              placeholder="输入命令或搜索最近报告…"
             />
           </div>
           <div class="cp-list">

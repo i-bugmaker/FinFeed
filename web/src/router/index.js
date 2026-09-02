@@ -21,7 +21,6 @@ const MarketHotView = () => import('../views/MarketHotView.vue')
 // 工作台 / 分析师 / 研究报告 / 任务中心 / 设置
 const AiLayout = () => import('../views/ai/AiLayout.vue')
 const WorkbenchView = () => import('../views/ai/WorkbenchView.vue')
-const AnalystView = () => import('../views/ai/AnalystView.vue')
 const ReportsView = () => import('../views/ai/ReportsView.vue')
 const ReportReaderView = () => import('../views/ai/ReportReaderView.vue')
 const TasksView = () => import('../views/ai/TasksView.vue')
@@ -44,8 +43,8 @@ const routes = [
     component: AiLayout,
     meta: { title: 'AI 分析' },
     children: [
-      { path: '', name: 'ai', component: WorkbenchView, meta: { title: 'AI 分析工作台' } },
-      { path: 'analyst', name: 'ai-analyst', component: AnalystView, meta: { title: '分析师' } },
+      { path: '', name: 'ai', component: WorkbenchView, meta: { title: 'AI 分析' } },
+      { path: 'analyst', name: 'ai-analyst', redirect: '/ai' },
       { path: 'reports', name: 'ai-reports', component: ReportsView, meta: { title: '研究报告' } },
       { path: 'reports/:id', name: 'ai-report', component: ReportReaderView, meta: { title: '报告阅读' } },
       { path: 'tasks', name: 'ai-tasks', component: TasksView, meta: { title: '任务中心' } },

@@ -26,10 +26,8 @@ function go() {
     class="ff-statcard"
     :class="[tone && `ff-statcard--${tone}`, to && 'ff-statcard--link']"
     :role="to ? 'button' : undefined"
-    :tabindex="to ? 0 : undefined"
     :aria-label="to ? `查看 ${label}` : undefined"
     @click="go"
-    @keydown.enter="go"
   >
     <div class="ff-statcard__head">
       <AppIcon v-if="icon" :name="icon" size="sm" :tone="tone || 'muted'" class="ff-statcard__icon" />

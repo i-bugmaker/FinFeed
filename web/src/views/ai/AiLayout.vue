@@ -4,19 +4,18 @@
  * 顶部：模块页头（状态徽标 + 全局生成按钮）
  * 次导航：工作台 / 分析师 / 报告 / 任务 / 设置 五个子路由 Tab
  */
-import { computed, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAiStore } from '../../store/ai'
 import AppIcon from '../../ui/AppIcon.vue'
 import CommandPalette from '../../components/ai/CommandPalette.vue'
+import GenerateDialog from '../../components/ai/GenerateDialog.vue'
 
 const route = useRoute()
-const router = useRouter()
 const store = useAiStore()
 
 const NAVS = [
-  { to: '/ai', label: '工作台', icon: 'dashboard', exact: true },
-  { to: '/ai/analyst', label: '分析师', icon: 'chatter' },
+  { to: '/ai', label: '报告中心', icon: 'dashboard', exact: true },
   { to: '/ai/reports', label: '研究报告', icon: 'file-text' },
   { to: '/ai/tasks', label: '任务中心', icon: 'activity', badge: () => store.runningTasks.length },
   { to: '/ai/settings', label: '设置', icon: 'settings' },
@@ -36,30 +35,9 @@ const commandOpen = computed({
 })
 function openCmd() { store.cmdOpen = true }
 
-// Ctrl/Cmd+K 唤起命令面板（按钮与帮助卡一直在暗示这个快捷键）
-function onGlobalKey(e) {
-  if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
-    e.preventDefault()
-    store.cmdOpen = !store.cmdOpen
-  }
-}
-onMounted(() => document.addEventListener('keydown', onGlobalKey))
-onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
-
-// 命令面板「生成每日复盘报告」：真实提交生成任务，再跳任务中心查看进度
-async function onGenerate() {
-  try {
-    await store.submitAnalysis({
-      provider_id: store.status?.default_provider?.id,
-      scope: store.config.scope,
-      window: Number(store.config.window) || 24,
-      focus: store.config.focus || '',
-      report_type: 'review',
-    })
-  } catch (e) {
-    // 提交失败也进任务中心——失败原因由任务列表/错误提示呈现
-  }
-  router.push('/ai/tasks')
+// 命令面板「生成每日复盘报告」：打开新建报告弹窗（由 GenerateDialog 承载提交流程）
+function onGenerate() {
+  store.genOpen = true
 }
 </script>
 
@@ -89,7 +67,7 @@ async function onGenerate() {
           <span class="ail__model-name">{{ modelLabel }}</span>
         </span>
         <button class="ail__kbd" title="命令面板" @click="openCmd">
-          <AppIcon name="command" size="sm" /> K
+          <AppIcon name="command" size="sm" />
         </button>
       </div>
     </nav>
@@ -108,6 +86,12 @@ async function onGenerate() {
       :model-available="store.modelAvailable"
       @close="store.cmdOpen = false"
       @generate="onGenerate"
+    />
+
+    <GenerateDialog
+      :open="store.genOpen"
+      @update:open="store.genOpen = $event"
+      @close="store.genOpen = false"
     />
   </div>
 </template>

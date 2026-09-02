@@ -2,9 +2,9 @@
 /**
  * AppSelect — 自定义下拉选择器
  *
- * 纯 JS 定位，不使用 Popper。点击外部自动收起，支持键盘 Esc 关闭。
+ * 纯 JS 定位，不使用 Popper，鼠标点击操作。点击外部自动收起。
  */
-import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import AppIcon from './AppIcon.vue'
 
 let uid = 0
@@ -28,7 +28,7 @@ const open = ref(false)
 const triggerRef = ref(null)
 const menuRef = ref(null)
 const inputId = `ff-select-${++uid}`
-// 键盘导航高亮项（-1 表示未高亮）
+// 鼠标悬停高亮项（-1 表示未高亮）
 const highlight = ref(-1)
 
 const selected = computed(() => {
@@ -73,27 +73,6 @@ function close() {
   highlight.value = -1
 }
 
-function selectableIdx(i, dir) {
-  // 从 i 出发按 dir 找下一个可选项，跳过 disabled
-  const n = props.options.length
-  if (!n) return -1
-  for (let k = 1; k <= n; k++) {
-    const j = ((i + dir * k) % n + n) % n
-    if (!props.options[j]?.disabled) return j
-  }
-  return -1
-}
-
-function moveHighlight(dir) {
-  if (!props.options.length) return
-  const start = highlight.value < 0 ? (dir > 0 ? -1 : 0) : highlight.value
-  const next = selectableIdx(start, dir)
-  if (next >= 0) highlight.value = next
-  nextTick(() => {
-    menuRef.value?.querySelector('.is-highlighted')?.scrollIntoView({ block: 'nearest' })
-  })
-}
-
 function selectOption(opt) {
   if (opt.disabled) return
   if (props.multiple) {
@@ -119,46 +98,6 @@ function isSelected(opt) {
 
 function onClickOutside(e) {
   if (!triggerRef.value?.contains(e.target) && !menuRef.value?.contains(e.target)) {
-    close()
-  }
-}
-
-// 触发器上的键盘处理：关闭态可展开，展开态做导航
-function onTriggerKeydown(e) {
-  if (props.disabled) return
-  if (!open.value) {
-    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
-      e.preventDefault()
-      toggle()
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        nextTick(() => moveHighlight(e.key === 'ArrowDown' ? 1 : -1))
-      }
-    }
-    return
-  }
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    e.stopPropagation()
-    close()
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    moveHighlight(1)
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    moveHighlight(-1)
-  } else if (e.key === 'Enter') {
-    e.preventDefault()
-    const opt = props.options[highlight.value]
-    if (opt && !opt.disabled) selectOption(opt)
-  } else if (e.key === 'Tab') {
-    close()
-  }
-}
-
-// document 级兜底：焦点落在菜单项上时也能 Esc 关闭
-function onDocKeydown(e) {
-  if (e.key === 'Escape' && open.value) {
-    e.preventDefault()
     close()
   }
 }
@@ -200,18 +139,15 @@ watch(open, v => {
   if (v) {
     nextTick(positionMenu)
     document.addEventListener('click', onClickOutside, true)
-    document.addEventListener('keydown', onDocKeydown)
     window.addEventListener('resize', positionMenu)
   } else {
     document.removeEventListener('click', onClickOutside, true)
-    document.removeEventListener('keydown', onDocKeydown)
     window.removeEventListener('resize', positionMenu)
   }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', onClickOutside, true)
-  document.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', positionMenu)
 })
 </script>
@@ -224,12 +160,9 @@ onUnmounted(() => {
         :id="inputId"
         ref="triggerRef"
         :class="triggerCls"
-        tabindex="0"
         role="combobox"
         :aria-expanded="open"
-        :aria-activedescendant="open && highlight >= 0 ? `${inputId}-opt-${highlight}` : undefined"
         @click="toggle"
-        @keydown="onTriggerKeydown"
       >
         <span class="ff-select__value" :class="!selected && 'is-placeholder'">
           {{ displayText }}

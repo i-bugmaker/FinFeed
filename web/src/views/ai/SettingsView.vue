@@ -19,6 +19,7 @@ const store = useAiStore()
 const section = ref('models')
 const sections = [
   { key: 'models', label: '模型管理', icon: 'cpu' },
+  { key: 'agents', label: '智能体 / 角色', icon: 'sparkles' },
   { key: 'prompts', label: 'Prompt 模板', icon: 'sliders' },
   { key: 'defaults', label: '分析默认值', icon: 'settings' },
 ]
@@ -102,29 +103,29 @@ const prompts = ref(Object.fromEntries(PROMPT_KEYS.map((k) => [k, ''])))
 const promptDefaults = ref(Object.fromEntries(PROMPT_KEYS.map((k) => [k, ''])))
 
 // 按流水线阶段分组：同屏只展示当前阶段的模板，降低视觉密度。
-// MAP=分批压缩要点；REDUCE=汇总成分章报告；SINGLE=一次性生成报告；
+// MAP=分批要点提炼；REDUCE=汇总成章报告；SINGLE=一次性生成报告；
 // STOCK/SENTIMENT=个股深度与舆情研判的独立模板。
 const PROMPT_STAGES = [
-  { key: 'map', label: '① 分析映射', desc: '对每批新闻做要点压缩：抽事件、去噪、保留主体与量化信息', keys: ['map_system', 'map_user'] },
-  { key: 'reduce', label: '② 汇总成文', desc: '汇总全部分块要点与市场事实包，产出结构化复盘报告', keys: ['reduce_system', 'reduce_user'] },
-  { key: 'single', label: '③ 单轮分析', desc: '跳过分批压缩，一次性基于原始资讯生成报告', keys: ['single_user'] },
-  { key: 'stock', label: '④ 个股深度', desc: '个股诊断报告：行情资金事实包 + 关联资讯的综合研判', keys: ['stock_system', 'stock_user'] },
-  { key: 'sentiment', label: '⑤ 舆情研判', desc: '舆情专题报告：舆情事实包 + 市场事实 + 资讯的聚合研判', keys: ['sentiment_system', 'sentiment_user'] },
+  { key: 'map', label: '① 要点提炼', desc: '把这段时间的新闻分批读懂，抽取每件大事的要点、去掉噪音，供下一步汇总成报告。', keys: ['map_system', 'map_user'] },
+  { key: 'reduce', label: '② 汇总成文', desc: '把提炼好的全部要点整理成一份结构完整、章节清晰的报告。', keys: ['reduce_system', 'reduce_user'] },
+  { key: 'single', label: '③ 单轮分析', desc: '资讯不多时，直接一次性写出完整报告，跳过「先提炼再汇总」的中间步骤，更快也更省调用。', keys: ['single_user'] },
+  { key: 'stock', label: '④ 个股深度', desc: '针对某只个股：结合行情与相关资讯，输出个股分析与判断。', keys: ['stock_system', 'stock_user'] },
+  { key: 'sentiment', label: '⑤ 舆情研判', desc: '围绕某个热点或专题，结合市场信息与资讯，输出舆情走势研判。', keys: ['sentiment_system', 'sentiment_user'] },
 ]
 const activeStage = ref('map')
 const currentStage = computed(() => PROMPT_STAGES.find((s) => s.key === activeStage.value) || PROMPT_STAGES[0])
 
 // 每个模板的名称与一句话用途说明；compact=true 表示较短的系统提示，用更小的编辑区
 const promptMeta = {
-  map_system: { name: '系统提示', desc: '设定分析师角色与事实边界，约束模型不引入材料之外的信息、不编造数据', compact: true },
-  map_user: { name: '用户模板', desc: '每批资讯的压缩指令与输出格式，含 {payload} 运行时占位符；要求保留 [编号] 引用' },
-  reduce_system: { name: '系统提示', desc: '设定首席策略分析师角色与排版规范（emoji 图标、加粗、要点化、引用标注）', compact: true },
-  reduce_user: { name: '用户模板', desc: '九章节复盘简报的结构指令，含 {facts_block} / {stats_block} / {digests} 运行时占位符' },
-  single_user: { name: '用户模板', desc: '单次调用直接生成完整报告的指令，含 {facts_block} / {stats_block} / {payload} 运行时占位符' },
-  stock_system: { name: '系统提示', desc: '个股诊断报告的研究员角色设定与数据边界约束', compact: true },
-  stock_user: { name: '用户模板', desc: '个股深度报告结构指令，含 {stock_name} / {facts_block} / {payload} 运行时占位符' },
-  sentiment_system: { name: '系统提示', desc: '舆情研判报告的分析师角色设定与数据边界约束', compact: true },
-  sentiment_user: { name: '用户模板', desc: '舆情研判报告结构指令，含 {facts_block} / {facts_market_block} / {payload} 运行时占位符' },
+  map_system: { name: '系统提示（角色）', desc: '设定分析角色的专业度与事实底线：只用提供的材料，不编造、不推断材料之外的内容。', compact: true },
+  map_user: { name: '用户模板（提炼指令）', desc: '告诉模型怎么分批提炼要点、输出成什么格式。{payload} 是程序自动代入的本批新闻，请保留；保留 [编号] 便于在正文标注引用来源。' },
+  reduce_system: { name: '系统提示（角色）', desc: '设定汇总成文的角色与排版要求（图标、加粗、要点化、引用标注），让报告结构清晰、易读。', compact: true },
+  reduce_user: { name: '用户模板（结构指令）', desc: '规定复盘报告的章节与排版。{facts_block}、{stats_block}、{digests} 由程序自动代入数据，请保留不要删除。' },
+  single_user: { name: '用户模板（成文指令）', desc: '规定「一次性成文」时的报告结构与排版。{facts_block}、{stats_block}、{payload} 由程序自动代入，请保留不要删除。' },
+  stock_system: { name: '系统提示（角色）', desc: '设定个股分析的研究员角色与数据边界：只基于提供的数据研判，不臆造。', compact: true },
+  stock_user: { name: '用户模板（个股结构）', desc: '规定个股报告的结构。{stock_name} 是个股代码/名称，{facts_block}、{payload} 由程序代入，请保留。' },
+  sentiment_system: { name: '系统提示（角色）', desc: '设定舆情研判的分析师角色与数据边界：只基于提供的数据，不编造。', compact: true },
+  sentiment_user: { name: '用户模板（舆情结构）', desc: '规定舆情报告的结构。{facts_block}、{facts_market_block}、{payload} 由程序代入，请保留不要删除。' },
 }
 
 const isCustom = (key) => prompts.value[key] !== promptDefaults.value[key]
@@ -183,6 +184,64 @@ async function savePrompts() {
   }
 }
 
+// ---------- 智能体 / 角色画像 ----------
+const AGENT_FIELDS = [
+  { key: 'name', label: '角色名', ph: '如：快讯分析师' },
+  { key: 'personality', label: '性格', ph: '如：理性审慎、消息驱动' },
+  { key: 'stance', label: '立场', ph: '如：平衡（利好利空同等对待）' },
+  { key: 'style', label: '文风', ph: '如：精准聚焦、结论先行' },
+  { key: 'tone', label: '语气', ph: '如：专业' },
+]
+const agents = ref({})      // agent_key -> {name, personality, stance, style, tone, system_prompt}
+const agentDefaults = ref({})
+const agentMeta = ref({})
+const agentKeys = computed(() => Object.keys(agentMeta.value || {}))
+
+function isAgentCustom(key) {
+  const cur = agents.value[key] || {}
+  const def = agentDefaults.value[key] || {}
+  return ['name', 'personality', 'stance', 'style', 'tone'].some((f) => (cur[f] || '') !== (def[f] || '')) || !!cur.system_prompt
+}
+function agentDirtyCount() {
+  let n = 0
+  for (const k of agentKeys.value) if (isAgentCustom(k)) n++
+  return n
+}
+async function loadAgents() {
+  try {
+    const r = await api.llm('/agents')
+    agents.value = r.agents || {}
+    agentDefaults.value = r.defaults || {}
+    agentMeta.value = r.meta || {}
+  } catch (e) {
+    toastError('智能体画像加载失败：' + e.message)
+  }
+}
+async function saveAgents() {
+  try {
+    const r = await api.llmPost('/agents', { agents: agents.value })
+    if (r && r.success) {
+      toastSuccess('智能体画像已保存')
+    } else {
+      toastError('智能体保存失败')
+    }
+  } catch (e) {
+    toastError('智能体保存失败：' + e.message)
+  }
+}
+async function resetAgent(key) {
+  if (!window.confirm(`确认将「${agentMeta.value[key]?.label || key}」恢复为默认画像？（保存后生效）`)) return
+  const def = agentDefaults.value[key]
+  agents.value[key] = {
+    name: def?.name || '',
+    personality: def?.personality || '',
+    stance: def?.stance || '',
+    style: def?.style || '',
+    tone: def?.tone || '',
+    system_prompt: '',
+  }
+}
+
 // ---------- 默认值 ----------
 const defaults = ref({ scope: 'all', window: 24, focus: '', report_type: 'review' })
 const scopeOptions = computed(() => store.scopeOptions.map((s) => ({ label: s.label, value: s.key })))
@@ -212,6 +271,7 @@ onMounted(async () => {
   store.loadStatus()
   store.loadInit()
   loadPrompts()
+  loadAgents()
   // 恢复默认值：先等服务端配置回填完成再读，避免拿到 localStorage 旧值
   await store.loadConfig()
   defaults.value.scope = store.config.scope
@@ -288,6 +348,61 @@ onMounted(async () => {
           />
         </div>
 
+        <!-- 智能体 / 角色画像 -->
+        <div v-else-if="section === 'agents'" class="sv__panel">
+          <div class="sv__head">
+            <h3 class="sv__h3">智能体 / 角色画像</h3>
+            <AppButton variant="primary" size="sm" icon="save" @click="saveAgents">保存智能体</AppButton>
+          </div>
+          <p class="sv__hint" style="margin:0 0 14px">
+            <AppIcon name="info" size="xs" tone="muted" />
+            <span>每个报告类型对应一个智能体，可自定义角色名、性格、立场、文风、语气与系统提示词。性格字段直接拼入 system 提示词；「系统提示词」留空则用右侧 Prompt 模板里的默认提示词，填入则优先覆盖。</span>
+          </p>
+
+          <div v-if="agentKeys.length" class="sv__agents">
+            <div v-for="key in agentKeys" :key="key" class="sv__acard" :class="{ custom: isAgentCustom(key) }">
+              <div class="sv__acard-head">
+                <div class="sv__acard-title">
+                  {{ agentMeta[key]?.label || key }}
+                  <span v-if="isAgentCustom(key)" class="sv__badge sv__badge--brand">已自定义</span>
+                  <span v-else class="sv__badge sv__badge--muted">默认</span>
+                  <span class="sv__acard-key">{{ key }}</span>
+                </div>
+                <div class="sv__acard-tools">
+                  <button v-if="isAgentCustom(key)" class="sv__op" @click="resetAgent(key)">
+                    <AppIcon name="refresh" size="sm" /> 恢复默认
+                  </button>
+                </div>
+              </div>
+              <div class="sv__afields">
+                <AppInput
+                  v-for="f in AGENT_FIELDS"
+                  :key="f.key"
+                  :model-value="(agents[key] || {})[f.key]"
+                  @update:model-value="agents[key] = { ...(agents[key] || {}), [f.key]: $event }"
+                  :label="f.label"
+                  :placeholder="f.ph"
+                />
+              </div>
+              <div class="sv__asys">
+                <span class="sv__asys-label">系统提示词（留空 = 用右侧 Prompt 模板默认）</span>
+                <textarea
+                  :value="(agents[key] || {}).system_prompt"
+                  @input="agents[key] = { ...(agents[key] || {}), system_prompt: $event.target.value }"
+                  class="sv__asys-text"
+                  spellcheck="false"
+                  :aria-label="(agentMeta[key]?.label || key) + ' 系统提示词'"
+                  placeholder="（留空使用默认提示词；填入则优先用于该类型分析）"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+          <div v-else class="sv__empty">
+            <AppIcon name="sparkles" size="xl" />
+            <p>智能体画像加载中…</p>
+          </div>
+        </div>
+
         <!-- Prompt -->
         <div v-else-if="section === 'prompts'" class="sv__panel">
           <div class="sv__head">
@@ -303,7 +418,7 @@ onMounted(async () => {
               <div v-if="showPrompts" class="sv__prompts">
                 <p class="sv__hint">
                   <AppIcon name="info" size="xs" tone="muted" />
-                  <span>模板决定 AI 分析报告的质量与结构。花括号占位符（如 {payload}）由程序在运行时注入，请勿删除；修改后需点击下方「保存模板」。</span>
+                  <span>这些模板决定了 AI 报告的侧重点与结构。`花括号` 里的内容（如 {payload}）是程序自动代入的实时数据，请保留不要删除；若想调整 AI 的身份、口吻或报告格式，可在此修改对应模板，改完点击下方「保存模板」。</span>
                 </p>
 
                 <!-- 阶段分组 Tab：一次只编辑一个环节 -->
@@ -444,6 +559,19 @@ onMounted(async () => {
 .sv__pbar-state.warn { color: var(--ff-warn); font-weight: 600; }
 .sv__pbar-actions { display: flex; align-items: center; gap: 8px; }
 .sv__defaults { display: flex; flex-direction: column; gap: 13px; max-width: 420px; }
+/* 智能体卡片 */
+.sv__agents { display: flex; flex-direction: column; gap: 11px; }
+.sv__acard { display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--ff-border); border-radius: 11px; padding: 13px 15px; background: var(--ff-bg-surface); }
+.sv__acard.custom { border-color: var(--ff-border-brand); box-shadow: inset 3px 0 0 0 var(--ff-brand); }
+.sv__acard-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sv__acard-title { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: var(--ff-text-primary); }
+.sv__acard-key { font-size: 10.5px; font-weight: 600; color: var(--ff-text-3); background: var(--ff-bg-subtle); border-radius: 6px; padding: 1px 7px; font-family: ui-monospace, Consolas, monospace; }
+.sv__acard-tools { display: flex; align-items: center; gap: 6px; }
+.sv__afields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.sv__asys { display: flex; flex-direction: column; gap: 6px; }
+.sv__asys-label { font-size: 11.5px; color: var(--ff-text-3); }
+.sv__asys-text { border: 1px solid var(--ff-border); border-radius: 9px; padding: 10px 12px; min-height: 96px; font-size: 12.5px; line-height: 1.6; background: var(--ff-bg-surface); color: var(--ff-text-primary); resize: vertical; outline: none; font-family: ui-monospace, 'Cascadia Code', Consolas, 'PingFang SC', 'Microsoft YaHei', monospace; -webkit-font-smoothing: antialiased; }
+.sv__asys-text:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
 .sv-fade-enter-active, .sv-fade-leave-active { transition: opacity 160ms; }
 .sv-fade-enter-from, .sv-fade-leave-to { opacity: 0; }
 

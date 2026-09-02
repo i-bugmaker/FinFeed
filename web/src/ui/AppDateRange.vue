@@ -116,16 +116,11 @@ watch(
 function onDocClick(e) {
   if (root.value && !root.value.contains(e.target)) open.value = false
 }
-function onEsc(e) {
-  if (e.key === 'Escape') open.value = false
-}
 onMounted(() => {
   document.addEventListener('click', onDocClick)
-  document.addEventListener('keydown', onEsc)
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
-  document.removeEventListener('keydown', onEsc)
 })
 </script>
 

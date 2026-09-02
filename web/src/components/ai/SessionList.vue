@@ -73,8 +73,7 @@ function onDelete(s) {
               v-model="renameText"
               class="sl__rename"
               autofocus
-              @keyup.enter="commitRename"
-              @keyup.esc="renaming = null"
+              @blur="commitRename"
               @click.stop
             />
           </template>

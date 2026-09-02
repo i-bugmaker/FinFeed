@@ -378,6 +378,7 @@ class AnalysisService:
                 chunk_chars=_num("chunk_chars", int, 8000, 2000, 40000),
                 max_chunks=_num("max_chunks", int, 20, 1, 60),
                 focus=str(options.get("focus") or ""),
+                news_id=options.get("news_id"),
                 progress=on_progress,
                 should_cancel=lambda: self._should_cancel(task_id),
                 on_delta=on_delta,

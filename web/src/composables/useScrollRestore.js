@@ -36,7 +36,7 @@ const CONTAINER_SELECTOR = '[data-scroll-container], .ff-app__content'
 const RESTORE_DEADLINE_MS = 3000
 
 // 命中即视为「用户已接管滚动」，立即中止恢复
-const ABORT_EVENTS = ['wheel', 'touchstart', 'keydown']
+const ABORT_EVENTS = ['wheel', 'touchstart']
 
 // key -> scrollTop；组件卸载后仍存活，供返回时复用
 const positions = new Map()

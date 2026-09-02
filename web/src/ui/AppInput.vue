@@ -24,7 +24,7 @@ const props = defineProps({
   seamless: { type: Boolean, default: false }, // 无边框背景
 })
 
-const emit = defineEmits(['update:modelValue', 'blur', 'focus', 'enter'])
+const emit = defineEmits(['update:modelValue', 'blur', 'focus'])
 
 const inputRef = ref(null)
 const focused = ref(false)
@@ -68,10 +68,6 @@ function togglePassword() {
   localType.value = localType.value === 'password' ? 'text' : 'password'
 }
 
-function onKeydown(e) {
-  if (e.key === 'Enter') emit('enter', e.target.value)
-}
-
 defineExpose({ focus: () => inputRef.value?.focus() })
 </script>
 
@@ -94,7 +90,6 @@ defineExpose({ focus: () => inputRef.value?.focus() })
           @input="onInput"
           @focus="focused = true; $emit('focus', $event)"
           @blur="focused = false; $emit('blur', $event)"
-          @keydown="onKeydown"
         />
         <button
           v-if="showPwToggle"

@@ -98,6 +98,42 @@ def save_prompts(values: Dict[str, str]) -> int:
     return saved
 
 
+# 智能体画像（结构化角色字段 + 提示词覆盖）
+def agents_payload() -> Dict[str, Dict[str, str]]:
+    """返回全部智能体画像（name/personality/stance/style/tone/system_prompt）。
+
+    附默认画像做前端「恢复默认」参照（defaults）。
+    """
+    from finfeed.llm import prompts as _prompts
+    from finfeed.llm.schema import _AGENT_DEFAULTS
+
+    current = cfg.list_agents()
+    known_keys = list(dict.fromkeys(list(_AGENT_DEFAULTS) + list(_prompts.REPORT_TYPES.keys())))
+    meta = {
+        key: {"label": _prompts.REPORT_TYPES.get(key, {}).get("label", key)}
+        for key in known_keys
+    }
+    # 让每个已知类型在列表里都有位（含 chat 自由问答）
+    for key in known_keys:
+        current.setdefault(key, {
+            "name": "", "personality": "", "stance": "",
+            "style": "", "tone": "", "system_prompt": "",
+        })
+    return {
+        "agents": current,
+        "defaults": {k: dict(v) for k, v in (_AGENT_DEFAULTS or {}).items()},
+        "meta": meta,
+    }
+
+
+def save_agents(agents: Dict[str, Dict[str, str]]) -> int:
+    """保存多个智能体画像；空字段原样写入（表示清空）。返回写入条数。"""
+    if not isinstance(agents, dict):
+        return 0
+    cfg.save_agents(agents)
+    return len(agents)
+
+
 # 分析默认值（服务端持久化，跨设备共享；localStorage 仅作兜底）
 def analysis_defaults() -> Dict[str, Any]:
     try:

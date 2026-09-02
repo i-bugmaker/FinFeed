@@ -23,6 +23,7 @@ export const useAiStore = defineStore('ai', {
     pollTimer: null,
     pollActive: false,
     cmdOpen: false, // 命令面板（顶部按钮打开）
+    genOpen: false, // 新建报告弹窗（报告优先首页 / 命令面板共用开关）
     // REDUCE 阶段流式输出：taskStreamText 为渐进正文，streamTaskId 标识当前订阅
     taskStreamText: '',
     streamTaskId: null,
@@ -195,6 +196,7 @@ export const useAiStore = defineStore('ai', {
         scope: cfg.scope,
         hours: Number(cfg.window),
         focus: cfg.focus || undefined,
+        news_id: cfg.news_id ? Number(cfg.news_id) : undefined,
         report_type: cfg.report_type || 'review',
         stock_code: cfg.stock_code || undefined,
         min_importance: 0,
@@ -228,6 +230,11 @@ export const useAiStore = defineStore('ai', {
       await this.loadTasks()
       if (r.ok && r.task_id) this.startTaskStream(r.task_id)
       return r
+    },
+    // 报告级追问：以指定报告为上下文发起一次问答（不依赖会话，返回回答文本）
+    async postReportFollowUp(question, reportId) {
+      const r = await api.llmPost('/chat', { question, report_id: reportId })
+      return r.reply || r.answer || r.text || ''
     },
 
     // ---------- 任务流式输出（SSE） ----------

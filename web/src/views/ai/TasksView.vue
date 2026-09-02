@@ -16,7 +16,7 @@ import { toastSuccess, toastError } from '../../composables/useToast'
 const router = useRouter()
 const store = useAiStore()
 
-const tab = ref('all')
+const tab = ref('running')
 const logTask = ref(null)
 const showLog = ref(false)
 const busy = ref(false)
@@ -211,7 +211,7 @@ onMounted(() => {
 .tv__stream { margin-top: 10px; border: 1px dashed var(--ff-border-brand); border-radius: 10px; background: var(--ff-bg-subtle); overflow: hidden; }
 .tv__stream-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--ff-brand-dark); padding: 8px 12px; background: var(--ff-bg-brand-subtle); }
 .tv__stream-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ff-brand); animation: tv-pulse 1.2s infinite; }
-.tv__stream-body { max-height: 320px; overflow-y: auto; padding: 4px 12px 10px; }
+.tv__stream-body { max-height: 62vh; overflow-y: auto; padding: 4px 16px 14px; font-size: 14px; }
 .tv__done { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .tv__fail { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 .tv__msg { font-size: 12.5px; color: var(--ff-text-2); }

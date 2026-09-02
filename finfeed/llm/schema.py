@@ -102,6 +102,59 @@ CREATE TABLE IF NOT EXISTS llm_messages (
 )
 """
 
+_DDL_AGENTS = """
+CREATE TABLE IF NOT EXISTS llm_agents (
+    agent_key      TEXT PRIMARY KEY,
+    name           TEXT DEFAULT '',
+    personality    TEXT DEFAULT '',
+    stance         TEXT DEFAULT '',
+    style          TEXT DEFAULT '',
+    tone           TEXT DEFAULT '',
+    system_prompt  TEXT DEFAULT '',
+    updated_ts     INTEGER DEFAULT 0
+)
+"""
+
+# 智能体默认画像（供 ensure_tables 幂等播种；对应 REPORT_TYPES 与自由问答 chat）
+# 各字段为"建议性默认"，system_prompt 留空则运行时取 DEFAULT_PROMPTS 对应 *_system。
+_AGENT_DEFAULTS: dict = {
+    "flash": {
+        "name": "快讯分析师",
+        "personality": "理性审慎、消息驱动、多空平衡",
+        "stance": "平衡（利好利空同等对待）",
+        "style": "精准聚焦、结论先行",
+        "tone": "专业",
+    },
+    "review": {
+        "name": "市场策略师",
+        "personality": "全面系统、逻辑严密、数据为重",
+        "stance": "平衡（全市场多空研判）",
+        "style": "深度复盘、结构化",
+        "tone": "专业",
+    },
+    "stock": {
+        "name": "个股研究员",
+        "personality": "严谨细致、重基本面与风险",
+        "stance": "中性（研究与风险并重）",
+        "style": "深度、可追溯",
+        "tone": "专业",
+    },
+    "sentiment": {
+        "name": "舆情分析师",
+        "personality": "敏锐、注重情绪与热度信号",
+        "stance": "中性",
+        "style": "研判、预警导向",
+        "tone": "亲和",
+    },
+    "chat": {
+        "name": "财经助手",
+        "personality": "耐心、清晰、客观",
+        "stance": "中立",
+        "style": "简洁、要点化",
+        "tone": "亲和",
+    },
+}
+
 
 def ensure_tables(force: bool = False) -> None:
     """幂等创建 LLM 模块所需数据表"""
@@ -119,6 +172,7 @@ def ensure_tables(force: bool = False) -> None:
                 c.execute(_DDL_SETTINGS)
                 c.execute(_DDL_SESSIONS)
                 c.execute(_DDL_MESSAGES)
+                c.execute(_DDL_AGENTS)
                 c.execute(
                     "CREATE INDEX IF NOT EXISTS idx_llm_reports_ts "
                     "ON llm_reports(created_ts DESC, id DESC)"
@@ -131,12 +185,27 @@ def ensure_tables(force: bool = False) -> None:
                     "CREATE INDEX IF NOT EXISTS idx_llm_messages_session "
                     "ON llm_messages(session_id, id)"
                 )
+                _seed_agents(c)
                 _migrate(c)
             _initialized = True
             logger.info("LLM 模块数据表已就绪")
         except Exception as e:
             logger.error(f"LLM 模块建表失败: {e}")
             raise
+
+
+def _seed_agents(c) -> None:
+    """播种智能体默认画像：仅在缺失 agent 时插入默认行，不覆盖用户已改配置。"""
+    for key, fields in _AGENT_DEFAULTS.items():
+        try:
+            c.execute(
+                "INSERT OR IGNORE INTO llm_agents (agent_key, name, personality, stance, style, tone, updated_ts) "
+                "VALUES (?,?,?,?,?,?,0)",
+                (key, fields.get("name", ""), fields.get("personality", ""),
+                 fields.get("stance", ""), fields.get("style", ""), fields.get("tone", "")),
+            )
+        except Exception as e:  # noqa: BLE001 —— 播种异常不影响主流程
+            logger.debug(f"播种智能体 {key} 失败: {e}")
 
 
 def _migrate(c) -> None:

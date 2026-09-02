@@ -114,7 +114,6 @@ onBeforeUnmount(() => {
             type="text"
             placeholder="名称 / 代码…"
             autocomplete="off"
-            @keydown.esc="cancelAdd"
           />
         </div>
         <ul v-if="open && results.length" class="etdx-watch__menu">

@@ -38,7 +38,7 @@ function loadRecentTask(t) {
 <template>
   <section class="etdx-dock" :style="{ height: dockHeight }">
     <!-- 状态条（折叠态） -->
-    <div v-if="!store.ui.dockOpen" class="etdx-dock__bar" role="button" tabindex="0" @click="toggleDock">
+    <div v-if="!store.ui.dockOpen" class="etdx-dock__bar" role="button" @click="toggleDock">
       <span class="etdx-dock__dot" :class="'is-' + idleMeta.tone" />
       <span class="etdx-dock__label">{{ idleMeta.label }}</span>
       <span v-if="store.task && store.task.status === 'running'" class="etdx-dock__progress">

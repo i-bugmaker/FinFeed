@@ -101,6 +101,7 @@ class AnalyzeRequest(_Loose):
     report_type: str = "review"
     stock_code: str = ""
     focus: str = ""
+    news_id: Optional[int] = None
     min_importance: float = Field(default=0.0, ge=0.0, le=10.0)
     max_items: int = Field(default=500, ge=20, le=5000)
     order: str = "importance"
@@ -195,6 +196,12 @@ class PromptsSaveRequest(_Loose):
             name = key[7:] if key.startswith("prompt_") else key
             values[name] = value
         return values
+
+
+class AgentsSaveRequest(_Loose):
+    """智能体画像批量保存：agents = { agent_key: {name, personality, stance, style, tone, system_prompt} }"""
+
+    agents: Dict[str, Dict[str, str]] = {}
 
 
 # 工具
@@ -462,6 +469,15 @@ def create_router() -> APIRouter:
     @router.post("/api/llm/prompts")
     def prompts_save(req: PromptsSaveRequest) -> Dict[str, Any]:
         saved = llm_service.save_prompts(req.collect())
+        return _respond({"success": True, "saved": saved})
+
+    @router.get("/api/llm/agents")
+    def agents_list() -> Dict[str, Any]:
+        return _respond({"success": True, "agents": llm_service.agents_payload()})
+
+    @router.post("/api/llm/agents")
+    def agents_save(req: AgentsSaveRequest) -> Dict[str, Any]:
+        saved = llm_service.save_agents(req.agents)
         return _respond({"success": True, "saved": saved})
 
     @router.post("/api/llm/analyze")

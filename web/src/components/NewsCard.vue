@@ -55,7 +55,7 @@ function aiAnalyze() {
     props.item.source ? `（来源：${props.item.source}）` : '',
     props.item.publish_time ? `｜${props.item.publish_time}` : '',
   ].join('')
-  router.push({ path: '/ai/analyst', query: { q } })
+  router.push({ path: '/ai', query: { mode: 'flash', q, news_id: props.item.id } })
 }
 </script>
 

@@ -2,12 +2,13 @@
 /**
  * ReportReaderView — 报告阅读器（全屏沉浸）
  * 左：目录锚点｜中：摘要卡 + Markdown 正文｜右：操作与元信息
- * 支持追问此报告（携带 report_id 跳转分析师）。
+ * 支持底部内联追问此报告（就地完成，不跳转聊天页）。
  */
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../../api/client'
 import { useAiStore } from '../../store/ai'
+import AppButton from '../../ui/AppButton.vue'
 import AppIcon from '../../ui/AppIcon.vue'
 import MarkdownView from '../../components/ai/MarkdownView.vue'
 import ReportSummaryCard from '../../components/ai/ReportSummaryCard.vue'
@@ -85,9 +86,44 @@ const typeLabel = computed(() => {
   return { review: '复盘简报', stock: '个股深度', sentiment: '舆情研判' }[t] || ''
 })
 
-function askReport() {
-  store.setContextReport({ id: report.value.id, title: report.value.title, created_at: report.value.created_at })
-  router.push({ path: '/ai/analyst', query: { report_id: report.value.id } })
+// 快讯/财经 AI 分析：聚焦单条快讯，收敛附加信息（目录/图表/引用对照）
+const isFlash = computed(() => {
+  const t = report.value?.title || ''
+  return t.startsWith('快讯分析')
+})
+
+// 报告内联追问（不再跳转聊天页，就地完成「追问此报告」）
+const followUpOpen = ref(false)
+const followUp = ref('')
+const followUpLog = ref([]) // [{ role: 'user'|'ai', text }]
+const followUpBusy = ref(false)
+const qEl = ref(null)
+
+function toggleFollowUp() {
+  followUpOpen.value = !followUpOpen.value
+  if (followUpOpen.value) nextTick(() => qEl.value?.focus())
+}
+
+async function sendFollowUp() {
+  const q = followUp.value.trim()
+  if (!q || followUpBusy.value || !report.value) return
+  followUpLog.value.push({ role: 'user', text: q })
+  followUp.value = ''
+  followUpBusy.value = true
+  try {
+    const text = await store.postReportFollowUp(q, report.value.id)
+    followUpLog.value.push({ role: 'ai', text: text || '（空回复）' })
+  } catch (e) {
+    followUpLog.value.push({ role: 'ai', text: '出错了：' + (e.message || String(e)) })
+  } finally {
+    followUpBusy.value = false
+    nextTick(() => {
+      const el = qEl.value
+      if (el) el.focus()
+      const body = bodyEl.value
+      if (body) body.scrollTop = body.scrollHeight
+    })
+  }
 }
 
 function downloadMarkdown() {
@@ -181,7 +217,7 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
       <span class="rr__sp"></span>
       <span v-if="report" class="rr__meta">{{ fmtFull(report.created_ts) }} · {{ report.model || '—' }}</span>
       <button class="rr__btn" @click="downloadMarkdown"><AppIcon name="download" size="sm" /> 导出</button>
-      <button class="rr__btn rr__btn--primary" @click="askReport"><AppIcon name="chatter" size="sm" /> 追问此报告</button>
+      <button class="rr__btn rr__btn--primary" @click="toggleFollowUp"><AppIcon name="chatter" size="sm" /> 追问此报告</button>
     </div>
 
     <div v-if="loading" class="rr__loading">
@@ -193,9 +229,9 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
       <button class="rr__btn rr__btn--primary" @click="load(Number(route.params.id))">重试</button>
     </div>
 
-    <div v-else-if="report" class="rr__body">
-      <!-- 左目录 -->
-      <aside class="rr__toc">
+    <div v-else-if="report" class="rr__body" :class="{ 'rr__body--flash': isFlash }">
+      <!-- 左目录（快讯分析不展示） -->
+      <aside v-if="!isFlash" class="rr__toc">
         <div class="rr__toc-title">目录</div>
         <button
           v-for="t in toc"
@@ -212,8 +248,8 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
         <h1 class="rr__h1">{{ report.title || '报告 #' + report.id }}</h1>
         <ReportSummaryCard :report="report" />
         <MarkdownView :content="citedContent" />
-        <!-- 引用溯源对照表 -->
-        <div v-if="sources.length" class="rr__sources">
+        <!-- 引用溯源对照表（快讯分析不展示） -->
+        <div v-if="!isFlash && sources.length" class="rr__sources">
           <div class="rr__sources-title">📎 引用资讯对照（正文 [编号] 可点击回链）</div>
           <div v-for="s in sources" :key="s.idx" :id="'ff-src-' + s.idx" class="rr__src">
             <span class="rr__src-idx">[{{ s.idx }}]</span>
@@ -232,7 +268,7 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
       <aside class="rr__side">
         <div class="rr__card">
           <div class="rr__card-label">数据速览</div>
-          <template v-if="hasStats">
+          <template v-if="!isFlash && hasStats">
             <div v-if="sentimentOption" class="rr__chart">
               <div class="rr__chart-title">情绪分布</div>
               <ChartPanel :option="sentimentOption" height="150px" />
@@ -243,7 +279,7 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
             </div>
             <div class="rr__chart-note">来源：报告程序统计，仅反映资讯提及频次</div>
           </template>
-          <div v-else class="rr__chart-empty">（该报告无统计数据）</div>
+          <div v-else-if="!isFlash" class="rr__chart-empty">（该报告无统计数据）</div>
         </div>
         <div class="rr__card">
           <div class="rr__card-label">元信息</div>
@@ -259,13 +295,46 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
             <AppIcon :name="report.pinned ? 'bookmark' : 'bookmark'" size="sm" /> {{ report.pinned ? '取消置顶' : '置顶' }}
           </button>
           <button class="rr__side-btn" @click="downloadMarkdown"><AppIcon name="download" size="sm" /> 导出 Markdown</button>
-          <button class="rr__side-btn" @click="askReport"><AppIcon name="chatter" size="sm" /> 基于此报告追问</button>
+          <button class="rr__side-btn" @click="toggleFollowUp"><AppIcon name="chatter" size="sm" /> 基于此报告追问</button>
         </div>
         <div class="rr__card rr__card--warn">
           <AppIcon name="info" size="sm" />
           <span style="font-size:11.5px;line-height:1.6">本报告由 AI 自动生成，仅供参考，不构成投资建议。</span>
         </div>
       </aside>
+
+      <!-- 底部内联追问区 -->
+      <div v-if="followUpOpen" class="rr__follow">
+        <div v-if="followUpLog.length" class="rr__follow-log">
+          <div v-for="(m, i) in followUpLog" :key="i" class="rr__follow-msg" :class="m.role === 'ai' ? 'ai' : 'user'">
+            <template v-if="m.role === 'ai'">
+              <div class="rr__follow-tag">AI</div>
+              <div class="rr__follow-mark"><MarkdownView :content="m.text || '…'" compact /></div>
+            </template>
+            <template v-else>
+              <div class="rr__follow-q">{{ m.text }}</div>
+            </template>
+          </div>
+        </div>
+        <div class="rr__follow-input">
+          <textarea
+            ref="qEl"
+            v-model="followUp"
+            rows="1"
+            class="rr__follow-field"
+            placeholder="就此报告追问…"
+            :disabled="followUpBusy"
+            @keydown.enter.exact.prevent="sendFollowUp"
+          ></textarea>
+          <AppButton
+            variant="primary"
+            size="sm"
+            :loading="followUpBusy"
+            :disabled="followUpBusy || !followUp.trim()"
+            @click="sendFollowUp"
+          >发送</AppButton>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -287,6 +356,7 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
 @keyframes rr-rot { to { transform: rotate(360deg); } }
 .rr__error p { font-size: 13.5px; margin: 10px 0 16px; color: var(--ff-up); }
 .rr__body { display: grid; grid-template-columns: 200px minmax(0, 1fr) 210px; gap: 14px; align-items: start; }
+.rr__body--flash { grid-template-columns: minmax(0, 1fr) 210px; }
 .rr__toc { position: sticky; top: 14px; background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 13px; padding: 13px; max-height: calc(100vh - 260px); overflow-y: auto; }
 .rr__toc-title { font-size: 11px; font-weight: 700; color: var(--ff-text-3); letter-spacing: .06em; margin-bottom: 8px; }
 .rr__toc-item { display: block; width: 100%; text-align: left; border: none; background: none; padding: 6px 9px; border-radius: 7px; font-size: 12.5px; color: var(--ff-text-2); cursor: pointer; line-height: 1.4; }
@@ -317,10 +387,23 @@ watch(() => route.params.id, (id) => id && load(Number(id)))
 .rr__side-btn { display: flex; align-items: center; gap: 7px; width: 100%; border: 1px solid var(--ff-border); background: var(--ff-bg-surface); border-radius: 8px; padding: 7px 11px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; margin-bottom: 6px; }
 .rr__side-btn:hover { border-color: var(--ff-border-brand); color: var(--ff-brand); }
 
+/* 底部内联追问区 */
+.rr__follow { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 10px; background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 12px; padding: 13px 15px; }
+.rr__follow-log { display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; }
+.rr__follow-msg { display: flex; flex-direction: column; gap: 5px; }
+.rr__follow-tag { font-size: 11px; font-weight: 700; color: var(--ff-brand); }
+.rr__follow-mark { font-size: 13px; line-height: 1.65; color: var(--ff-text-primary); background: var(--ff-bg-subtle); border: 1px solid var(--ff-border); border-radius: 8px; padding: 9px 12px; }
+.rr__follow-q { align-self: flex-end; max-width: 88%; font-size: 13px; color: var(--ff-bg-surface); background: var(--ff-brand); border-radius: 10px 10px 4px 10px; padding: 7px 12px; word-break: break-word; }
+.rr__follow-input { display: flex; gap: 8px; align-items: flex-end; }
+.rr__follow-field { flex: 1; min-height: 38px; max-height: 120px; border: 1px solid var(--ff-border); border-radius: 9px; padding: 8px 12px; font-size: 13px; line-height: 1.5; outline: none; background: var(--ff-bg-surface); color: var(--ff-text-primary); resize: none; font-family: inherit; }
+.rr__follow-field:focus { border-color: var(--ff-border-focus); box-shadow: 0 0 0 3px var(--ff-focus-ring); }
+.rr__follow-field:disabled { opacity: 0.6; }
+
 @media (max-width: 1100px) {
   .rr__body { grid-template-columns: 1fr; }
   .rr__toc { position: static; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; }
   .rr__toc-title { width: 100%; }
   .rr__side { position: static; flex-direction: row; flex-wrap: wrap; }
+  .rr__follow { grid-column: 1 / -1; }
 }
 </style>

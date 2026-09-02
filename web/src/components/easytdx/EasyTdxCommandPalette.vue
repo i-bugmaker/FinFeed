@@ -84,7 +84,6 @@ function select(id) {
                 :key="f.id"
                 class="etdx-palette__item"
                 role="button"
-                tabindex="0"
                 @click="run(f.id)"
               >
                 <span class="etdx-palette__item-label">{{ f.label }}</span>

@@ -189,11 +189,6 @@ function stopChat() {
     abortController = null
   }
 }
-// 生成中按 Enter 忽略（此前会误触中止，杀掉正在生成的完整回答）
-function onChatEnter() {
-  if (sending.value) return
-  sendChat()
-}
 
 // 输入框自适应高度（textarea），上限约 6 行
 const chatInputEl = ref(null)
@@ -264,20 +259,54 @@ const suggestions = [
   '有哪些板块资金流入明显？',
 ]
 
-// 从快讯模块跳转而来（携带 q 参数）：自动填入并发送分析请求
+// 从快讯模块跳转而来（携带 q 参数）：提交一份围绕该条快讯的快讯分析报告（report_type=flash）
 let qHandled = false
 watch(
   () => route.query.q,
   async (v) => {
     if (!v || qHandled) return
     qHandled = true
+    const newsId = Number(route.query.news_id) || null
     await nextTick()
     setTimeout(async () => {
       if (activeSessionId.value === null && store.sessions.length) {
         await selectSession(store.sessions[0].id)
       }
-      chatInput.value = `请分析这条快讯：${v}`
-      await sendChat()
+      // 保持会话兜底：无会话时自动创建
+      if (activeSessionId.value === null) {
+        const s = await store.createSession('快讯分析')
+        if (s) activeSessionId.value = s.id
+      }
+      const sid = activeSessionId.value
+      chatLog.value.push({ role: 'user', text: `请分析这条快讯：${v}` })
+      const aiIndex = chatLog.value.length
+      chatLog.value.push({ role: 'ai', text: '', pending: true })
+      scrollToBottom()
+      store.saveMessage(sid, 'user', `请分析这条快讯：${v}`)
+      sending.value = true
+      try {
+        const r = await store.submitAnalysis({
+          provider_id: store.status?.default_provider?.id,
+          scope: store.config.scope,
+          window: Number(store.config.window) || 24,
+          focus: v,
+          news_id: newsId,
+          report_type: 'flash',
+        })
+        chatLog.value[aiIndex] = {
+          role: 'ai',
+          text: r.ok
+            ? `✅ 已提交围绕该条快讯的多空双向分析任务${r.queued ? '（排队中）' : ''}，任务编号 ${r.task_id}。生成中，完成后自动归档到研究报告。`
+            : '❌ 提交失败：' + (r.error || '未知错误'),
+          pending: false,
+        }
+        store.saveMessage(sid, 'assistant', chatLog.value[aiIndex].text)
+      } catch (e) {
+        chatLog.value[aiIndex] = { role: 'ai', text: '出错了：' + (e.message || String(e)), pending: false, error: true }
+      } finally {
+        sending.value = false
+        scrollToBottom()
+      }
       router.replace({ query: {} })
     }, 500)
   },
@@ -384,10 +413,9 @@ onBeforeUnmount(() => {
             v-model="chatInput"
             class="an__field"
             rows="1"
-            placeholder="输入问题…（Enter 发送 / Shift+Enter 换行）"
+            placeholder="输入问题…"
             :disabled="sending"
             @input="onInput"
-            @keydown.enter.exact.prevent="onChatEnter"
           />
           <button v-if="!sending" class="an__send" :disabled="!chatInput.trim()" @click="sendChat">
             <AppIcon name="send" size="md" />

@@ -1,7 +1,7 @@
 <script setup>
 /**
  * ReportsView — 研究报告列表
- * 搜索 / 筛选 / 多选批量操作（删除、置顶）/ 状态徽标 / 失败重试入口。
+ * 搜索 / 筛选（只看置顶）/ 状态徽标 / 失败重试入口。
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -17,8 +17,6 @@ const store = useAiStore()
 
 const q = ref('')
 const pinnedOnly = ref(false)
-const selected = ref(new Set())
-const busy = ref(false)
 
 const filtered = computed(() => {
   let list = store.reports
@@ -29,35 +27,6 @@ const filtered = computed(() => {
   return [...list].sort((a, b) => (b.created_ts || 0) - (a.created_ts || 0))
 })
 
-const allSelected = computed(() => filtered.value.length > 0 && filtered.value.every((r) => selected.value.has(r.id)))
-function toggleAll() {
-  if (allSelected.value) selected.value.clear()
-  else filtered.value.forEach((r) => selected.value.add(r.id))
-}
-function toggleOne(id) {
-  if (selected.value.has(id)) selected.value.delete(id)
-  else selected.value.add(id)
-}
-
-async function batchDelete() {
-  if (!selected.value.size) return
-  if (!window.confirm(`删除选中的 ${selected.value.size} 份报告？`)) return
-  busy.value = true
-  const n = selected.value.size
-  const ok = await store.deleteReports([...selected.value])
-  selected.value.clear()
-  busy.value = false
-  if (ok !== false) toastSuccess(`已删除 ${n} 份报告`)
-}
-async function batchPin(pin) {
-  if (!selected.value.size) return
-  busy.value = true
-  const n = selected.value.size
-  await store.pinReports([...selected.value], pin)
-  selected.value.clear()
-  busy.value = false
-  toastSuccess(pin ? `已置顶 ${n} 份报告` : `已取消置顶 ${n} 份报告`)
-}
 async function togglePin(r) {
   await store.pinReport(r.id, !r.pinned)
 }
@@ -103,18 +72,12 @@ onMounted(async () => {
         <AppIcon name="bookmark" size="sm" /> 只看置顶
       </button>
       <span class="rv__count">共 {{ store.reportsTotal }} 份</span>
-      <span class="rv__sp"></span>
-      <template v-if="selected.size">
-        <AppButton size="sm" variant="secondary" :loading="busy" :disabled="busy" @click="batchPin(true)">置顶</AppButton>
-        <AppButton size="sm" variant="danger" :loading="busy" :disabled="busy" @click="batchDelete">删除（{{ selected.size }}）</AppButton>
-      </template>
     </div>
 
     <div v-if="filtered.length" class="rv__table-wrap">
       <table class="rv__table">
         <thead>
           <tr>
-            <th class="rv__chk"><input type="checkbox" :checked="allSelected" @change="toggleAll" /></th>
             <th>标题</th>
             <th>模型</th>
             <th>范围 / 窗口</th>
@@ -125,8 +88,7 @@ onMounted(async () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in filtered" :key="r.id" :class="{ sel: selected.has(r.id) }">
-            <td class="rv__chk"><input type="checkbox" :checked="selected.has(r.id)" @change="toggleOne(r.id)" @click.stop /></td>
+          <tr v-for="r in filtered" :key="r.id">
             <td class="rv__title-cell">
               <span class="rv__title" @click="router.push('/ai/reports/' + r.id)">{{ r.title || '报告 #' + r.id }}</span>
               <span v-if="r.error" class="rv__err">{{ r.error.slice(0, 40) }}</span>
@@ -161,7 +123,7 @@ onMounted(async () => {
     <div v-else class="rv__empty">
       <AppIcon name="file-text" size="xl" />
       <p>{{ q ? '没有匹配的报告' : '还没有研究报告' }}</p>
-      <AppButton v-if="!q" variant="primary" icon="zap" @click="router.push('/ai/tasks')">去生成一份</AppButton>
+      <AppButton v-if="!q" variant="primary" icon="zap" @click="router.push('/ai')">去生成一份</AppButton>
     </div>
   </div>
 </template>
@@ -173,18 +135,11 @@ onMounted(async () => {
 .rv__filter { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ff-border); background: var(--ff-bg-surface); border-radius: 9px; padding: 7px 12px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; }
 .rv__filter.on { border-color: var(--ff-brand); color: var(--ff-brand-dark); background: var(--ff-bg-brand-subtle); }
 .rv__count { font-size: 12.5px; color: var(--ff-text-3); }
-.rv__sp { flex: 1; }
-.rv__btn { border: 1px solid var(--ff-border); background: var(--ff-bg-surface); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--ff-text-2); cursor: pointer; }
-.rv__btn--danger { color: var(--ff-up); border-color: var(--ff-up-border); }
-.rv__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .rv__table-wrap { background: var(--ff-bg-surface); border: 1px solid var(--ff-border); border-radius: 13px; overflow-x: auto; }
 .rv__table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 760px; }
 .rv__table th { background: var(--ff-bg-subtle); font-size: 11.5px; font-weight: 700; color: var(--ff-text-3); text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--ff-border); white-space: nowrap; }
 .rv__table td { padding: 10px 12px; border-bottom: 1px solid var(--ff-border); color: var(--ff-text-primary); }
 .rv__table tr:hover td { background: var(--ff-bg-hover); }
-.rv__table tr.sel td { background: var(--ff-bg-brand-subtle); }
-.rv__chk { width: 34px; text-align: center; }
-.rv__chk input { accent-color: var(--ff-brand); cursor: pointer; }
 .rv__title-cell { max-width: 340px; }
 .rv__title { font-weight: 600; cursor: pointer; color: var(--ff-text-primary); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rv__title:hover { color: var(--ff-brand); }

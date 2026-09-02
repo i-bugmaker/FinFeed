@@ -669,7 +669,6 @@ const visibleStocks = computed(() => {
               placeholder="搜索个股名称 / 代码"
               class="smm__input"
               @input="onStockInput"
-              @keyup.enter="onStockSearch"
             />
           </div>
           <div class="smm__mkrow">

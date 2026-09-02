@@ -211,7 +211,7 @@
       </div>
       <div class="card">
         <h4>⑤ 状态体系完备</h4>
-        <p style="font-size:13.5px;color:var(--text-2)">骨架屏 / 空状态 / 错误恢复 / 分阶段加载提示全覆盖；新手引导 + 快捷键 + 批量操作兼顾两类用户。</p>
+        <p style="font-size:13.5px;color:var(--text-2)">骨架屏 / 空状态 / 错误恢复 / 分阶段加载提示全覆盖；新手引导 + 批量操作兼顾两类用户。</p>
       </div>
       <div class="card">
         <h4>⑥ 渐进式落地</h4>
@@ -864,10 +864,10 @@
     <h3>7.2 高级用户效率</h3>
     <table>
       <tr><th>能力</th><th>实现</th></tr>
-      <tr><td>快捷键</td><td><span class="kbd">Ctrl</span>+<span class="kbd">↵</span> 发送；<span class="kbd">Ctrl</span>+<span class="kbd">N</span> 新建会话；<span class="kbd">Ctrl</span>+<span class="kbd">K</span> 全局命令面板；<span class="kbd">/</span> 唤起指令；<span class="kbd">Esc</span> 关闭抽屉；<span class="kbd">Ctrl</span>+<span class="kbd">O</span> 跳转最近报告（可在设置中自定义/关闭）</td></tr>
-      <tr><td>命令面板</td><td><span class="kbd">Ctrl</span>+<span class="kbd">K</span> 模糊搜索：页面跳转、生成复盘、打开最近报告、切换模型——键盘流用户全程不离手</td></tr>
+      <tr><td>快捷操作</td><td>纯鼠标操作：点击发送、新建会话、命令面板、关闭抽屉、跳转最近报告均通过按钮/图标完成</td></tr>
+      <tr><td>命令面板</td><td>顶部按钮唤起模糊搜索：页面跳转、生成复盘、打开最近报告、切换模型——鼠标连点直达</td></tr>
       <tr><td>批量操作</td><td>报告列表多选：批量导出 / 批量删除 / 批量加入自选；任务中心：批量重试失败任务（定时复盘补跑场景）</td></tr>
-      <tr><td>模板化输入</td><td>指令模板：<code>/复盘 半导体 48h</code>、<code>/解读 600519</code> 直接生成任务，支持 Tab 补全参数</td></tr>
+      <tr><td>模板化输入</td><td>指令模板：<code>/复盘 半导体 48h</code>、<code>/解读 600519</code> 直接生成任务，参数在面板内补齐</td></tr>
       <tr><td>深度链接</td><td>报告/会话/标的均有可复制链接（<code>#/ai/reports/123</code>），支持跨设备打开与分享</td></tr>
       <tr><td>导出</td><td>报告导出 Markdown / PDF（服务端生成），保留表格与图表图片</td></tr>
     </table>
@@ -940,7 +940,7 @@
       <ul style="font-size:13.5px">
         <li>任务中心：状态字段（排队/运行/完成/失败）+ 阶段进度 + 日志 + 重试/批量重试；工作台进度条与报告列表状态联动</li>
         <li>状态体系铺开：骨架屏、错误恢复、空状态三问、断网横幅</li>
-        <li>快捷键 + 命令面板 + 首次配置向导 + 批量操作</li>
+        <li> 命令面板 + 首次配置向导 + 批量操作</li>
         <li>验收：全场景状态走查表逐项通过；新手路径（无模型→配置→首份报告）完整可走</li>
       </ul>
     </div>
@@ -950,7 +950,7 @@
       <div class="pd">作为横切优化随各阶段同步进行，专项收尾</div>
       <ul style="font-size:13.5px">
         <li>底部 Tab、单栏对话、上下文浮层、表格卡片化</li>
-        <li>图表交互打磨（联动高亮、点击跳转）、动效与无障碍（<code>prefers-reduced-motion</code>、键盘可达性、ARIA）</li>
+        <li>图表交互打磨（联动高亮、点击跳转）、动效与无障碍（<code>prefers-reduced-motion</code>、ARIA）</li>
         <li>数据埋点：入口转化、任务成功率、报告阅读时长——指导后续迭代</li>
       </ul>
     </div>
@@ -973,7 +973,7 @@
       <tr><td><code>ReportsView</code> + <code>ReportReader</code> + <code>ReportSummaryCard</code> + <code>MarkdownView</code></td><td>/ai/reports[/:id]</td><td>报告列表与结构化阅读器</td></tr>
       <tr><td><code>TasksView</code> + <code>TaskProgress</code> + <code>TaskLogDrawer</code></td><td>/ai/tasks</td><td>任务中心</td></tr>
       <tr><td><code>SettingsView</code> + <code>PromptEditor</code></td><td>/ai/settings</td><td>模型 / Prompt / 默认值 / 通知</td></tr>
-      <tr><td><code>CommandPalette</code></td><td>全局</td><td>Ctrl+K 命令面板</td></tr>
+      <tr><td><code>CommandPalette</code></td><td>全局</td><td>命令面板</td></tr>
       <tr><td><code>OnboardWizard</code></td><td>全局</td><td>首次配置 3 步向导</td></tr>
     </table>
 
@@ -991,7 +991,7 @@
       <li>降级路径：无模型配置、LLM 超时、数据窗口为空、断网——各有明确恢复动作</li>
       <li>移动端 375px：单栏对话可完成「追问 + 查看摘要」；无横向溢出</li>
       <li>深浅模式：全部页面与图表双主题通过；红涨绿跌语义在两种模式下一致</li>
-      <li>无障碍：键盘可完成全部导航；命令面板可达所有动作；动效可关闭</li>
+      <li>无障碍：命令面板可达所有动作；动效可关闭</li>
     </ul>
 
     <div class="card" style="margin-top:26px;border-left:4px solid var(--brand)">

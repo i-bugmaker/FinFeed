@@ -242,36 +242,6 @@ function onManualInput() {
   }, 160)
 }
 
-function onManualKeydown(e) {
-  if (e.key === 'Enter') {
-    // 中文输入法组词（composition）期间的 Enter 不触发导入
-    if (e.isComposing) return
-    if (suggestState.open && suggestState.active >= 0) {
-      e.preventDefault()
-      pickSuggestion(suggestState.items[suggestState.active])
-      return
-    }
-    if (suggestState.open && suggestState.items.length === 1) {
-      e.preventDefault()
-      pickSuggestion(suggestState.items[0]) // 唯一匹配：直接导入
-      return
-    }
-    submitImport() // 无联想候选时按原文提交（后端解析代码/名称/拼音）
-    return
-  }
-  if (!suggestState.open) return
-  if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    suggestState.active = (suggestState.active + 1) % suggestState.items.length
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    suggestState.active =
-      (suggestState.active - 1 + suggestState.items.length) % suggestState.items.length
-  } else if (e.key === 'Escape') {
-    suggestState.open = false
-  }
-}
-
 function pickSuggestion(item) {
   suggestState.open = false
   importModal.text = item.code
@@ -300,22 +270,6 @@ function onDropFile(e) {
   e.preventDefault()
   const file = e.dataTransfer?.files?.[0]
   if (file) setImportImage(file)
-}
-
-function onWindowPaste(e) {
-  // 截图导入标签打开时，支持 Ctrl+V 直接粘贴剪贴板图片
-  if (!importModal.open || importModal.tab !== 'image') return
-  const items = e.clipboardData?.items || []
-  for (const it of items) {
-    if (it.kind === 'file' && it.type.startsWith('image/')) {
-      const file = it.getAsFile()
-      if (file) {
-        setImportImage(file)
-        e.preventDefault()
-        return
-      }
-    }
-  }
 }
 
 async function submitImport() {
@@ -513,14 +467,12 @@ onMounted(async () => {
   await nextTick()
   connectFeed()
   pollTimer = setInterval(() => loadFeed(), 60000) // 轮询兜底（外部公告等非 SSE 覆盖路径）
-  window.addEventListener('paste', onWindowPaste) // 截图导入支持 Ctrl+V 粘贴
 })
 
 onUnmounted(() => {
   if (unsubFeed) unsubFeed()
   if (pollTimer) clearInterval(pollTimer)
   clearInterval(analysis.pollTimer)
-  window.removeEventListener('paste', onWindowPaste)
 })
 </script>
 
@@ -786,7 +738,6 @@ onUnmounted(() => {
             placeholder="输入代码 / 名称 / 拼音，如 600519、茅台、gzmt"
             clearable
             @input="onManualInput"
-            @keydown="onManualKeydown"
             @blur="closeSuggest"
           />
           <div v-if="suggestState.open" class="ff-sm-suggest__drop">
@@ -806,7 +757,7 @@ onUnmounted(() => {
           </div>
         </div>
         <p class="ff-sm-import__hint">
-          输入单个股票：6 位代码（含 sh/sz 前缀）、股票名称或拼音简称均可，下拉即时联想，Enter 确认导入。
+          输入单个股票：6 位代码（含 sh/sz 前缀）、股票名称或拼音简称均可，下拉即时联想，点击候选即可导入。
         </p>
       </div>
 
@@ -828,11 +779,11 @@ onUnmounted(() => {
           <img v-if="importModal.filePreview" :src="importModal.filePreview" class="ff-sm-import__preview" alt="截图预览" />
           <span v-else class="ff-sm-import__drop-hint">
             <AppIcon name="upload" size="md" />
-            点击选择 / Ctrl+V 粘贴 / 拖拽图片到此处
+            点击选择 / 拖拽图片到此处
           </span>
         </label>
         <p class="ff-sm-import__hint">
-          支持截图软件复制后直接 Ctrl+V 粘贴上传；服务端需安装 OCR 引擎（推荐 <code>pip install rapidocr-onnxruntime</code>），未安装时会给出明确提示。
+          支持截图软件保存后在此上传识别；服务端需安装 OCR 引擎（推荐 <code>pip install rapidocr-onnxruntime</code>），未安装时会给出明确提示。
         </p>
       </div>
 

@@ -101,7 +101,7 @@ async def run_continuous(interval: int, web_port: int):
             cycle=monitor.fetch_count,
             total=total_count,
             new_count=total_new,
-            status=f"第{monitor.fetch_count}轮" if monitor.fetch_count > 0 else "运行中",
+            status="运行中",
         )
 
     monitor.set_push_callback(push_callback)
@@ -131,9 +131,9 @@ async def run_continuous(interval: int, web_port: int):
                 # 导致 TUI「库内 0 条」一直不更新（详见 push_callback 同注释）。
                 total_count = stats.get("total_news", 0)
 
+                # 轮次已在 header 第二行单独显示（"第 {cycle} 轮"），status 不再重复轮次，
+                # 只表达运行/准备就绪状态，避免同屏出现两个"第N轮"。
                 status = "运行中" if monitor.is_running else "准备中"
-                if monitor.fetch_count > 0:
-                    status = f"第{monitor.fetch_count}轮"
 
                 terminal_ui.update_data(
                     news_list=news,

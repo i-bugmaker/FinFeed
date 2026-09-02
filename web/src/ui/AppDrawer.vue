@@ -2,9 +2,8 @@
 /**
  * AppDrawer — 自定义抽屉
  */
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { watch, onUnmounted } from 'vue'
 import AppIcon from './AppIcon.vue'
-import { useFocusTrap } from './useFocusTrap'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -26,21 +25,11 @@ function onMaskClick() {
   if (props.maskClosable) close()
 }
 
-function onKeydown(e) {
-  if (e.key === 'Escape' && props.modelValue && props.closable) close()
-}
-
 watch(() => props.modelValue, v => {
   document.body.classList.toggle('ff-drawer-open', v)
 })
 
-// 焦点管理：打开聚焦首个控件、Tab 锁定在抽屉内、关闭归还焦点
-const overlayRef = ref(null)
-useFocusTrap(() => props.modelValue, () => overlayRef.value)
-
-onMounted(() => document.addEventListener('keydown', onKeydown))
 onUnmounted(() => {
-  document.removeEventListener('keydown', onKeydown)
   document.body.classList.remove('ff-drawer-open')
 })
 </script>
@@ -48,7 +37,7 @@ onUnmounted(() => {
 <template>
   <Teleport to="body">
     <Transition name="ff-overlay">
-      <div v-show="modelValue" ref="overlayRef" class="ff-overlay ff-overlay--drawer" role="presentation" @click.self="onMaskClick">
+      <div v-show="modelValue" class="ff-overlay ff-overlay--drawer" role="presentation" @click.self="onMaskClick">
         <Transition :name="placement === 'right' ? 'ff-drawer-right' : 'ff-drawer'">
           <div
             v-show="modelValue"

@@ -399,3 +399,115 @@ def get_prompts() -> Dict[str, str]:
     for k, default in _prompts.DEFAULT_PROMPTS.items():
         out[k] = get_setting("prompt_" + k, default) or default
     return out
+
+
+# 智能体画像（llm_agents 表）：结构化性格字段 + 系统提示词覆盖
+_AGENT_FIELDS = ("name", "personality", "stance", "style", "tone", "system_prompt")
+_AGENT_ATTR_LABELS = (("personality", "性格"), ("stance", "立场"), ("style", "文风"), ("tone", "语气"))
+
+
+def agent_system(agent_key: str, base_system: str) -> str:
+    """把智能体画像（结构化角色字段 + system_prompt 覆盖）拼装成发给 LLM 的 system 提示词。
+
+    - base_system：该报告类型的内置系统提示词（已含用户 prompt 覆盖）
+    - agent.system_prompt 非空时优先作为提示词正文，否则用 base_system
+    - 返回 = 画像行（角色/性格/立场/文风/语气）+ 提示词正文
+    """
+    ag = get_agent(agent_key) or {}
+    prompt = (ag.get("system_prompt") or "").strip() or (base_system or "")
+    profile: List[str] = []
+    if ag.get("name"):
+        profile.append(f"你的角色是「{ag['name']}」")
+    attrs = [
+        f"{label}={v}"
+        for field, label in _AGENT_ATTR_LABELS
+        if (v := (ag.get(field) or "").strip())
+    ]
+    if attrs:
+        profile.append("；".join(attrs))
+    head = "；".join(profile).strip()
+    if not head:
+        return prompt
+    return f"{head}。\n{prompt}"
+
+
+def list_agents() -> Dict[str, Dict[str, str]]:
+    """返回全部智能体画像（存于 llm_agents；system_prompt 留空表示用内置默认）。"""
+    ensure_tables()
+    _seed_agents_once()
+    out: Dict[str, Dict[str, str]] = {}
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT agent_key, name, personality, stance, style, tone, system_prompt "
+            "FROM llm_agents GROUP BY agent_key ORDER BY agent_key"
+        )
+        for r in c.fetchall():
+            out[r["agent_key"]] = {
+                "name": r["name"] or "",
+                "personality": r["personality"] or "",
+                "stance": r["stance"] or "",
+                "style": r["style"] or "",
+                "tone": r["tone"] or "",
+                "system_prompt": r["system_prompt"] or "",
+            }
+    return out
+
+
+def get_agent(agent_key: str) -> Dict[str, str]:
+    """返回单个智能体画像；不存在时返回该键的空画像（运行时仍可用默认提示词）。"""
+    return list_agents().get(agent_key, {
+        "name": "", "personality": "", "stance": "",
+        "style": "", "tone": "", "system_prompt": "",
+    })
+
+
+def save_agents(agents: Dict[str, Dict[str, str]]) -> None:
+    """保存多个智能体画像；空字符串字段会写入（表示清空该字段）。"""
+    ensure_tables()
+    import time as _time
+    db = get_db_manager()
+    with db.get_db() as c:
+        for key, fields in (agents or {}).items():
+            key = str(key).strip()
+            if not key:
+                continue
+            name = str((fields or {}).get("name") or "").strip()
+            personality = str((fields or {}).get("personality") or "").strip()
+            stance = str((fields or {}).get("stance") or "").strip()
+            style = str((fields or {}).get("style") or "").strip()
+            tone = str((fields or {}).get("tone") or "").strip()
+            system_prompt = str((fields or {}).get("system_prompt") or "").strip()
+            c.execute(
+                "INSERT INTO llm_agents (agent_key, name, personality, stance, style, tone, system_prompt, updated_ts) "
+                "VALUES (?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(agent_key) DO UPDATE SET "
+                "name=excluded.name, personality=excluded.personality, stance=excluded.stance, "
+                "style=excluded.style, tone=excluded.tone, system_prompt=excluded.system_prompt, "
+                "updated_ts=excluded.updated_ts",
+                (key, name, personality, stance, style, tone, system_prompt, int(_time.time())),
+            )
+
+
+def reset_agent(agent_key: str) -> None:
+    """把单个智能体重置为默认画像（删除用户覆盖行，由播种逻辑兜底重建）。"""
+    ensure_tables()
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute("DELETE FROM llm_agents WHERE agent_key = ?", (agent_key,))
+    _seed_agents_once()
+
+
+def _seed_agents_once() -> None:
+    """幂等播种：仅当 llm_agents 为空时归零重建默认（供旧库首次初始化）。"""
+    try:
+        from .schema import ensure_tables as _et
+        _et()
+        from .schema import _seed_agents
+        db = get_db_manager()
+        with db.get_db() as c:
+            c.execute("SELECT COUNT(*) AS n FROM llm_agents")
+            if c.fetchone()["n"] == 0:
+                _seed_agents(c)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"智能体默认播种失败: {e}")
