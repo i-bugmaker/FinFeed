@@ -116,9 +116,63 @@ class AnalysisService:
             return None
 
     def list_tasks(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """任务列表 = 实时内存任务 + 数据库已落库报告。
+
+        历史任务（服务重启 / 超出 MAX_TASK_HISTORY 内存上限）从 llm_reports 表恢复，
+        保证任务中心不丢失已有数据；内存中的进行中/排队/最近完成任务覆盖同名记录。
+        """
+        result: Dict[str, Dict[str, Any]] = {}
+        # 1) 实时内存任务为主，保证显示最新状态
         with self._lock:
-            ids = self._order[-limit:][::-1]
-            return [self._tasks[i].to_dict() for i in ids if i in self._tasks]
+            for i in self._order[::-1]:
+                t = self._tasks.get(i)
+                if t:
+                    result[i] = t.to_dict()
+        # 2) 数据库已落库报告补齐历史任务（跨重启 / 超出内存历史上限）
+        try:
+            reports = store.list_reports(limit=max(limit * 2, 50))["items"]
+        except Exception as e:  # noqa: BLE001 —— 数据库异常不影响内存任务返回
+            logger.debug(f"从数据库恢复任务列表失败: {e}")
+            reports = []
+        for r in reports:
+            tid = r.get("task_id")
+            if tid and tid not in result:
+                result[tid] = self._task_from_report(r)
+        ordered = sorted(result.values(), key=lambda d: d.get("created_ts") or 0, reverse=True)
+        return ordered[:limit]
+
+    @staticmethod
+    def _task_from_report(r: Dict[str, Any]) -> Dict[str, Any]:
+        """将数据库中的一条报告记录还原为任务展示对象，供任务中心离线恢复。"""
+        status = r.get("status") or STATUS_SUCCESS
+        if status == STATUS_SUCCESS:
+            message = f"分析完成，共归纳 {r.get('news_count') or 0} 条资讯"
+        else:
+            message = r.get("error") or "分析失败"
+        return {
+            "task_id": r.get("task_id") or f"report-{r.get('id')}",
+            "status": status,
+            "stage": "done",
+            "stage_label": "已完成",
+            "progress": 100.0,
+            "message": message,
+            "hours": r.get("window_hours") or 24,
+            "scope": r.get("scope") or collector.SCOPE_ALL,
+            "report_type": r.get("report_type") or "review",
+            "stock_code": r.get("stock_code") or "",
+            "provider_name": r.get("provider_name") or "",
+            "model": r.get("model") or "",
+            "news_count": r.get("news_count") or 0,
+            "scanned_count": r.get("scanned_count") or 0,
+            "report_id": r.get("id"),
+            "error": r.get("error") or "",
+            "error_kind": "",
+            "created_ts": r.get("created_ts") or 0,
+            "started_ts": r.get("start_ts") or 0,
+            "finished_ts": r.get("end_ts") or 0,
+            "elapsed": r.get("elapsed") or 0,
+            "options": {},
+        }
 
     def is_busy(self) -> bool:
         with self._lock:
