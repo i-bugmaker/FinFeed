@@ -65,6 +65,16 @@ class BaseParser(ABC):
         max_back_ts = int(time.time()) - CATCH_UP_MAX_DAYS * 24 * 3600
         return max(self.last_ts, max_back_ts)
 
+    async def fetch_normal(self, http_client) -> Optional[list[NewsItem]]:
+        """正常模式自建请求（可选覆盖）。
+
+        默认返回 None，表示交由框架 `_make_request` 按 `source.params` 构造请求。
+        自建参数型解析器（如港交所披露易、SEC EDGAR，其请求参数依赖动态日期/
+        专用字段而非 `source.params`）应覆盖此方法，自行构造并返回新闻列表，
+        以解决框架预期参数与实际请求参数不一致导致的空数据问题。
+        """
+        return None
+
     @abstractmethod
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         """解析 HTTP 响应，返回新闻列表"""

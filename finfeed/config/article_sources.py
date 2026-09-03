@@ -200,29 +200,6 @@ ARTICLE_NEWS_SOURCES: list[NewsSource] = [
     ),
 
     NewsSource(
-        name='港交所披露易',
-        url='https://www1.hkexnews.hk/search/titleSearchServlet.do',
-        parser_type='hkexnews',
-        headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*'
-        },
-    ),
-
-    NewsSource(
-        name='SEC EDGAR',
-        url='https://www.sec.gov/cgi-bin/browse-edgar',
-        parser_type='sec_edgar',
-        headers={
-            'User-Agent': 'FinFeed research contact@finfeed.example.com',
-            'Accept': 'application/atom+xml, application/xml, text/xml, */*'
-        },
-        params={
-            'type': '8-K'
-        },
-    ),
-
-    NewsSource(
         name='上交所公告',
         url='http://query.sse.com.cn/security/stock/queryCompanyBulletinNew.do',
         parser_type='sse',

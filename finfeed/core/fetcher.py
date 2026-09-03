@@ -188,12 +188,19 @@ class NewsFetcher:
                     parser.set_catch_up_mode(False)
                     db_set_source_last_ts(source_name, parser.last_ts)
                 else:
-                    response = await self._make_request(http_client, source, parser)
-                    if not hasattr(response, 'client'):
-                        response.client = http_client
-                    news_list = await self._handle_response(
-                        source_name, response, parser, health_monitor, min_interval
-                    )
+                    custom_news = await parser.fetch_normal(http_client)
+                    if custom_news is not None:
+                        news_list = custom_news
+                        if news_list:
+                            parser.update_last_ts(news_list)
+                            db_set_source_last_ts(source_name, parser.last_ts)
+                    else:
+                        response = await self._make_request(http_client, source, parser)
+                        if not hasattr(response, 'client'):
+                            response.client = http_client
+                        news_list = await self._handle_response(
+                            source_name, response, parser, health_monitor, min_interval
+                        )
 
                 latency = time.time() - start_time
                 health_monitor.record_success(source_name, latency)

@@ -221,8 +221,6 @@ SOURCE_RULES: dict[str, dict[str, Any]] = {
     "韭研公社": {"html": [".jc-home", "[class*='article-content']", "article"]},
     "萝卜投研": {"html": ["[class*='article']", "[class*='detail']", "main"]},
     "东方财富研报": {"html": ["[class*='report-content']", "[class*='article']"]},
-    "港交所披露易": {"html": ["article", "main", ".news-content"]},
-    "SEC EDGAR": {"html": ["article", ".formGrouping", "p"]},
     "上交所公告": {"pdf": True},
     "深交所公告": {"pdf": True},
 }
@@ -262,8 +260,6 @@ _URL_HINTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"caixin\.com"), "财新网"),
     (re.compile(r"jiuyangongshe\.com"), "韭研公社"),
     (re.compile(r"datayes\.com"), "萝卜投研"),
-    (re.compile(r"hkexnews\.hk"), "港交所披露易"),
-    (re.compile(r"sec\.gov"), "SEC EDGAR"),
     (re.compile(r"sse\.com\.cn"), "上交所公告"),
     (re.compile(r"szse\.cn"), "深交所公告"),
 ]

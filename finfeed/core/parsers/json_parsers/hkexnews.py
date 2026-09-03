@@ -133,6 +133,26 @@ class HkexNewsParser(BaseParser):
         )
 
     # 主解析入口
+    async def fetch_normal(self, http_client) -> list[NewsItem]:
+        """正常模式：取最近一天（今天）的公告，单次请求 50 条。
+
+        覆盖框架 `_make_request`：港交所请求需动态日期参数，而非 `source.params`。
+        """
+        today = datetime.now(TZ_BJ).strftime("%Y%m%d")
+        try:
+            resp = await http_client.get(
+                HKEX_SEARCH_URL,
+                headers=dict(self.source.headers),
+                params=self._build_params(today, today, HKEX_DEFAULT_ROW_RANGE),
+            )
+            if resp.status_code != 200:
+                logger.warning(f"港交所披露易正常抓取失败：HTTP {resp.status_code}")
+                return []
+            return await self.parse(resp)
+        except Exception as e:
+            logger.warning(f"港交所披露易正常抓取异常：{str(e)[:100]}")
+            return []
+
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         """解析披露易标题搜索接口的 JSON 响应"""
         news_list: list[NewsItem] = []

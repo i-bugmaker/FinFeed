@@ -171,6 +171,26 @@ class SecEdgarParser(BaseParser):
         )
 
     # 主解析入口（Atom XML）
+    async def fetch_normal(self, http_client) -> list[NewsItem]:
+        """正常模式：请求 getcurrent Atom feed，单次获取 DEFAULT_COUNT 条。
+
+        覆盖框架 `_make_request`：SEC 需要 `action=getcurrent` 等专用参数，
+        而 `source.params` 仅用于配置表单类型，不能直接作为请求参数。
+        """
+        try:
+            resp = await http_client.get(
+                SEC_ATOM_URL,
+                headers=self._headers(),
+                params=self._build_atom_params(DEFAULT_COUNT),
+            )
+            if resp.status_code != 200:
+                logger.warning(f"SEC EDGAR 正常抓取失败：HTTP {resp.status_code}")
+                return []
+            return await self.parse(resp)
+        except Exception as e:
+            logger.warning(f"SEC EDGAR 正常抓取异常：{str(e)[:100]}")
+            return []
+
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         """解析 EDGAR getcurrent Atom XML 响应"""
         news_list: list[NewsItem] = []
