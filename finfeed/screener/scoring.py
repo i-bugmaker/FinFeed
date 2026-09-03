@@ -254,6 +254,107 @@ def _highlight_reversal(row: dict) -> list[str]:
     return []
 
 
+_DIM_LABEL = {
+    "capital": "主力资金", "momentum": "动量趋势", "valuation": "估值合理",
+    "liquidity": "量价活跃", "quality": "质量稳定", "sentiment": "题材情绪",
+    "growth": "成长性", "reversal": "反转修复",
+}
+
+
+def _describe_sentiment(row: dict, flags=()) -> str:
+    """情绪面描述：涨停基因 / 连涨动能 / 大单动向(DDX) / 量能 / 资金榜与龙虎榜。"""
+    out: list[str] = []
+    lup_raw = row.get("annual_limit_up_days")
+    if not _is_missing(lup_raw):
+        lup = _f(lup_raw)
+        if lup >= 1:
+            txt = f"年内涨停 {lup:.0f} 次"
+            if lup >= 6:
+                txt += "（题材高度活跃）"
+            out.append(txt)
+    streak_raw = row.get("consecutive_up_days")
+    if not _is_missing(streak_raw):
+        streak = _f(streak_raw)
+        if streak >= 2:
+            out.append(f"连涨 {streak:.0f} 天")
+        elif streak <= -2:
+            out.append(f"连跌 {abs(streak):.0f} 天")
+    ddx_raw = row.get("ddx")
+    if not _is_missing(ddx_raw):
+        ddx = _f(ddx_raw)
+        if ddx >= 0.1:
+            out.append(f"大单净流入（DDX +{ddx:.2f}）")
+        elif ddx <= -0.1:
+            out.append(f"大单净流出（DDX {ddx:+.2f}）")
+    vs_raw = row.get("vol_speed_pct")
+    if not _is_missing(vs_raw):
+        vs = _f(vs_raw)
+        if vs >= 1.0:
+            out.append(f"明显放量（量速 {vs:.1f}）")
+        elif vs >= 0.3:
+            out.append(f"温和放量（量速 {vs:.1f}）")
+        elif vs <= -0.1:
+            out.append(f"缩量（量速 {vs:.1f}）")
+    for f_ in flags:
+        out.append(str(f_))
+    if not out:
+        return "涨停/连板/大单等情绪信号相对平淡，情绪维度评分取中性。"
+    return "；".join(out) + "。"
+
+
+def _describe_recent(row: dict) -> str:
+    """近期表现：当日 + 5/20/60 日涨跌 + 5 日主力净流入占流通 + 技术面。"""
+    out: list[str] = []
+    chg = row.get("chg_today")
+    if not _is_missing(chg):
+        out.append(f"今日 {_f(chg):+.2f}%")
+    seg: list[str] = []
+    for label, col in (("5日", "change_5d_pct"), ("20日", "change_20d_pct"),
+                       ("60日", "change_60d_pct")):
+        if not _is_missing(row.get(col)):
+            seg.append(f"{label}{_f(row.get(col)):+.1f}%")
+    if seg:
+        out.append("涨跌 " + "/".join(seg))
+    net5_raw = row.get("main_net_5d_pct")
+    if not _is_missing(net5_raw):
+        net5 = _f(net5_raw)
+        if abs(net5) >= 0.05:
+            out.append(f"5日主力净流入占流通 {net5:+.2f}%")
+    if row.get("ma_align"):
+        out.append("均线多头排列")
+    dd = row.get("drawdown_from_high")
+    if dd is not None and math.isfinite(float(dd)):
+        out.append(f"距52周高点回撤 {float(dd):.1f}%")
+    if not out:
+        return "近期走势数据暂缺。"
+    return "；".join(out) + "。"
+
+
+def _build_rationale(row: dict, scores: dict, total: float,
+                     failures: list[str], flags=()) -> str:
+    """生成详细入选逻辑（多节文案，\n 分隔，节名用【】包裹）。
+
+    分节：
+        【核心逻辑】 —— 为什么选他（主导维度）
+        【情绪面】   —— 题材情绪与资金动向
+        【近期表现】 —— 近端走势与技术面
+        【风险】     —— 护栏降级项（无则不输出）
+    """
+    ranked = sorted(((d, scores.get(d, 0.0)) for d in _DIM_LABEL),
+                    key=lambda x: x[1], reverse=True)
+    strong = [f"{_DIM_LABEL[d]}{v:.0f}分" for d, v in ranked if v >= 60]
+    if strong:
+        lead = "、".join(strong[:3])
+    else:
+        lead = "、".join(f"{_DIM_LABEL[d]}{v:.0f}分" for d, v in ranked[:2])
+    lines = [f"【核心逻辑】综合分 {total:.1f} 分，主要得分来自 {lead}，是本标的入选的核心依据。"]
+    lines.append("【情绪面】" + _describe_sentiment(row, flags))
+    lines.append("【近期表现】" + _describe_recent(row))
+    if failures:
+        lines.append("【风险】" + "；".join(failures) + "，已触发入选护栏降级，操作宜谨慎。")
+    return "\n".join(lines)
+
+
 def _make_percentile(values: list[float]):
     """构造「值 → 同组内百分位(0~100)」的函数（越高越好方向）。"""
     s = sorted(values)
@@ -270,7 +371,7 @@ def _make_percentile(values: list[float]):
 
 def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
               technical_enabled: bool = False,
-              weights: dict | None = None) -> StockScore:
+              weights: dict | None = None, flags=()) -> StockScore:
     """由维度子分组装 StockScore：板块中性化混合 → 加权总分 → 护栏 → 评级 → 说明。
 
     dims:     factors.dimension_scores 返回的绝对子分（含贡献说明）
@@ -338,7 +439,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
     else:
         tier = "none"
 
-    # 选股逻辑说明
+    # 选股逻辑说明：亮点标签 + 详尽的入选逻辑（核心成因/情绪面/近期表现/风险）
     highlights = (
         _highlight_capital(row, dims["capital"][1])
         + _highlight_momentum(row)
@@ -348,9 +449,12 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         + _highlight_growth(row)
         + _highlight_reversal(row)
     )
-    rationale = "；".join(highlights) if highlights else "无显著亮点"
-    if failures:
-        rationale += " ｜【降级】" + "、".join(failures)
+    scores = {
+        "capital": capital, "momentum": momentum, "valuation": valuation,
+        "liquidity": liquidity, "quality": quality, "sentiment": sentiment,
+        "growth": growth, "reversal": reversal,
+    }
+    rationale = _build_rationale(row, scores, total, failures, flags)
 
     return StockScore(
         code=str(row.get("code", "")).zfill(6),
@@ -546,6 +650,11 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
         if i in top_idx:
             row = build_factor_row(raw)
             dims_scalar = factors.dimension_scores(row, cfg)
+            flags_list: list[str] = []
+            # 市场环境标注：命中当日大资金净流入榜 / 龙虎榜净买榜的标的显著标注
+            if market_ctx is not None:
+                from .market_context import rank_flags
+                flags_list = [str(x) for x in rank_flags(market_ctx, str(rec["code"]))]
             highlights = (
                 _highlight_capital(row, dims_scalar["capital"][1])
                 + _highlight_momentum(row)
@@ -555,14 +664,15 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
                 + _highlight_sentiment(row)
                 + _highlight_growth(row)
                 + _highlight_reversal(row)
+                + [f_ for f_ in flags_list]
             )
-            # 市场环境标注：命中当日大资金净流入榜 / 龙虎榜净买榜的标的显著标注
-            if market_ctx is not None:
-                from .market_context import rank_flags
-                highlights = highlights + rank_flags(market_ctx, str(rec["code"]))
-            rationale = "；".join(highlights) if highlights else "无显著亮点"
-            if failures:
-                rationale += " ｜【降级】" + "、".join(failures)
+            rationale = _build_rationale(
+                row,
+                {d: float(rec[f"{d}_score"]) for d in _DIMS_SCORES if f"{d}_score" in rec},
+                float(rec["total_score"]),
+                failures,
+                flags_list,
+            )
         else:
             highlights = []
             rationale = ""

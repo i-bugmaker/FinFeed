@@ -451,6 +451,15 @@ function openDetail(row) {
   selectedStock.value = row
 }
 
+// 详尽的入选逻辑：后端按 \n 分隔成【核心逻辑】【情绪面】【近期表现】【风险】等节，
+// 这里把每节拆成 「节标题 + 正文」，便于前端分段加粗渲染。
+function rationaleLines(r) { return (r || '').split('\n').map((s) => s.trim()).filter(Boolean) }
+function rationaleTitle(line) {
+  const m = line.match(/^(【[^】]+】)/)
+  return m ? m[1] : ''
+}
+function rationaleBody(line) { return line.replace(/^【[^】]+】/, '').trim() }
+
 // 列开关菜单：点击外部区域自动关闭
 function onDocClick(e) {
   if (showColMenu.value && colsMenuRef.value && !colsMenuRef.value.contains(e.target)) {
@@ -1216,9 +1225,16 @@ onBeforeUnmount(() => {
                             </div>
                             <div class="screener-detail__cols">
                               <div class="screener-detail__left">
-                                <p v-if="row.rationale" class="screener-detail__text">
-                                  <strong>入选逻辑：</strong>{{ row.rationale }}
-                                </p>
+                                <div class="screener-detail__logic" v-if="rationaleLines(row.rationale).length">
+                                  <div class="screener-detail__logic-label">入选逻辑</div>
+                                  <div
+                                    v-for="(line, li) in rationaleLines(row.rationale)"
+                                    :key="li"
+                                    class="screener-detail__logic-line"
+                                  >
+                                    <span v-if="rationaleTitle(line)" class="screener-detail__logic-title">{{ rationaleTitle(line) }}</span>{{ rationaleBody(line) }}
+                                  </div>
+                                </div>
                                 <div v-if="row.highlights?.length" class="screener-detail__tags">
                                   <span class="screener-detail__tag-title">亮点</span>
                                   <span v-for="tag in row.highlights" :key="tag" class="screener-detail__tag screener-detail__tag--good">{{ tag }}</span>
@@ -1453,7 +1469,16 @@ onBeforeUnmount(() => {
             }" :height="260" />
           </div>
         </div>
-        <p class="drill__text"><strong>入选逻辑：</strong>{{ selectedStock.rationale || '无显著亮点' }}</p>
+        <div class="drill__logic" v-if="rationaleLines(selectedStock.rationale).length">
+          <div class="drill__logic-label">入选逻辑</div>
+          <div
+            v-for="(line, li) in rationaleLines(selectedStock.rationale)"
+            :key="li"
+            class="drill__logic-line"
+          >
+            <span v-if="rationaleTitle(line)" class="drill__logic-title">{{ rationaleTitle(line) }}</span>{{ rationaleBody(line) }}
+          </div>
+        </div>
         <div class="drill__tags" v-if="selectedStock.highlights?.length">
           <span v-for="tag in selectedStock.highlights" :key="tag" class="screener-detail__tag screener-detail__tag--good">{{ tag }}</span>
         </div>
@@ -1775,6 +1800,10 @@ onBeforeUnmount(() => {
 .screener-detail__left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--ff-space-2); }
 .screener-detail__text { font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); line-height: 1.6; margin: 0; }
 .screener-detail__text strong { color: var(--ff-text-primary); }
+.screener-detail__logic { display: flex; flex-direction: column; gap: 6px; }
+.screener-detail__logic-label { font-size: var(--ff-fs-caption); font-weight: 600; color: var(--ff-text-primary); }
+.screener-detail__logic-line { font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); line-height: 1.6; }
+.screener-detail__logic-title { color: var(--ff-text-brand); font-weight: 600; margin-right: 6px; white-space: nowrap; }
 .screener-detail__tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ff-space-2); }
 .screener-detail__tag-title { font-size: var(--ff-fs-caption); color: var(--ff-text-tertiary); font-weight: 500; }
 .screener-detail__tag { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: var(--ff-radius-pill); font-size: var(--ff-fs-caption); font-weight: 500; background: var(--ff-bg-muted); color: var(--ff-text-secondary); }
@@ -1826,6 +1855,10 @@ onBeforeUnmount(() => {
 .drill__kv b { font-variant-numeric: tabular-nums; }
 .drill__score { color: var(--ff-text-brand); font-size: var(--ff-fs-h3); }
 .drill__text { font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); line-height: 1.6; margin: 0; }
+.drill__logic { display: flex; flex-direction: column; gap: 8px; padding-top: var(--ff-space-2); border-top: 1px solid var(--ff-border-subtle); margin-top: var(--ff-space-3); }
+.drill__logic-label { font-size: var(--ff-fs-body-sm); font-weight: 600; color: var(--ff-text-primary); }
+.drill__logic-line { font-size: var(--ff-fs-body-sm); color: var(--ff-text-secondary); line-height: 1.7; }
+.drill__logic-title { color: var(--ff-text-brand); font-weight: 600; margin-right: 6px; white-space: nowrap; }
 .drill__tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ── 删除确认 ── */
