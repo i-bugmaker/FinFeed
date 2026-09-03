@@ -429,6 +429,10 @@ function onLeave(el, done) {
 .nr-panel__text {
   max-width: 74ch;
   margin: 0;
+  /* 思源黑体优先：比微软雅黑笔画更均匀锐利，下拉正文读起来更清晰 */
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC',
+    'PingFang SC', 'HarmonyOS Sans SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
   font-size: var(--ff-fs-body);
   font-weight: 400;
   line-height: 1.75;
