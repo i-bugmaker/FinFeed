@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from datetime import date, datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from . import config
-from .collector import INDEX_LIST, fetch_tick_chart
+from .collector import INDEX_LIST, fetch_tick_charts_batch
 from .store import RefreshWorker, SectorStore
 
 logger = logging.getLogger("finfeed.sector_minute")
@@ -27,9 +26,6 @@ logger = logging.getLogger("finfeed.sector_minute")
 store = SectorStore()
 worker: Optional[RefreshWorker] = None
 _worker_lock = threading.Lock()
-
-# 历史分时抓取的哨兵：抓取异常且未达重试上限时占位，表示「保持未就绪、不写负缓存」
-_PENDING = object()
 
 
 # --------------------------------------------------------------------------- #
@@ -86,17 +82,45 @@ def _chart_dict(chart) -> dict[str, Any]:
     }
 
 
+# 序列化结果缓存：``(_cache_hist, date_str) -> (指纹, items)``。
+# 指纹 = 订阅顺序对应的 TickChart 对象 id 元组；TickChart 一旦写入即整体替换、
+# 不再原地修改，故「对象引用元组不变 ⇔ 序列化结果不变」。前端轮询/补齐
+# 高频请求（1.5s~5s）多数命中缓存，直接复用上次 dict 列表，省去 50 标的 ×
+# 240 点的重复 dataclass→dict 转换（本轮轮询的主要 CPU 开销）。
+_ser_cache: dict[tuple[bool, str], tuple[tuple[int, ...], list[dict[str, Any]]]] = {}
+_ser_cache_lock = threading.Lock()
+
+
+def _serialize_ticks(hist: bool, date_str: str) -> list[dict[str, Any]]:
+    """按订阅顺序序列化分时图表，带对象级指纹缓存（线程安全）。"""
+    objs = store.hist_tick_objs(date_str) if hist else store.live_tick_objs()
+    fp = tuple(id(o) for o in objs)
+    key = (hist, date_str)
+    with _ser_cache_lock:
+        hit = _ser_cache.get(key)
+        if hit is not None and hit[0] == fp:
+            return hit[1]
+    items = [_chart_dict(o) for o in objs if o is not None]
+    with _ser_cache_lock:
+        _ser_cache[key] = (fp, items)
+    return items
+
+
 def _immediate_fetch_new(subs) -> None:
-    """对新增且尚无缓存分时的标的，立即抓取首帧并写入仓库。
+    """对新增且尚无缓存分时的标的，立即并发抓取首帧并写入仓库。
 
     用于勾选后快速出图：这些标的无需排在后台整轮串行采集队列末尾等待，
-    独立线程立即采集；已缓存标的仍由 RefreshWorker 按周期刷新。
+    独立线程立即抓取（并发连接，N 标的约 N/workers 次往返即完成）；
+    已缓存标的仍由 RefreshWorker 按周期刷新。
     """
-    for i, s in enumerate(subs):
-        chart = fetch_tick_chart(s.market, s.code)
+    if not subs:
+        return
+    charts, _errors = fetch_tick_charts_batch(
+        [(s.market, s.code) for s in subs],
+        workers=config.FETCH_WORKERS,
+    )
+    for s, chart in zip(subs, charts):
         store.update_tick(s, chart)
-        if i < len(subs) - 1:
-            time.sleep(config.SLEEP_BETWEEN_REQUESTS)
 
 
 # --------------------------------------------------------------------------- #
@@ -122,7 +146,7 @@ def _fetch_hist_date(date_str: str) -> None:
     用户在日期组件中切换历史日期时由 ``/charts?date=`` 触发；
     完成后前端轮询 ``/charts?date=`` 即可取到全部数据。
 
-    失败语义区分两类：
+    失败语义区分两类（由 ``fetch_tick_charts_batch`` 返回的 errors 精确区分）：
     - 抓取异常（网络抖动/TDX 超时）：未达重试上限时不写缓存，该标的保持
       「未就绪」，前端下次轮询触发重试；达到上限才写负缓存止损。
     - 服务器正常应答但无分时点（停牌/非交易日）：直接写负缓存，不重复触网。
@@ -132,24 +156,28 @@ def _fetch_hist_date(date_str: str) -> None:
         if d is None:
             return
         subs = store.subscriptions()
+        if not subs:
+            return
+        charts, errors = fetch_tick_charts_batch(
+            [(s.market, s.code) for s in subs],
+            query_date=d,
+            workers=config.FETCH_WORKERS,
+        )
         for i, sub in enumerate(subs):
-            chart = None
-            try:
-                chart = fetch_tick_chart(sub.market, sub.code, query_date=d, strict=True)
-                store.hist_clear_error(date_str, sub.key)
-            except Exception as exc:  # noqa: BLE001
+            if i in errors:
+                # 网络/协议异常：未达上限保持未就绪，等待下次轮询重试
                 give_up = store.hist_note_error(date_str, sub.key)
                 logger.warning(
                     "历史分时抓取异常 date=%s %s:%s: %s%s",
-                    date_str, sub.market, sub.code, exc,
+                    date_str, sub.market, sub.code, errors[i],
                     "（已达重试上限，记为缺失）" if give_up else "（留待下次轮询重试）",
                 )
-                if not give_up:
-                    chart = _PENDING  # 哨兵：保持未就绪，不写负缓存
-            if chart is not _PENDING:
+                if give_up:
+                    store.hist_set(date_str, sub, None)  # 负缓存止损
+            else:
+                chart = charts[i]  # 正常应答（含无分时点 None → 负缓存）
+                store.hist_clear_error(date_str, sub.key)
                 store.hist_set(date_str, sub, chart)
-            if i < len(subs) - 1:
-                time.sleep(config.HIST_FETCH_SLEEP)
         logger.info("历史分时抓取完成 date=%s 标的=%d", date_str, len(subs))
     except Exception as exc:  # noqa: BLE001
         logger.warning("历史分时抓取失败[%s]: %s", date_str, exc)
@@ -267,27 +295,27 @@ def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
         today = _today_str()
         # 空日期 / 今天 / 非法日期 / 未来日期 → 一律走实时路径（防御旧前端或脏参数）
         if not date_str or date_str == today or _parse_date(date_str) is None or date_str > today:
-            ticks = store.get_ticks()
+            items = _serialize_ticks(hist=False, date_str="")
             return {
                 "date": today,
                 "is_hist": False,
                 "done": True,
                 "ts": store.health().get("last_refresh_ts", 0),
-                "total": len(ticks),
-                "items": [_chart_dict(t) for t in ticks],
+                "total": len(items),
+                "items": items,
             }
 
         # 历史日期：未抓全 → 后台线程补齐；返回当前快照 + 完成标记
         _ensure_hist_fetch(date_str)
-        ticks = store.hist_ticks(date_str)
+        items = _serialize_ticks(hist=True, date_str=date_str)
         return {
             "date": date_str,
             "is_hist": True,
             "done": store.hist_all_ready(date_str),
             "has_data": store.hist_any_points(date_str),
             "ts": store.health().get("last_refresh_ts", 0),
-            "total": len(ticks),
-            "items": [_chart_dict(t) for t in ticks],
+            "total": len(items),
+            "items": items,
         }
 
     @router.get("/sparklines")
@@ -336,20 +364,24 @@ def create_router(prefix: str = "/api/sector-minute") -> APIRouter:
 
         if lazy and missing:
             qd = _parse_date(date_str)
+            picked: list[Subscription] = []
             for k in missing[: config.MAX_LAZY_SPARKS]:
                 sub = to_sub(k)
-                if sub is None:
-                    continue
-                try:
-                    chart = fetch_tick_chart(sub.market, sub.code, query_date=qd)
-                except Exception:  # noqa: BLE001
-                    chart = None
-                if hist:
-                    store.hist_set(date_str, sub, chart)
-                else:
-                    store.update_tick(sub, chart)
-                if chart is not None and chart.points:
-                    out[k] = snapshot(chart)
+                if sub is not None:
+                    picked.append(sub)
+            if picked:
+                charts, _errs = fetch_tick_charts_batch(
+                    [(s.market, s.code) for s in picked],
+                    query_date=qd,
+                    workers=min(config.FETCH_WORKERS, len(picked)),
+                )
+                for sub, chart in zip(picked, charts):
+                    if hist:
+                        store.hist_set(date_str, sub, chart)
+                    else:
+                        store.update_tick(sub, chart)
+                    if chart is not None and chart.points:
+                        out[sub.key] = snapshot(chart)
 
         return {"items": out, "missing": [m for m in missing if m not in out]}
 

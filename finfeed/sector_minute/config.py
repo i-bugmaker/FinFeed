@@ -40,7 +40,14 @@ ETF_POOL_TTL: int = int(os.environ.get("SECTOR_MIN_ETF_POOL_TTL", "300"))
 # 注意：前端 SectorMinuteView.vue 的 MAX_TARGETS 需与本值保持一致。
 MAX_TARGETS: int = int(os.environ.get("SECTOR_MIN_MAX_TARGETS", "50"))
 
+# 分时并发抓取连接数（多标的对比提速）：TDX 单请求毫秒级，多条独立连接
+# 并行把 N 标的耗时从 N*RTT 压到 ~N/workers*RTT；连接数过高会放大服务器
+# 压力且收益递减，3~4 为实测甜点。并发连接在模块进程内各自独立，与
+# capital_dashboard 全局单例（call_lock 串行）解耦。
+FETCH_WORKERS: int = int(os.environ.get("SECTOR_MIN_FETCH_WORKERS", "3"))
+
 # 串行刷新时相邻两个标的的请求间隔（秒），错峰避免瞬间集中请求触发风控。
+# 并发批量路径已按连接切片，默认无需再等待；保留该值仅用于回退降级。
 SLEEP_BETWEEN_REQUESTS: float = float(os.environ.get("SECTOR_MIN_SLEEP", "0.3"))
 
 # 连续「整轮全部抓取失败」达到该轮次时，强制重建 TDX 连接（连接自愈）。

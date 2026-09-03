@@ -558,26 +558,31 @@ const keyOf = (s) =>
     ? "board:" + (s.board_type || "hy") + ":" + s.market + ":" + s.code
     : s.kind + ":" + s.market + ":" + s.code;
 
-// 带自动重试的 fetch+json：吸收本机网络层对本地连接的偶发重置（安全软件/代理可能随机 RST），
+// 带自动重试的 fetch+text：吸收本机网络层对本地连接的偶发重置（安全软件/代理可能随机 RST），
 // 失败按 0.5s/1s/2s 指数退避重试，重试耗尽后抛出最后一次错误。
 // 仅网络层错误（fetch 抛 TypeError，或消息含 network/socket/reset）值得重试；
 // HTTP 状态错误（如 404）是服务端确定响应，不重试。
-async function fetchJson(url, opts, retries = 3) {
+async function fetchRaw(url, opts, retries = 3) {
   const isRetryable = (e) => e instanceof TypeError || /network|fetch|socket|reset/i.test(e.message || "");
   for (let i = 0; ; i++) {
     try {
       const r = await fetch(url, opts);
       if (!r.ok) throw new Error("HTTP " + r.status);
-      return await r.json();
+      return await r.text();
     } catch (e) {
       if (!isRetryable(e) || i >= retries) throw e;
       await new Promise((res) => setTimeout(res, 500 * Math.pow(2, i)));
     }
   }
 }
+async function fetchJson(url, opts, retries = 3) {
+  return JSON.parse(await fetchRaw(url, opts, retries));
+}
+async function fetchText(url, opts, retries = 3) {
+  return fetchRaw(url, opts, retries);
+}
 
-let toastTimer = null;
-function toast(msg, isErr) {
+let toastTimer = null;function toast(msg, isErr) {
   const el = $("#toast");
   el.querySelector(".t-tag").textContent = isErr ? "提示" : "完成";
   el.querySelector(".t-msg").textContent = msg;
@@ -668,11 +673,25 @@ async function loadHealth() {
   syncStatus();
 }
 
+let _chartsLastUrl = "";
+let _chartsLastText = "";
+let _chartsLastData = null;
 async function loadCharts() {
   // 拖拽进行中：跳过本轮，避免 buildMain 用旧顺序重建 DOM 把卡片弹回原位
   if (dragActive) return;
+  const url = API.charts(state.date || "");
   try {
-    const data = await fetchJson(API.charts(state.date || ""));
+    // 文本级短路：后端带对象指纹序列化缓存，数据未变时响应体与上轮逐字节一致。
+    // 此时跳过 JSON.parse / chartsData 重组 / 全量重绘 —— 轮询（1.5s~5s）期间
+    // 多数轮次后端缓存命中，这是本轮优化消除的主要重复开销。
+    const text = await fetchText(url);
+    if (url === _chartsLastUrl && text === _chartsLastText) {
+      return _chartsLastData; // 内容未变：沿用上次解析结果与时间戳
+    }
+    _chartsLastUrl = url;
+    _chartsLastText = text;
+    const data = JSON.parse(text);
+    _chartsLastData = data;
     // 历史日期状态：抓取完成标记 / 是否有分时数据（用于提前结束轮询与空数据提示）
     if (data.is_hist) {
       state.histDone = !!data.done;
@@ -1345,6 +1364,9 @@ function buildMain() {
   // 清空旧实例与 DOM
   Object.keys(charts).forEach((k) => { charts[k].dispose(); });
   charts = {};
+  // 断开懒加载观察器：其观察目标是即将被 innerHTML 清除的旧 DOM，
+  // 不 disconnect 会导致观察器强引用已移除元素（内存无法回收）。下轮 observeLazyCharts 重建。
+  if (_lazyIO) { _lazyIO.disconnect(); _lazyIO = null; }
   const area = $("#mainArea");
   area.innerHTML = "";
   $("#emptyState").style.display = state.selected.length ? "none" : "flex";
@@ -1382,11 +1404,53 @@ function buildMain() {
   }
   area.innerHTML = html;
 
-  // 初始化图表实例
-  area.querySelectorAll(".smic__chart").forEach((el) => {
-    charts[el.id] = initChartEl(el);
-  });
+  // 图表实例懒初始化：首屏视口内的卡片同步建图（立即出图）；
+  // 视口外卡片交给 IntersectionObserver，滚动进入视口才创建 canvas 实例并绘制。
+  // 多标的（上限 50）对比时避免首帧一次性创建全部 ECharts 实例 + 全量 setOption
+  // 导致的加载卡顿 —— 每卡仅首次入视口付出一次 init 成本。
+  const chartEls = Array.from(area.querySelectorAll(".smic__chart"));
+  observeLazyCharts(chartEls);
+  chartEls.forEach((el) => { if (isElNearViewport(el)) ensureChartInited(el); });
   updateCharts();
+}
+
+// 元素是否位于（含上下 150px 预载区）视口内：用于首屏同步建图 / 懒加载判定
+function isElNearViewport(el, pad = 150) {
+  const r = el.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  return r.bottom > -pad && r.top < vh + pad;
+}
+
+// 图表懒加载观察器：进入视口才 init ECharts（只建一次，幂等）
+let _lazyIO = null;
+function lazyObserver() {
+  if (_lazyIO) return _lazyIO;
+  if (!("IntersectionObserver" in window)) return null; // 旧环境退化为全量同步建图（下方 observeLazyCharts 兼容）
+  _lazyIO = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      ensureChartInited(en.target);
+      _lazyIO.unobserve(en.target);
+    });
+  }, { rootMargin: "150px 0px" });
+  return _lazyIO;
+}
+function observeLazyCharts(els) {
+  const ob = lazyObserver();
+  if (!ob) { els.forEach((el) => ensureChartInited(el)); return; } // 无 IO 支持：全量同步建图
+  els.forEach((el) => ob.observe(el));
+}
+
+// 建图（幂等）：charts 索引 + ECharts 实例创建 + 悬停联动绑定。
+// 建图后立即用最新图表数据渲染一次（脏检查保证不重复绘制）——
+// 懒加载补建场景没有紧随其后的 updateCharts 兜底，须在此完成首帧。
+function ensureChartInited(el) {
+  if (charts[el.id]) return;
+  charts[el.id] = initChartEl(el);
+  const card = el.closest(".card");
+  const key = card && card.dataset.key;
+  const c = key ? dataByKey(key) : null;
+  if (c) renderChartByIns(charts[el.id], c, card);
 }
 
 // 初始化单个 ECharts 实例并绑定悬停联动（供 buildMain 全量 / insertChart 增量复用）
@@ -1421,12 +1485,13 @@ function insertChart(c) {
   const seq = mainSeq++;
   rows.insertAdjacentHTML("beforeend", makeCard(c, seq));
   const chartEl = rows.lastElementChild.querySelector(".smic__chart");
+  const card = chartEl.closest(".card");
   charts[chartEl.id] = initChartEl(chartEl);
   const byKey = new Map(state.chartsData.map((x) => [keyOf(x), x]));
   const cd = byKey.get(keyOf(c)) || c;
-  charts[chartEl.id].setOption(buildChartOption(cd), true);
-  const loading = chartEl.parentElement.querySelector(".smic__loading");
-  if (loading) loading.style.display = (cd.points && cd.points.length) ? "none" : "flex";
+  // 新实例 __sig 为空 → renderChartByIns 脏检查必然通过并完成首绘；
+  // 复用其 syncCardHead 保证头部数值与 loading 状态同步。
+  renderChartByIns(charts[chartEl.id], cd, card);
 }
 
 // 增量：移除指定标所的图表（其余图表不重建）
@@ -1436,6 +1501,7 @@ function removeChartByKey(k) {
   if (card) {
     const chartEl = card.querySelector(".smic__chart");
     if (chartEl && charts[chartEl.id]) { charts[chartEl.id].dispose(); delete charts[chartEl.id]; }
+    if (chartEl && _lazyIO) _lazyIO.unobserve(chartEl); // 解除观察，避免强引用已移除 DOM
     card.remove();
   }
   if (!state.selected.length) {
@@ -1537,58 +1603,79 @@ function buildChartOption(c) {
   };
 }
 
-function updateCharts() {
-  const byKey = new Map(state.chartsData.map((c) => [keyOf(c), c]));
-  Object.entries(charts).forEach(([id, ins]) => {
-    // map id -> chart via DOM order
-  });
-  // 依据 DOM 顺序重建（charts 顺序恰好与 current 数据一致，columns 模式按板/股排）
-  const area = $("#mainArea");
-  const nodes = area.querySelectorAll(".smic__chart");
-  nodes.forEach((node) => {
-    const ins = charts[node.id]; if (!ins) return;
-    // 找到对应数据：node 的卡片位于 nodes 中的索引
-    const idx = Array.prototype.indexOf.call(nodes, node);
-    const c = chartAt(idx);
-    if (c) ins.setOption(buildChartOption(c), true);
-    // 同步卡片头部价格/涨跌幅/涨跌额：增量插入或切换日期后，卡片由占位数据渲染，
-    // 头部数值需随数据到位刷新，避免残留「—」或旧日期的数值
-    if (c) {
-      const card = node.closest(".card");
-      if (card) {
-        const nd = !hasChartData(c);
-        const priceEl = card.querySelector(".smic__price");
-        const pctEl = card.querySelector(".smic__pct");
-        const amtEl = card.querySelector(".smic__amt");
-        if (priceEl) {
-          priceEl.textContent = nd ? "—" : fmtNum(c.close);
-          priceEl.className = "smic__price " + (nd ? "flat" : numCls(c.change_pct));
-        }
-        if (pctEl) {
-          pctEl.textContent = nd ? "—" : fmtPct(c.change_pct);
-          pctEl.className = "smic__pct " + (nd ? "flat" : numCls(c.change_pct));
-        }
-        if (amtEl) {
-          amtEl.textContent = nd ? "—" : (c.change_amt && c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt);
-          amtEl.className = "smic__amt " + (nd ? "flat" : numCls(c.change_amt));
-        }
-      }
-    }
-    const loading = node.parentElement.querySelector(".smic__loading");
-    if (loading) loading.style.display = c && c.points && c.points.length ? "none" : "flex";
-  });
+// 单卡数据签名：决定 ECharts option 输出的一切输入（分时内容 + 全局视图状态）。
+// 后端序列化缓存命中时各标的数据未变 → 签名不变 → 整卡跳过 setOption 与 DOM 写，
+// 轮询期间把「重绘」压缩到真正变化的卡片（文本级短路挡住全量未变，签名挡住部分变化）。
+function chartSig(c) {
+  const ps = c.points || [];
+  const n = ps.length;
+  const lp = n ? ps[n - 1] : null;
+  return (state.date || "") + "|" + (state.normalized ? "N" : "A")
+    + "|" + (c.ts || "") + "|" + (c.close ?? "") + "|" + (c.change_pct ?? "")
+    + "|" + (c.pre_close ?? "") + "|" + n
+    + (lp ? "|" + lp.time + "|" + lp.price + "|" + lp.avg + "|" + lp.vol : "");
 }
 
-function chartAt(idx) {
-  if (state.layout === "columns") {
-    const boards = state.chartsData.filter((c) => c.kind === "board");
-    const stocks = state.chartsData.filter((c) => c.kind === "stock");
-    const etfs = state.chartsData.filter((c) => c.kind === "etf");
-    if (idx < boards.length) return boards[idx];
-    if (idx < boards.length + stocks.length) return stocks[idx - boards.length];
-    return etfs[idx - boards.length - stocks.length];
+// 渲染单张已实例化的图表（脏检查：签名未变则跳过；返回是否真的重绘）。
+function renderChartByIns(ins, c, card) {
+  if (!c) return false;
+  const sig = chartSig(c);
+  if (ins.__sig === sig) return false;
+  ins.__sig = sig;
+  ins.setOption(buildChartOption(c), true);
+  if (card) syncCardHead(card, c);
+  return true;
+}
+
+// 同步卡片头部数值与 loading（仅实际值变化时写 DOM，避免每轮重复赋值）
+function syncCardHead(card, c) {
+  const nd = !hasChartData(c);
+  const priceEl = card.querySelector(".smic__price");
+  const pctEl = card.querySelector(".smic__pct");
+  const amtEl = card.querySelector(".smic__amt");
+  if (priceEl) {
+    const t = nd ? "—" : fmtNum(c.close);
+    const cl = "smic__price " + (nd ? "flat" : numCls(c.change_pct));
+    if (priceEl.textContent !== t || priceEl.className !== cl) { priceEl.textContent = t; priceEl.className = cl; }
   }
-  return state.chartsData[idx];
+  if (pctEl) {
+    const t = nd ? "—" : fmtPct(c.change_pct);
+    const cl = "smic__pct " + (nd ? "flat" : numCls(c.change_pct));
+    if (pctEl.textContent !== t || pctEl.className !== cl) { pctEl.textContent = t; pctEl.className = cl; }
+  }
+  if (amtEl) {
+    const t = nd ? "—" : (c.change_amt && c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt);
+    const cl = "smic__amt " + (nd ? "flat" : numCls(c.change_amt));
+    if (amtEl.textContent !== t || amtEl.className !== cl) { amtEl.textContent = t; amtEl.className = cl; }
+  }
+  const loading = card.querySelector(".smic__loading");
+  if (loading) {
+    const want = c && c.points && c.points.length ? "none" : "flex";
+    if (loading.style.display !== want) loading.style.display = want;
+  }
+}
+
+// 依据卡片 data-key 从当前图表数据中取对应条目（与 DOM 位置无关）
+function dataByKey(key) {
+  const arr = state.chartsData;
+  for (let i = 0; i < arr.length; i++) {
+    if (keyOf(arr[i]) === key) return arr[i];
+  }
+  return null;
+}
+
+// 按 data-key 对齐的增量更新：对每张已实例化的图做脏检查，仅变化卡 setOption。
+// 视口外尚未实例化的卡跳过（滚动进入视口时由懒加载观察器初始化并立即绘制最新数据）。
+function updateCharts() {
+  const area = $("#mainArea");
+  area.querySelectorAll(".smic__chart").forEach((node) => {
+    const ins = charts[node.id];
+    if (!ins) return; // 懒加载未建图：跳过，入视口由观察器补建
+    const card = node.closest(".card");
+    const key = card && card.dataset.key;
+    const c = key ? dataByKey(key) : null;
+    if (c) renderChartByIns(ins, c, card);
+  });
 }
 
 /* ---------------- 一览「放大」焦点弹层 ---------------- */

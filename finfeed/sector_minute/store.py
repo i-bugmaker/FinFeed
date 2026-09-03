@@ -30,7 +30,7 @@ from .collector import (
     fetch_board_list,
     fetch_etf_pool,
     fetch_stock_pool,
-    fetch_tick_chart,
+    fetch_tick_charts_batch,
     stock_market,
 )
 from .models import BoardMeta, StockMeta, Subscription, TickChart
@@ -295,6 +295,26 @@ class SectorStore:
                     out.append(ch)
         return out
 
+    def live_tick_objs(self) -> list[Optional[TickChart]]:
+        """按订阅顺序返回实时 TickChart 对象（含 None 占位）。
+
+        供序列化层做**对象级指纹**：TickChart 一旦写入即整体替换、不再原地
+        修改，因此「对象引用元组不变 ⇔ 序列化结果不变」。轮询/补齐高频请求
+        可据此直接复用上次序列化出的 dict 列表，省去重复 dataclass→dict
+        转换（50 标的 × 240 点的序列化是每轮轮询的主要 CPU 开销）。
+        """
+        with self._lock:
+            return [self._ticks.get(s.key) for s in self._subscriptions]
+
+    def hist_tick_objs(self, date_str: str) -> list[Optional[TickChart]]:
+        """按订阅顺序返回某历史日期的 TickChart 对象（含 None 占位）。"""
+        with self._lock:
+            bucket = self._hist_ticks.get(date_str) or {}
+            return [
+                (bucket.get(s.key) if isinstance(bucket.get(s.key), TickChart) else None)
+                for s in self._subscriptions
+            ]
+
     def has_any_ticks(self) -> bool:
         with self._lock:
             return bool(self._ticks)
@@ -430,16 +450,19 @@ class RefreshWorker(threading.Thread):
                 list(subs) if trading else [s for s in subs if not self.store.has_tick(s)]
             )
         if targets:
+            # 并发批量抓取（每 worker 独立 TDX 连接），替代原串行
+            # for + sleep：多标的对比场景下将整轮耗时从 N*(RTT+sleep)
+            # 压到 ~N/workers*RTT，显著降低刷新延迟。
+            charts, _errors = fetch_tick_charts_batch(
+                [(s.market, s.code) for s in targets],
+                workers=config.FETCH_WORKERS,
+            )
+            if self._stop_evt.is_set():
+                return
             ok = 0
-            for i, sub in enumerate(targets):
-                if self._stop_evt.is_set():
-                    break
-                chart = fetch_tick_chart(sub.market, sub.code)
+            for sub, chart in zip(targets, charts):
                 if self.store.update_tick(sub, chart):
                     ok += 1
-                # 错峰：相邻标的串行间隔，避免集中请求触发风控
-                if i < len(targets) - 1:
-                    time.sleep(config.SLEEP_BETWEEN_REQUESTS)
             if ok:
                 # 至少一个标的成功才推进刷新时间戳；全部失败时保持旧 ts，
                 # 前端据此可感知后端未在刷新并自动触发兜底唤醒

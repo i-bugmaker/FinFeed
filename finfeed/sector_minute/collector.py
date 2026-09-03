@@ -13,7 +13,10 @@ TDX 连接复用 ``finfeed.capital_dashboard.tdx`` 的进程级单例，
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import threading
+import time
 from datetime import date
 from typing import Optional
 
@@ -21,9 +24,12 @@ from easy_tdx import BoardType, Category, MacClient, SortOrder, SortType
 from easy_tdx.codec.bitmap import PresetField
 from finfeed.capital_dashboard.tdx import call_lock, ensure_alive, get_client
 
+from . import config
 from .models import BoardMeta, StockMeta, TickChart, TickPoint
 
 logger = logging.getLogger("finfeed.sector_minute.collector")
+
+_null_cm = contextlib.nullcontext  # 私有连接路径：无需全局串行锁
 
 # 板块类型 → (BoardType 枚举, 中文名)
 BOARD_TYPES: dict[str, tuple[BoardType, str]] = {
@@ -84,11 +90,16 @@ def fetch_board_list(board_type: str, client: MacClient | None = None) -> list[B
     if pair is None:
         return []
     ensure_alive()
-    client = client or get_client()
-    df = _safe(
-        lambda: client.get_board_list(pair[0], count=10000),
-        tag=f"board_list_{board_type}",
-    )
+    shared = client is None
+    if shared:
+        client = get_client()
+    # 共享连接须串行（easy-tdx MacClient 非线程安全）；显式传入的私有连接不经全局锁
+    cm = call_lock() if shared else _null_cm()
+    with cm:
+        df = _safe(
+            lambda: client.get_board_list(pair[0], count=10000),
+            tag=f"board_list_{board_type}",
+        )
     if df is None or len(df) == 0:
         return []
     out: list[BoardMeta] = []
@@ -127,6 +138,11 @@ def fetch_tick_chart(
         code:   标的代码（板块 88xxxx / 个股 6 位代码）。
         query_date: 查询日期；``None`` 表示「今天」（服务器返回最近一个交易日的分时，
                    周末/节假日时即为上一交易日）。
+        client: 显式传入的 MacClient。为 ``None`` 时使用全局进程级单例
+                （受 ``call_lock`` 串行保护，与资金流大屏共享连接）；
+                传入线程私有连接时**不经全局锁直接执行**——供并发批量
+                ``fetch_tick_charts_batch`` 使用（MacClient 非线程安全，
+                每个并发 worker 必须持有独立连接实例）。
         strict: True 时抓取异常向上抛出（供调用方区分「网络/服务异常」与
                「服务器正常应答但无分时点」）；默认 False 时异常打日志并返回 None。
 
@@ -135,10 +151,17 @@ def fetch_tick_chart(
     """
     from easy_tdx.mac.commands.symbol_tick_chart import SymbolTickChartCmd
 
-    ensure_alive()
-    client = client or get_client()
+    shared = client is None
+    if shared:
+        ensure_alive()
+        client = get_client()
     try:
-        chart = client._execute(SymbolTickChartCmd(int(market), str(code), query_date))
+        # 共享连接须串行执行（easy-tdx MacClient 非线程安全）；私有连接无需全局锁
+        if shared:
+            with call_lock():
+                chart = client._execute(SymbolTickChartCmd(int(market), str(code), query_date))
+        else:
+            chart = client._execute(SymbolTickChartCmd(int(market), str(code), query_date))
     except Exception as exc:  # noqa: BLE001
         if strict:
             raise
@@ -180,6 +203,122 @@ def fetch_tick_chart(
         change_amt=round(close - pre_close, 3),
         points=points,
     )
+
+
+# --------------------------------------------------------------------------- #
+# 并发批量分时抓取（多标的对比响应提速）
+# --------------------------------------------------------------------------- #
+
+def _clone_client() -> MacClient:
+    """克隆一个 TDX 连接（复用已测速的最佳主机，避免重复全量测速）。
+
+    easy-tdx 的 MacClient **非线程安全**：一个实例同一时刻只能被单线程使用。
+    并发批量抓取时每个 worker 必须持有独立连接实例；连接参数从进程级单例
+    （capital_dashboard.tdx）的当前连接克隆，主机已测速无需重复探测。
+    """
+    from easy_tdx import MacClient as _MC
+
+    base = get_client()  # 确保进程级单例已建立（含 best-host 测速结果）
+    host = getattr(base, "_host", None)
+    port = getattr(base, "_port", None)
+    cli = _MC(
+        host=host,
+        port=port,
+        timeout=config.TDX_TIMEOUT if hasattr(config, "TDX_TIMEOUT") else None,
+        auto_reconnect=True,
+    )
+    cli.connect()
+    return cli
+
+
+def fetch_tick_charts_batch(
+    targets: list[tuple[int, str]],
+    query_date: Optional[date] = None,
+    workers: int = 3,
+    sleep_between: float = 0.0,
+) -> tuple[list[Optional[TickChart]], dict[int, Exception]]:
+    """并发批量抓取多个标的分时（结果顺序与 targets 一致）。
+
+    Args:
+        targets: ``(market, code)`` 列表。
+        query_date: 查询日期（None = 今天，语义同 ``fetch_tick_chart``）。
+        workers: 并发连接数。TDX 单请求本身毫秒级，真正的耗时来自 TCP
+                 往返 + 服务器处理；3~4 条独立连接即可把 N 标的耗时从
+                 ``N * (RTT + sleep)`` 压到约 ``N/workers * RTT``。
+        sleep_between: 单 worker 相邻请求间隔（秒）；默认 0 不等待。
+                       历史场景若担心风控可传小值，如 0.05。
+
+    Returns:
+        ``(charts, errors)``：charts 与 targets 等长（成功为 TickChart，
+        正常应答但无分时点/失败为 None）；errors 为 ``{下标: 异常}``，
+        仅含**网络/协议级异常**（供调用方区分「瞬时失败待重试」与
+        「服务器正常应答无数据 → 记负缓存」，对齐历史日期抓取语义）。
+        实时主刷新可忽略 errors。
+
+    线程模型：线程池内每个 worker 各持一条独立克隆连接，互不共享实例，
+    规避 easy-tdx 非线程安全限制；与全局单例（call_lock 串行）完全解耦。
+    """
+    if not targets:
+        return [], {}
+    n = max(1, min(workers, len(targets)))
+    results: list[Optional[TickChart]] = [None] * len(targets)
+    errors: dict[int, Exception] = {}
+    _err_lock = threading.Lock()
+    # 每 worker 一条连接：worker 与下标分片绑定，线程内串行请求
+    slices: list[list[int]] = [[] for _ in range(n)]
+    for i in range(len(targets)):
+        slices[i % n].append(i)
+
+    def run_worker(conn: MacClient, idxs: list[int]) -> None:
+        for j, idx in enumerate(idxs):
+            mkt, code = targets[idx]
+            try:
+                ch = fetch_tick_chart(
+                    mkt, code, query_date=query_date,
+                    client=conn, strict=True,
+                )
+                results[idx] = ch
+            except Exception as exc:  # noqa: BLE001  网络/协议异常（区别于正常无点）
+                with _err_lock:
+                    errors[idx] = exc
+                logger.warning("并发分时抓取失败[%s:%s]: %s", mkt, code, exc)
+                results[idx] = None
+            if sleep_between > 0 and j < len(idxs) - 1:
+                time.sleep(sleep_between)
+
+    def worker_entry(idxs: list[int]) -> None:
+        conn = None
+        try:
+            conn = _clone_client()
+            run_worker(conn, idxs)
+        except Exception as exc:  # noqa: BLE001  克隆失败降级：用全局串行锁兜底
+            logger.warning("并发连接建立失败，降级串行: %s", exc)
+            for idx in idxs:
+                mkt, code = targets[idx]
+                try:
+                    results[idx] = fetch_tick_chart(
+                        mkt, code, query_date=query_date, strict=True,
+                    )
+                except Exception as exc2:  # noqa: BLE001
+                    with _err_lock:
+                        errors[idx] = exc2
+                    results[idx] = None
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    threads = [
+        threading.Thread(target=worker_entry, args=(slices[i],), daemon=True)
+        for i in range(n) if slices[i]
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return results, errors
 
 
 # --------------------------------------------------------------------------- #
