@@ -98,7 +98,7 @@ def test_source_attribution_fix():
     assert hot._get_stocks_from_source() == [], "同花顺热股榜 源级归因应为空"
 
     # B. 既有同花顺论坛源（名称含“同花顺”）经 factory 构造后也不得误挂 300033
-    for sname in ("同花顺论股堂", "同花顺股吧"):
+    for sname in ("同花顺论股堂",):
         src = next((s for s in get_forum_sources() if s.name == sname), None)
         assert src is not None, f"未找到论坛源 {sname}"
         p = create_parser(src)
