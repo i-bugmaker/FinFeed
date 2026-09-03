@@ -37,6 +37,7 @@ Temporary Items
 # -------------------------
 .idea/
 .vscode/
+.trae/
 *.swp
 *.swo
 *~
