@@ -1318,6 +1318,29 @@
   background: var(--ff-info);
   color: #fff;
 }
+/* AppBadge 语义变体补全：default/up/down/success/muted 此前缺失，
+   导致这些 variant 一律退化为基类的默认红色。基类默认红即「up」，
+   故 default 需显式改为中性底，避免"无强调"内容误读为上涨。 */
+.ff-badge--default {
+  background: var(--ff-neutral-subtle);
+  color: var(--ff-neutral-text);
+}
+.ff-badge--up {
+  background: var(--ff-up);
+  color: var(--ff-up-fg);
+}
+.ff-badge--down {
+  background: var(--ff-down);
+  color: var(--ff-down-fg);
+}
+.ff-badge--success {
+  background: var(--ff-down);
+  color: var(--ff-down-fg);
+}
+.ff-badge--muted {
+  background: var(--ff-neutral-subtle);
+  color: var(--ff-text-tertiary);
+}
 
 /* 状态点 */
 .ff-status {

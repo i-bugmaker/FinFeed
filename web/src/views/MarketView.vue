@@ -9,12 +9,50 @@ import AppButton from '../ui/AppButton.vue'
 import AppInput from '../ui/AppInput.vue'
 import AppDatePicker from '../ui/AppDatePicker.vue'
 import AppTabs from '../ui/AppTabs.vue'
+import AppBadge from '../ui/AppBadge.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppSkeleton from '../ui/AppSkeleton.vue'
+import AppDrawer from '../ui/AppDrawer.vue'
+import AppSegmented from '../ui/AppSegmented.vue'
 
 const route = useRoute()
 const router = useRouter()
 
+// tab 语义元数据：icon 用于视图头；desc 用于视图头副文案
+const TAB_META = {
+  overview: { icon: 'dashboard', desc: '事实层数据就绪度：各表记录数、最新日期与板块覆盖' },
+  sentiment: { icon: 'activity', desc: '市场温度与情绪宽度（涨跌停家数、涨跌家数比）' },
+  limitup: { icon: 'flame', desc: '涨停池（含连板数与封板质量）' },
+  limitdown: { icon: 'x', desc: '跌停池' },
+  limitbroken: { icon: 'eye', desc: '炸板（盘中曾涨停后开板）' },
+  billboard: { icon: 'star', desc: '龙虎榜（席位净额、上榜原因）' },
+  moneyflow: { icon: 'coins', desc: '主力/超大单/大单资金流排行' },
+  margin: { icon: 'layers', desc: '融资融券余额与净买入排行' },
+  sectors: { icon: 'columns', desc: '概念/行业板块热度聚合，点击板块查看成分股' },
+  forecast: { icon: 'calendar', desc: '业绩预告（预增/预减分布与明细）' },
+  ipo: { icon: 'sparkles', desc: '新股申购/上市日历' },
+  search: { icon: 'search', desc: '按代码 / 名称 / 别名检索标的，回车查询' },
+}
+
+// 各 tab 的列语义优先级（动态表按此顺序排布；未列出的键按后端顺序追加尾部）
+const TAB_COL_ORDER = {
+  limitup: ['code', 'name', 'limit_streak', 'pct_chg', 'price', 'amount', 'turnover', 'total_mv', 'limit_amount', 'circ_mv', 'first_limit_time', 'last_limit_time', 'open_times', 'reason', 'trade_date'],
+  limitdown: ['code', 'name', 'pct_chg', 'price', 'amount', 'turnover', 'limit_amount', 'total_mv', 'circ_mv', 'open_times', 'first_limit_time', 'last_limit_time', 'reason', 'trade_date'],
+  limitbroken: ['code', 'name', 'limit_streak', 'pct_chg', 'price', 'open_times', 'amount', 'turnover', 'last_limit_time', 'limit_amount', 'total_mv', 'circ_mv', 'reason', 'trade_date'],
+  billboard: ['code', 'name', 'pct_chg', 'net_amount', 'buy_amount', 'sell_amount', 'turnover_ratio', 'deal_amount', 'accum_amount', 'free_mv', 'reason', 'detail', 'close_price', 'trade_date'],
+  moneyflow: ['code', 'name', 'close_price', 'pct_chg', 'main_net', 'main_ratio', 'super_net', 'big_net', 'mid_net', 'small_net', 'turnover', 'org_participate', 'source', 'trade_date'],
+  margin: ['code', 'name', 'pct_chg', 'fin_net', 'fin_balance', 'fin_buy', 'total_balance', 'balance_ratio', 'short_balance', 'short_volume', 'market', 'trade_date'],
+  sectors: ['sector_name', 'members', 'avg_pct', 'up_limit', 'up_cnt', 'down_cnt', 'main_net', 'top_pct', 'sector_type'],
+  sectorstocks: ['code', 'name', 'pct_chg', 'close_price', 'main_net', 'turnover', 'org_participate'],
+  forecast: ['code', 'name', 'forecast_type', 'increase_high', 'increase_low', 'profit_high', 'profit_low', 'notice_date', 'report_date', 'is_latest', 'forecast_content', 'change_reason'],
+  ipo: ['apply_code', 'name', 'industry', 'issue_price', 'issue_pe', 'apply_upper', 'ballot_rate', 'apply_date', 'listing_date', 'ballot_date', 'pay_date', 'code', 'market'],
+  search: ['code', 'name', 'board', 'sw_industry_l1', 'is_active'],
+}
+
+// 长文本列：单元格超宽截断（保留悬停 title 全量查看）
+const CLIP_KEYS = new Set(['reason', 'detail', 'change_reason', 'forecast_content'])
+
+// 展示顺序按业务语义分组排列：全景 → 情绪打板 → 资金筹码 → 板块 → 日历 → 检索
 const tabs = [
   { value: 'overview', label: '总览' },
   { value: 'sentiment', label: '市场情绪' },
@@ -24,9 +62,9 @@ const tabs = [
   { value: 'billboard', label: '龙虎榜' },
   { value: 'moneyflow', label: '资金流' },
   { value: 'margin', label: '两融' },
+  { value: 'sectors', label: '板块' },
   { value: 'forecast', label: '业绩预告' },
   { value: 'ipo', label: '新股' },
-  { value: 'sectors', label: '板块' },
   { value: 'search', label: '股票搜索' },
 ]
 const active = ref('overview')
@@ -38,6 +76,14 @@ const summary = ref(null)
 const loading = ref(false)
 const err = ref('')
 const kw = ref('')
+// 板块视图：概念/行业切换 + 成分股下钻抽屉
+const stype = ref('concept')
+const sectorOpen = ref(false)
+const sectorState = ref({ name: '', type: '', loading: false, rows: [], trade_date: '' })
+// 业绩预告类型分布（统计条）
+const forecastStats = ref([])
+// 数据维护抽屉（采集动作/进度/历史收纳，默认收起）
+const maintainOpen = ref(false)
 
 // ── URL 状态同步：tab/日期/搜索词落入 query，刷新与分享后不丢 ──
 {
@@ -50,12 +96,15 @@ const kw = ref('')
   }
   const qKw = route.query.kw
   if (typeof qKw === 'string') kw.value = qKw
+  const qStype = route.query.stype
+  if (typeof qStype === 'string' && ['concept', 'industry'].includes(qStype)) stype.value = qStype
 }
-watch([active, date, kw], ([a, d, k]) => {
+watch([active, date, kw, stype], ([a, d, k, s]) => {
   const q = {}
   if (a && a !== 'overview') q.tab = a
   if (d && d !== todayStr()) q.date = d // 当日为默认态，不写 URL
   if (k) q.kw = k
+  if (s && s !== 'concept') q.stype = s
   router.replace({ query: q }).catch(() => {})
 })
 
@@ -121,26 +170,18 @@ const HEADER_MAP = {
   breadth: '涨跌家数', forum_heat: '论坛热度', news_sentiment: '新闻情绪',
   high: '最高', low: '最低', open: '开盘', close: '收盘', volume: '成交量',
   amplitude: '振幅', fq_type: '复权类型',
-}
-const SUMMARY_MAP = {
-  total: '总数', in_cnt: '流入数', out_cnt: '流出数', main_sum: '主力净流入合计',
-  super_sum: '超大单合计', big_sum: '大单合计', org_avg: '机构参与度均值',
-  turnover_avg: '换手率均值', fin_balance_sum: '融资余额合计', fin_buy_sum: '融资买入合计',
-  fin_net_sum: '融资净买合计', short_balance_sum: '融券余额合计',
-  total_balance_sum: '两融余额合计', net_in_cnt: '净买入家数',
+  members: '成分数', avg_pct: '平均涨跌', up_cnt: '上涨', down_cnt: '下跌',
+  top_pct: '领涨', board: '板块', sw_industry_l1: '申万行业', is_active: '状态',
 }
 function header(k) {
   return HEADER_MAP[k] || k
-}
-function summaryLabel(k) {
-  return SUMMARY_MAP[k] || k
 }
 
 // ── 动态数据表的列语义分组：百分比列 / 带符号金额列 / 普通数值列 ──
 const PCT_KEYS = new Set([
   'pct_chg', 'turnover_ratio', 'turnover', 'main_ratio', 'amplitude',
   'increase_low', 'increase_high', 'ballot_rate', 'balance_ratio',
-  'org_participate', 'weight',
+  'org_participate', 'weight', 'avg_pct', 'top_pct',
 ])
 const SIGNED_KEYS = new Set([
   'net_amount', 'main_net', 'super_net', 'big_net', 'mid_net', 'small_net', 'fin_net',
@@ -164,15 +205,112 @@ function fmt(k, v) {
   return v
 }
 
-// 单元格样式：数值右对齐 + 涨跌着色（红涨绿跌，仅用于带涨跌语义的列）
-function cellClass(k, v) {
+// 单元格样式：数值右对齐 + 涨跌着色（红涨绿跌，仅用于带涨跌语义的列）+ 长文本截断
+function cellClass(k, v, r) {
   const cls = []
   if (PCT_KEYS.has(k) || SIGNED_KEYS.has(k) || NUM_KEYS.has(k) || typeof v === 'number') cls.push('is-numeric', 'ff-num')
   if (typeof v === 'number' && (PCT_KEYS.has(k) || SIGNED_KEYS.has(k))) {
     if (v > 0) cls.push('ff-t-up')
     else if (v < 0) cls.push('ff-t-down')
   }
+  if (CLIP_KEYS.has(k) && typeof v === 'string') cls.push('is-clip')
   return cls
+}
+
+// ── 视图头：当前 tab 标题/图标/徽标 ──
+const activeLabel = computed(() => tabs.find((t) => t.value === active.value)?.label || active.value)
+const activeMeta = computed(() => TAB_META[active.value] || { icon: 'dashboard', desc: '' })
+const viewBadges = computed(() => {
+  const b = []
+  const n = rows.value.length
+  if (n) {
+    const isMf = active.value === 'moneyflow'
+    const isMg = active.value === 'margin'
+    const unit = isMf || isMg ? ' 只' : ' 条'
+    b.push({ text: `${n}${unit}`, variant: 'muted' })
+  }
+  if (active.value === 'moneyflow' && summary.value) {
+    const s = summary.value
+    if (s.in_cnt != null) b.push({ text: `流入 ${s.in_cnt} / 流出 ${s.out_cnt ?? 0}`, variant: 'default' })
+  } else if (active.value === 'margin' && summary.value) {
+    const s = summary.value
+    if (s.net_in_cnt != null) b.push({ text: `净买入 ${s.net_in_cnt} / ${s.total ?? 0} 只`, variant: 'default' })
+  } else if (active.value === 'forecast') {
+    const total = forecastStats.value.reduce((acc, x) => acc + (x.n || 0), 0)
+    if (total) b.push({ text: `共 ${total} 份预告`, variant: 'default' })
+  }
+  const td = data.value && data.value.trade_date
+  if (td && active.value !== 'overview') b.push({ text: `数据日 ${td}`, variant: 'default' })
+  return b
+})
+// 空态文案：区分「未检索 / 无结果 / 未采集」
+const emptyText = computed(() => {
+  if (active.value === 'search') {
+    return kw.value ? `未找到匹配「${kw.value}」的标的` : '输入股票代码 / 名称 / 别名，回车检索'
+  }
+  return '暂无数据（可能需要先采集行情）'
+})
+
+// 带符号金额：+12,345 / -1,234（用于摘要大字）
+function signedNum(v) {
+  if (typeof v !== 'number' || Number.isNaN(v)) return '—'
+  return (v > 0 ? '+' : '') + fmtThousand(v)
+}
+function numClsOf(v) {
+  if (typeof v !== 'number' || Number.isNaN(v)) return ''
+  return v > 0 ? 'ff-t-up' : v < 0 ? 'ff-t-down' : ''
+}
+
+// ── 摘要可视条：资金流（主力合计大字 + 超大/大/中/小单双向结构条） ──
+const FLOW_BUCKETS = [
+  { key: 'super_net', label: '超大单' },
+  { key: 'big_net', label: '大单' },
+  { key: 'mid_net', label: '中单' },
+  { key: 'small_net', label: '小单' },
+]
+const flowMetrics = computed(() => {
+  const s = summary.value || {}
+  const max = spanMax(...FLOW_BUCKETS.map((bk) => s[bk.key]))
+  return { s, max }
+})
+// 两融（融资/融券余额同向占比条，全程共用 total_balance_sum 作分母）
+const marginMetrics = computed(() => {
+  const s = summary.value || {}
+  const tb = s.total_balance_sum || 0
+  const fin = s.fin_balance_sum || 0
+  const short = s.short_balance_sum || 0
+  return {
+    s,
+    tb,
+    finPct: tb > 0 ? Math.min((fin / tb) * 100, 100) : 0,
+    shortPct: tb > 0 ? Math.min((short / tb) * 100, 100) : 0,
+    finShare: tb > 0 ? Math.round((fin / tb) * 100) : 0,
+    shortShare: tb > 0 ? Math.round((short / tb) * 100) : 0,
+  }
+})
+// 双向条：正负各从轨道中线向两侧延伸
+function fillStyle(v, max) {
+  const w = barWidth(v, max)
+  return (v || 0) >= 0
+    ? { left: '50%', width: `${w / 2}%` }
+    : { right: '50%', width: `${w / 2}%` }
+}
+// 业绩预告类型着色（含「增/盈/亏」关键词语义映射）
+function fcTypeVariant(t) {
+  const s = String(t || '')
+  if (/预增|略增|续盈|扭亏|减亏/.test(s)) return 'up'
+  if (/预减|略减|首亏|续亏|增亏/.test(s)) return 'down'
+  return 'muted'
+}
+// 涨停连板徽标
+function streakMeta(v) {
+  if (!v || v < 1) return null
+  return v >= 2 ? { text: `${v} 连板`, variant: 'up' } : { text: '首板', variant: 'default' }
+}
+// 表格行 key：优先主键；列表存在重复标的（如龙虎榜一票多因）时退回索引防复用
+function rowKeyOf(r, i) {
+  const pk = r.code || r.sector_name || ''
+  return pk ? `${pk}_${i}` : `r_${i}`
 }
 
 // 摘要卡数值加千分位
@@ -212,6 +350,83 @@ const sortedRows = computed(() => {
   })
 })
 
+// 当前视图的列顺序：语义优先级键前置，未知键按后端原序补尾。
+// 让「代码/名称/核心指标」始终靠前，长文本/流水字段自然靠后，不再受后端 SELECT 顺序支配。
+const tableCols = computed(() => {
+  const first = sortedRows.value[0]
+  if (!first) return []
+  const order = TAB_COL_ORDER[active.value] || TAB_COL_ORDER.sectorstocks
+  const seen = new Set()
+  const cols = []
+  for (const k of order) {
+    if (Object.prototype.hasOwnProperty.call(first, k) && !seen.has(k)) {
+      seen.add(k)
+      cols.push(k)
+    }
+  }
+  for (const k of Object.keys(first)) {
+    if (!seen.has(k)) {
+      seen.add(k)
+      cols.push(k)
+    }
+  }
+  return cols
+})
+
+// 组件下钻目标与操作类型：sector 行（无 code）→ 板块成分抽屉
+function rowAction(r) {
+  if (rowStock(r)) return 'stock'
+  if (active.value === 'sectors' && r.sector_name) return 'sector'
+  return null
+}
+function rowClickable(r) {
+  return !!rowAction(r)
+}
+function rowHint(r) {
+  return rowAction(r) === 'sector' ? '查看板块成分股' : '点击在 easy-tdx 中查看该标的'
+}
+function onRowClick(r) {
+  const act = rowAction(r)
+  if (act === 'stock') openRowInEasytdx(r)
+  else if (act === 'sector') openSector(r)
+}
+
+// 板块下钻：拉取该板块当日成分股表现（money_flow 聚合，走既有 sectorstocks 接口）
+async function openSector(r) {
+  const td = (data.value && data.value.trade_date) || date.value || todayStr()
+  sectorState.value = {
+    name: r.sector_name,
+    type: r.sector_type || stype.value,
+    loading: true,
+    rows: [],
+    err: '',
+    trade_date: td,
+  }
+  sectorOpen.value = true
+  try {
+    const res = await api.market('sectorstocks', { sector: r.sector_name, date: td })
+    const d = res.data || res
+    sectorState.value.rows = Array.isArray(d) ? d : Array.isArray(d.rows) ? d.rows : []
+  } catch (e) {
+    sectorState.value.err = e.message || String(e)
+  } finally {
+    sectorState.value.loading = false
+  }
+}
+// 关闭板块抽屉（供懒加载视图头在切走 sectors 时也可安全调用）
+function closeSector() {
+  sectorOpen.value = false
+}
+
+// summary 可视条辅助：把带符号数值归一化为 0..100 的双向比例
+function barWidth(v, maxAbs) {
+  if (!maxAbs) return 0
+  return Math.min(Math.abs(v) / maxAbs, 1) * 100
+}
+function spanMax(...vals) {
+  return Math.max(...vals.map((v) => Math.abs(v || 0)), 1e-9)
+}
+
 // ── 个股行下钻：带 6 位代码的行可点击，跳 easy-tdx 查看该标的 ──
 const STOCK_CODE_RE = /^\d{6}/
 function rowStock(row) {
@@ -227,9 +442,6 @@ function rowStock(row) {
       ? 'BJ'
       : 'SZ'
   return { code, name: row.name || code, market }
-}
-function rowClickable(row) {
-  return !!rowStock(row)
 }
 function openRowInEasytdx(row) {
   const s = rowStock(row)
@@ -300,17 +512,23 @@ async function load() {
   try {
     let params = { date: date.value || undefined }
     if (active.value === 'search') params = { kw: kw.value || undefined }
-    if (active.value === 'sectors') params = { stype: 'concept' }
+    if (active.value === 'sectors') params = { stype: stype.value }
     if (active.value === 'forecast') params = {}
     const r = await api.market(active.value, params)
     const d = r.data || r
     data.value = d
+    forecastStats.value = []
     if (active.value === 'moneyflow') {
       summary.value = d.summary
       rows.value = [...(d.inflow || []), ...(d.outflow || [])]
     } else if (active.value === 'margin') {
       summary.value = d.summary
       rows.value = [...(d.top || []), ...(d.bottom || [])]
+    } else if (active.value === 'forecast') {
+      forecastStats.value = d.stats || []
+      rows.value = Array.isArray(d.rows) ? d.rows : []
+    } else if (active.value === 'sectors') {
+      rows.value = Array.isArray(d.rows) ? d.rows : []
     } else if (Array.isArray(d)) {
       rows.value = d
     } else if (Array.isArray(d.rows)) {
@@ -456,6 +674,13 @@ const completedList = computed(() => {
 
 watch(active, load)
 watch(date, load)
+watch(stype, () => {
+  if (active.value === 'sectors') load()
+})
+// 离开板块视图时收起成分抽屉，避免残留上个板块的展开态
+watch(active, (v) => {
+  if (v !== 'sectors') closeSector()
+})
 
 onMounted(async () => {
   await loadDates()
@@ -482,55 +707,23 @@ onBeforeUnmount(() => {
     <!-- 页面标题按产品要求移除，h1 保留 sr-only 保文档语义 -->
     <h1 class="ff-sr-only">全景行情</h1>
 
+    <!-- ── 顶部工具行：交易日 / 检索输入（仅搜索视图）/ 数据新鲜度 · 维护入口 ──
+         采集动作、自动调度状态、任务进度与历史收纳于右侧「数据维护」抽屉，
+         主查看区不再被低频运维控件挤占。 -->
     <AppCard class="ff-market-view__toolbar ff-glass">
       <div class="ff-market-view__row">
         <AppDatePicker v-model="date" class="ff-market-view__field" label="交易日" @change="markTouched" />
-        <AppInput
-          v-if="active === 'search'"
-          v-model="kw"
-          class="ff-market-view__field"
-          label="股票代码 / 名称"
-          prefix-icon="search"
-        />
-        <AppButton
-          v-if="active === 'search'"
-          variant="tonal"
-          size="sm"
-          icon="search"
-          :loading="loading"
-          @click="load"
-        >查询</AppButton>
-        <!-- 30 秒后台自动刷新：无任何按钮/下拉/开关，仅保留最后更新时间作数据新鲜度提示 -->
-        <span v-if="lastUpdated" class="ff-market-view__autorefresh-time">更新于 {{ lastUpdated }}</span>
-      </div>
-      <div class="ff-market-view__row ff-market-view__row--actions">
-        <AppButton
-          v-for="a in actions"
-          :key="a.key"
-          variant="tonal"
-          size="sm"
-          :icon="a.icon"
-          :title="a.help"
-          :loading="runningAction === a.key"
-          :disabled="!!runningAction && runningAction !== a.key"
-          @click="runAction(a)"
-        >
-          {{ a.label }}
-        </AppButton>
-      </div>
-
-      <!-- 后台自动采集状态（默认常开、不可关闭；仅展示下次/上次执行时间 + 跳到最新数据日期） -->
-      <div class="ff-market-view__autocollect">
-        <AppIcon name="clock" size="xs" />
-        <span class="ff-market-view__autocollect-next">
-          下次快照 ~{{ autoNext.snapshot || '—' }}
-        </span>
-        <span v-if="autoLast.snapshot" class="ff-market-view__autocollect-last">
-          · 上次快照 {{ autoLast.snapshot.message }}
-        </span>
-        <span v-if="autoLast.universe" class="ff-market-view__autocollect-last">
-          · 股票池 {{ autoLast.universe.message }}
-        </span>
+        <template v-if="active === 'search'">
+          <AppInput
+            v-model="kw"
+            class="ff-market-view__field ff-market-view__kw"
+            label="股票代码 / 名称 / 别名"
+            prefix-icon="search"
+            placeholder="如 600519 / 贵州茅台"
+            @keyup.enter="load"
+          />
+          <AppButton variant="tonal" size="sm" icon="search" :loading="loading" @click="load">查询</AppButton>
+        </template>
         <button
           v-if="latestDate"
           type="button"
@@ -541,78 +734,54 @@ onBeforeUnmount(() => {
         >
           <AppIcon name="history" size="xs" /> 最新数据 {{ latestDate }}
         </button>
-      </div>
-      <!-- 进度区：单一运行中进度条 + 紧凑历史结果列表
-           - 进行中：只渲染当前那一条，避免四进度条无意义占位
-           - 动画只在按钮内（AppButton loading），进度条不再叠 spin 图标 -->
-      <div class="ff-market-view__progress">
-        <div v-if="runningAction" class="ff-market-view__progress-current">
-          <div class="ff-market-view__progress-current-meta">
-            <span class="ff-market-view__progress-current-name">{{ activeActionLabel }}</span>
-            <span class="ff-market-view__progress-current-stage">
-              {{ progressText(runningAction) || '已启动…' }}
-            </span>
-            <span class="ff-market-view__progress-current-pct">
-              {{ progressOf(runningAction).pct || 0 }}%
-            </span>
-          </div>
-          <div
-            class="ff-progress ff-progress--lg"
-            role="progressbar"
-            :aria-valuenow="progressOf(runningAction).pct || 0"
-            :aria-valuemin="0"
-            :aria-valuemax="100"
-          >
-            <div
-              class="ff-progress__bar"
-              :style="{ width: (progressOf(runningAction).pct || 0) + '%' }"
-            />
-          </div>
-        </div>
-
-        <ul v-if="completedList.length" class="ff-market-view__history">
-          <li
-            v-for="r in completedList"
-            :key="r.key"
-            class="ff-market-view__history-item"
-            :class="{
-              'ff-market-view__history-item--done': r.status === 'done',
-              'ff-market-view__history-item--error': r.status === 'error',
-            }"
-          >
-            <AppIcon
-              :name="r.status === 'done' ? 'check-circle' : 'alert-circle'"
-              size="xs"
-            />
-            <span class="ff-market-view__history-name">{{ r.label }}</span>
-            <span class="ff-market-view__history-time">{{ r.started }}</span>
-            <span class="ff-market-view__history-msg">{{ r.message }}</span>
-          </li>
-        </ul>
+        <span class="ff-market-view__spacer" />
+        <span v-if="lastUpdated" class="ff-market-view__autorefresh-time">更新于 {{ lastUpdated }}</span>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          :icon="runningAction ? 'activity' : 'settings'"
+          :loading="!!runningAction"
+          @click="maintainOpen = true"
+        >数据维护</AppButton>
       </div>
     </AppCard>
 
-      <AppCard class="ff-market-view__panel" :no-padding="true">
-        <div class="ff-market-view__nav">
-          <AppTabs v-model="active" type="line" :items="tabs" class="ff-market-view__tabs" />
-        </div>
+    <!-- ── 主面板：分组导航 + 视图头 + 视图内容 ── -->
+    <AppCard class="ff-market-view__panel" :no-padding="true">
+      <div class="ff-market-view__nav">
+        <AppTabs v-model="active" type="line" :items="tabs" class="ff-market-view__tabs" />
+      </div>
 
-        <template>
-          <div v-if="summary" class="ff-market-view__summary">
-          <div v-for="(v, k) in summary" :key="k" class="ff-kv">
-            <span class="ff-kv__key">{{ summaryLabel(k) }}</span>
-            <span class="ff-kv__value ff-num">{{ fmtSummary(k, v) }}</span>
-          </div>
+      <!-- 视图头：当前视图 / 一句话说明 / 行数与数据日徽标（统一信息层级） -->
+      <div class="ff-market-view__viewhead">
+        <span class="ff-market-view__viewhead-ic"><AppIcon :name="activeMeta.icon" size="sm" /></span>
+        <div class="ff-market-view__viewhead-meta">
+          <div class="ff-market-view__viewhead-title">{{ activeLabel }}</div>
+          <div class="ff-market-view__viewhead-desc">{{ activeMeta.desc }}</div>
         </div>
-
-        <AppSkeleton v-if="loading" variant="text" :lines="8" />
-        <div v-else-if="err" class="ff-alert ff-alert--danger">
-          <AppIcon name="alert-circle" size="md" /> {{ err }}
-          <AppButton variant="ghost" size="sm" icon="refresh" class="ff-market-view__retry" @click="load">重试</AppButton>
+        <div class="ff-market-view__viewhead-badges">
+          <AppBadge v-for="(bd, i) in viewBadges" :key="i" :variant="bd.variant">{{ bd.text }}</AppBadge>
         </div>
+        <AppSegmented
+          v-if="active === 'sectors'"
+          v-model="stype"
+          class="ff-market-view__stype"
+          size="sm"
+          :options="[
+            { label: '概念板块', value: 'concept' },
+            { label: '行业板块', value: 'industry' },
+          ]"
+        />
+      </div>
 
-        <!-- 总览 -->
-        <div v-else-if="active === 'overview' && data" class="ff-market-view__ov">
+      <AppSkeleton v-if="loading" variant="text" :lines="10" />
+      <div v-else-if="err" class="ff-alert ff-alert--danger ff-market-view__err">
+        <AppIcon name="alert-circle" size="md" /> {{ err }}
+        <AppButton variant="ghost" size="sm" icon="refresh" class="ff-market-view__retry" @click="load">重试</AppButton>
+      </div>
+
+      <!-- 总览 -->
+      <div v-else-if="active === 'overview' && data" class="ff-market-view__ov">
         <section class="ff-market-view__section">
           <h3 class="ff-h3">数据表</h3>
           <table class="ff-table">
@@ -627,7 +796,7 @@ onBeforeUnmount(() => {
             </thead>
             <tbody>
               <tr v-for="t in data.tables" :key="t.table" class="ff-table__row">
-                <td class="ff-table__cell">{{ t.table }}</td>
+                <td class="ff-table__cell ff-num">{{ t.table }}</td>
                 <td class="ff-table__cell">{{ t.label }}</td>
                 <td class="ff-table__cell ff-table__cell--right ff-num">{{ t.rows }}</td>
                 <td class="ff-table__cell ff-num">{{ t.latest || '—' }}</td>
@@ -660,45 +829,269 @@ onBeforeUnmount(() => {
 
       <!-- 市场情绪 -->
       <div v-else-if="active === 'sentiment' && sentimentKeys.length" class="ff-market-view__sentcards">
-        <AppCard v-for="k in sentimentKeys" :key="k" flat class="ff-market-view__sentcard">
+        <AppCard
+          v-for="k in sentimentKeys"
+          :key="k"
+          flat
+          class="ff-market-view__sentcard"
+          :class="{
+            'ff-market-view__sentcard--key': k === 'sentiment_index',
+            'is-up': k === 'up_limit' || k === 'breadth_up',
+            'is-down': k === 'down_limit' || k === 'breadth_down',
+          }"
+        >
           <div class="ff-metric">
             <span class="ff-metric__label">{{ header(k) }}</span>
-            <span class="ff-metric__value" :class="k === 'down_limit' && 'ff-t-down'">{{ fmt(k, data[k]) }}</span>
+            <span
+              class="ff-metric__value"
+              :class="{ 'ff-t-up': k === 'up_limit', 'ff-t-down': k === 'down_limit' }"
+            >{{ fmt(k, data[k]) }}</span>
           </div>
         </AppCard>
       </div>
 
-      <table v-else-if="rows.length" class="ff-table ff-table--sticky ff-table--zebra">
-        <thead>
-          <tr>
-            <th
-              v-for="(v, k) in rows[0]"
-              :key="k"
-              class="ff-table__header"
-              :class="[cellClass(k, v).includes('is-numeric') && 'is-numeric', 'is-sortable']"
-              @click="toggleSort(k)"
-            >
-              {{ header(k) }}
-              <AppIcon v-if="sortKey === k" :name="sortDir === 1 ? 'chevron-up' : 'chevron-down'" size="xs" />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(r, i) in sortedRows"
-            :key="i"
-            class="ff-table__row"
-            :class="{ 'is-clickable': rowClickable(r) }"
-            :title="rowClickable(r) ? '点击在 easy-tdx 中查看该标的' : undefined"
-            @click="rowClickable(r) && openRowInEasytdx(r)"
-          >
-            <td v-for="(v, k) in r" :key="k" class="ff-table__cell" :class="cellClass(k, v)">{{ fmt(k, v) }}</td>
-          </tr>
-        </tbody>
-      </table>
-        <EmptyState v-else text="暂无数据（可能需要先采集行情）" icon="bar-chart" />
-        </template>
+      <!-- 其余数据视图：摘要可视区 + 通用语义表 -->
+      <div v-else class="ff-market-view__data">
+        <!-- 资金流摘要：主力合计大字 + 超大/大/中/小单双向结构条 -->
+        <div v-if="active === 'moneyflow' && flowMetrics.s.total" class="ff-market-view__sum">
+          <div class="ff-market-view__sum-main">
+            <span class="ff-market-view__sum-label">全市场主力净流入</span>
+            <span class="ff-market-view__sum-big ff-num" :class="numClsOf(flowMetrics.s.main_sum)">
+              {{ signedNum(flowMetrics.s.main_sum) }}
+            </span>
+            <span class="ff-market-view__sum-sub">
+              样本 {{ flowMetrics.s.total }} 只 · 流入 {{ flowMetrics.s.in_cnt }} / 流出 {{ flowMetrics.s.out_cnt }}
+              <template v-if="flowMetrics.s.org_avg"> · 机构参与度均值 {{ fmt('org_participate', flowMetrics.s.org_avg) }}</template>
+            </span>
+          </div>
+          <div class="ff-market-view__sum-track">
+            <div v-for="bk in FLOW_BUCKETS" :key="bk.key" class="ff-market-view__sum-row">
+              <span class="ff-market-view__sum-row-label">{{ bk.label }}</span>
+              <div class="ff-market-view__sum-trackline">
+                <div
+                  class="ff-market-view__sum-fill"
+                  :class="(flowMetrics.s[bk.key] || 0) >= 0 ? 'is-up' : 'is-down'"
+                  :style="fillStyle(flowMetrics.s[bk.key], flowMetrics.max)"
+                />
+              </div>
+              <span class="ff-market-view__sum-row-val ff-num" :class="numClsOf(flowMetrics.s[bk.key])">
+                {{ signedNum(flowMetrics.s[bk.key]) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 两融摘要：余额合计 + 融资/融券占比条 -->
+        <div v-else-if="active === 'margin' && marginMetrics.tb" class="ff-market-view__sum">
+          <div class="ff-market-view__sum-main">
+            <span class="ff-market-view__sum-label">两融余额合计</span>
+            <span class="ff-market-view__sum-big ff-num">{{ fmtSummary('total_balance_sum', marginMetrics.s.total_balance_sum) }}</span>
+            <span class="ff-market-view__sum-sub">
+              融资净买入
+              <b class="ff-num" :class="numClsOf(marginMetrics.s.fin_net_sum)">{{ signedNum(marginMetrics.s.fin_net_sum) }}</b>
+              · 标的 {{ marginMetrics.s.total }} 只 · 净买入家数 {{ marginMetrics.s.net_in_cnt }}
+            </span>
+          </div>
+          <div class="ff-market-view__sum-track">
+            <div class="ff-market-view__sum-trackline">
+              <div class="ff-market-view__sum-fill is-fin" :style="{ width: marginMetrics.finPct + '%' }" />
+              <div class="ff-market-view__sum-fill is-short" :style="{ width: marginMetrics.shortPct + '%' }" />
+            </div>
+            <div class="ff-market-view__sum-legend">
+              <span><i class="ff-market-view__sum-lg is-fin" />融资余额 {{ marginMetrics.finShare }}%</span>
+              <span><i class="ff-market-view__sum-lg is-short" />融券余额 {{ marginMetrics.shortShare }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 业绩预告类型分布 -->
+        <div v-else-if="active === 'forecast' && forecastStats.length" class="ff-market-view__sum ff-market-view__sum--flat">
+          <div class="ff-market-view__sum-track ff-market-view__sum-track--stats">
+            <AppBadge
+              v-for="st in forecastStats"
+              :key="st.forecast_type"
+              :variant="fcTypeVariant(st.forecast_type)"
+            >{{ st.forecast_type }} <b class="ff-num">{{ st.n }}</b></AppBadge>
+          </div>
+        </div>
+
+        <!-- 通用语义表 -->
+        <div v-if="tableCols.length" class="ff-market-view__table-scroll">
+          <table class="ff-table ff-table--sticky ff-table--zebra">
+            <thead>
+              <tr>
+                <th
+                  v-for="k in tableCols"
+                  :key="k"
+                  class="ff-table__header"
+                  :class="[cellClass(k, sortedRows[0][k], sortedRows[0]).includes('is-numeric') ? 'is-numeric' : '', 'is-sortable']"
+                  @click="toggleSort(k)"
+                >
+                  {{ header(k) }}
+                  <AppIcon v-if="sortKey === k" :name="sortDir === 1 ? 'chevron-up' : 'chevron-down'" size="xs" />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(r, i) in sortedRows"
+                :key="rowKeyOf(r, i)"
+                class="ff-table__row"
+                :class="{ 'is-clickable': rowClickable(r) }"
+                :title="rowClickable(r) ? rowHint(r) : undefined"
+                @click="onRowClick(r)"
+              >
+                <td
+                  v-for="k in tableCols"
+                  :key="k"
+                  class="ff-table__cell"
+                  :class="cellClass(k, r[k], r)"
+                  :title="CLIP_KEYS.has(k) && typeof r[k] === 'string' ? r[k] : undefined"
+                >
+                  <!-- 涨停/炸板连板徽标 -->
+                  <AppBadge
+                    v-if="(active === 'limitup' || active === 'limitbroken') && k === 'limit_streak' && streakMeta(r[k])"
+                    :variant="streakMeta(r[k]).variant"
+                  >{{ streakMeta(r[k]).text }}</AppBadge>
+                  <!-- 业绩预告类型徽标 -->
+                  <AppBadge v-else-if="active === 'forecast' && k === 'forecast_type'" :variant="fcTypeVariant(r[k])">
+                    {{ r[k] }}
+                  </AppBadge>
+                  <!-- 板块名称（可下钻 → 主色 + 右箭头） -->
+                  <span v-else-if="active === 'sectors' && k === 'sector_name'" class="ff-market-view__sector-name">
+                    {{ r[k] }}<AppIcon name="chevron-right" size="xs" />
+                  </span>
+                  <!-- 搜索：在市/停用状态 -->
+                  <AppBadge
+                    v-else-if="active === 'search' && k === 'is_active' && (r[k] === 1 || r[k] === 0)"
+                    :variant="r[k] === 1 ? 'success' : 'muted'"
+                  >{{ r[k] === 1 ? '在市' : '停用' }}</AppBadge>
+                  <template v-else>{{ fmt(k, r[k]) }}</template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <EmptyState
+          v-else
+          :text="emptyText"
+          :icon="active === 'search' ? 'search' : 'bar-chart'"
+        />
+      </div>
     </AppCard>
+
+    <!-- ── 数据维护抽屉：采集动作 / 自动调度状态 / 进度 / 历史 ── -->
+    <AppDrawer v-model="maintainOpen" placement="right" size="md" title="数据维护">
+      <div class="ff-market-view__maint">
+        <p class="ff-market-view__maint-help">
+          采集任务在后台执行，可随时关闭本面板；同一时间仅允许一个任务运行，其他按钮将禁用。
+        </p>
+        <div class="ff-market-view__maint-actions">
+          <AppButton
+            v-for="a in actions"
+            :key="a.key"
+            variant="tonal"
+            :icon="a.icon"
+            :title="a.help"
+            :loading="runningAction === a.key"
+            :disabled="!!runningAction && runningAction !== a.key"
+            @click="runAction(a)"
+          >
+            {{ a.label }}
+          </AppButton>
+        </div>
+        <div v-if="actions.length" class="ff-market-view__maint-helps">
+          <p v-for="a in actions" :key="a.key" class="ff-market-view__maint-helps-item">
+            <b>{{ a.label }}</b> · {{ a.help }}
+          </p>
+        </div>
+
+        <div class="ff-market-view__autocollect">
+          <AppIcon name="clock" size="xs" />
+          <span class="ff-market-view__autocollect-next">下次快照 ~{{ autoNext.snapshot || '—' }}</span>
+          <span v-if="autoLast.snapshot" class="ff-market-view__autocollect-last">· 上次快照 {{ autoLast.snapshot.message }}</span>
+          <span v-if="autoLast.universe" class="ff-market-view__autocollect-last">· 股票池 {{ autoLast.universe.message }}</span>
+        </div>
+
+        <div class="ff-market-view__progress">
+          <div v-if="runningAction" class="ff-market-view__progress-current">
+            <div class="ff-market-view__progress-current-meta">
+              <span class="ff-market-view__progress-current-name">{{ activeActionLabel }}</span>
+              <span class="ff-market-view__progress-current-stage">{{ progressText(runningAction) || '已启动…' }}</span>
+              <span class="ff-market-view__progress-current-pct">{{ progressOf(runningAction).pct || 0 }}%</span>
+            </div>
+            <div
+              class="ff-progress ff-progress--lg"
+              role="progressbar"
+              :aria-valuenow="progressOf(runningAction).pct || 0"
+              :aria-valuemin="0"
+              :aria-valuemax="100"
+            >
+              <div class="ff-progress__bar" :style="{ width: (progressOf(runningAction).pct || 0) + '%' }" />
+            </div>
+          </div>
+
+          <ul v-if="completedList.length" class="ff-market-view__history">
+            <li
+              v-for="r in completedList"
+              :key="r.key"
+              class="ff-market-view__history-item"
+              :class="{
+                'ff-market-view__history-item--done': r.status === 'done',
+                'ff-market-view__history-item--error': r.status === 'error',
+              }"
+            >
+              <AppIcon :name="r.status === 'done' ? 'check-circle' : 'alert-circle'" size="xs" />
+              <span class="ff-market-view__history-name">{{ r.label }}</span>
+              <span class="ff-market-view__history-time">{{ r.started }}</span>
+              <span class="ff-market-view__history-msg">{{ r.message }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <!-- ── 板块成分抽屉：板块下钻 ── -->
+    <AppDrawer v-model="sectorOpen" placement="right" size="lg" :title="sectorState.name || '板块成分'">
+      <div class="ff-market-view__sector">
+        <div class="ff-market-view__sector-meta">
+          <AppBadge variant="brand">{{ sectorState.type === 'industry' ? '行业' : '概念' }}</AppBadge>
+          <span class="ff-market-view__sector-sub">数据日 {{ sectorState.trade_date || '—' }}</span>
+          <span class="ff-market-view__sector-count ff-num" v-if="sectorState.rows.length">{{ sectorState.rows.length }} 只</span>
+        </div>
+
+        <AppSkeleton v-if="sectorState.loading" variant="text" :lines="8" />
+        <div v-else-if="sectorState.err" class="ff-alert ff-alert--danger ff-market-view__err">
+          <AppIcon name="alert-circle" size="md" /> {{ sectorState.err }}
+        </div>
+        <div v-else-if="sectorState.rows.length" class="ff-market-view__table-scroll">
+          <table class="ff-table ff-table--sticky ff-table--zebra ff-table--compact">
+            <thead>
+              <tr>
+                <th v-for="k in TAB_COL_ORDER.sectorstocks" :key="k" class="ff-table__header" :class="{ 'is-numeric': cellClass(k, sectorState.rows[0][k], sectorState.rows[0]).includes('is-numeric') }">
+                  {{ header(k) }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(r, i) in sectorState.rows"
+                :key="rowKeyOf(r, i)"
+                class="ff-table__row"
+                :class="{ 'is-clickable': rowClickable(r) }"
+                :title="rowClickable(r) ? rowHint(r) : undefined"
+                @click="onRowClick(r)"
+              >
+                <td v-for="k in TAB_COL_ORDER.sectorstocks" :key="k" class="ff-table__cell" :class="cellClass(k, r[k], r)">
+                  {{ fmt(k, r[k]) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <EmptyState v-else text="该板块当日暂无成分股行情（可能缺资金流数据）" icon="inbox" />
+      </div>
+    </AppDrawer>
   </div>
 </template>
 
@@ -722,62 +1115,22 @@ onBeforeUnmount(() => {
   z-index: var(--ff-z-raised);
 }
 
-.ff-market-view__retry {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* 可下钻行：鼠标手型 + 代码列主色提示 */
-.ff-table__row.is-clickable {
-  cursor: pointer;
-}
-.ff-table__row.is-clickable .ff-table__cell:first-child {
-  color: var(--ff-text-brand);
-}
-
 .ff-market-view__row {
   display: flex;
   align-items: flex-end;
   gap: var(--ff-space-3);
   flex-wrap: wrap;
 }
-
-.ff-market-view__row--actions {
-  padding-top: var(--ff-space-3);
-  border-top: 1px solid var(--ff-border);
+.ff-market-view__spacer {
+  flex: 1 1 auto;
 }
-
 .ff-market-view__autorefresh-time {
-  margin-left: auto;
   font-size: var(--ff-fs-caption);
   font-family: var(--ff-font-mono);
   color: var(--ff-text-tertiary);
   white-space: nowrap;
 }
-
-/* ---------------- 后台自动采集状态行（默认常开、不可关闭，仅做信息展示） ---------------- */
-.ff-market-view__autocollect {
-  margin-top: var(--ff-space-1-5);
-  padding-top: var(--ff-space-1-5);
-  border-top: 1px dashed var(--ff-border-subtle);
-  display: flex;
-  align-items: center;
-  gap: var(--ff-space-2);
-  flex-wrap: wrap;
-  font-size: var(--ff-fs-caption);
-  color: var(--ff-text-tertiary);
-}
-.ff-market-view__autocollect-next {
-  color: var(--ff-text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.ff-market-view__autocollect-last {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .ff-market-view__latest {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -808,11 +1161,347 @@ onBeforeUnmount(() => {
 .ff-market-view__field {
   width: 200px;
 }
+.ff-market-view__kw {
+  width: 240px;
+}
 
-/* ---------------- 进度区（单条当前进度 + 紧凑历史） ---------------- */
+.ff-market-view__retry {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* 可下钻行：鼠标手型 + 代码列主色提示 */
+.ff-table__row.is-clickable {
+  cursor: pointer;
+}
+.ff-table__row.is-clickable .ff-table__cell:first-child {
+  color: var(--ff-text-brand);
+}
+.ff-market-view__sector-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ff-text-brand);
+  font-weight: var(--ff-fw-medium);
+}
+
+/* ---------------- 面板与导航 ---------------- */
+.ff-market-view__panel {
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ff-market-view__panel > :deep(.ff-card__body) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ff-market-view__panel :deep(.ff-card__body) {
+  padding: 0;
+}
+.ff-market-view__panel :deep(.ff-empty-state) {
+  padding: var(--ff-space-10) 0;
+}
+.ff-market-view__nav {
+  padding: 0 var(--ff-space-3);
+  border-bottom: 1px solid var(--ff-border-subtle);
+  flex-shrink: 0;
+}
+.ff-market-view__tabs {
+  margin-bottom: 0;
+}
+.ff-market-view__tabs :deep(.ff-tabs__tab) {
+  height: 48px;
+  padding: 0 var(--ff-space-3);
+  font-size: var(--ff-fs-body-sm);
+  font-weight: var(--ff-fw-medium);
+  color: var(--ff-text-secondary);
+  letter-spacing: 0.01em;
+}
+.ff-market-view__tabs :deep(.ff-tabs__tab:hover) {
+  color: var(--ff-text-primary);
+  background: var(--ff-bg-hover);
+}
+.ff-market-view__tabs :deep(.ff-tabs__tab--active) {
+  color: var(--ff-brand-text);
+  font-weight: var(--ff-fw-semibold);
+}
+.ff-market-view__tabs :deep(.ff-tabs__tab--active::after) {
+  height: 3px;
+  border-radius: var(--ff-radius-sm);
+}
+
+/* ---------------- 视图头：统一的信息层级入口 ---------------- */
+.ff-market-view__viewhead {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-3) var(--ff-space-4);
+  background: var(--ff-bg-subtle);
+  border-bottom: 1px solid var(--ff-border-subtle);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.ff-market-view__viewhead-ic {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ff-radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ff-brand-subtle);
+  color: var(--ff-brand-text);
+  flex-shrink: 0;
+}
+.ff-market-view__viewhead-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ff-market-view__viewhead-title {
+  font-size: var(--ff-fs-body);
+  font-weight: var(--ff-fw-semibold);
+  color: var(--ff-text-primary);
+  line-height: 1.3;
+}
+.ff-market-view__viewhead-desc {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  line-height: 1.4;
+}
+.ff-market-view__viewhead-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-1-5);
+  flex-wrap: wrap;
+}
+.ff-market-view__stype {
+  margin-left: auto;
+}
+
+/* ---------------- 摘要可视区（资金流 / 两融 / 预告统计） ---------------- */
+.ff-market-view__sum {
+  padding: var(--ff-space-4) var(--ff-space-5);
+  border-bottom: 1px solid var(--ff-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-3);
+  flex-shrink: 0;
+  background: var(--ff-bg-surface);
+}
+.ff-market-view__sum-main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ff-space-3);
+  flex-wrap: wrap;
+}
+.ff-market-view__sum-label {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  letter-spacing: var(--ff-ls-wide);
+}
+.ff-market-view__sum-big {
+  font-size: 22px;
+  font-weight: var(--ff-fw-bold);
+  line-height: 1;
+}
+.ff-market-view__sum-sub {
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-market-view__sum-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 110px;
+  align-items: center;
+  gap: var(--ff-space-3);
+  font-size: var(--ff-fs-caption);
+}
+.ff-market-view__sum-row-label {
+  color: var(--ff-text-secondary);
+}
+.ff-market-view__sum-trackline {
+  position: relative;
+  height: 8px;
+  background: var(--ff-bg-subtle);
+  border-radius: var(--ff-radius-pill);
+  overflow: hidden;
+}
+/* 资金流：双向条（自中线向两侧延伸，由 JS 注入 left/right/width） */
+.ff-market-view__sum-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+}
+.ff-market-view__sum-fill.is-up {
+  background: var(--ff-up);
+}
+.ff-market-view__sum-fill.is-down {
+  background: var(--ff-down);
+}
+/* 两融：融资/融券同向分段条（flex 布局静态条） */
+.ff-market-view__sum-fill.is-fin {
+  position: static;
+  height: 100%;
+  background: var(--ff-brand);
+}
+.ff-market-view__sum-fill.is-short {
+  position: static;
+  height: 100%;
+  background: var(--ff-down);
+}
+.ff-market-view__sum-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-4);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
+  margin-top: 4px;
+}
+.ff-market-view__sum-lg {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.ff-market-view__sum-lg.is-fin {
+  background: var(--ff-brand);
+}
+.ff-market-view__sum-lg.is-short {
+  background: var(--ff-down);
+}
+.ff-market-view__sum--flat {
+  flex-direction: row;
+}
+.ff-market-view__sum-track--stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ff-space-2);
+}
+.ff-market-view__sum-track--stats :deep(.ff-badge) {
+  gap: 4px;
+  font-weight: var(--ff-fw-medium);
+  height: 22px;
+}
+
+/* ---------------- 表格区 ---------------- */
+.ff-market-view__table-scroll {
+  overflow-x: auto;
+  flex: 1 1 auto;
+}
+.ff-market-view__table-scroll :deep(.is-clip),
+.ff-market-view__sector .is-clip {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-market-view__err {
+  margin: var(--ff-space-4);
+}
+
+/* ---------------- 数据视图内容 ---------------- */
+.ff-market-view__ov {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.ff-market-view__section {
+  padding: var(--ff-space-4) var(--ff-space-5);
+  border-bottom: 1px solid var(--ff-border);
+}
+.ff-market-view__section:last-child {
+  border-bottom: none;
+}
+.ff-market-view__section h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
+}
+
+/* 市场情绪指标网格 */
+.ff-market-view__sentcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--ff-space-3);
+  padding: var(--ff-space-4);
+  overflow-y: auto;
+}
+.ff-market-view__sentcard {
+  text-align: center;
+}
+.ff-market-view__sentcard--key {
+  border-color: var(--ff-border-brand);
+  background: var(--ff-brand-subtle);
+}
+.ff-market-view__sentcard--key :deep(.ff-metric__value) {
+  font-size: 28px;
+}
+
+/* ---------------- 数据维护抽屉 ---------------- */
+.ff-market-view__maint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ff-space-4);
+}
+.ff-market-view__maint-help {
+  margin: 0;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  line-height: 1.6;
+}
+.ff-market-view__maint-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ff-space-2);
+}
+.ff-market-view__maint-actions :deep(.ff-btn) {
+  width: 100%;
+}
+.ff-market-view__maint-helps {
+  margin: 0;
+}
+.ff-market-view__maint-helps-item {
+  margin: 2px 0;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+  line-height: 1.6;
+}
+.ff-market-view__maint-helps-item b {
+  color: var(--ff-text-secondary);
+  font-weight: var(--ff-fw-medium);
+}
+
+/* 自动采集状态行（收纳于抽屉） */
+.ff-market-view__autocollect {
+  padding-top: var(--ff-space-3);
+  border-top: 1px dashed var(--ff-border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  flex-wrap: wrap;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-market-view__autocollect-next {
+  color: var(--ff-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ff-market-view__autocollect-last {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 进度区（收纳于抽屉） */
 .ff-market-view__progress {
-  margin-top: var(--ff-space-2);
-  padding-top: var(--ff-space-2);
+  padding-top: var(--ff-space-3);
   border-top: 1px dashed var(--ff-border-subtle);
   display: flex;
   flex-direction: column;
@@ -847,11 +1536,9 @@ onBeforeUnmount(() => {
   min-width: 48px;
   text-align: right;
 }
-/* 大进度条：比通用 ff-progress(6px) 更高，更显眼 */
 .ff-progress--lg {
   height: 8px;
 }
-/* ---------- 历史结果 ---------- */
 .ff-market-view__history {
   list-style: none;
   margin: 0;
@@ -866,21 +1553,17 @@ onBeforeUnmount(() => {
   gap: var(--ff-space-2);
   padding: 4px 0;
   font-size: var(--ff-fs-sm);
-  color: var(--ff-text-secondary);
-}
-.ff-market-view__history-item--done {
-  color: var(--ff-text-primary);
-}
-.ff-market-view__history-item--error {
   color: var(--ff-text-primary);
 }
 .ff-market-view__history-name {
   font-weight: var(--ff-fw-medium);
+  white-space: nowrap;
 }
 .ff-market-view__history-time {
   color: var(--ff-text-tertiary);
   font-size: var(--ff-fs-xs);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ff-market-view__history-msg {
   flex: 1;
@@ -890,100 +1573,24 @@ onBeforeUnmount(() => {
   color: var(--ff-text-tertiary);
 }
 
-.ff-market-view__panel :deep(.ff-card__body) {
-  padding: 0;
-}
-
-.ff-market-view__nav {
-  padding: 0 var(--ff-space-3);
-  border-bottom: 1px solid var(--ff-border-subtle);
-}
-
-.ff-market-view__tabs {
-  margin-bottom: 0;
-}
-
-.ff-market-view__tabs :deep(.ff-tabs__tab) {
-  height: 48px;
-  padding: 0 var(--ff-space-4);
-  font-size: var(--ff-fs-body);
-  font-weight: var(--ff-fw-medium);
-  color: var(--ff-text-secondary);
-  letter-spacing: 0.01em;
-}
-
-.ff-market-view__tabs :deep(.ff-tabs__tab:hover) {
-  color: var(--ff-text-primary);
-  background: var(--ff-bg-hover);
-}
-
-.ff-market-view__tabs :deep(.ff-tabs__tab--active) {
-  color: var(--ff-brand-text);
-  font-weight: var(--ff-fw-semibold);
-}
-
-.ff-market-view__tabs :deep(.ff-tabs__tab--active::after) {
-  height: 3px;
-  border-radius: var(--ff-radius-sm);
-}
-
-.ff-market-view__panel {
-  overflow-x: auto;
-  flex: 1 1 auto;
+/* ---------------- 板块成分抽屉 ---------------- */
+.ff-market-view__sector {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  gap: var(--ff-space-3);
+  min-height: 100%;
 }
-
-.ff-market-view__panel > :deep(.ff-card__body) {
-  flex: 1 1 auto;
+.ff-market-view__sector-meta {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.ff-market-view__panel :deep(.ff-empty-state) {
-  padding: var(--ff-space-8) 0;
-}
-
-.ff-market-view__summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ff-space-4);
-  padding: var(--ff-space-4) var(--ff-space-5);
-  border-bottom: 1px solid var(--ff-border);
-}
-
-.ff-market-view__section {
-  padding: var(--ff-space-4) var(--ff-space-5);
-  border-bottom: 1px solid var(--ff-border);
-}
-
-.ff-market-view__section:last-child {
-  border-bottom: none;
-}
-
-.ff-market-view__section h3 {
-  display: inline-flex;
   align-items: center;
   gap: var(--ff-space-2);
-  margin-bottom: var(--ff-space-3);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-secondary);
 }
-
-.ff-market-view__ov {
-  display: flex;
-  flex-direction: column;
-}
-
-.ff-market-view__sentcards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--ff-space-3);
-  padding: var(--ff-space-4);
-}
-
-.ff-market-view__sentcard {
-  text-align: center;
+.ff-market-view__sector-count {
+  margin-left: auto;
+  color: var(--ff-brand-text);
+  font-weight: var(--ff-fw-medium);
 }
 
 /* ── 移动端适配（D4 · 基础断点）── */
@@ -994,9 +1601,20 @@ onBeforeUnmount(() => {
   .ff-market-view__field {
     flex: 1 1 100%;
   }
+  .ff-market-view__kw {
+    flex: 1 1 100%;
+    width: auto;
+  }
   .ff-market-view__tabs {
     overflow-x: auto;
     padding-bottom: 2px;
   }
+  .ff-market-view__viewhead-desc {
+    display: none;
+  }
+  .ff-market-view__sum-row {
+    grid-template-columns: 48px 1fr 96px;
+  }
 }
 </style>
+
