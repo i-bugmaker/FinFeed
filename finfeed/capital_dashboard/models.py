@@ -76,7 +76,7 @@ class BoardFlow:
 
 
 # --------------------------------------------------------------------------- #
-# 指数 / 异动 / 市场概况
+# 指数 / 场内基金 / 市场概况
 # --------------------------------------------------------------------------- #
 
 @dataclass
@@ -89,14 +89,20 @@ class IndexQuote:
 
 
 @dataclass
-class UnusualEvent:
-    market: int = 0
+class FundFlow:
+    """场内基金（ETF/LOF 等）资金排行条目。
+
+    数据源为东方财富 push2 clist（fid=f62 按主力净额排序），与通达信
+    全市场两档口径相互独立；金额单位统一为「元」，涨跌幅为「%」。
+    f62 为东财大单口径「主力净额」，f184 为其净占比。
+    """
+
     code: str = ""
     name: str = ""
-    time: str = ""
-    desc: str = ""
-    value: str = ""
-    unusual_type: int = 0
+    price: float = 0.0          # 现价(元)
+    change_pct: float = 0.0     # 涨跌幅 %
+    main_net: float = 0.0       # 主力净额(元)
+    main_net_ratio: float = 0.0  # 主力净占比 %
 
 
 @dataclass
@@ -170,7 +176,6 @@ class MarketSnapshot:
     indices: list[IndexQuote] = field(default_factory=list)
     stocks: list[StockFlow] = field(default_factory=list)     # 全市场(仅含关键字段)
     boards: list[BoardFlow] = field(default_factory=list)     # 行业+概念
-    unusual: list[UnusualEvent] = field(default_factory=list)
     breadth: MarketBreadth = field(default_factory=MarketBreadth)
     stats: MarketStats = field(default_factory=MarketStats)
 

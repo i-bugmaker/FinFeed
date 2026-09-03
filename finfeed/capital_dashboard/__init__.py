@@ -19,8 +19,8 @@ from .collector import (
     fetch_board_rankings,
     fetch_indices,
     fetch_stock_detail,
-    fetch_unusual,
 )
+from .funds import FundRankStore, FundRankWorker, get_snapshot as get_fund_rankings
 from .rotation import RotationReport, RotationSignal, analyze_rotation
 from .server import (
     app,
@@ -42,6 +42,9 @@ __all__ = [
     "store",
     "RefreshWorker",
     "SnapshotStore",
+    "FundRankWorker",
+    "FundRankStore",
+    "get_fund_rankings",
     "RotationReport",
     "RotationSignal",
     "analyze_rotation",
@@ -51,7 +54,6 @@ __all__ = [
     "fetch_all_stocks",
     "fetch_board_rankings",
     "fetch_indices",
-    "fetch_unusual",
     "fetch_stock_detail",
     "enrich_top_stocks",
     "__version__",

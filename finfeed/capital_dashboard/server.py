@@ -22,10 +22,11 @@ from fastapi import APIRouter, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, tdx
+from . import config, funds, tdx
 from .alerting import manager as _alert_manager
 from .alerting import wire_ws_push
 from .collector import fetch_stock_detail
+from .funds import FundRankWorker
 from .observability import tracker as _signal_tracker
 from .rotation import STATUS_LABEL
 from .snapshot import DetailEnricher, RefreshWorker, SnapshotStore
@@ -43,6 +44,7 @@ _WEB_DIR = Path(__file__).resolve().parent / "web"
 store = SnapshotStore()
 worker: Optional[RefreshWorker] = None
 enricher: Optional[DetailEnricher] = None
+fund_worker: Optional[FundRankWorker] = None
 _worker_lock = threading.Lock()
 
 
@@ -52,7 +54,7 @@ _worker_lock = threading.Lock()
 
 def start_refresh_worker() -> None:
     """启动后台刷新线程（幂等：已在运行则跳过）。"""
-    global worker, enricher
+    global worker, enricher, fund_worker
     with _worker_lock:
         if worker is not None and worker.is_alive():
             return
@@ -67,12 +69,15 @@ def start_refresh_worker() -> None:
         # 个股四档详情后台补全线程（解耦主循环）
         enricher = DetailEnricher(store)
         enricher.start()
+        # ETF/基金资金排行独立刷新线程（东财 push2 链路，与 TDX 主循环解耦）
+        fund_worker = FundRankWorker()
+        fund_worker.start()
         logger.info("资金流大屏后台刷新线程已启动 interval=%ss", config.REFRESH_INTERVAL)
 
 
 def stop_refresh_worker() -> None:
     """停止后台刷新线程并断开 TDX 连接（幂等）。"""
-    global worker, enricher
+    global worker, enricher, fund_worker
     with _worker_lock:
         if worker is not None:
             worker.stop()
@@ -81,6 +86,9 @@ def stop_refresh_worker() -> None:
         if enricher is not None:
             enricher.stop()
             enricher = None
+        if fund_worker is not None:
+            fund_worker.stop()
+            fund_worker = None
         tdx.close()
         logger.info("资金流大屏后台刷新线程已停止")
 
@@ -216,7 +224,6 @@ def create_router(prefix: str = "/api") -> APIRouter:
             "indices": [asdict(i) for i in snap.indices],
             "breadth": asdict(snap.breadth),
             "stats": asdict(snap.stats),
-            "unusual_count": len(snap.unusual),
         }
 
     @router.get("/ranking/stocks")
@@ -282,13 +289,32 @@ def create_router(prefix: str = "/api") -> APIRouter:
         """当前告警规则阈值与通道状态。"""
         return _alert_manager.get_config()
 
-    @router.get("/unusual")
-    def unusual() -> dict[str, Any]:
-        """市场异动（涨停/跌停/异动拉升等）。"""
-        snap = store.get_snapshot()
-        if snap is None:
-            raise HTTPException(status_code=503, detail="数据未就绪")
-        return {"items": [asdict(u) for u in snap.unusual]}
+    @router.get("/ranking/funds")
+    def fund_ranking(
+        limit: int = Query(config.FUND_TOP_N, ge=1, le=50),
+    ) -> dict[str, Any]:
+        """ETF/基金主力资金排行（东财 push2，与 TDX 全市场链路相互独立）。
+
+        返回全量载荷：categories 为实际可用的基金池（含标的数 total），
+        rank[category] = {in: 净流入 TOP, out: 净流出 TOP}（单位：元）。
+        """
+        payload = funds.get_snapshot()
+        if payload is None:
+            raise HTTPException(status_code=503, detail="基金资金排行未就绪（东财数据源暂不可用）")
+        # 裁剪每榜条目数（payload 内部按配置 FUND_TOP_N 采集，这里只做上限截断）
+        out: dict[str, Any] = {"ts": payload["ts"], "ts_label": payload["ts_label"]}
+        out["categories"] = payload["categories"]
+        out["unavailable"] = payload["unavailable"]
+        out["rank"] = {}
+        for key, sides in payload["rank"].items():
+            out["rank"][key] = {
+                "in": sides["in"][:limit],
+                "out": sides["out"][:limit],
+            }
+        out["limit"] = limit
+        out["ok"] = payload["ok"]
+        out["error"] = payload["error"]
+        return out
 
     @router.get("/stock/{code}")
     def stock_detail(code: str) -> dict[str, Any]:

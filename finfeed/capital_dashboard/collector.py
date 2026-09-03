@@ -9,7 +9,6 @@
   （含 涨跌幅/成交额/主力净流入/涨跌家数）
 - 指数行情          : ``get_stock_quotes_list(Category.ZS)``
 - 个股资金流详情    : ``get_capital_flow`` 当日主力/散户流入流出 + 5日大单/中单净额
-- 市场异动          : ``get_unusual`` 涨停/跌停/逼近 等
 
 所有函数均返回纯 Python 数据结构（见 models.py），不暴露 pandas。
 """
@@ -30,7 +29,6 @@ from .models import (
     MarketBreadth,
     MarketStats,
     StockFlow,
-    UnusualEvent,
 )
 from .tdx import call_lock, ensure_alive, get_client
 
@@ -194,32 +192,6 @@ def fetch_indices(client: MacClient | None = None) -> list[IndexQuote]:
     # 按配置白名单顺序固定输出：上证/深成/创业板/科创50/沪深300/中证500
     order = {code: i for i, code in enumerate(config.MAIN_INDEX_CODES)}
     out.sort(key=lambda q: order.get(q.code, 999))
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# 市场异动
-# --------------------------------------------------------------------------- #
-
-def fetch_unusual(client: MacClient | None = None) -> list[UnusualEvent]:
-    """获取市场异动（涨停/跌停/异动拉升等）。"""
-    ensure_alive()
-    client = client or get_client()
-    with call_lock():
-        df = client.get_unusual(0, 0, 60)
-    out: list[UnusualEvent] = []
-    for _, r in df.iterrows():
-        out.append(
-            UnusualEvent(
-                market=int(r.get("market", 0)),
-                code=str(r.get("code", "")).strip(),
-                name=str(r.get("name", "")).strip(),
-                time=str(r.get("time", "")),
-                desc=str(r.get("desc", "")),
-                value=str(r.get("value", "")),
-                unusual_type=int(r.get("unusual_type", 0) or 0),
-            )
-        )
     return out
 
 

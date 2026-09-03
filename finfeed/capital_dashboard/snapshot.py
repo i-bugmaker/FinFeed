@@ -30,9 +30,8 @@ from .collector import (
     fetch_board_rankings,
     fetch_indices,
     fetch_stock_detail,
-    fetch_unusual,
 )
-from .models import BoardFlow, IndexQuote, MarketSnapshot, UnusualEvent
+from .models import BoardFlow, IndexQuote, MarketSnapshot
 from .observability import tracker as _signal_tracker
 from .rotation import RotationReport, analyze_rotation
 
@@ -49,7 +48,6 @@ class SnapshotLight:
     ts_label: str = ""
     boards: list[BoardFlow] = field(default_factory=list)
     indices: list[IndexQuote] = field(default_factory=list)
-    unusual: list[UnusualEvent] = field(default_factory=list)
     breadth: dict[str, int] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
 
@@ -60,7 +58,6 @@ class SnapshotLight:
             ts_label=full.ts_label,
             boards=[asdict(b) for b in full.boards],
             indices=[asdict(i) for i in full.indices],
-            unusual=[asdict(u) for u in full.unusual],
             breadth=asdict(full.breadth),
             stats=asdict(full.stats),
         )
@@ -222,9 +219,8 @@ class RefreshWorker(threading.Thread):
         boards.extend(board_map.get("HY", []))
         boards.extend(board_map.get("GN", []))
 
-        # 3. 指数与异动
+        # 3. 指数
         indices = fetch_indices()
-        unusual = fetch_unusual()
 
         # 4. 市场宽度与统计
         breadth, stats = compute_breadth(stocks)
@@ -235,7 +231,6 @@ class RefreshWorker(threading.Thread):
             indices=indices,
             stocks=stocks,
             boards=boards,
-            unusual=unusual,
             breadth=breadth,
             stats=stats,
         )
@@ -343,7 +338,6 @@ def _history_as_snapshots(store: SnapshotStore) -> list[MarketSnapshot]:
                 ts_label=light.ts_label,
                 indices=light.indices,
                 boards=[BoardFlow(**b) for b in light.boards],
-                unusual=light.unusual,
             )
         )
     return out

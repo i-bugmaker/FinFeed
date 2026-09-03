@@ -210,16 +210,36 @@
   .mini-bar { width: 68px; height: 4px; background: var(--row-line); border-radius: 2px; margin-left: 8px; position: relative; overflow: hidden; }
   .mini-bar i { position: absolute; left: 0; top: 0; height: 100%; border-radius: 2px; }
 
-  /* ---------- 异动 ---------- */
-  .unusual-list { flex: 1; overflow-y: auto; min-height: 0; }
-  .u-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: 12px; border-bottom: 1px solid rgba(94,152,255,.05); }
-  .u-time { font-family: var(--font-num); color: var(--text-dim); font-size: 11px; width: 58px; }
-  .u-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
-  .u-up { background: rgba(255,77,79,.16); color: var(--red-soft); }
-  .u-down { background: rgba(0,214,143,.14); color: var(--green-soft); }
-  .u-flat { background: rgba(245,197,66,.14); color: var(--yellow); }
-  .u-name { font-weight: 600; }
-  .u-desc { color: var(--text-sub); }
+  /* ---------- ETF/基金资金排行 ---------- */
+  .fund-ctl { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; flex: 0 0 auto; }
+  .fund-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .fund-chip {
+    cursor: pointer; user-select: none; font-size: 11px; padding: 2px 9px; border-radius: 5px;
+    color: var(--text-sub); background: var(--chip-bg); border: 1px solid var(--line);
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .fund-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .fund-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .fund-chip em { font-style: normal; font-size: 10px; opacity: .7; margin-left: 3px; font-family: var(--font-num); }
+  .fund-dir { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+  .fund-dir span {
+    cursor: pointer; user-select: none; font-size: 11px; padding: 2px 9px; border-radius: 5px;
+    color: var(--text-sub); border: 1px solid transparent;
+  }
+  .fund-dir span:hover { color: var(--accent); }
+  .fund-dir span.on { color: var(--accent); border-color: var(--accent); background: rgba(94,152,255,.08); }
+  .fund-dir .fund-ts {
+    cursor: default; border: none; background: transparent; margin-left: auto;
+    color: var(--text-dim); font-size: 10px; padding: 2px 0 2px 8px; font-family: var(--font-num);
+  }
+  .fund-dir .fund-ts:hover { color: var(--text-dim); }
+  .fund-list { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+  .frow { display: flex; align-items: center; gap: 7px; padding: 3px 4px; font-size: 12px; border-bottom: 1px solid rgba(94,152,255,.05); }
+  .frow .fnm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .frow .fcode { color: var(--text-dim); font-size: 10px; margin-left: 5px; font-weight: 400; font-family: var(--font-num); }
+  .frow .fchg { font-family: var(--font-num); font-size: 11px; width: 60px; text-align: right; font-weight: 600; }
+  .frow .fnet { font-family: var(--font-num); font-weight: 600; text-align: right; white-space: nowrap; width: 84px; }
+  .frow .fratio { font-family: var(--font-num); color: var(--text-dim); font-size: 10px; width: 46px; text-align: right; white-space: nowrap; }
 
   /* ---------- 底部跑马灯 ---------- */
   footer {
@@ -426,9 +446,13 @@
         <div class="panel-title">板块轮动信号 <span class="tag">排名跳变 + 资金方向</span></div>
         <div class="sig-list" id="sigList"></div>
       </div>
-      <div class="panel" style="flex:1">
-        <div class="panel-title">市场异动播报 <span class="tag">涨停 / 跌停 / 异动</span></div>
-        <div class="unusual-list" id="unusualList"></div>
+      <div class="panel" style="flex:1.3">
+        <div class="panel-title">ETF / 基金资金排行 <span class="tag">主力净额 TOP · 东财实时</span></div>
+        <div class="fund-ctl">
+          <div class="fund-tabs" id="fundTabs"></div>
+          <div class="fund-dir" id="fundDir"></div>
+        </div>
+        <div class="fund-list" id="fundList"><div class="empty">等待数据…</div></div>
       </div>
       <div class="panel" style="flex:1.2">
         <div class="panel-title">信号可观测 <span class="tag">跟随验证命中率</span></div>
@@ -482,7 +506,7 @@ const API = {
   boardHy:   API_BASE + "/ranking/boards?board_type=hy&sort=main_net&limit=20",
   boardGn:   API_BASE + "/ranking/boards?board_type=gn&sort=main_net&limit=12",
   rotation:  API_BASE + "/rotation",
-  unusual:   API_BASE + "/unusual",
+  funds:     API_BASE + "/ranking/funds",
   observability: API_BASE + "/observability",
 };
 const REFRESH_MS = 5000;
@@ -767,21 +791,68 @@ function renderSignals(rot) {
     </div>`).join("");
 }
 
-/* ---------- 异动 ---------- */
-function renderUnusual(list) {
-  const el = document.getElementById("unusualList");
-  if (!list || !list.length) { el.innerHTML = '<div class="empty">暂无异动</div>'; return; }
-  el.innerHTML = list.map(u => {
-    let tagCls = "u-flat", tag = u.desc || "异动";
-    if (/涨停/.test(u.desc)) { tagCls = "u-up"; }
-    else if (/跌停/.test(u.desc)) { tagCls = "u-down"; }
-    // 通达信 0x1237 接口对异动统一返回 09:15:00，无日内精确时间，显示"今日"
-    const t = (u.time === "09:15:00") ? "今日" : u.time;
-    return `<div class="u-item"><span class="u-time">${t}</span>
-      <span class="u-tag ${tagCls}">${tag}</span>
-      <span class="u-name">${u.name}</span><span class="u-desc">${u.code}</span></div>`;
-  }).join("");
+/* ---------- ETF/基金资金排行 ---------- */
+const fundState = { cat: null, dir: "in" };  // 当前 tab 类别 + 方向（in=净流入/out=净流出）
+let lastFundPayload = null;                  // 最近一次有效 payload（tab/方向切换复用，不重新请求）
+let lastFundKey = "";                        // 渲染指纹 ts|cat|dir：同指纹跳过重绘，保住滚动位置
+
+function renderFunds(payload) {
+  const tabsEl = document.getElementById("fundTabs");
+  const dirEl = document.getElementById("fundDir");
+  const listEl = document.getElementById("fundList");
+  lastFundPayload = payload;
+
+  // 数据未就绪（启动初期 / 东财不可用 → REST 503 或 WS 推送 null）：空态占位
+  if (!payload || !payload.ok || !payload.categories || !payload.categories.length) {
+    if (lastFundKey === "__none__") return;
+    lastFundKey = "__none__";
+    fundState.cat = null;
+    tabsEl.innerHTML = "";
+    dirEl.innerHTML = "";
+    listEl.innerHTML = '<div class="empty">基金资金榜未就绪（东财数据源暂不可用）</div>';
+    return;
+  }
+  // 类别集合以服务端为准；当前类别失效/首次渲染时回落到第一项
+  const cats = payload.categories;
+  if (!fundState.cat || !cats.some(c => c.key === fundState.cat)) fundState.cat = cats[0].key;
+  const key = (payload.ts || "") + "|" + fundState.cat + "|" + fundState.dir;
+  if (key === lastFundKey) return;  // 数据与视图均未变化 → 跳过，避免 5s 轮询重绘闪烁
+  lastFundKey = key;
+
+  tabsEl.innerHTML = cats.map(c =>
+    `<span class="fund-chip${c.key === fundState.cat ? " on" : ""}" data-key="${c.key}">${c.label}${c.total ? `<em>${c.total}</em>` : ""}</span>`
+  ).join("");
+  dirEl.innerHTML =
+    `<span class="${fundState.dir === "in" ? "on" : ""}" data-dir="in">净流入</span>` +
+    `<span class="${fundState.dir === "out" ? "on" : ""}" data-dir="out">净流出</span>` +
+    (payload.ts_label ? `<span class="fund-ts">更新 ${payload.ts_label}</span>` : "");
+
+  const side = (payload.rank[fundState.cat] || {})[fundState.dir] || [];
+  if (!side.length) {
+    listEl.innerHTML = '<div class="empty">暂无该方向数据（等待下一轮采集）</div>';
+    return;
+  }
+  listEl.innerHTML = side.map(f => `
+    <div class="frow"><span class="fnm">${f.name}<span class="fcode">${f.code}</span></span>
+      <span class="fchg ${chgCls(f.change_pct)}">${fmtPct(f.change_pct)}</span>
+      <span class="fnet ${clsOf(f.main_net)}">${fmtMoney(f.main_net)}</span>
+      <span class="fratio">${fmtPct(f.main_net_ratio)}</span></div>`).join("");
 }
+
+/* 类别 tab / 方向切换：事件委托到 .fund-ctl（子元素随重绘重建，委托不失效） */
+document.querySelector(".fund-ctl").addEventListener("click", ev => {
+  const chip = ev.target.closest(".fund-chip");
+  if (chip && fundState.cat !== chip.dataset.key) {
+    fundState.cat = chip.dataset.key;
+    renderFunds(lastFundPayload);
+    return;
+  }
+  const dir = ev.target.closest("[data-dir]");
+  if (dir && fundState.dir !== dir.dataset.dir) {
+    fundState.dir = dir.dataset.dir;
+    renderFunds(lastFundPayload);
+  }
+});
 
 /* ---------- 个股四档钻取（P2-6） ---------- */
 function openStockModal(code) {
@@ -1046,14 +1117,15 @@ function setRefreshTag(ok, msg) {
 let nameMap = {};
 async function loadAll() {
   try {
-    const [ov, si, so, bhy, bgn, rot, un, obs] = await Promise.all([
+    const [ov, si, so, bhy, bgn, rot, fd, obs] = await Promise.all([
       fetch(API.overview).then(r => r.json()),
       fetch(API.stockIn).then(r => r.json()),
       fetch(API.stockOut).then(r => r.json()),
       fetch(API.boardHy).then(r => r.json()),
       fetch(API.boardGn).then(r => r.json()),
       fetch(API.rotation).then(r => r.json()),
-      fetch(API.unusual).then(r => r.json()),
+      // 基金榜走东财独立链路：503/网络错在此吞掉，不影响其余面板（与后端解耦设计一致）
+      fetch(API.funds).then(r => r.json()).catch(() => null),
       fetch(API.observability).then(r => r.json()),
     ]);
     nameMap = {};
@@ -1068,7 +1140,7 @@ async function loadAll() {
     renderTrend(rot, nameMap);
     renderLeader(rot);
     renderSignals(rot);
-    renderUnusual(un.items);
+    renderFunds(fd);
     renderObservability(obs);
     renderTicker(rot, ov);
 
@@ -1103,7 +1175,7 @@ function renderPayload(p) {
     renderSignals(p.rotation);
     last.rot = p.rotation;
   }
-  renderUnusual(p.unusual || []);
+  renderFunds(p.funds || null);
   renderObservability(p.signal_stats);
   renderTicker(p.rotation, ov);
   checkNewAnomalies(p);

@@ -87,7 +87,7 @@ uvicorn finfeed.capital_dashboard.server:app --host 0.0.0.0 --port 8090
 | 入口 | 说明 |
 |---|---|
 | `http://localhost:8866/capital` | 资金流大屏页面（自动注入 `/api/capital` 前缀） |
-| `http://localhost:8866/api/capital/*` | 资金流 API（overview / ranking/stocks / ranking/boards / rotation / unusual / health 等） |
+| `http://localhost:8866/api/capital/*` | 资金流 API（overview / ranking/stocks / ranking/boards / rotation / ranking/funds / health 等） |
 
 主应用启动时自动拉起刷新线程，关闭时自动回收；若 easy-tdx 未安装，
 主应用**优雅降级**（仅跳过该模块，不影响原有功能）。
@@ -110,6 +110,8 @@ pip install easy-tdx
 | `BOARD_TOP_N` | 20 | 板块榜单展示数量 |
 | `ROTATION_RANK_DELTA` | 4 | 轮动信号触发：主力净流入排名跳变位次阈值 |
 | `HISTORY_LEN` | 120 | 轮动趋势/热力图保留的历史采样点数量 |
+| `FUND_REFRESH_INTERVAL` | 20 | ETF/基金资金排行采集周期（秒，东财 push2 独立链路） |
+| `FUND_TOP_N` | 12 | 基金排行每类别每方向的展示数量 |
 | `DASH_HOST` / `DASH_PORT` | 0.0.0.0 / 8090 | Web 服务地址与端口 |
 
 ---

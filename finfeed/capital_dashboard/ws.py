@@ -31,6 +31,7 @@ ws_router = APIRouter()
 
 def _build_payload() -> dict | None:
     """从内存快照构建一条批量推送负载（字段与 REST 接口对齐）。"""
+    from . import funds
     from .server import store  # 延迟导入，避免与 server 的循环依赖
     snap = store.get_snapshot()
     if snap is None:
@@ -65,7 +66,7 @@ def _build_payload() -> dict | None:
         "stock_out": stock_list("out", config.STOCK_TOP_N),
         "boards_hy": board_list("HY", config.BOARD_TOP_N),
         "boards_gn": board_list("GN", min(config.GN_RANKING_TOP, config.BOARD_TOP_N)),
-        "unusual": [asdict(u) for u in snap.unusual],
+        "funds": funds.get_snapshot(),   # ETF/基金资金排行（东财 push2 独立链路）
         "rotation": asdict(rot) if rot else None,
         "anomalies": anom.to_dict() if anom else None,
         "signal_stats": _signal_tracker.summary(),
