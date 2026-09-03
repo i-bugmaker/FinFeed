@@ -19,6 +19,7 @@ import AppSelect from '../ui/AppSelect.vue'
 import AppModal from '../ui/AppModal.vue'
 import MarkdownView from '../components/ai/MarkdownView.vue'
 import DimensionRadar from '../features/screener/components/DimensionRadar.vue'
+import MarketContextPanel from '../features/screener/components/MarketContextPanel.vue'
 
 const store = useScreenerStore()
 const router = useRouter()
@@ -777,6 +778,19 @@ const engineDiag = computed(() => {
   }
 })
 
+// 市场环境上下文（result.market_context；旧任务无此字段时自动隐藏该页签）
+const mktCtx = computed(() => result.value?.market_context || null)
+const tabItems = computed(() => {
+  const items = [
+    { label: '评分结果', value: 'result', badge: result.value?.scores?.length || 0 },
+  ]
+  if (mktCtx.value) {
+    items.push({ label: '市场环境', value: 'market', badge: mktCtx.value.regime_label || '' })
+  }
+  items.push({ label: '图表', value: 'charts' }, { label: '评估闭环', value: 'evaluate' })
+  return items
+})
+
 onMounted(() => {
   applyPrefs(readPrefs()) // 打开即恢复上次配置，无需重新选择
   store.loadConfig()
@@ -1057,6 +1071,11 @@ onBeforeUnmount(() => {
         <div v-if="engineDiag" class="engine-diag">
           <AppBadge :text="`引擎：${engineDiag.mode}`" variant="brand" />
           <AppBadge :text="`模型：${engineDiag.status}`" :variant="engineDiag.status === 'trained' ? 'success' : engineDiag.status === 'degraded' ? 'warn' : 'muted'" />
+          <AppBadge
+            v-if="mktCtx"
+            :text="`市场：${mktCtx.regime_label || '—'} ${Number(mktCtx.regime_score ?? 50).toFixed(0)} · 情绪×${Number(mktCtx.appetite ?? 1).toFixed(3)}`"
+            :variant="Number(mktCtx.regime_score) >= 62 ? 'up' : Number(mktCtx.regime_score) >= 40 ? 'warn' : 'down'"
+          />
           <span class="engine-diag__weights">
             <span v-for="(w, d) in engineDiag.weights" :key="d" class="engine-diag__w" :title="`${DIM_LABELS[d] || d} ${fmtWeight(w)}`">
               <span class="engine-diag__w-label">{{ DIM_LABELS[d] || d }}</span>
@@ -1072,11 +1091,7 @@ onBeforeUnmount(() => {
 
         <!-- 页签 -->
         <div class="screener-tabs">
-          <AppTabs v-model="activeTab" :items="[
-            { label: '评分结果', value: 'result', badge: result?.scores?.length || 0 },
-            { label: '图表', value: 'charts' },
-            { label: '评估闭环', value: 'evaluate' },
-          ]" type="pill" />
+          <AppTabs v-model="activeTab" :items="tabItems" type="pill" />
           <span class="screener-tabs__sp" />
           <button v-if="result?.scores?.length" type="button" class="screener-card__toggle" @click="exportCsv">
             <AppIcon name="download" size="xs" /> 导出 CSV
@@ -1237,6 +1252,11 @@ onBeforeUnmount(() => {
               </div>
             </template>
           </div>
+        </section>
+
+        <!-- 市场环境页签（短线 overlay：大盘 / 涨跌停 / ETF / 大资金 / 龙虎榜） -->
+        <section v-show="activeTab === 'market'" class="screener-card screener-card--grow">
+          <MarketContextPanel :ctx="mktCtx" />
         </section>
 
         <!-- 图表页签 -->

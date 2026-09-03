@@ -224,6 +224,37 @@ def _default_engine() -> dict[str, Any]:
     }
 
 
+def _default_market() -> dict[str, Any]:
+    """市场环境上下文（短线 overlay，2026-09 新增）。
+
+    短线选股（T+1~T+5）胜率高度依赖市场环境。评分时引擎拉取五类盘面信号
+    （大盘走势 / 涨跌停分布 / ETF 资金流向 / 大资金动向 / 龙虎榜，见
+    market_context.py）合成「短线风险偏好分」regime_score，再线性映射为
+    情绪系数 appetite；本段配置其强度与作用范围。
+
+    enabled         总开关（默认开；数据缺失时自动不调整，等价于关闭）。
+    ttl_seconds     市场信号采集缓存有效期（秒），同参数多次运行只拉一次。
+    appetite_lo/hi  regime_score 0~100 → appetite 的映射区间：
+                    appetite<1 情绪谨慎（防守优先）、=1 中性、>1 情绪亢奋（进攻优先）。
+    apply_to        overlay 作用的权重模式：fixed=仅经验/手工权重生效（IC/ML 客观
+                    权重尊重历史统计，不叠加主观情绪）；all=所有模式均叠加（需显式开启）。
+    overlay_strength  权重调整强度 0~1：0=只展示不调整，1=满强度。
+    offense_dims    进攻维：情绪系数>1 时上调（短线动量/题材/情绪弹性大）。
+    defense_dims    防守维：情绪系数>1 时下调（强市里低估值/低波动性价比下降），
+                    情绪系数<1 时反向（弱市资金避险回流质量/估值）。
+    """
+    return {
+        "enabled": True,
+        "ttl_seconds": 240,
+        "appetite_lo": 0.88,      # 谨慎市 regime≈0 → appetite 0.88
+        "appetite_hi": 1.08,      # 亢奋市 regime≈100 → appetite 1.08
+        "apply_to": "fixed",      # fixed | all
+        "overlay_strength": 0.6,
+        "offense_dims": ["momentum", "sentiment"],
+        "defense_dims": ["valuation", "quality"],
+    }
+
+
 def _default_tiers() -> dict[str, Any]:
     return {
         # 综合分阈值（0~100）
@@ -267,6 +298,7 @@ class ScreenerConfig:
     tiers: dict[str, Any] = field(default_factory=_default_tiers)
     neutralize: dict[str, Any] = field(default_factory=_default_neutralize)
     engine: dict[str, Any] = field(default_factory=_default_engine)
+    market: dict[str, Any] = field(default_factory=_default_market)
 
     # ---- 序列化 ----
     def to_dict(self) -> dict[str, Any]:
@@ -294,6 +326,17 @@ class ScreenerConfig:
             cfg.neutralize.update(d["neutralize"])
         if isinstance(d.get("engine"), dict):
             cfg.engine.update(d["engine"])
+        if isinstance(d.get("market"), dict):
+            # market 段深合并：offense/defense 列表整体替换（数组无法逐元素合并）
+            merged = dict(cfg.market)
+            for k, v in d["market"].items():
+                if isinstance(v, list):
+                    merged[k] = list(v)
+                elif isinstance(v, dict):
+                    merged[k] = {**merged.get(k, {}), **v}
+                else:
+                    merged[k] = v
+            cfg.market = merged
         return cfg
 
     @classmethod
@@ -465,6 +508,23 @@ class ScreenerConfig:
             lines.append("> 客观加权依据：海通证券 IC 加权 + 正交化（ICIR 2.29→3.30）、"
                          "半衰期 IC 加权 + XGBoost 选股（沪深300 年化 26.86% vs 基准 2.05%）、"
                          "Gu-Kelly-Xiu(2020) 秩标准化。前膽收益严格用 t+1..t+h，杜绝未来函数。")
+        lines.append("")
+        lines.append("### 市场环境 overlay（短线风险偏好调节）")
+        lines.append("")
+        mk = self.market or {}
+        if mk.get("enabled", True):
+            scope = "全部引擎模式" if mk.get("apply_to") == "all" else "经验/手工权重模式（IC/ML 客观权重除外）"
+            off = "、".join(mk.get("offense_dims", []))
+            deff = "、".join(mk.get("defense_dims", []))
+            lines.append(f"- 评分前同步采集五类盘面信号（大盘走势/涨跌停分布/ETF 资金流向/大资金动向/龙虎榜），"
+                         f"合成**短线风险偏好分**（0~100）并映射为情绪系数 "
+                         f"[{mk.get('appetite_lo', 0.88)} ~ {mk.get('appetite_hi', 1.08)}]。")
+            lines.append(f"- 情绪系数 >1（情绪亢奋）上调进攻维（{off}）权重、下调防御维（{deff}）；"
+                         f"<1（情绪谨慎）反向——弱市自动回避追高。强度 "
+                         f"{mk.get('overlay_strength', 0.6):.0%}，生效范围：{scope}。")
+            lines.append(f"- 信号带 {mk.get('ttl_seconds', 240)}s 缓存；全部数据源不可用时自动跳过，评分行为与旧版一致。")
+        else:
+            lines.append("- 市场环境 overlay 已关闭（market.enabled=false），权重恒为配置值。")
         lines.append("")
         lines.append("> 说明：本模型为系统化量化筛选工具，因子基于公开市场微观结构规律"
                      "（动量、价值、流动性、聪明钱）设计，用于缩小研究范围，不构成投资建议。"

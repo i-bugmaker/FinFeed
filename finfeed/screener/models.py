@@ -116,6 +116,10 @@ class ScreenerResult:
     model_status: str = "linear"                     # linear | trained | insufficient_history | degraded
     methodology_version: str = "v2-ic-hybrid"        # 方法论版本标识
 
+    # 市场环境上下文（短线 overlay，2026-09 新增）
+    # MarketContext.to_dict() 结果或 None（未启用/全部数据源不可用）。
+    market_context: dict[str, Any] | None = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "generated_at": self.generated_at,
@@ -133,5 +137,6 @@ class ScreenerResult:
             "engine_weights": self.engine_weights,
             "engine_diagnostics": self.engine_diagnostics,
             "methodology_version": self.methodology_version,
+            "market_context": self.market_context,
             "scores": [s.to_dict() for s in self.scores],
         }

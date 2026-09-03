@@ -39,6 +39,35 @@ from finfeed.utils.time_utils import now_bj
 logger = logging.getLogger("screener_service")
 
 
+def _market_payload(mkt_ctx, engine_meta: dict | None) -> dict | None:
+    """组装结果里的市场环境载荷：MarketContext + scoring 的 overlay 诊断。"""
+    if mkt_ctx is None:
+        return None
+    payload = mkt_ctx.to_dict()
+    overlay = (engine_meta or {}).get("market") or {}
+    payload["overlay"] = overlay
+    return payload
+
+
+def _market_ctx(cfg):
+    """采集市场环境上下文（短线 overlay 数据源）。失败/关闭/全缺返回 None。
+
+    - 走 market_context 统一 TTL 缓存（默认 240s），同参数多次运行只拉一次；
+    - 全部数据源失败时返回 None（评分行为与旧版一致，绝不阻塞主流程）。
+    """
+    from finfeed.screener.market_context import fetch_market_context
+
+    mk = cfg.market if cfg is not None else {}
+    if not (isinstance(mk, dict) and mk.get("enabled", True)):
+        return None
+    try:
+        return fetch_market_context(
+            ttl_seconds=float(mk.get("ttl_seconds", 240.0)), params=mk)
+    except Exception as exc:  # noqa: BLE001 —— 采集失败仅降级，不影响选股
+        logger.warning("市场环境上下文获取失败（本次不做环境调整）: %s", exc)
+        return None
+
+
 def _enrich_growth(df: pd.DataFrame) -> pd.DataFrame:
     """为因子行注入成长性字段（东财业绩预告 earnings_forecast，is_latest=1）。
 
@@ -333,9 +362,13 @@ def _run(task: dict) -> None:
         cfg.filters["boards"] = {k: bool(v) for k, v in boards.items()}
     start = _now()
     try:
-        _log(task, "开始选股：加载行情快照…")
+        _log(task, "开始选股：采集市场环境上下文…")
+        mkt_ctx = _market_ctx(cfg)
+        if mkt_ctx is not None:
+            _log(task, "市场环境上下文: " + mkt_ctx.summary())
         _progress(task, 5)
 
+        _log(task, "开始选股：加载行情快照…")
         bundle = fetch_snapshot(count=12000)
         df = bundle.df
         _log(task, f"行情快照已加载：共 {len(df)} 只标的，来源 {bundle.describe()}（as_of={bundle.as_of}）")
@@ -355,7 +388,8 @@ def _run(task: dict) -> None:
         _log(task, "开始八维加权评分…")
         engine_meta: dict = {}
         scores = score_frame(df, cfg, technical_enabled=technical,
-                             store=snapshot_store, meta=engine_meta)
+                             store=snapshot_store, meta=engine_meta,
+                             market_ctx=mkt_ctx)
         _progress(task, 95)
 
         screened_size = len(scores)
@@ -382,11 +416,16 @@ def _run(task: dict) -> None:
             engine_weights=engine_meta.get("engine_weights", {}),
             engine_diagnostics=engine_meta.get("engine_diagnostics", {}),
             model_status=engine_meta.get("model_status", "linear"),
+            market_context=_market_payload(mkt_ctx, engine_meta),
             scores=scores,
         )
         payload = result.to_dict()
         strong_count = sum(1 for s in scores if s.tier == "strong")
         _log(task, f"评分完成：入选候选 {len(scores)} 只，评级 strong {strong_count} / watch {sum(1 for s in scores if s.tier == 'watch')}")
+        if engine_meta.get("market", {}).get("overlay_applied"):
+            md = engine_meta["market"]
+            _log(task, f"市场 overlay 已应用：appetite={md.get('appetite')} regime={md.get('regime_label')} "
+                       f"({md.get('regime_score')}) {md.get('note', '')}")
 
         with _TASKS_LOCK:
             task["status"] = "success"
@@ -450,10 +489,17 @@ def get_config() -> dict[str, Any]:
         "tiers": cfg.tiers,
         "neutralize": cfg.neutralize,
         "engine": cfg.engine,
+        "market": cfg.market,
         "dims": ["capital", "momentum", "valuation", "liquidity", "quality", "sentiment"],
         "dim_labels": {
             "capital": "资金面", "momentum": "动量趋势", "valuation": "估值",
             "liquidity": "量价活跃", "quality": "质量稳定", "sentiment": "情绪/事件",
+        },
+        "market_labels": {
+            "regime_label": "短线风险偏好",
+            "appetite_lo": "谨慎下限", "appetite_hi": "亢奋上限",
+            "offense_dims": "进攻维", "defense_dims": "防守维",
+            "overlay_strength": "调节强度", "ttl_seconds": "信号缓存(秒)",
         },
         "templates": request_mod.list_templates(),
         "request_schema": {
@@ -474,8 +520,10 @@ def _execute_once(cfg: ScreenerConfig, df: pd.DataFrame, technical: bool,
     """单次评分 + 结果封装（供 compare 复用，不写任务状态）。"""
     df = _enrich_growth(df)
     engine_meta: dict = {}
+    mkt_ctx = _market_ctx(cfg)
     scores = score_frame(df, cfg, technical_enabled=technical,
-                         store=snapshot_store, meta=engine_meta)
+                         store=snapshot_store, meta=engine_meta,
+                         market_ctx=mkt_ctx)
     scores = scores[:top_n]
     return ScreenerResult(
         generated_at=now_bj().strftime("%Y-%m-%d %H:%M:%S"),
@@ -493,6 +541,7 @@ def _execute_once(cfg: ScreenerConfig, df: pd.DataFrame, technical: bool,
         engine_weights=engine_meta.get("engine_weights", {}),
         engine_diagnostics=engine_meta.get("engine_diagnostics", {}),
         model_status=engine_meta.get("model_status", "linear"),
+        market_context=_market_payload(mkt_ctx, engine_meta),
         scores=scores,
     )
 

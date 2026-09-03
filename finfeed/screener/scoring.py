@@ -269,13 +269,15 @@ def _make_percentile(values: list[float]):
 
 
 def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
-              technical_enabled: bool = False) -> StockScore:
+              technical_enabled: bool = False,
+              weights: dict | None = None) -> StockScore:
     """由维度子分组装 StockScore：板块中性化混合 → 加权总分 → 护栏 → 评级 → 说明。
 
     dims:     factors.dimension_scores 返回的绝对子分（含贡献说明）
     pct_map:  各维度的板块内百分位函数（为空则不做中性化，纯绝对分）
+    weights:  维度权重覆盖（market overlay 调整后传入；None 用 cfg.weights）
     """
-    w = cfg.weights
+    w = weights if weights is not None else cfg.weights
     t = cfg.tiers
     g = t["guardrails"]
     nb = _f((cfg.neutralize or {}).get("blend", 0.0))
@@ -384,14 +386,27 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
     )
 
 
-def score_one(row: dict, cfg: ScreenerConfig, technical_enabled: bool = False) -> StockScore:
-    """对单只因子行评分（单行无板块中性化，等价于 blend=0 的绝对分）。"""
+def score_one(row: dict, cfg: ScreenerConfig, technical_enabled: bool = False,
+              market_appetite: float | None = None) -> StockScore:
+    """对单只因子行评分（单行无板块中性化，等价于 blend=0 的绝对分）。
+
+    market_appetite: 市场情绪系数（market_context.appetite）。传入时按
+        cfg.market 调整进攻/防御维权重（None 或 1.0 = 不调整，与旧版一致）。
+    """
     dims = factors.dimension_scores(row, cfg)
-    return _assemble(row, dims, {}, cfg, technical_enabled)
+    weights: dict | None = None
+    if market_appetite is not None:
+        mk = cfg.market if cfg is not None else None
+        if isinstance(mk, dict) and mk.get("enabled", True):
+            from .market_context import apply_market_weights
+            w_adj, _diag = apply_market_weights(cfg.weights, cfg, market_appetite)
+            weights = w_adj
+    return _assemble(row, dims, {}, cfg, technical_enabled, weights=weights)
 
 
 def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
-               store=None, meta: dict | None = None, end_date: str | None = None
+               store=None, meta: dict | None = None, end_date: str | None = None,
+               market_ctx=None
                ) -> list[StockScore]:
     """对 DataFrame（含原始列）做过滤+评分，返回按综合分降序的 StockScore 列表。
 
@@ -408,7 +423,13 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
         store  — 快照存储（SnapshotStore 实例）；engine.mode=ic/auto 时用于
                  读取真实历史计算 RankIC 客观权重；默认 None（fixed 模式不触碰）。
         meta   — 可选 dict，回填引擎诊断信息（engine_mode / engine_weights /
-                 engine_diagnostics），供调用方写入 ScreenerResult 报告。
+                 engine_diagnostics / market），供调用方写入 ScreenerResult 报告。
+        market_ctx — market_context.MarketContext 实例（可选）。非空时：
+                 (a) 综合考量大盘/涨跌停/ETF/大资金/龙虎榜，按 cfg.market 将情绪
+                     系数叠加到维度权重（fixed 模式默认生效；ic/auto/ml 客观权重
+                     不叠加，除非 cfg.market.apply_to="all"）；
+                 (b) 命中大资金净流入榜/龙虎榜净买榜的个股在 rationale 中标注。
+                 数据缺失/关闭时行为与旧版完全一致。
     """
     from . import vector
     from .datasource import _add_derived
@@ -430,6 +451,31 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
         meta["engine_weights"] = weights
         meta["engine_diagnostics"] = engine_diag
         meta["model_status"] = "linear"
+
+    # ---- 市场环境 overlay（短线风险偏好 → 维度权重）----
+    # 只调整「最终使用权重」：fixed 模式默认叠加；ic/auto/ml/blend 客观权重尊重
+    # 历史统计，仅当 cfg.market.apply_to="all" 时才叠加（显式开启）。
+    # meta["market"] 始终写入（含 appetite/regime），供报告与前端展示。
+    mkt_info: dict = {
+        "available": market_ctx is not None,
+        "appetite": 1.0, "regime_score": 50.0, "regime_label": "",
+        "unavailable": [], "overlay_applied": False, "delta": {}, "note": "",
+    }
+    if market_ctx is not None:
+        mkt_info["appetite"] = round(float(getattr(market_ctx, "appetite", 1.0) or 1.0), 4)
+        mkt_info["regime_score"] = round(float(getattr(market_ctx, "regime_score", 50.0) or 50.0), 1)
+        mkt_info["regime_label"] = str(getattr(market_ctx, "regime_label", "") or "")
+        mkt_info["unavailable"] = list(getattr(market_ctx, "unavailable", []) or [])
+        mk = cfg.market if cfg is not None else None
+        if isinstance(mk, dict) and mk.get("enabled", True) \
+                and (engine_mode == "fixed" or mk.get("apply_to") == "all"):
+            from .market_context import apply_market_weights
+            weights, mdiag = apply_market_weights(weights, cfg, mkt_info["appetite"])
+            mkt_info["overlay_applied"] = bool(mdiag.get("applied", False))
+            mkt_info["delta"] = mdiag.get("delta", {})
+            mkt_info["note"] = str(mdiag.get("note", "") or "")
+    if isinstance(meta, dict):
+        meta["market"] = mkt_info
 
     df = _add_derived(df)
 
@@ -510,6 +556,10 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
                 + _highlight_growth(row)
                 + _highlight_reversal(row)
             )
+            # 市场环境标注：命中当日大资金净流入榜 / 龙虎榜净买榜的标的显著标注
+            if market_ctx is not None:
+                from .market_context import rank_flags
+                highlights = highlights + rank_flags(market_ctx, str(rec["code"]))
             rationale = "；".join(highlights) if highlights else "无显著亮点"
             if failures:
                 rationale += " ｜【降级】" + "、".join(failures)
