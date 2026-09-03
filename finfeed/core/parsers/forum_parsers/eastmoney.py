@@ -746,8 +746,8 @@ class EastMoneyDynamicGubaParser(BaseJsonForumParser):
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9",
     }
-    TOP_N_STOCKS = 20
-    PER_STOCK_POSTS = 5
+    TOP_N_STOCKS = 30
+    PER_STOCK_POSTS = 20
     REQUEST_DELAY = 0.35
 
     data_path = ["data"]
