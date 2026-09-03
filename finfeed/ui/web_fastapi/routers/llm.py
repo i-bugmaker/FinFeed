@@ -600,6 +600,12 @@ def create_router() -> APIRouter:
             raise ApiError("任务不存在或已过期", status_code=404, code="NOT_FOUND")
         return _respond({"task": task})
 
+    @router.get("/api/llm/insight/history")
+    def insight_history(limit: int = Query(20, ge=1, le=100)) -> Dict[str, Any]:
+        if not isinstance(limit, int):
+            limit = 20
+        return _respond(store.list_insight_history(limit=limit or 20))
+
     @router.post("/api/llm/insight/cancel")
     def insight_cancel(req: TaskIdRequest) -> Dict[str, Any]:
         if not insight_mod.get_service().cancel(req.task_id):

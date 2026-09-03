@@ -7,7 +7,8 @@
   - ``AnalysisService`` 面向「检索新闻库 -> 分批压缩 -> 汇总成文」的重型报告，
     产出落报告库、可导出、可追问；
   - 本模块面向「已结构化的盘面数据 -> 一次对话 -> 流式输出」的轻量洞察，
-    不检索新闻、不落报告库，只做任务状态跟踪、增量发布与结果缓存。
+    不检索新闻，只做任务状态跟踪、增量发布与结果缓存；运行期可通过
+    ``set_persister`` 注册钩子，把成功结果归档到报告库以便历史回看。
 
 事件协议与 ``AnalysisService`` 完全一致（``stage`` / ``delta`` / ``reset`` /
 ``done``），因此可复用 llm 路由中的 SSE 订阅注册表与桥接函数。
@@ -107,11 +108,17 @@ class InsightService:
         self._cache_order: List[str] = []
         # 事件发布器：fn(task_id, payload)，由传输层（SSE）注入
         self._publisher: Optional[Callable[[str, Dict[str, Any]], None]] = None
+        # 结果持久化钩子：fn(task_dict)，由应用层注入（归档到 llm_reports 以便历史回看）
+        self._persister: Optional[Callable[[Dict[str, Any]], None]] = None
 
     # ---------- 事件发布 ----------
     def set_event_publisher(self, fn: Optional[Callable[[str, Dict[str, Any]], None]]) -> None:
         with self._lock:
             self._publisher = fn
+
+    def set_persister(self, fn: Optional[Callable[[Dict[str, Any]], None]]) -> None:
+        with self._lock:
+            self._persister = fn
 
     def _publish(self, task_id: str, **payload: Any) -> None:
         with self._lock:
@@ -399,6 +406,19 @@ class InsightService:
         )
         self._publish(task_id, event="done", status=STATUS_SUCCESS)
         logger.info(f"洞察任务完成: {task_id} 输出 {len(content)} 字")
+        self._persist(task_id)
+
+    def _persist(self, task_id: str) -> None:
+        """成功后回调持久化钩子（归档结果，供历史回看；失败不影响主流程）。"""
+        with self._lock:
+            fn = self._persister
+            task = self._tasks.get(task_id)
+        if fn is None or task is None:
+            return
+        try:
+            fn(task.to_dict())
+        except Exception as e:  # noqa: BLE001 —— 归档异常仅记日志，不回滚已成功的分析
+            logger.warning(f"洞察任务持久化失败: {task_id} - {e}")
 
     def _call(
         self, task_id: str, client, messages: List[Dict[str, str]]

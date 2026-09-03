@@ -14,12 +14,14 @@
  * 收盘后 / 午休 / 休市日不再发起取数请求，避免无意义的后台刷新与页面重渲染；
  * 无开关/档位/刷新按钮，仅保留最后更新时间提示。
  */
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import AppCard from '../ui/AppCard.vue'
 import AppButton from '../ui/AppButton.vue'
+import AppIcon from '../ui/AppIcon.vue'
 import LimitUpSummaryCard from '../components/review/LimitUpSummaryCard.vue'
 import LimitUpAiDialog from '../components/review/LimitUpAiDialog.vue'
 import { useScrollRestore } from '../composables/useScrollRestore'
+import { api } from '../api/client'
 
 // 固定 30 秒，后台静默执行，无任何交互控件
 const AUTO_REFRESH_MS = 30 * 1000
@@ -44,8 +46,98 @@ const totalUp = ref(0)
 
 // AI 分析弹窗：调用系统已配置的大模型解读当日涨跌停结构
 const showAi = ref(false)
+// 选中的历史归档报告（非空时弹窗进入只读展示模式）
+const archivedReport = ref(null)
+// 历史分析下拉
+const historyOpen = ref(false)
+const historyItems = ref([])
+const historyLoading = ref(false)
+const historyError = ref('')
+const historyTrigger = ref(null)
+const historyMenu = ref(null)
 
 let refreshTimer = null
+
+// 实时 AI 分析：清空历史归档，走 live 流程
+function openLive() {
+  archivedReport.value = null
+  showAi.value = true
+}
+
+// 打开历史分析下拉并加载归档列表
+async function toggleHistory() {
+  if (historyOpen.value) {
+    historyOpen.value = false
+    return
+  }
+  historyOpen.value = true
+  historyLoading.value = true
+  historyError.value = ''
+  try {
+    const res = await api.insightHistory(20)
+    historyItems.value = (res && res.items) || []
+    if (!historyItems.value.length) historyError.value = '暂无历史分析记录'
+  } catch {
+    historyItems.value = []
+    historyError.value = '历史记录加载失败'
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+// 从历史列表选中一份归档，读取全文并进入只读展示
+async function pickHistory(item) {
+  historyOpen.value = false
+  try {
+    const res = await api.insightReport(item.id)
+    const rep = (res && res.report) || {}
+    archivedReport.value = {
+      id: item.id,
+      title: rep.title || item.title || '',
+      content: rep.content || '',
+      model: rep.model || '',
+      elapsed: rep.elapsed || 0,
+      stats: rep.stats || null,
+    }
+    showAi.value = true
+  } catch {
+    archivedReport.value = null
+  }
+}
+
+function positionHistoryMenu() {
+  if (!historyTrigger.value || !historyMenu.value) return
+  const rect = historyTrigger.value.getBoundingClientRect()
+  const menu = historyMenu.value
+  const vw = document.documentElement.clientWidth
+  const margin = 8
+  const menuW = Math.min(320, vw - margin * 2)
+  menu.style.width = `${menuW}px`
+  menu.style.top = `${rect.bottom + 6}px`
+  menu.style.left = `${Math.min(Math.max(margin, rect.left), vw - margin - menuW)}px`
+}
+
+function onClickOutside(e) {
+  if (
+    historyOpen.value &&
+    !historyTrigger.value?.contains(e.target) &&
+    !historyMenu.value?.contains(e.target)
+  ) {
+    historyOpen.value = false
+  }
+}
+
+// 历史下拉打开/关闭时绑定定位与点击外部收起
+watch(historyOpen, (v) => {
+  if (v) {
+    nextTick(positionHistoryMenu)
+    document.addEventListener('click', onClickOutside, true)
+    window.addEventListener('resize', positionHistoryMenu)
+  } else {
+    document.removeEventListener('click', onClickOutside, true)
+    window.removeEventListener('resize', positionHistoryMenu)
+  }
+})
 
 // 滚动位置记忆：本模块为长列表（连板梯队 + 连跌梯队全量渲染），点击个股跳转他页后
 // 返回时需回到原浏览位置。默认以路由 path 为 key，离开前留存、挂载后恢复。
@@ -101,6 +193,8 @@ onMounted(() => {
 onUnmounted(() => {
   stopAutoRefresh()
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  document.removeEventListener('click', onClickOutside, true)
+  window.removeEventListener('resize', positionHistoryMenu)
 })
 </script>
 
@@ -123,11 +217,21 @@ onUnmounted(() => {
       </template>
       <template #actions>
         <AppButton
+          ref="historyTrigger"
+          size="sm"
+          variant="ghost"
+          icon="clock"
+          title="查看历史 AI 分析结果"
+          @click="toggleHistory"
+        >
+          历史
+        </AppButton>
+        <AppButton
           size="sm"
           variant="tonal"
           icon="sparkles"
           title="用系统配置的大模型分析当日涨跌停结构与潜在行情"
-          @click="showAi = true"
+          @click="openLive"
         >
           AI 分析
         </AppButton>
@@ -138,8 +242,41 @@ onUnmounted(() => {
       <LimitUpSummaryCard :refresh-key="refreshKey" @loaded="onLoaded" />
     </AppCard>
 
-    <!-- AI 分析弹窗：常驻挂载，关闭后仍保留任务进度与结果 -->
-    <LimitUpAiDialog v-model="showAi" :date="dataDate" />
+    <!-- 历史 AI 分析下拉：读取服务端归档，点击项进入只读展示 -->
+    <Teleport to="body">
+      <div
+        v-show="historyOpen"
+        ref="historyMenu"
+        class="ff-history ff-menu"
+      >
+        <div class="ff-history__head">
+          <AppIcon name="clock" size="sm" />
+          <span>历史 AI 分析</span>
+        </div>
+        <ul v-if="historyItems.length" class="ff-menu__items">
+          <li
+            v-for="item in historyItems"
+            :key="item.id"
+            class="ff-menu__item"
+            @click="pickHistory(item)"
+          >
+            <span class="ff-menu__item-text ff-history__item">
+              <span class="ff-history__title">{{ item.title }}</span>
+              <span class="ff-history__meta">
+                <span v-if="item.model">{{ item.model }}</span>
+                <span class="ff-num">{{ item.created_at }}</span>
+              </span>
+            </span>
+          </li>
+        </ul>
+        <div v-else class="ff-empty ff-empty--compact">
+          {{ historyLoading ? '加载中…' : (historyError || '暂无历史分析记录') }}
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- AI 分析弹窗：常驻挂载，关闭后仍保留任务进度与结果；传入 archived 时只读展示历史 -->
+    <LimitUpAiDialog v-model="showAi" :date="dataDate" :archived="archivedReport" />
   </div>
 </template>
 
@@ -184,5 +321,41 @@ onUnmounted(() => {
   .ff-limitup-view__head {
     gap: var(--ff-space-2);
   }
+}
+
+/* 历史 AI 分析下拉（Teleport 到 body，用 fixed 定位覆盖全局 .ff-menu 的 absolute/min-width） */
+.ff-history {
+  position: fixed;
+  min-width: 320px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.ff-history__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  padding: 6px 10px 8px;
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ff-history__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+.ff-history__title {
+  font-size: var(--ff-fs-body-sm);
+  color: var(--ff-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-history__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--ff-fs-overline);
+  color: var(--ff-text-tertiary);
 }
 </style>

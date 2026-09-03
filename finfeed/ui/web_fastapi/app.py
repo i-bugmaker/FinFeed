@@ -99,6 +99,7 @@ app.include_router(create_llm_router())
 # stage/delta/done，SSE 订阅注册表位于 llm 路由模块（领域包不感知 UI，
 # 依赖方向保持向内）。两个服务的任务 ID 为独立 uuid，共用同一注册表安全。
 from finfeed.llm.insight import get_service as _get_insight_service  # noqa: E402
+from finfeed.llm import store as _llm_store  # noqa: E402
 from finfeed.llm.service import get_service as _get_llm_service  # noqa: E402
 from finfeed.ui.web_fastapi.routers.llm import (  # noqa: E402
     publish_llm_task_event as _publish_llm_task_event,
@@ -106,6 +107,35 @@ from finfeed.ui.web_fastapi.routers.llm import (  # noqa: E402
 
 _get_llm_service().set_event_publisher(_publish_llm_task_event)
 _get_insight_service().set_event_publisher(_publish_llm_task_event)
+
+
+def _persist_insight(task_dict: dict) -> None:
+    """轻量洞察成功后归档到报告库（report_type 用任务 kind，如 limitup），供历史回看。"""
+    meta = task_dict.get("meta") or {}
+    _llm_store.save_report({
+        "task_id": task_dict.get("task_id", ""),
+        "title": task_dict.get("title", "涨跌停结构 AI 分析"),
+        "provider_name": task_dict.get("provider_name", ""),
+        "model": task_dict.get("model", ""),
+        "scope": "all",
+        "news_count": 0,
+        "scanned_count": 0,
+        "start_ts": int(task_dict.get("created_ts", 0) or 0),
+        "end_ts": int(task_dict.get("finished_ts", 0) or 0),
+        "status": task_dict.get("status", "success"),
+        "content": task_dict.get("content", ""),
+        "stats": meta,
+        "error": "",
+        "prompt_tokens": int(task_dict.get("prompt_tokens", 0) or 0),
+        "completion_tokens": int(task_dict.get("completion_tokens", 0) or 0),
+        "elapsed": float(task_dict.get("elapsed", 0) or 0),
+        "report_type": task_dict.get("kind", "limitup"),
+        "sources": [],
+        "options": {},
+    })
+
+
+_get_insight_service().set_persister(_persist_insight)
 
 app.include_router(create_calendar_router())
 

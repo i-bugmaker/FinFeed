@@ -22,6 +22,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   // 数据日期（YYYY-MM-DD）；为空由后端取当日
   date: { type: String, default: '' },
+  // 历史归档报告（{ id, content, stats, model, elapsed, title }）：非空时只读展示，不触发新任务
+  archived: { type: Object, default: null },
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -36,6 +38,8 @@ const modelName = ref('')
 const elapsed = ref(0)
 const taskId = ref('')
 const copied = ref(false)
+// 历史归档只读模式标识（用于展示「查看历史」提示条与切回实时分析）
+const archivedMode = ref(false)
 
 const providers = ref([])
 const providersLoaded = ref(false)
@@ -51,7 +55,6 @@ const providerOptions = computed(() => [
 ])
 
 const running = computed(() => status.value === 'running')
-const started = computed(() => status.value !== 'idle')
 
 // 元信息摘要（数据口径提示条）
 const metaChips = computed(() => {
@@ -87,6 +90,7 @@ function closeStream() {
 
 async function start(refresh = false) {
   closeStream()
+  archivedMode.value = false
   status.value = 'running'
   content.value = ''
   errorMsg.value = ''
@@ -179,6 +183,38 @@ async function stop() {
   stageText.value = ''
 }
 
+// 只读展示一份历史归档报告（不触发新任务）
+function renderArchived(report) {
+  closeStream()
+  archivedMode.value = true
+  status.value = 'done'
+  content.value = report.content || ''
+  meta.value = report.stats || report.meta || null
+  modelName.value = report.model || ''
+  elapsed.value = report.elapsed || 0
+  copied.value = false
+}
+
+// 从历史查看切回实时分析
+function enterLive() {
+  loadProviders()
+  start(true)
+}
+
+// 首次打开：有历史归档则只读展示；否则自动发起实时分析（同日命中缓存瞬时返回）
+watch(
+  () => props.modelValue,
+  async (open) => {
+    if (!open) return
+    await loadProviders()
+    if (props.archived && props.archived.content) {
+      renderArchived(props.archived)
+      return
+    }
+    start(false)
+  },
+)
+
 async function copyResult() {
   if (!content.value) return
   try {
@@ -220,16 +256,6 @@ function onClose() {
   emit('update:modelValue', false)
 }
 
-// 首次打开时装配模型列表并自动发起分析
-watch(
-  () => props.modelValue,
-  async (open) => {
-    if (!open) return
-    await loadProviders()
-    if (!started.value || status.value === 'error') start(false)
-  },
-)
-
 onUnmounted(closeStream)
 </script>
 
@@ -267,6 +293,15 @@ onUnmounted(closeStream)
             停止
           </AppButton>
           <AppButton
+            v-else-if="archivedMode"
+            size="sm"
+            variant="secondary"
+            icon="sparkles"
+            @click="enterLive"
+          >
+            重新分析
+          </AppButton>
+          <AppButton
             v-else
             size="sm"
             variant="secondary"
@@ -294,6 +329,13 @@ onUnmounted(closeStream)
             导出
           </AppButton>
         </div>
+      </div>
+
+      <!-- 历史归档提示条 -->
+      <div v-if="archivedMode" class="ai-ana__archived">
+        <AppIcon name="clock" size="sm" />
+        <span>正在查看历史分析结果 · {{ (meta && meta.date) || props.date || '—' }}</span>
+        <AppButton size="xs" variant="ghost" @click="enterLive">改为实时分析</AppButton>
       </div>
 
       <!-- 数据口径提示条 -->
@@ -402,6 +444,22 @@ onUnmounted(closeStream)
 .ai-ana__chip.is-model {
   font-family: var(--ff-font-mono, ui-monospace, monospace);
   background: var(--ff-bg-muted);
+}
+
+/* 历史归档提示条 */
+.ai-ana__archived {
+  display: flex;
+  align-items: center;
+  gap: var(--ff-space-2);
+  font-size: var(--ff-fs-caption);
+  color: var(--ff-text-tertiary);
+}
+.ai-ana__archived span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 运行 / 错误 / 空态 */

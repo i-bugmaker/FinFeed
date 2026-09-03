@@ -66,6 +66,9 @@ export const api = {
   insightLimitUp: (payload) => httpLlm.post('/llm/insight/limitup', payload).then((r) => r.data),
   insightTask: (id) => httpLlm.get('/llm/insight/task', { params: { id } }).then((r) => r.data),
   insightCancel: (taskId) => httpLlm.post('/llm/insight/cancel', { task_id: taskId }).then((r) => r.data),
+  // 连板天地 AI 分析历史归档：列表 + 按 id 读取归档全文
+  insightHistory: (limit = 20) => httpLlm.get('/llm/insight/history', { params: { limit } }).then((r) => r.data),
+  insightReport: (id) => httpLlm.get('/llm/report', { params: { id } }).then((r) => r.data),
   insightStream(taskId, handlers = {}) {
     const es = new EventSource(`${API_BASE_URL}/llm/insight/stream?id=${encodeURIComponent(taskId)}`)
     const bind = (event, fn) => {

@@ -86,6 +86,21 @@ def list_reports(limit: int = 50, offset: int = 0, pinned_only: bool = False) ->
     return {"total": total, "items": rows, "limit": limit, "offset": offset}
 
 
+def list_insight_history(limit: int = 20) -> Dict[str, Any]:
+    """连板天地「轻量洞察」历史归档列表（report_type='limitup'），按时间倒序。"""
+    ensure_tables()
+    db = get_db_manager()
+    with db.get_db() as c:
+        c.execute(
+            "SELECT id, title, provider_name, model, created_at, created_ts "
+            "FROM llm_reports WHERE report_type = 'limitup' "
+            "ORDER BY created_ts DESC, id DESC LIMIT ?",
+            (limit,),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    return {"items": rows, "limit": limit, "total": len(rows)}
+
+
 def search_reports(keyword: str, limit: int = 50) -> Dict[str, Any]:
     """按标题 / 模型 / 报告正文模糊搜索"""
     ensure_tables()
