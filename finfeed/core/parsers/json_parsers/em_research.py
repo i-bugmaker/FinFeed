@@ -58,6 +58,28 @@ class EmResearchParser(BaseParser):
             "rcode": "",
         }
 
+    async def fetch_normal(self, http_client) -> list[NewsItem]:
+        """正常模式：抓昨天至今天的个股研报（单页 pageNo=1）。
+
+        覆盖框架 `_make_request`：接口需 beginTime/endTime/qType 等动态参数，
+        `source.params` 为空，无参 GET 会触发 HTTP 400。
+        """
+        end = now_bj().date()
+        begin = end - timedelta(days=1)
+        try:
+            resp = await http_client.get(
+                _REPORT_URL,
+                headers=dict(self.source.headers),
+                params=self._build_params(begin.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")),
+            )
+            if resp.status_code != 200:
+                logger.warning(f"{self.source.name} 正常抓取失败：HTTP {resp.status_code}")
+                return []
+            return await self.parse(resp)
+        except Exception as e:
+            logger.warning(f"{self.source.name} 正常抓取异常：{str(e)[:100]}")
+            return []
+
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         """解析 JSONP 响应，返回研报新闻列表"""
         news_list = []

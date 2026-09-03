@@ -204,6 +204,13 @@ class LuoBoParser(BaseParser):
 
         return news_list
 
+    async def fetch_normal(self, http_client) -> list[NewsItem]:
+        """正常模式：跳过框架 `_make_request`（页面 URL 无参请求无意义），
+        直接走浏览器渲染捕获 API 数据。response 仅作 HTML 备用兜底，传空文本。
+        """
+        fake = httpx.Response(200, text="")
+        return await self.parse(fake)
+
     async def parse(self, response: httpx.Response) -> list[NewsItem]:
         news_list = []
         bj_tz = timezone(timedelta(hours=8))
