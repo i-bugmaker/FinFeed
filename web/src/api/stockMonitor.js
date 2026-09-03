@@ -22,7 +22,7 @@ export const stockMonitorApi = {
   deleteStock: (code) =>
     http.delete(`${BASE}/stocks/${encodeURIComponent(code)}`).then((r) => r.data),
 
-  // ---- 舆情聚合 ----
+  // ---- 监控信息聚合 ----
   feed: (params) => http.get(`${BASE}/feed`, { params }).then((r) => r.data),
   refresh: () => http.post(`${BASE}/refresh`).then((r) => r.data),
   status: () => http.get(`${BASE}/status`).then((r) => r.data),

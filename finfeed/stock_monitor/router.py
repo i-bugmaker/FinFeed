@@ -11,7 +11,7 @@
 - PUT    /stocks/{code}             编辑备注（body: {note}）
 - DELETE /stocks/{code}             删除监控
 
-舆情聚合：
+监控信息聚合：
 - GET    /feed                      分组聚合（?codes=&since_ts=&limit= 离线补全）
 - GET    /feed/stream               SSE 实时推送（?codes=，事件 feed）
 - POST   /refresh                   立即刷新外部消息
@@ -105,7 +105,7 @@ def delete_stock(code: str):
     return {"ok": True, "deleted": code}
 
 
-# 舆情聚合
+# 监控信息聚合
 def _parse_codes(codes: str) -> list[str] | None:
     if not codes or codes.strip().lower() in ("", "all"):
         return None
@@ -116,9 +116,9 @@ def _parse_codes(codes: str) -> list[str] | None:
 def feed(
     codes: str = Query("", description="逗号分隔的股票代码；空 = 全部监控股票"),
     since_ts: int = Query(0, ge=0, description="只返回该时间戳之后的消息（离线补全）"),
-    limit: int = Query(60, ge=10, le=200, description="每只股票返回条数上限"),
+    limit: int = Query(300, ge=1, le=500, description="每只股票返回条数上限"),
 ):
-    """按股票分组聚合舆情（系统内 + 系统外）。
+    """按股票分组聚合监控信息（系统内 + 系统外）。
 
     前端离线补全：页面加载时以 localStorage 记忆的 last_seen_ts 作为
     since_ts 调用本接口，即可一次性取回离线期间遗漏的全部消息。

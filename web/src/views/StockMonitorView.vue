@@ -1,9 +1,9 @@
 <script setup>
 /**
- * 股票监控 — 导入管理 / 舆情聚合 / AI 智能分析
+ * 股票监控 — 导入管理 / 监控信息 / AI 智能分析
  *
  * 数据流：
- *  - 监控列表与分组舆情来自 /api/stock-monitor/feed（系统内 news 匹配 + 系统外东财缓存）
+ *  - 监控列表与分组监控信息来自 /api/stock-monitor/feed（系统内 news 匹配 + 系统外东财缓存）
  *  - 实时增量走 SSE /api/stock-monitor/feed/stream（事件 feed），60s 轮询兜底
  *  - 离线补全：localStorage 记忆 last_seen_ts，重开页面时全量拉取并按 last_seen 本地高亮遗漏消息
  *  - AI 分析提交后台任务后轮询 /analyze/task/{id}，结果持久化并按股票关联
@@ -32,6 +32,16 @@ const CHANNEL_META = {
   report: { label: '研报', icon: 'doc' },
   news: { label: '资讯', icon: 'list' },
 }
+
+// 信息流频道筛选（舆情与快讯等分开）
+const CHANNEL_FILTERS = [
+  { value: 'all', label: '全部' },
+  { value: 'flash', label: '快讯' },
+  { value: 'article', label: '财经' },
+  { value: 'announcement', label: '公告' },
+  { value: 'report', label: '研报' },
+  { value: 'forum', label: '舆情' },
+]
 
 // 重大公告置顶、其余按时间倒序（与后端 _feed_sort_key 保持一致）
 function feedSortKey(it) {
@@ -71,10 +81,11 @@ function selectStock(code) {
 }
 
 // ---------------------------------------------------------------------------
-// 舆情聚合
+// 监控信息（系统内快讯/财经等资讯聚合 + 系统外公告/研报）
 // ---------------------------------------------------------------------------
 const groups = ref({}) // code -> { items: [], counts: {} }
 const feedLoading = ref(false)
+const activeChannel = ref('all') // 信息流频道筛选：all/flash/article/.../forum
 const catchUpCount = ref(0) // 离线期间补全的消息数
 const live = ref(false)
 const liveFlash = ref(0) // 本页打开期间实时新消息数
@@ -109,6 +120,8 @@ function ingestItems(items, { prepend = false, catchUp = false } = {}) {
         total: g.counts.total + 1,
         internal: g.counts.internal + (item.source_type === 'internal' ? 1 : 0),
         external: g.counts.external + (item.source_type === 'external' ? 1 : 0),
+        flash: g.counts.flash + (item.channel === 'flash' ? 1 : 0),
+        article: g.counts.article + (item.channel === 'article' ? 1 : 0),
         announcement: g.counts.announcement + (item.channel === 'announcement' ? 1 : 0),
         report: g.counts.report + (item.channel === 'report' ? 1 : 0),
         major: g.counts.major + (item.major ? 1 : 0),
@@ -125,7 +138,7 @@ async function loadFeed({ withCatchUp = false } = {}) {
     const since = withCatchUp ? Number(localStorage.getItem(LAST_SEEN_KEY) || 0) : 0
     // 始终全量拉取：since_ts 传给后端会被过滤成增量，导致进入页面只剩遗漏消息（常为空），
     // 需手动刷新才显示全量。last_seen 只用于本地标记「离线补全」高亮。
-    const data = await stockMonitorApi.feed({ since_ts: 0, limit: 80 })
+    const data = await stockMonitorApi.feed({ since_ts: 0, limit: 300 })
     const nextGroups = {}
     let catchUp = 0
     for (const [code, g] of Object.entries(data.groups || {})) {
@@ -157,7 +170,11 @@ function ensureSelected() {
 }
 
 const activeGroup = computed(() => groups.value[selectedCode.value] || null)
-const activeItems = computed(() => activeGroup.value?.items || [])
+const activeItems = computed(() => {
+  const items = activeGroup.value?.items || []
+  if (!activeChannel.value || activeChannel.value === 'all') return items
+  return items.filter((it) => it.channel === activeChannel.value)
+})
 
 // ---------------------------------------------------------------------------
 // SSE 实时推送 + 轮询兜底
@@ -327,7 +344,7 @@ async function saveNote() {
 }
 
 async function removeStock(code) {
-  // 删除不可恢复（监控及其聚合舆情一并消失），必须二次确认
+  // 删除不可恢复（监控及其聚合监控信息一并消失），必须二次确认
   const name = stocks.value.find((s) => s.code === code)?.name || code
   if (!window.confirm(`确认删除对「${name}（${code}）」的监控吗？该操作不可恢复。`)) return
   try {
@@ -550,12 +567,12 @@ onUnmounted(() => {
       </div>
     </aside>
 
-    <!-- ============ 右列：舆情聚合 + AI 分析 ============ -->
+    <!-- ============ 右列：监控信息 + AI 分析 ============ -->
     <section class="ff-sm-view__main">
       <template v-if="!activeGroup">
         <EmptyState
           :icon="stocks.length ? 'chatter' : 'monitor'"
-          :text="stocks.length ? '正在加载舆情数据…' : '导入监控股票后，这里将按股票聚合展示舆情与 AI 分析'"
+          :text="stocks.length ? '正在加载监控信息…' : '导入监控股票后，这里将按股票聚合展示监控信息（快讯/财经等）与 AI 分析'"
         />
       </template>
 
@@ -596,9 +613,11 @@ onUnmounted(() => {
 
         <!-- 统计条 -->
         <div class="ff-sm-stats">
-          <span class="ff-sm-stat"><b>{{ fmtCount(activeGroup.counts?.total) }}</b> 舆情总数</span>
+          <span class="ff-sm-stat"><b>{{ fmtCount(activeGroup.counts?.total) }}</b> 信息总数</span>
           <span class="ff-sm-stat"><b class="c-internal">{{ fmtCount(activeGroup.counts?.internal) }}</b> 系统内</span>
           <span class="ff-sm-stat"><b class="c-external">{{ fmtCount(activeGroup.counts?.external) }}</b> 系统外</span>
+          <span class="ff-sm-stat"><b class="c-flash">{{ fmtCount(activeGroup.counts?.flash) }}</b> 快讯</span>
+          <span class="ff-sm-stat"><b class="c-article">{{ fmtCount(activeGroup.counts?.article) }}</b> 财经</span>
           <span class="ff-sm-stat"><b class="c-ann">{{ fmtCount(activeGroup.counts?.announcement) }}</b> 公告</span>
           <span class="ff-sm-stat"><b>{{ fmtCount(activeGroup.counts?.report) }}</b> 研报</span>
           <span v-if="activeGroup.counts?.major" class="ff-sm-stat"><b class="c-major">{{ fmtCount(activeGroup.counts?.major) }}</b> 重大</span>
@@ -620,7 +639,7 @@ onUnmounted(() => {
 
           <div v-if="analysis.running" class="ff-sm-ai__running">
             <AppSkeleton variant="text" :lines="4" />
-            <span class="ff-sm-muted">正在基于该股票聚合舆情进行消息解读、情绪倾向与影响评估…</span>
+            <span class="ff-sm-muted">正在基于该股票聚合的监控信息进行消息解读、情绪倾向与影响评估…</span>
           </div>
 
           <div v-else-if="analysis.error" class="ff-sm-ai__error">
@@ -644,7 +663,7 @@ onUnmounted(() => {
 
           <div v-else class="ff-sm-ai__hint">
             <AppIcon name="info" size="xs" />
-            点击右上角「AI 分析」，对当前股票的聚合舆情生成消息解读 / 情绪倾向 / 影响评估。
+            点击右上角「AI 分析」，对当前股票的聚合监控信息生成消息解读 / 情绪倾向 / 影响评估。
           </div>
 
           <div v-if="analysis.showHistory" class="ff-sm-ai__history">
@@ -663,20 +682,32 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 舆情消息流 -->
+        <!-- 监控信息消息流 -->
         <div class="ff-sm-feed">
           <h3 class="ff-sm-feed__title">
             <AppIcon name="chatter" size="sm" />
-            舆情聚合
-            <span class="ff-sm-muted">（系统内 + 系统外，按时间倒序）</span>
+            监控信息
+            <span class="ff-sm-muted">（快讯 · 财经 与舆情分开，按时间倒序）</span>
           </h3>
+
+          <div class="ff-sm-feed__ch" role="tablist">
+            <button
+              v-for="f in CHANNEL_FILTERS"
+              :key="f.value"
+              class="ff-sm-ch"
+              :class="{ 'is-active': activeChannel === f.value }"
+              @click="activeChannel = f.value"
+            >
+              {{ f.label }}
+            </button>
+          </div>
 
           <div v-if="feedLoading && activeItems.length === 0" class="ff-sm-feed__list">
             <AppSkeleton variant="text" :lines="8" />
           </div>
 
           <div v-else-if="activeItems.length === 0" class="ff-sm-feed__list">
-            <EmptyState icon="inbox" text="暂无舆情消息" />
+            <EmptyState icon="inbox" :text="activeChannel === 'all' ? '暂无监控信息' : `暂无${channelLabel(activeChannel).label}消息`" />
           </div>
 
           <div v-else class="ff-sm-feed__list">
@@ -850,6 +881,8 @@ onUnmounted(() => {
 }
 .c-internal { color: var(--ff-brand, var(--p-brand-600)); }
 .c-external { color: var(--p-violet-600); }
+.c-flash { color: var(--p-teal-600); }
+.c-article { color: var(--p-brand-700); }
 .c-ann { color: var(--p-warn-600); }
 .c-major { color: var(--ff-up); }
 .c-ok { color: var(--p-brand-500); }
@@ -1137,7 +1170,7 @@ onUnmounted(() => {
 .ff-sm-chip.is-ok { background: var(--p-brand-50); color: var(--p-brand-700); border-color: var(--p-brand-200); }
 .ff-sm-chip.is-bad { background: var(--ff-up-subtle); color: var(--ff-up); border-color: var(--ff-up-border); }
 
-/* ---------------- 舆情流 ---------------- */
+/* ---------------- 监控信息流 ---------------- */
 .ff-sm-feed__title {
   display: inline-flex;
   align-items: center;
@@ -1151,6 +1184,30 @@ onUnmounted(() => {
   flex-direction: column;
   gap: var(--ff-space-2);
   padding-bottom: var(--ff-space-8);
+}
+.ff-sm-feed__ch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ff-space-2);
+  margin-bottom: var(--ff-space-3);
+}
+.ff-sm-ch {
+  border: 1px solid var(--ff-border);
+  background: var(--ff-bg-surface);
+  color: var(--ff-text-secondary);
+  font-size: var(--ff-fs-sm);
+  line-height: 1;
+  padding: var(--ff-space-1) var(--ff-space-3);
+  border-radius: var(--ff-radius-full, 999px);
+  cursor: pointer;
+  transition: color var(--ff-dur-fast), border-color var(--ff-dur-fast), background var(--ff-dur-fast);
+}
+.ff-sm-ch:hover { border-color: var(--ff-border-strong); color: var(--ff-text-primary); }
+.ff-sm-ch:active { transform: translateY(1px); }
+.ff-sm-ch.is-active {
+  background: var(--ff-brand, var(--p-brand-600));
+  color: #fff;
+  border-color: transparent;
 }
 .ff-sm-item {
   display: flex;

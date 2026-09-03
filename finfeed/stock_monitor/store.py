@@ -223,7 +223,11 @@ def get_internal_messages(
     after_id: int = 0,
     limit: int = 300,
 ) -> List[Dict[str, Any]]:
-    """从 news 表按「stocks 精确匹配 / 标题含代码 / 标题含股票名」检索关联消息。
+    """从 news 表检索关联消息，基于「标题/简介真的出现该股票名或代码」。
+
+    说明：news.stocks 字段由上游打标，已证实存在系统性噪声（热股榜整榜误标、
+    实体识别错误等），因此不再用它作为关联依据。只有消息标题或简介中出现
+    监控股票的名称（≥2 字）或代码，才判定为与该股票相关。
 
     返回条目附带 ``codes``（命中的监控代码列表），供前端按股票分组。
     """
@@ -233,8 +237,6 @@ def get_internal_messages(
     conds = []
     params: List[Any] = []
     for code in codes:
-        conds.append("stocks LIKE ?")
-        params.append(f'%"{code}"%')
         conds.append("title LIKE ?")
         params.append(f"%{code}%")
         name = (names.get(code) or "").strip()
@@ -256,20 +258,18 @@ def get_internal_messages(
         ORDER BY publish_ts DESC, id DESC LIMIT ?
     """
     params.append(limit)
-    watched = set(codes)
     out: List[Dict[str, Any]] = []
     with get_db() as c:
         c.execute(sql, params)
         for r in c.fetchall():
             item = dict(r)
-            hit: List[str] = []
-            try:
-                in_stocks = {s for s in json.loads(item.get("stocks") or "[]") if s in watched}
-            except Exception:  # noqa: BLE001
-                in_stocks = set()
             title = item.get("title") or ""
+            intro = item.get("intro") or ""
+            hay = f"{title} {intro}".upper()
+            hit: List[str] = []
             for code in codes:
-                if code in in_stocks or code in title or (names.get(code) and names[code] in title):
+                name = (names.get(code) or "").strip()
+                if code in hay or (len(name) >= 2 and name.upper() in hay):
                     hit.append(code)
             item["codes"] = hit
             item["source_type"] = "internal"

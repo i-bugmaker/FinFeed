@@ -5,7 +5,7 @@
 职责：
 - 代码规范化与有效性校验（正则 -> 板块规则 -> 行情库在线核验，easy-tdx 优先）
 - 三种导入方式统一入口 ``parse_and_import``（手动 / 文本批量 / OCR 文本）
-- 舆情聚合 ``aggregate_feed``（系统内 news 表实时匹配 + 系统外缓存合并分组）
+- 监控信息聚合 ``aggregate_feed``（系统内 news 表实时匹配 + 系统外缓存合并分组）
 - 外部消息后台刷新线程 ``RefreshWorker``（周期抓取东财资讯/公告并幂等入库，
   用户离线期间消息持续累积，重新上线经 since_ts 一次性补全）
 - AI 分析任务（后台线程调用 finfeed.llm，结构化结果落库）
@@ -520,7 +520,7 @@ class RefreshWorker:
 worker = RefreshWorker()
 
 
-# 舆情聚合
+# 监控信息聚合
 _ANN_HIGH = 0.9
 _ANN_MID = 0.7
 
@@ -593,7 +593,7 @@ def aggregate_feed(
     since_ts: int = 0,
     limit_per_code: int = 60,
 ) -> Dict[str, Any]:
-    """聚合每只监控股票的舆情：系统内（news 实时匹配）+ 系统外（缓存）。
+    """聚合每只监控股票的监控信息：系统内（news 实时匹配）+ 系统外（缓存）。
 
     返回 {"groups": {code: {"stock": {...}, "items": [...], "counts": {...}}}, "server_ts"}。
     items 统一结构：{source_type, channel, title, url, summary, source,
@@ -652,6 +652,8 @@ def aggregate_feed(
             "total": len(items),
             "internal": sum(1 for i in items if i["source_type"] == "internal"),
             "external": sum(1 for i in items if i["source_type"] == "external"),
+            "flash": sum(1 for i in items if i.get("channel") == "flash"),
+            "article": sum(1 for i in items if i.get("channel") == "article"),
             "announcement": sum(1 for i in items if i.get("channel") == "announcement"),
             "report": sum(1 for i in items if i.get("channel") == "report"),
             "major": sum(1 for i in items if i.get("major")),
@@ -753,7 +755,7 @@ def _build_analysis_context(code: str) -> Tuple[str, int, Optional[str]]:
     return ctx, len(items), name
 
 
-_ANALYSIS_PROMPT = """你是一名 A 股卖方分析师。以下是监控股票「{name}（{code}）」聚合的近期舆情消息
+_ANALYSIS_PROMPT = """你是一名 A 股卖方分析师。以下是监控股票「{name}（{code}）」聚合的近期监控信息
 （覆盖系统内抓取的快讯/财经/舆情与系统外公告/资讯/研报，按重要度优先、其次时间倒序；
 形如「公告·停复牌」标注了公告类型）：
 
@@ -833,7 +835,7 @@ def _run_analysis(analysis_id: int, code: str, stock: Dict[str, Any]) -> None:
     try:
         context, msg_count, name = _build_analysis_context(code)
         if msg_count == 0:
-            store.fail_analysis(analysis_id, "暂无该股票的舆情消息，无法分析（可先手动刷新外部消息）")
+            store.fail_analysis(analysis_id, "暂无该股票的监控信息，无法分析（可先手动刷新外部消息）")
             return
 
         from finfeed.llm.client import build_client
@@ -844,7 +846,7 @@ def _run_analysis(analysis_id: int, code: str, stock: Dict[str, Any]) -> None:
         prompt = _ANALYSIS_PROMPT.format(name=name or code, code=code, context=context)
         result = client.chat(
             [
-                {"role": "system", "content": "你是严谨的 A 股舆情分析师，只输出被要求的 JSON。"},
+                {"role": "system", "content": "你是严谨的 A 股分析师，只输出被要求的 JSON。"},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.3,

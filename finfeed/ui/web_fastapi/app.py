@@ -50,7 +50,7 @@ from finfeed.market import alerting as market_alerting
 from finfeed.market import scheduler as market_scheduler
 from finfeed.market import ws_feed as market_ws
 
-# 股票监控模块（导入管理 / 舆情聚合 / AI 分析）
+# 股票监控模块（导入管理 / 监控信息 / AI 分析）
 from finfeed.stock_monitor import service as stock_monitor_service
 from finfeed.stock_monitor.router import router as stock_monitor_router
 from finfeed.storage.database import (
