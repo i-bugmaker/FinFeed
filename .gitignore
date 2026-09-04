@@ -276,3 +276,6 @@ finfeed/integrations/easytdx/output/
 # -------------------------
 .workbuddy/
 .freebuff/
+
+# 架构迁移自动备份
+*.pre_migrate.bak
