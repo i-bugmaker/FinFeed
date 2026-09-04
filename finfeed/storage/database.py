@@ -159,6 +159,12 @@ class NewsDatabase:
             self._run_migrations(c)
             self._migrate_luobo_urls(c)
 
+        # 版本化迁移（storage/schema_migrations.py）：按 user_version 补齐
+        from finfeed.storage.schema_migrations import apply_migrations
+        applied = apply_migrations(self._get_conn())
+        if applied:
+            logger.info(f"schema 版本化迁移已执行: v{applied} -> 当前库为最新")
+
     def _run_migrations(self, c: sqlite3.Cursor) -> None:
         """运行数据库迁移：为现有数据库添加新字段"""
         # 检查并添加去重相关新字段
