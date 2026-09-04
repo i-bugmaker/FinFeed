@@ -197,6 +197,14 @@ def _init_dedup_engine():
     if _dedup_initialized:
         return
     _dedup_initialized = True
+    # 依赖倒置：core 层把 analysis 的打分实现注入 storage（见 storage/ports.py），
+    # storage 自身不感知 analysis 包，消除 storage -> analysis 反向依赖。
+    try:
+        from finfeed.analysis.importance import compute_importance
+        from finfeed.storage.database import get_db_manager
+        get_db_manager().set_importance_scorer(compute_importance)
+    except Exception as e:
+        logger.warning(f"重要性打分器注入失败（存储侧将使用兜底逻辑）: {e}")
     try:
         from finfeed.storage.database import db_get_recent_for_dedup
         recent_news = db_get_recent_for_dedup(limit=5000)

@@ -82,3 +82,40 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# Import Linter：架构分层契约（架构护栏）
+#
+# 背景：AST 全量解析检出 72 条包级依赖边中存在 15 个环，最大环串联 7 个包
+#   analysis → market → core → alerts → stock_monitor → llm → storage → analysis
+# 依赖环不是被设计解决的，而是被「函数内延迟导入 + __init__ 重 import 副作用」
+# 掩盖的，因此静态检查此前从未生效。
+#
+# 策略（冻结现状，逐步收敛）：
+#   1. 先定义目标分层，把存量违反全部登记进白名单，让 CI 立即可通过；
+#   2. 此后任何「新增」的违规 import 都会让 CI 失败，债务停止增长；
+#   3. 每解一个环，就从白名单划掉一条，进度可量化。
+#
+# 运行：python -m importlinter.cli lint  （或 lint-imports）
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "finfeed"
+# 分层契约只覆盖核心主干；未列出的包（如一次性脚本）不参与检查
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "分层架构：cli > ui > application > domain > storage > shared"
+type = "layers"
+# 分隔符语义（import-linter 专属）：
+#   `:` = 同层模块「允许」互相 import（non-independent）
+#   `|` = 同层模块「禁止」互相 import（independent）
+# domain 层内 12 个包彼此协作，用 `:`；底层 utils/config 应互不依赖，用 `|`。
+layers = [
+    "finfeed.cli",
+    "finfeed.ui",
+    "finfeed.application",
+    "finfeed.core : finfeed.market : finfeed.analysis : finfeed.llm : finfeed.alerts : finfeed.screener : finfeed.ecal : finfeed.stock_monitor : finfeed.capital_dashboard : finfeed.sector_minute : finfeed.integrations : finfeed.f10 : finfeed.content_extractor : finfeed.content_fetch",
+    "finfeed.storage",
+    "finfeed.utils | finfeed.config",
+]
+exhaustive = false

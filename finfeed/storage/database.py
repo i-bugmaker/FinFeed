@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 from finfeed.config.settings import DB_PATH, USE_WAL_MODE
+from finfeed.storage.ports import ImportanceScorer
 from finfeed.utils.time_utils import now_bj, ts_from_bj_str
 
 from .models import NewsItem
@@ -31,11 +32,21 @@ class NewsDatabase:
 
     STAT_CACHE_TTL = 5
 
-    def __init__(self) -> None:
+    def __init__(self, importance_scorer: Optional[ImportanceScorer] = None) -> None:
         self._local = threading.local()
         self._stats_cache: Optional[Dict[str, Any]] = None
         self._stats_cache_ts: float = 0
         self._lock = threading.Lock()
+        # 重要性打分由上层注入（见 storage/ports.py），storage 自身不感知 analysis 包
+        self._importance_scorer = importance_scorer
+
+    def set_importance_scorer(self, scorer: Optional[ImportanceScorer]) -> None:
+        """注入/替换重要性打分实现。
+
+        由上层（core.pipeline）在启动时调用。传 None 可退回兜底行为
+        （不重算，低于阈值的分值按既有规则兜底）。
+        """
+        self._importance_scorer = scorer
 
     def _get_conn(self) -> sqlite3.Connection:
         """获取数据库连接（线程安全，每个线程独立连接，自动重连）"""
@@ -341,15 +352,19 @@ class NewsDatabase:
         importance_val = row["importance"] if row["importance"] is not None else 0.0
         if importance_val < 2.0:
             try:
-                from finfeed.analysis.importance import compute_importance
-                title_val = row["title"] if row["title"] is not None else ""
-                intro_val = row["intro"] if row["intro"] is not None else ""
-                importance_val = compute_importance(
-                    title=title_val,
-                    intro=intro_val,
-                    source=source,
-                    stocks_count=len(stocks)
-                )
+                scorer = self._importance_scorer
+                if scorer is not None:
+                    title_val = row["title"] if row["title"] is not None else ""
+                    intro_val = row["intro"] if row["intro"] is not None else ""
+                    importance_val = scorer(
+                        title=title_val,
+                        intro=intro_val,
+                        source=source,
+                        stocks_count=len(stocks),
+                    )
+                else:
+                    # 未注入打分实现（如纯读取场景/测试环境）：沿用兜底规则
+                    importance_val = 5.0 if importance_val <= 0 else importance_val
             except Exception as e:
                 logger.debug(f"重算重要性失败，使用默认值: {e}")
                 importance_val = 5.0 if importance_val <= 0 else importance_val
@@ -1171,25 +1186,10 @@ def db_update_stock_meta(stock_map: Dict[str, str]) -> int:
     return get_db_manager().load_stock_meta_batch(stock_map)
 
 
-def db_upsert_stock_meta_full(stock_map: Dict[str, Dict]) -> int:
-    """全量 upsert 股票元数据（兼容 analysis/universe 旧调用）。
-
-    Args:
-        stock_map: {code: {"name":..., "industry":..., "market":...}}
-    Returns:
-        写入/更新行数
-    """
-    from finfeed.market import store as market_store
-    rows = [
-        {
-            "code": code,
-            "name": v.get("name", ""),
-            "industry": v.get("industry", ""),
-            "market": v.get("market", ""),
-        }
-        for code, v in (stock_map or {}).items()
-    ]
-    return market_store.upsert_stock_meta_full(rows)
+# 注：db_upsert_stock_meta_full 已移除。stock_meta 表归属 market 上下文，
+# 该函数此前只是 market.store.upsert_stock_meta_full 的代理壳，导致 storage
+# 反向依赖 market（分层倒置，构成包级依赖环）。调用方请直接使用
+# finfeed.market.store.upsert_stock_meta_full。
 
 
 def db_insert_news(news_list: List[NewsItem]) -> Tuple[List[NewsItem], int]:

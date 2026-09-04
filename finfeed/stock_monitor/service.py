@@ -230,7 +230,6 @@ def _kick_universe_sync() -> None:
             from finfeed.storage.database import (
                 db_get_metadata,
                 db_set_metadata,
-                db_upsert_stock_meta_full,
             )
 
             last = db_get_metadata(_UNIVERSE_META_KEY, "")
@@ -250,7 +249,22 @@ def _kick_universe_sync() -> None:
                 if not market:
                     continue
                 stock_map[r["code"]] = {"name": r["name"], "industry": "", "market": market}
-            db_upsert_stock_meta_full(stock_map)
+            # stock_meta 表归属 market 上下文，直接调用其 store，
+            # 不再经由 storage 层做代理（该代理会让 storage 反向依赖 market，
+            # 构成分层倒置并参与包级依赖环）。
+            from finfeed.market.store import upsert_stock_meta_full
+
+            upsert_stock_meta_full(
+                [
+                    {
+                        "code": code,
+                        "name": v.get("name", ""),
+                        "industry": v.get("industry", ""),
+                        "market": v.get("market", ""),
+                    }
+                    for code, v in stock_map.items()
+                ]
+            )
             db_set_metadata(_UNIVERSE_META_KEY, str(time.time()))
             _reset_name_index()
             logger.info("全市场股票名单已同步：%s 只", len(stock_map))
