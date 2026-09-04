@@ -41,6 +41,10 @@ def _conn() -> sqlite3.Connection:
             up_count INTEGER, down_count INTEGER, member_count INTEGER
         )"""
     )
+    # 大屏按时间窗+板块查询；329 万行无索引时每次全表扫描
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_board_ts_code ON board_snapshots(ts, code)"
+    )
     return conn
 
 
