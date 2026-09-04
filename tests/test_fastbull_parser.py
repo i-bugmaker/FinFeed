@@ -10,10 +10,9 @@ url 一律为哨兵值 "#"，于是 ("#", "法布财经") 组合只能存在一�
 import asyncio
 import json
 
+import finfeed.storage.database as db_mod
 import httpx
 import pytest
-
-import finfeed.storage.database as db_mod
 from finfeed.config.flash_sources import get_flash_sources
 from finfeed.core.parsers.html_parsers.fastbull import FastbullParser
 

@@ -10,11 +10,10 @@
 
 import asyncio
 
-import pytest
-
 import finfeed.alerts.dispatcher as dispatcher
 import finfeed.alerts.store as alert_store
 import finfeed.storage.database as db_mod
+import pytest
 from finfeed.alerts.dispatcher import _evaluate_news, _in_quiet_hours, dispatch_news_alerts
 from finfeed.storage.models import NewsItem
 

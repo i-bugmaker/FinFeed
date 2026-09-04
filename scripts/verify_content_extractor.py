@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from finfeed.content_extractor import fetch_article_detail, detect_source  # noqa: E402
+from finfeed.content_extractor import fetch_article_detail  # noqa: E402
 
 SAMPLES = json.load(open(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "_probe_samples.json"),

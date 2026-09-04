@@ -4,6 +4,7 @@
 2) ScreenerView / DimensionRadar 迁移统一 composable 后无回归
 """
 import asyncio
+
 from playwright.async_api import async_playwright
 
 BASE = "http://127.0.0.1:8866"

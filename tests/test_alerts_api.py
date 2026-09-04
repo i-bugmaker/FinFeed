@@ -6,7 +6,6 @@
 校准结果读取、测试发送（mock 网络）。
 """
 
-import json
 
 import finfeed.alerts.store as alert_store
 import finfeed.storage.database as db_mod

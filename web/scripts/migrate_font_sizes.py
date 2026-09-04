@@ -15,7 +15,6 @@ tokens.css（令牌定义本体）跳过；21/22/24/28/32 大字号单独人工�
 import io
 import os
 import re
-import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
