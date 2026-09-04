@@ -16,11 +16,11 @@ import logging
 import time
 from typing import Any, Callable, Dict, Optional
 
+from finfeed.utils.time_utils import now_bj
+
 from . import collector, context, prompts
 from .client import LLMClient, LLMError, estimate_tokens
 from .config import agent_system, get_prompts
-
-from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("news_monitor")
 

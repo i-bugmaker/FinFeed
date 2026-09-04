@@ -22,6 +22,7 @@ from typing import Optional
 
 from easy_tdx import BoardType, Category, MacClient, SortOrder, SortType
 from easy_tdx.codec.bitmap import PresetField
+
 from finfeed.capital_dashboard.tdx import call_lock, ensure_alive, get_client
 
 from . import config

@@ -5,7 +5,6 @@
 所有新闻源的定义集中在此处，支持通过 Parser 类进行策略模式扩展。
 """
 
-import os
 from dataclasses import dataclass, field
 from typing import Optional
 

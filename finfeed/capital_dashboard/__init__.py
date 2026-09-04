@@ -20,7 +20,8 @@ from .collector import (
     fetch_indices,
     fetch_stock_detail,
 )
-from .funds import FundRankStore, FundRankWorker, get_snapshot as get_fund_rankings
+from .funds import FundRankStore, FundRankWorker
+from .funds import get_snapshot as get_fund_rankings
 from .rotation import RotationReport, RotationSignal, analyze_rotation
 from .server import (
     app,

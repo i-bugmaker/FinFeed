@@ -28,11 +28,9 @@ import asyncio
 import logging
 import threading
 import time
-from dataclasses import asdict
 from typing import Any, Optional
 
 from . import config
-from .models import FundFlow
 
 logger = logging.getLogger("finfeed.capital_dashboard.funds")
 
