@@ -50,11 +50,23 @@ def _migration_v2_index_slim(c: sqlite3.Cursor) -> None:
     c.execute("DROP TABLE IF EXISTS event_stock_link")
 
 
+def _migration_v3_margin_code_index(c: sqlite3.Cursor) -> None:
+    """margin_detail 补 (code, trade_date) 索引。
+
+    原有唯一键为 (trade_date, code)，`WHERE code=? ORDER BY trade_date DESC`
+    无法命中（code 非最左列），个股档案查询在 7 万行上全表扫描。
+    """
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_margin_code_ts ON margin_detail(code, trade_date)"
+    )
+
+
 Migration = Tuple[int, str, Callable[[sqlite3.Cursor], None]]
 
 MIGRATIONS: List[Migration] = [
     (1, "baseline_2026q3", _migration_v1_baseline),
     (2, "index_slim_2026q3", _migration_v2_index_slim),
+    (3, "margin_code_index_2026q3", _migration_v3_margin_code_index),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

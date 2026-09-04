@@ -242,6 +242,8 @@ def ensure_market_tables() -> None:
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_margin_date ON margin_detail(trade_date)")
+        # 个股档案按 code 查询：主键 (trade_date, code) 最左列不是 code，需独立索引
+        c.execute("CREATE INDEX IF NOT EXISTS idx_margin_code_ts ON margin_detail(code, trade_date)")
 
         c.execute("""
             CREATE TABLE IF NOT EXISTS earnings_forecast (
