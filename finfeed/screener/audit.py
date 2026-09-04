@@ -16,6 +16,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from finfeed.storage.connect import connect
+
 logger = logging.getLogger("finfeed.screener.audit")
 
 _AUDIT_DB = Path(__file__).resolve().parent.parent.parent / "logs" / "screener_audit.db"
@@ -32,7 +34,7 @@ class RunAudit:
     def _init(self) -> None:
         Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
-            conn = sqlite3.connect(self._path, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             try:
                 conn.execute(
                     """CREATE TABLE IF NOT EXISTS screener_runs (
@@ -61,7 +63,7 @@ class RunAudit:
         """写入一次运行记录。"""
         try:
             with self._lock:
-                conn = sqlite3.connect(self._path, timeout=10)
+                conn = connect(self._path, timeout=10, row_factory=None)
                 try:
                     conn.execute(
                         """INSERT INTO screener_runs
@@ -96,7 +98,7 @@ class RunAudit:
     def recent(self, limit: int = 20) -> list[dict]:
         """最近运行记录（供健康面板/监控查询）。"""
         try:
-            conn = sqlite3.connect(self._path, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             conn.row_factory = sqlite3.Row
             try:
                 rows = conn.execute(
@@ -111,7 +113,7 @@ class RunAudit:
     def summary(self) -> dict[str, Any]:
         """聚合摘要：运行次数、成功率、平均覆盖率、回退次数。"""
         try:
-            conn = sqlite3.connect(self._path, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             try:
                 total = conn.execute("SELECT COUNT(*) FROM screener_runs").fetchone()[0]
                 if total == 0:

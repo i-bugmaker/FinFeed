@@ -36,6 +36,7 @@ from easy_tdx.codec.bitmap import FieldBit, PresetField
 from finfeed.capital_dashboard import config as tdx_config
 from finfeed.capital_dashboard.tdx import call_lock, ensure_alive, get_client
 from finfeed.capital_dashboard.tdx import close as close_tdx
+from finfeed.storage.connect import connect
 from finfeed.utils.time_utils import now_bj
 
 from .contract import (
@@ -349,7 +350,7 @@ class KLineCache:
         if conn is not None:
             return conn
         self._path and Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._path, check_same_thread=False, timeout=10)
+        conn = connect(self._path, timeout=10, row_factory=None)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         with self._init_lock:

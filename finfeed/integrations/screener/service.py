@@ -34,6 +34,7 @@ from finfeed.screener import request as request_mod
 from finfeed.screener.config import ScreenerConfig
 from finfeed.screener.models import ScreenerResult
 from finfeed.screener.snapshot_store import snapshot_store
+from finfeed.storage.connect import connect
 from finfeed.utils.time_utils import now_bj
 
 logger = logging.getLogger("screener_service")
@@ -143,7 +144,7 @@ class TaskStore:
         @contextmanager
         def _open():
             Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self._path, check_same_thread=False, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             try:
                 yield conn
                 conn.commit()

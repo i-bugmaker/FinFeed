@@ -18,10 +18,11 @@ import time
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
-from finfeed.config.settings import DB_PATH, USE_WAL_MODE
+from finfeed.config.settings import DB_PATH
 from finfeed.storage.ports import ImportanceScorer
 from finfeed.utils.time_utils import now_bj, ts_from_bj_str
 
+from .connect import connect
 from .models import NewsItem
 
 logger = logging.getLogger("news_monitor")
@@ -62,22 +63,10 @@ class NewsDatabase:
                     pass
                 self._local.conn = None
 
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
-        conn.row_factory = sqlite3.Row
-        conn.text_factory = str
-        if USE_WAL_MODE:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-64000")
-        conn.execute("PRAGMA mmap_size=268435456")
-        conn.execute("PRAGMA temp_store=MEMORY")
-        conn.execute("PRAGMA encoding='UTF-8'")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("PRAGMA foreign_keys=ON")
+        conn = connect(DB_PATH, timeout=15)
 
         self._local.conn = conn
         return conn
-
     @contextmanager
     def get_db(self):
         """数据库上下文管理器（带事务支持）"""

@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from finfeed.storage.connect import connect
+
 from .contract import REQUIRED_COLS
 
 logger = logging.getLogger("finfeed.screener.snapshot_store")
@@ -43,7 +45,7 @@ class SnapshotStore:
     def _init(self) -> None:
         Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
-            conn = sqlite3.connect(self._path, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             try:
                 conn.execute(
                     """CREATE TABLE IF NOT EXISTS snapshots (
@@ -93,7 +95,7 @@ class SnapshotStore:
             return 0
         try:
             with self._lock:
-                conn = sqlite3.connect(self._path, timeout=30)
+                conn = connect(self._path, timeout=30, row_factory=None)
                 try:
                     conn.executemany(
                         """INSERT OR REPLACE INTO snapshots VALUES
@@ -111,7 +113,7 @@ class SnapshotStore:
     def available_dates(self) -> list[str]:
         """已积累的交易日列表（升序）。"""
         try:
-            conn = sqlite3.connect(self._path, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             try:
                 rows = conn.execute("SELECT DISTINCT trade_date FROM snapshots ORDER BY trade_date").fetchall()
                 return [r[0] for r in rows]
@@ -123,7 +125,7 @@ class SnapshotStore:
     def load_date(self, trade_date: str) -> pd.DataFrame | None:
         """读取指定交易日快照（规范列 DataFrame），无数据返回 None。"""
         try:
-            conn = sqlite3.connect(self._path, timeout=10)
+            conn = connect(self._path, timeout=10, row_factory=None)
             conn.row_factory = sqlite3.Row
             try:
                 rows = conn.execute(

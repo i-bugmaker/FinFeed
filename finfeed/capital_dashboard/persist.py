@@ -28,10 +28,9 @@ _lock = threading.RLock()
 
 
 def _conn() -> sqlite3.Connection:
-    parent = os.path.dirname(DB_PATH)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    """统一连接出口 + 惰性建表/建索引（幂等）。"""
+    from finfeed.storage.connect import connect
+    conn = connect(DB_PATH, timeout=10)
     conn.execute(
         """CREATE TABLE IF NOT EXISTS board_snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -92,8 +92,9 @@ def clean_report_body(text: str) -> str:
 
 
 if __name__ == '__main__':
-    import sqlite3
-    con = sqlite3.connect('finfeed/news_monitor.db')
+    from finfeed.config.settings import DB_PATH
+    from finfeed.storage.connect import connect
+    con = connect(DB_PATH, row_factory=None)
     cur = con.cursor()
     cur.execute("SELECT substr(content, instr(content, '---\n\n') + 5) FROM llm_reports ORDER BY id DESC LIMIT 1")
     row = cur.fetchone()
