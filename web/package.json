@@ -12,7 +12,8 @@
     "audit:a11y": "python scripts/contrast_audit.py --fail",
     "audit:pages": "python scripts/page_audit.py",
     "audit": "npm run audit:ui && npm run audit:a11y",
-    "gen:api": "openapi-typescript http://127.0.0.1:8866/openapi.json -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript http://127.0.0.1:8866/openapi.json -o src/api/schema.d.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "axios": "^1.7.2",
