@@ -388,14 +388,10 @@ async def backfill_content_batch(limit: int = _BATCH_SIZE, client: httpx.AsyncCl
 async def content_backfill_loop() -> None:
     """后台周期补齐正文（运行期间持续循环，退出后自行结束）"""
     async with httpx.AsyncClient(headers=_HEADERS, timeout=_TIMEOUT, follow_redirects=True) as client:
-        while True:
-            try:
-                await backfill_content_batch(client=client)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:  # noqa: BLE001
-                logger.debug(f"正文后台补齐异常: {e}")
-            try:
-                await asyncio.sleep(_BATCH_INTERVAL)
-            except asyncio.CancelledError:
-                break
+        from finfeed.scheduling.loops import run_forever
+
+        await run_forever(
+            lambda: backfill_content_batch(client=client),
+            interval=_BATCH_INTERVAL,
+            name="content-backfill",
+        )
