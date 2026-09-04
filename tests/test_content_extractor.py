@@ -44,7 +44,7 @@ def test_sina724_body_is_artibody_text():
 
 
 def test_tail_noise_and_dateline_filters():
-    res = _extract_sample()
+    _extract_sample()  # 预热模块级缓存（返回值本用例不消费）
     # 即使正文容器退化为含右栏的外层容器（选择器兜底路径），
     # 段落过滤也必须剔除倒计时/口号/日期行
     from finfeed.content_extractor import _paragraphs_from_html

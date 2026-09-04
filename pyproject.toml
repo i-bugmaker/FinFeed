@@ -37,6 +37,14 @@ pydantic = ">=2.13,<3"
 # `pydantic-core X incompatible with pydantic requiring Y`。当前锁定 2.46.4。
 pydantic-core = "==2.46.4"
 
+[project.optional-dependencies]
+# 开发/CI 工具链：ruff 代码检查、import-linter 分层契约、pytest 测试
+dev = [
+    "ruff>=0.6",
+    "import-linter>=2.0",
+    "pytest>=8.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["finfeed"]
 

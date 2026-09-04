@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, "refactor/**"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: 后端（ruff + 分层契约 + pytest）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff 代码检查
+        run: ruff check .
+
+      - name: Import Linter 分层契约
+        run: lint-imports
+
+      - name: Pytest 测试
+        run: python -m pytest -q
+
+  frontend:
+    name: 前端（构建）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建
+        run: npm run build

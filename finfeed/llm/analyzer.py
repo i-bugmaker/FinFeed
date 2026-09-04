@@ -14,7 +14,6 @@
 
 import json
 import logging
-import re
 import time
 from collections import Counter, defaultdict
 from typing import Any, Callable, Dict, List, Optional
@@ -25,7 +24,7 @@ from finfeed.utils.time_utils import bj_str_from_ts, now_bj
 from . import collector, context, prompts
 from .cleanup import clean_report_body
 from .client import LLMClient, LLMError, estimate_tokens
-from .collector import NewsRecord, _focus_keywords, _reorder_by_focus
+from .collector import NewsRecord, _focus_keywords
 from .config import agent_system, get_prompts
 from .decorate import decorate_report_body
 
@@ -659,4 +658,4 @@ def run_analysis(
     )
 
 
-from . import analyzers as _  # noqa: F401, E402 —— 触发分析器注册
+from . import analyzers as _analyzers  # noqa: F401, E402 —— 触发分析器注册

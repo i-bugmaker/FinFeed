@@ -249,7 +249,6 @@ def scan_components(src_root):
             text = open(path, encoding="utf-8").read()
             if fn.endswith(".vue"):
                 styles = re.findall(r"<style[^>]*>(.*?)</style>", text, re.S)
-                offset_line = 0
                 chunks = []
                 for st in styles:
                     start = text.find(st) if st else -1

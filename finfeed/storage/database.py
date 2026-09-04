@@ -352,7 +352,8 @@ class NewsDatabase:
         importance_val = row["importance"] if row["importance"] is not None else 0.0
         if importance_val < 2.0:
             try:
-                scorer = self._importance_scorer
+                # 静态方法无法访问实例状态，经全局单例读取注入的打分器
+                scorer = _global_db._importance_scorer if _global_db is not None else None
                 if scorer is not None:
                     title_val = row["title"] if row["title"] is not None else ""
                     intro_val = row["intro"] if row["intro"] is not None else ""
