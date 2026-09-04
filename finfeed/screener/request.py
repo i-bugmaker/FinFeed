@@ -24,8 +24,8 @@ from .config import ScreenerConfig, load_config
 # 模板落盘目录（进程级，单例）
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "logs" / "screener_templates"
 
-# 维度键（与 config.weights 对齐；growth/reversal 为设计预留维度，本期未实现因子）
-_DIMS = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment", "growth", "reversal")
+# 维度键(与 config.weights 对齐;growth/reversal/heat 为设计预留维度,本期已实现因子)
+_DIMS = ("capital", "momentum", "valuation", "liquidity", "quality", "sentiment", "growth", "reversal", "heat")
 
 
 @dataclass

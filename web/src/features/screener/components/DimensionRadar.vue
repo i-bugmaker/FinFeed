@@ -20,6 +20,7 @@ const DIM_LABELS = {
   sentiment: '情绪/事件',
   growth: '成长性',
   reversal: '反转修复',
+  heat: '题材热度',
 }
 
 const elRef = ref(null)

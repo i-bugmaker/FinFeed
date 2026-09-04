@@ -66,6 +66,7 @@ class StockScore:
     sentiment_score: float = 0.0   # 情绪/事件（涨停基因/连涨/大单动向/量速）
     growth_score: float = 0.0      # 成长性（业绩预告净利润同比增幅 + 预告类型）
     reversal_score: float = 0.0    # 反转/超跌修复（20日跌幅 + 当日企稳）
+    heat_score: float = 0.0        # 题材热度（命中近期热门板块/概念的最高热度 + 命中数）
 
     # 综合分与评级
     total_score: float = 0.0

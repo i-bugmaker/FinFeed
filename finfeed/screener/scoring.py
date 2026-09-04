@@ -254,10 +254,22 @@ def _highlight_reversal(row: dict) -> list[str]:
     return []
 
 
+def _highlight_heat(row: dict) -> list[str]:
+    """题材热度亮点：命中近期热门板块/概念。"""
+    best = row.get("hot_best_heat")
+    if _is_missing(best):
+        return []
+    boards = str(row.get("hot_boards") or "").strip()
+    best = _f(best)
+    if best >= 40 and boards:
+        return [f"贴合热门题材：{boards}"]
+    return []
+
+
 _DIM_LABEL = {
     "capital": "主力资金", "momentum": "动量趋势", "valuation": "估值合理",
     "liquidity": "量价活跃", "quality": "质量稳定", "sentiment": "题材情绪",
-    "growth": "成长性", "reversal": "反转修复",
+    "growth": "成长性", "reversal": "反转修复", "heat": "题材热度",
 }
 
 
@@ -398,6 +410,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
     sentiment = blended("sentiment") if "sentiment" in dims else 0.0
     growth = blended("growth") if "growth" in dims else 0.0
     reversal = blended("reversal") if "reversal" in dims else 0.0
+    heat = blended("heat") if "heat" in dims else 0.0
 
     total = (
         w["capital"] * capital
@@ -408,6 +421,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         + w.get("sentiment", 0.0) * sentiment
         + w.get("growth", 0.0) * growth
         + w.get("reversal", 0.0) * reversal
+        + w.get("heat", 0.0) * heat
     )
     total = factors.clamp(total)
 
@@ -448,11 +462,12 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         + _highlight_quality(row)
         + _highlight_growth(row)
         + _highlight_reversal(row)
+        + _highlight_heat(row)
     )
     scores = {
         "capital": capital, "momentum": momentum, "valuation": valuation,
         "liquidity": liquidity, "quality": quality, "sentiment": sentiment,
-        "growth": growth, "reversal": reversal,
+        "growth": growth, "reversal": reversal, "heat": heat,
     }
     rationale = _build_rationale(row, scores, total, failures, flags)
 
@@ -474,6 +489,7 @@ def _assemble(row: dict, dims: dict, pct_map: dict, cfg: ScreenerConfig,
         sentiment_score=sentiment,
         growth_score=growth,
         reversal_score=reversal,
+        heat_score=heat,
         total_score=total,
         tier=tier,
         eligible=True,
@@ -632,7 +648,7 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
     raw_records = sub.to_dict("records")
     raw_by_pos = {i: rec for i, rec in zip(sub.index, raw_records)}
     _DIMS_SCORES = ("capital", "momentum", "valuation", "liquidity", "quality",
-                    "sentiment", "growth", "reversal")
+                    "sentiment", "growth", "reversal", "heat")
     for i, rec in assembled.iterrows():
         raw = raw_by_pos.get(i, {})
         failures: list[str] = []
@@ -664,6 +680,7 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
                 + _highlight_sentiment(row)
                 + _highlight_growth(row)
                 + _highlight_reversal(row)
+                + _highlight_heat(row)
                 + [f_ for f_ in flags_list]
             )
             rationale = _build_rationale(
@@ -708,6 +725,7 @@ def score_frame(df, cfg: ScreenerConfig, technical_enabled: bool = False,
             sentiment_score=float(rec["sentiment_score"]),
             growth_score=float(rec.get("growth_score", 0.0)),
             reversal_score=float(rec.get("reversal_score", 0.0)),
+            heat_score=float(rec.get("heat_score", 0.0)),
             total_score=float(rec["total_score"]),
             tier=str(rec["tier"]),
             eligible=bool(rec["eligible"]),

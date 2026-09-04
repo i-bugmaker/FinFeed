@@ -180,6 +180,18 @@ def dimension_scores_vec(df: pd.DataFrame, cfg) -> dict[str, pd.Series]:
     s_stab = s_stab.where(chg_raw.notna(), 50.0)
     out["reversal"] = (rp["w_drop"] * s_drop + rp["w_stabilize"] * s_stab).clip(0.0, 100.0)
 
+    # ---- 题材热度（命中热门板块最高热度 + 命中数；无数据不可列 -> 中性 50）----
+    hp = p["heat"]
+    best_raw = pd.to_numeric(_col(df, "hot_best_heat"), errors="coerce")
+    hits_raw = pd.to_numeric(_col(df, "hot_hits"), errors="coerce")
+    # 未命中热门板块热度为 0（真实零收益）；整列缺失（模块不可用）-> 中性 50
+    hits = hits_raw.fillna(0.0).clip(0, float(hp.get("hits_cap", 5)))
+    s_best = _vec_sigmoid(best_raw.fillna(0.0), hp["heat_mid"], hp["heat_scale"]) * 100.0
+    s_hits = _vec_sigmoid(hits, hp["hits_mid"], hp["hits_scale"]) * 100.0
+    s_heat = (hp["w_best"] * s_best + hp["w_hits"] * s_hits).where(
+        best_raw.notna(), 50.0)
+    out["heat"] = s_heat.clip(0.0, 100.0)
+
     return out
 
 
@@ -282,6 +294,10 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg,
 
     idx = df.index
     dim_df = pd.DataFrame({k: v.reindex(idx) for k, v in dims.items()})
+    # 题材热度保持**绝对分**：不参与板块/行业/市值中性化，也不参与正交化——
+    # 热度反映「跨行业题材是否主攻」，按相对排名会稀释其绝对语义。
+    heat_abs = dims.get("heat")
+    dim_df_ne = dim_df.drop(columns=["heat"]) if "heat" in dim_df.columns else dim_df
 
     # 板块归类（行级，纯前缀映射）
     codes = _col(df, "code").astype(str).str.zfill(6)
@@ -292,19 +308,23 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg,
     )
 
     # 组内百分位中性化（板块+行业+市值分层；method="max" 与标量 bisect_right/n 语义一致）
-    blended = dim_df.copy()
+    blended = dim_df_ne.copy()
     if nb > 0:
         groups = _neutralize_groups(df, boards, cfg)
-        pct = dim_df.groupby(groups).rank(method="max", pct=True) * 100.0
-        blended = ((1.0 - nb) * dim_df + nb * pct).clip(0.0, 100.0)
+        pct = dim_df_ne.groupby(groups).rank(method="max", pct=True) * 100.0
+        blended = ((1.0 - nb) * dim_df_ne + nb * pct).clip(0.0, 100.0)
 
     # 维度正交化（可选）：剔除维度间冗余信息，提升合成 ICIR 稳定性
     # （engine.orthogonalize=True 时启用；残差重缩放回 0~100，不改变量纲）
     if orthogonalize:
         blended = orthogonalize_dimensions(blended)
 
+    # 热度维度以绝对分并入（不参与中性化/正交化），恢复其跨行业主攻语义
+    if heat_abs is not None:
+        blended["heat"] = heat_abs.reindex(idx)
+
     _DIMS = ("capital", "momentum", "valuation", "liquidity", "quality",
-             "sentiment", "growth", "reversal")
+             "sentiment", "growth", "reversal", "heat")
     total = sum(w.get(d, 0.0) * blended[d] for d in _DIMS if d in blended)
     total = total.clip(0.0, 100.0)
 
@@ -343,6 +363,7 @@ def assemble_vec(df: pd.DataFrame, dims: dict[str, pd.Series], cfg,
         "sentiment_score": blended["sentiment"] if "sentiment" in blended else pd.Series(0.0, index=idx),
         "growth_score": blended["growth"] if "growth" in blended else pd.Series(0.0, index=idx),
         "reversal_score": blended["reversal"] if "reversal" in blended else pd.Series(0.0, index=idx),
+        "heat_score": blended["heat"] if "heat" in blended else pd.Series(0.0, index=idx),
         "total_score": total,
         "tier": tier,
         "eligible": pd.Series(True, index=idx),

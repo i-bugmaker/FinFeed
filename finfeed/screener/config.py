@@ -40,13 +40,14 @@ def _default_weights() -> dict[str, float]:
     #   其余维度等比让渡权重（累计 -7%），合计仍为 1.00
     return {
         "capital": 0.18,     # 资金面（原 0.20，为 growth 让渡）
-        "momentum": 0.22,    # 动量趋势（原 0.25）
-        "valuation": 0.16,   # 估值（原 0.18）
-        "liquidity": 0.14,   # 量价活跃（原 0.15）
-        "quality": 0.10,     # 质量稳定（原 0.12）
-        "sentiment": 0.07,   # 情绪/事件（原 0.10）
-        "growth": 0.08,      # 成长性（新增：业绩预告增幅 + 预告类型）
-        "reversal": 0.05,    # 反转/超跌修复（新增：20日跌幅 + 企稳信号）
+        "momentum": 0.18,    # 动量趋势（原 0.25 / 二期 0.22，为 heat 让渡）
+        "valuation": 0.14,   # 估值（原 0.18 / 二期 0.16，为 heat 让渡）
+        "liquidity": 0.14,   # 量价活跃（原 0.15 / 二期 0.14）
+        "quality": 0.10,     # 质量稳定（原 0.12 / 二期 0.10）
+        "sentiment": 0.06,   # 情绪/事件（原 0.10 / 二期 0.07，为 heat 让渡）
+        "growth": 0.08,      # 成长性（二期新增：业绩预告增幅 + 预告类型）
+        "reversal": 0.02,    # 反转/超跌修复（原 0.05，为 heat 让渡）
+        "heat": 0.10,        # 题材热度（三期新增：围绕近期热门板块/概念，短线主攻方向）
     }
 
 
@@ -172,6 +173,25 @@ def _default_params() -> dict[str, Any]:
             # 当日涨跌幅(%)：企稳信号（≥0 止跌给高分，继续大跌降分）
             "stabilize_mid": 0.0, "stabilize_scale": 1.5,
             "w_drop": 0.55, "w_stabilize": 0.45,
+        },
+        # 题材热度（新增维度，数据源：hot_boards 热门板块贴合）：
+        # 个股是否属于近期热门板块/概念——短线主攻方向的公共主线。
+        # 板块热度由 hot_boards 综合度量：当日(资金/涨幅/涨停普涨) + 近 5 日动能。
+        # 本段参数仅定义「打分」侧：命中板块的最高热度 + 命中数量。
+        # 采集侧参数（top_each / hot_total / today_w / momentum_col）也在本段。
+        "heat": {
+            # 采集侧
+            "top_each": 30,          # 每榜（概念/行业）拉取的板块数
+            "hot_total": 24,         # 综合热度入选的热门板块总数（概念+行业混合）
+            "today_w": 0.5,          # 板块热度 = today_w*当日 + (1-today_w)*近5日动能
+            "momentum_col": "change_5d_pct",   # 板块近5日动能用快照中的近5日涨幅列
+            "ttl_seconds": 900,      # 热门板块数据缓存（秒），盘中内多次选股复用
+            # 打分侧（score_heat）
+            "heat_mid": 45.0, "heat_scale": 20.0,   # 命中板块最高热度 sigmoid 锚点（0~100）
+            "hits_mid": 2.0, "hits_scale": 2.0,     # 命中数量 sigmoid 锚点（个）
+            "w_best": 0.7, "w_hits": 0.3,
+            # 命中板块数的自然尺度：命中越少影响越陡，避免单调权重稀释（保留参数）
+            "hits_cap": 5,
         },
     }
 
@@ -371,6 +391,7 @@ class ScreenerConfig:
         lines.append(f"| 情绪/事件 | {w.get('sentiment', 0.0)*100:.0f}% | A 股短线情绪信号 | 年内涨停天数、连涨天数、DDX大单动向、量速 |")
         lines.append(f"| 成长性 | {w.get('growth', 0.0)*100:.0f}% | 业绩是否高增长 | 业绩预告净利润同比增幅、预告类型（预增/扭亏） |")
         lines.append(f"| 反转修复 | {w.get('reversal', 0.0)*100:.0f}% | 超跌反弹弹性 | 20日跌幅反转（跌深衰减防接飞刀）、当日企稳 |")
+        lines.append(f"| 题材热度 | {w.get('heat', 0.0)*100:.0f}% | 是否贴合近期热门板块/概念 | 命中热门板块的最高热度、命中数（短线主攻方向） |")
         lines.append("")
         lines.append("### 维度子分计算")
         lines.append("")
@@ -411,6 +432,11 @@ class ScreenerConfig:
         lines.append(f"- **反转修复** = {rp['w_drop']:.2f}×跌幅反转分 + {rp['w_stabilize']:.2f}×企稳分")
         lines.append(f"  - 20日跌幅反转：越高越差（跌深弹性大），> {rp['cliff_threshold']:.0f}% 深跌衰减至 {rp['cliff_floor']:.0%} 防接飞刀")
         lines.append(f"  - 当日企稳：sigmoid（锚点 {rp['stabilize_mid']}%），止跌给高分")
+        hp = p['heat']
+        lines.append(f"- **题材热度** = {hp['w_best']:.2f}×命中板块最高热度分 + {hp['w_hits']:.2f}×命中数分")
+        lines.append(f"  - 命中板块最高热度（0~100，综合板块资金/涨幅/涨停与近5日动能）：sigmoid（锚点 {hp['heat_mid']}，尺度 {hp['heat_scale']}）")
+        lines.append(f"  - 命中数（只属几个热门板块）：sigmoid（锚点 {hp['hits_mid']} 个，尺度 {hp['hits_scale']}）")
+        lines.append("  - 未贴合热门板块的个股该维显著低分，引导选股聚焦当前主攻题材（短线视野）")
         lines.append("")
         lines.append("### 硬性过滤（评分前剔除）")
         lines.append("")

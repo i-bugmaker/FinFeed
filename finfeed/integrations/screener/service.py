@@ -32,6 +32,7 @@ from finfeed.screener import (
 )
 from finfeed.screener import request as request_mod
 from finfeed.screener.config import ScreenerConfig
+from finfeed.screener.hot_boards import build_hot_heat
 from finfeed.screener.models import ScreenerResult
 from finfeed.screener.snapshot_store import snapshot_store
 from finfeed.storage.connect import connect
@@ -387,6 +388,17 @@ def _run(task: dict) -> None:
 
         df = _enrich_growth(df)
         _log(task, "开始八维加权评分…")
+        # 题材热度贴合：拉近期热门板块/概念的成分股映射，注入 heat 打分列
+        # （全部不可用时自动降级，heat 维按中性处理，不阻塞主流程）
+        try:
+            df, _hot_ctx = build_hot_heat(df, cfg)
+            if _hot_ctx.available:
+                tops = ", ".join(b["name"] for b in _hot_ctx.top_boards[:8])
+                _log(task, f"热门题材贴合：命中 {_hot_ctx.n_hot_members} 只，热点 = {tops}")
+            else:
+                _log(task, "热门板块贴合数据不可用，题材热度维按中性处理")
+        except Exception as _he:  # noqa: BLE001
+            logger.warning("题材热度注入失败（heat 维走中性）: %s", _he)
         engine_meta: dict = {}
         scores = score_frame(df, cfg, technical_enabled=technical,
                              store=snapshot_store, meta=engine_meta,

@@ -372,8 +372,40 @@ def score_reversal(row: dict, p: dict) -> tuple[float, dict[str, str]]:
     return clamp(score), contrib
 
 
+def score_heat(row: dict, p: dict) -> tuple[float, dict[str, str]]:
+    """题材热度：个股是否贴合近期热门板块/概念。
+
+    两因子（hot_boards 注入的列）：
+    - 命中板块的最高热度 hot_best_heat（0~100，综合板块资金/涨幅/涨停与近5日动能）：
+      sigmoid（锚点 heat_mid）——贴合越热的主线分越高；
+    - 命中数量 hot_hits：sigmoid——同属多个热门板块（主线共振）加分。
+    缺失（数据不可用/无热度数据）：按中性 50 处理——不因信息缺失误杀，
+    也不因「没命中」与「数据缺失」混淆（后者给中性而非低分）。
+    """
+    hp = p["heat"]
+
+    best_raw = row.get("hot_best_heat")
+    if _is_missing(best_raw):
+        return 50.0, {"题材热度": "缺失→中性"}
+
+    best = _f(best_raw)
+    hits_raw = row.get("hot_hits")
+    hits = _f(hits_raw) if not _is_missing(hits_raw) else 0.0
+    hits = min(hits, float(hp.get("hits_cap", 5)))
+
+    s_best = score_sigmoid(best, hp["heat_mid"], hp["heat_scale"])
+    s_hits = score_sigmoid(hits, hp["hits_mid"], hp["hits_scale"])
+    score = hp["w_best"] * s_best + hp["w_hits"] * s_hits
+    boards = str(row.get("hot_boards") or "").strip()
+    contrib = {
+        "命中题材": f"{boards or '无'}({hits:.0f}) → {clamp(score):.0f}",
+        "最高热度": f"{best:.0f}/100 → {s_best:.0f}",
+    }
+    return clamp(score), contrib
+
+
 def dimension_scores(row: dict, cfg) -> dict[str, tuple[float, dict[str, str]]]:
-    """返回八个维度的 (子分, 贡献说明)。"""
+    """返回九个维度的 (子分, 贡献说明)。"""
     p = cfg.params
     return {
         "capital": score_capital(row, p),
@@ -384,4 +416,5 @@ def dimension_scores(row: dict, cfg) -> dict[str, tuple[float, dict[str, str]]]:
         "sentiment": score_sentiment(row, p),
         "growth": score_growth(row, p),
         "reversal": score_reversal(row, p),
+        "heat": score_heat(row, p),
     }
