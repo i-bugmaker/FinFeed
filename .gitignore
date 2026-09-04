@@ -279,3 +279,4 @@ finfeed/integrations/easytdx/output/
 
 # 架构迁移自动备份
 *.pre_migrate.bak
+_tmp_imports.txt
