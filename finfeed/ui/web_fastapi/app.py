@@ -33,7 +33,7 @@ from starlette.middleware.gzip import GZipMiddleware
 # 告警推送模块（webhook 渠道 / 主题订阅 / 推送日志 / 情感校准）
 from finfeed.alerts.router import router as alerts_router
 from finfeed.application.market_service import MarketService, first_query_value
-from finfeed.config.settings import DEFAULT_WEB_PORT, get_display_name
+from finfeed.config.settings import CORS_ORIGINS, DEFAULT_WEB_PORT, get_display_name
 from finfeed.config.sources import get_enabled_sources
 from finfeed.core.health import get_health_monitor
 from finfeed.ecal import fetcher as calendar_fetcher
@@ -98,8 +98,8 @@ app.include_router(create_llm_router())
 # LLM 任务事件桥接：领域层 AnalysisService / InsightService 通过注入的回调发布
 # stage/delta/done，SSE 订阅注册表位于 llm 路由模块（领域包不感知 UI，
 # 依赖方向保持向内）。两个服务的任务 ID 为独立 uuid，共用同一注册表安全。
-from finfeed.llm.insight import get_service as _get_insight_service  # noqa: E402
 from finfeed.llm import store as _llm_store  # noqa: E402
+from finfeed.llm.insight import get_service as _get_insight_service  # noqa: E402
 from finfeed.llm.service import get_service as _get_llm_service  # noqa: E402
 from finfeed.ui.web_fastapi.routers.llm import (  # noqa: E402
     publish_llm_task_event as _publish_llm_task_event,
@@ -248,12 +248,15 @@ except Exception as _f10_exc:  # noqa: BLE001
     logger.warning("同花顺 F10 模块未加载（可忽略；安装依赖后重启生效）: %s", _f10_exc)
 
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if CORS_ORIGINS:
+    # 仅显式配置 FINFEED_CORS_ORIGINS 时启用跨域（默认同源部署无需 CORS）。
+    _cors_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.middleware("http")

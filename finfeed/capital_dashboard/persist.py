@@ -23,7 +23,10 @@ from .models import BoardFlow, MarketSnapshot
 
 logger = logging.getLogger("finfeed.capital_dashboard.persist")
 
-DB_PATH = os.environ.get("CAPITAL_DB", "logs/capital_flow.db")
+# 锚定仓库根目录而非进程 CWD：此前 'logs/capital_flow.db' 相对路径导致
+# 从其他目录启动进程时读写到错误位置（甚至新建空库）。
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DB_PATH = os.environ.get("CAPITAL_DB", os.path.join(_REPO_ROOT, "logs", "capital_flow.db"))
 _lock = threading.RLock()
 
 

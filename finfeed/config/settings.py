@@ -27,6 +27,13 @@ def _get_env(name: str, default: Any, type_cast: type = str) -> Any:
 # Web 仪表盘配置
 DEFAULT_WEB_PORT: int = _get_env("WEB_PORT", 8866, int)
 
+# CORS 允许来源（逗号分隔，如 "http://localhost:5173,http://127.0.0.1:5173"）。
+# 默认空 = 不启用 CORS 中间件：
+#   * 生产：前端由 FastAPI 同源托管，无需 CORS
+#   * 开发：vite proxy 转发 /api，浏览器侧同为同源，同样无需 CORS
+# 此前 allow_origins=["*"] 会让本机任意网页读取自选股/LLM 配置等接口。
+CORS_ORIGINS: str = _get_env("CORS_ORIGINS", "")
+
 # 抓取配置
 DEFAULT_INTERVAL: int = _get_env("INTERVAL", 10, int)
 MAX_NEWS_CACHE: int = 500
@@ -37,11 +44,17 @@ SOURCE_RATE_LIMITS: Dict[str, float] = {
 }
 
 # 数据库配置
-DB_FILENAME: str = _get_env("DB_FILENAME", "news_monitor.db")
-DB_PATH: str = _get_env(
-    "DB_PATH",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), DB_FILENAME),
-)
+# FINFEED_DATA_DIR：可选数据目录外移。设置后 news 库与日志写入该目录，
+# 便于把数据盘与代码盘分离 / 容器化挂载 volume。未设置时沿用仓库内历史路径。
+DATA_DIR: str = _get_env("DATA_DIR", "")
+_PACKAGE_PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if DATA_DIR:
+    DB_FILENAME: str = _get_env("DB_FILENAME", "news_monitor.db")
+    DB_PATH: str = _get_env("DB_PATH", os.path.join(DATA_DIR, DB_FILENAME))
+else:
+    DB_FILENAME: str = _get_env("DB_FILENAME", "news_monitor.db")
+    DB_PATH: str = _get_env("DB_PATH", os.path.join(_PACKAGE_PARENT, DB_FILENAME))
 
 USE_WAL_MODE: bool = _get_env("USE_WAL_MODE", True, bool)
 
@@ -50,7 +63,7 @@ LOG_FILENAME: str = _get_env("LOG_FILENAME", "finfeed.log")
 LOG_LEVEL: str = _get_env("LOG_LEVEL", "INFO")
 LOG_PATH: str = _get_env(
     "LOG_PATH",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), LOG_FILENAME),
+    os.path.join(DATA_DIR if DATA_DIR else _PACKAGE_PARENT, LOG_FILENAME),
 )
 LOG_MAX_BYTES: int = 10 * 1024 * 1024
 LOG_BACKUP_COUNT: int = 5
