@@ -21,6 +21,14 @@ from finfeed.storage.database import (
     db_toggle_favorite,
     db_update_news_content,
 )
+from finfeed.ui.web_fastapi.schemas import (
+    DateRangeOut,
+    MutationOut,
+    NewsDetailOut,
+    NewsListOut,
+    SearchOut,
+    StockNamesOut,
+)
 from finfeed.ui.web_fastapi.shared import (
     _build_news_response,
     _cache_get,
@@ -54,22 +62,22 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
             logger.exception("%s API failed", kind, exc_info=exc)
             return response({"error": str(exc)}, status=500)
 
-    @router.get("/api/flash")
+    @router.get("/api/flash", response_model=NewsListOut)
     def flash(request: Request) -> JSONResponse:
         names, _ = _get_flash_article_display_names()
         return category(request, "flash", names)
 
-    @router.get("/api/articles")
+    @router.get("/api/articles", response_model=NewsListOut)
     def articles(request: Request) -> JSONResponse:
         _, names = _get_flash_article_display_names()
         return category(request, "article", names)
 
-    @router.get("/api/sentiment")
+    @router.get("/api/sentiment", response_model=NewsListOut)
     def sentiment(request: Request) -> JSONResponse:
         _, _, names, _, _ = _get_cached_sources()
         return category(request, "forum", names)
 
-    @router.get("/api/favorites")
+    @router.get("/api/favorites", response_model=NewsListOut)
     def favorites(request: Request) -> JSONResponse:
         try:
             params = parse_params(qdict(request))
@@ -78,7 +86,7 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
         except Exception as exc:  # noqa: BLE001
             return response({"error": str(exc)}, status=500)
 
-    @router.get("/api/stock_names")
+    @router.get("/api/stock_names", response_model=StockNamesOut)
     def stock_names() -> JSONResponse:
         cached = _cache_get("stock_names_map")
         if cached is not None:
@@ -94,17 +102,17 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
         except Exception as exc:  # noqa: BLE001
             return response({"stock_names": {}, "error": str(exc)}, status=500)
 
-    @router.get("/api/daterange")
+    @router.get("/api/daterange", response_model=DateRangeOut)
     def date_range() -> dict[str, Any]:
         minimum, maximum, dates = db_get_date_range()
         return {"min": minimum, "max": maximum, "dates": dates}
 
-    @router.get("/api/search")
+    @router.get("/api/search", response_model=SearchOut)
     def search(q: str = Query("", alias="q"), limit: int = Query(100)) -> dict[str, Any]:
         news = db_search_news(q, limit=limit) if q else []
         return {"keyword": q, "count": len(news), "news": [item.to_dict() for item in news]}
 
-    @router.get("/api/detail")
+    @router.get("/api/detail", response_model=NewsDetailOut)
     async def detail(id: int = Query(0)) -> dict[str, Any]:
         news = db_get_news_by_id(id)
         if not news:
@@ -132,7 +140,7 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
             data["article"] = article_meta
         return {"success": True, "news": data}
 
-    @router.post("/api/favorite", response_model=None)
+    @router.post("/api/favorite", response_model=MutationOut)
     def favorite(data: dict[str, Any] = Body(default={})) -> Any:
         try:
             news_id = int(data.get("id", 0))
@@ -142,7 +150,7 @@ def create_router(parse_params: Callable[[dict[str, list[str]]], dict[str, Any]]
         except Exception as exc:  # noqa: BLE001
             return response({"success": False, "error": str(exc)}, status=500)
 
-    @router.post("/api/read", response_model=None)
+    @router.post("/api/read", response_model=MutationOut)
     def read(data: dict[str, Any] = Body(default={})) -> Any:
         try:
             news_id = int(data.get("id", 0))
