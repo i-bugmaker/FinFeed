@@ -23,6 +23,7 @@ from .collector import (
 from .funds import FundRankStore, FundRankWorker
 from .funds import get_snapshot as get_fund_rankings
 from .rotation import RotationReport, RotationSignal, analyze_rotation
+from . import session
 from .server import (
     app,
     create_router,
@@ -49,6 +50,7 @@ __all__ = [
     "RotationReport",
     "RotationSignal",
     "analyze_rotation",
+    "session",
     "AnomalyDetector",
     "AnomalyReport",
     "detector",

@@ -161,6 +161,13 @@
   }
   .panel-title::before { content: ""; width: 4px; height: 14px; background: linear-gradient(180deg, var(--accent), var(--cyan)); border-radius: 2px; }
   .panel-title .tag { margin-left: auto; font-size: 10px; color: var(--text-dim); font-weight: 400; }
+  .panel-title .tag.sess {
+    margin-left: 0; padding: 1px 7px; border-radius: 10px; line-height: 1.6;
+    border: 1px solid transparent; background: rgba(255,255,255,.06);
+  }
+  .panel-title .tag.sess.on  { color: #00d68f; border-color: rgba(0,214,143,.45);  background: rgba(0,214,143,.12);  }
+  .panel-title .tag.sess.off { color: #ffb020; border-color: rgba(255,176,32,.45);  background: rgba(255,176,32,.12); }
+  .panel-title .tag.sess.cld { color: var(--text-dim); border-color: rgba(255,255,255,.18); }
 
   /* ---------- 表格 ---------- */
   .tbl-wrap { flex: 1; overflow-y: auto; min-height: 0; }
@@ -420,11 +427,13 @@
         <div class="chart" id="boardBar"></div>
       </div>
       <div class="panel" style="flex:1">
-        <div class="panel-title">板块资金轮动热力图 <span class="tag">主力净占比% · 时间→资金流向演变</span></div>
+        <div class="panel-title">板块资金轮动热力图 <span class="tag">主力净占比% · 时间→资金流向演变</span>
+          <span id="heatSession" class="tag sess"></span></div>
         <div class="chart" id="rotationHeat"></div>
       </div>
       <div class="panel" style="flex:1">
-        <div class="panel-title">板块轮动趋势 · 主力净占比 <span class="tag">资金轮入/轮出方向</span></div>
+        <div class="panel-title">板块轮动趋势 · 主力净占比 <span class="tag">资金轮入/轮出方向</span>
+          <span id="trendSession" class="tag sess"></span></div>
         <div class="chart" id="rotationTrend"></div>
       </div>
     </div>
@@ -579,8 +588,8 @@ function syncThemeUI() {
 }
 function rerenderCharts() {
   if (last.boardHy.length) renderBoardBar(last.boardHy);
-  if (last.rot) renderHeatmap(last.rot, nameMap);
-  if (last.rot) renderTrend(last.rot, nameMap);
+  if (last.rot) renderHeatmap(last.rot, nameMap, last.session);
+  if (last.rot) renderTrend(last.rot, nameMap, last.session);
   if (last.boardTree) renderBoardTreemap(last.boardTree);
   if (last.stockDetail) renderStockModal(last.stockDetail);
 }
@@ -674,10 +683,26 @@ function renderBoardBar(items) {
   }, true);
 }
 
+/* ---------- 交易时段徽标（仅轮动趋势 / 热力图显示） ---------- */
+function applySessionBadge(elId, sess) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!sess) { el.className = "tag sess"; el.textContent = ""; return; }
+  if (sess.in_session) {
+    el.className = "tag sess on";
+    el.textContent = "交易时段 · 实时采样";
+  } else {
+    const end = sess.end_ts ? " · 数据截至 " + sess.end_ts : "";
+    el.className = "tag sess off";
+    el.textContent = (sess.label || "非交易时段") + end;
+  }
+}
+
 /* ---------- 轮动热力图 ---------- */
-function renderHeatmap(rot, nameMap) {
+function renderHeatmap(rot, nameMap, sess) {
   const c = charts.rotationHeat;
   const boards = rot.heatmap_boards || [], times = rot.heatmap_times || [], vals = rot.heatmap_values || [];
+  applySessionBadge("heatSession", sess);
   if (!boards.length || !times.length) { c.clear(); return; }
   const pal = P();
   // 名称优先取报告内嵌（热力图 focus 板块可能超出板块榜推送范围，nameMap 会缺名）
@@ -720,9 +745,10 @@ function renderHeatmap(rot, nameMap) {
 }
 
 /* ---------- 轮动趋势折线 ---------- */
-function renderTrend(rot, nameMap) {
+function renderTrend(rot, nameMap, sess) {
   const c = charts.rotationTrend;
   const series = rot.trend_series || [];
+  applySessionBadge("trendSession", sess);
   if (!series.length) { c.clear(); return; }
   last.rot = rot;
   const pal = P();
@@ -731,10 +757,15 @@ function renderTrend(rot, nameMap) {
   const flat = picked.length > 0 && picked.every(
     s => (s.values || []).length > 1 && new Set(s.values).size === 1
   );
+  // 非交易时段（午休/收盘后）行情静止：趋势/热力图已定格于最近一个交易时点，
+  // 用时段标签说明而非「已收盘」，避免误导（休市期间本就不应有新采样）
+  const frozenText = sess && !sess.in_session
+    ? (sess.label || "非交易时段") + (sess.end_ts ? ` · 趋势定格于 ${sess.end_ts}` : "")
+    : "已收盘 · 资金流为当日累计值，采样恒定";
   c.setOption({
     title: {
       show: flat,
-      text: "已收盘 · 资金流为当日累计值，采样恒定",
+      text: frozenText,
       left: "center", top: 6,
       textStyle: { color: pal.textDim, fontSize: 11, fontWeight: 400 },
     },
@@ -1136,13 +1167,21 @@ async function loadAll() {
     renderStockTbl("stockOutTbl", so.items);
     renderBoardBar(bhy.items);
     renderBoardTreemap([...(bhy.items || []), ...(bgn.items || [])]);
-    renderHeatmap(rot, nameMap);
-    renderTrend(rot, nameMap);
+    // 轮动趋势/热力图仅交易时段采样：构造 session 状态供两图标注定格时间
+    const sess = {
+      in_session: rot.in_session != null ? rot.in_session : ov.in_session,
+      label: rot.session_label || ov.session_label || "",
+      end_ts: rot.series_end_ts || "",
+      next_open: ov.next_open || "",
+    };
+    renderHeatmap(rot, nameMap, sess);
+    renderTrend(rot, nameMap, sess);
     renderLeader(rot);
     renderSignals(rot);
     renderFunds(fd);
     renderObservability(obs);
     renderTicker(rot, ov);
+    last.session = sess;
 
     const rt = document.getElementById("refreshTag");
     setRefreshTag(true, ov.ts ? `刷新于 ${ov.ts_label} · 源 ${ov.last_refresh ? "TDX" : "TDX"}` : "等待数据");
@@ -1169,11 +1208,18 @@ function renderPayload(p) {
   renderBoardBar(p.boards_hy || []);
   renderBoardTreemap([...(p.boards_hy || []), ...(p.boards_gn || [])]);
   if (p.rotation) {
-    renderHeatmap(p.rotation, nameMap);
-    renderTrend(p.rotation, nameMap);
+    const sess = {
+      in_session: p.rotation.in_session != null ? p.rotation.in_session : p.in_session,
+      label: p.rotation.session_label || p.session_label || "",
+      end_ts: p.rotation.series_end_ts || "",
+      next_open: p.next_open || "",
+    };
+    renderHeatmap(p.rotation, nameMap, sess);
+    renderTrend(p.rotation, nameMap, sess);
     renderLeader(p.rotation);
     renderSignals(p.rotation);
     last.rot = p.rotation;
+    last.session = sess;
   }
   renderFunds(p.funds || null);
   renderObservability(p.signal_stats);

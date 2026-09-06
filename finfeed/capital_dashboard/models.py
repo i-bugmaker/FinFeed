@@ -161,6 +161,11 @@ class RotationReport:
     # 趋势：focus 板块主力净占比时间序列
     trend_boards: list[str] = field(default_factory=list)
     trend_series: list[dict] = field(default_factory=list)
+    # 采样门控：非交易时段（午间休市/收盘后/非交易日）行情静止，趋势与热力图
+    # 不再追加采样点，定格于最近一个交易时点，由下列字段向前端说明状态
+    in_session: bool = True          # 当前是否处于交易时段
+    session_label: str = ""          # 时段中文标签，如「午间休市」
+    series_end_ts: str = ""          # 趋势/热力图最后一个采样点时间 HH:MM:SS
 
 
 # --------------------------------------------------------------------------- #

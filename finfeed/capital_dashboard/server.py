@@ -22,13 +22,14 @@ from fastapi import APIRouter, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, funds, tdx
+from . import config, funds, session, tdx
 from .alerting import manager as _alert_manager
 from .alerting import wire_ws_push
 from .collector import fetch_stock_detail
 from .funds import FundRankWorker
 from .observability import tracker as _signal_tracker
 from .rotation import STATUS_LABEL
+from .snapshot import poll_interval
 from .snapshot import DetailEnricher, RefreshWorker, SnapshotStore
 from .ws import ws_router as _ws_router
 
@@ -114,10 +115,19 @@ async def lifespan(_: FastAPI):
 # --------------------------------------------------------------------------- #
 
 def _now() -> dict[str, Any]:
+    """快照时间 + 交易时段状态（轮动趋势/热力图据此判断是否在采样）。"""
+    sess = session.session_state()
+    base: dict[str, Any] = {
+        "in_session": sess["in_session"],
+        "session_phase": sess["phase"],
+        "session_label": sess["label"],
+        "next_open": sess["next_open"],
+    }
     snap = store.get_snapshot()
     if snap is None:
-        return {"ts": "", "ts_label": "--:--:--", "trading": False}
+        return {**base, "ts": "", "ts_label": "--:--:--", "trading": False}
     return {
+        **base,
         "ts": snap.ts,
         "ts_label": snap.ts_label,
         "last_refresh": store.health()["last_refresh_ts"],

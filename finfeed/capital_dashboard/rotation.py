@@ -9,6 +9,10 @@
 3. **切换信号识别** —— 板块主力净流入排名相对上一采样点跳变超过阈值，且方向
    与当前资金流一致时发出 rotate_in / rotate_out 信号；
 4. **轮动热力图与趋势序列** —— 供大屏 ECharts 渲染。
+
+采样门控：轮动趋势与热力图**只在交易时段内统计**（详见 session.py）。非交易时段
+行情为静止快照，主力净额为当日累计值，继续采样只会写入重复列，使趋势退化为直线、
+并挤占固定长度的历史窗口，因此 ``in_session=False`` 时当前快照不计入时间轴。
 """
 
 from __future__ import annotations
@@ -90,14 +94,25 @@ def _rank_map(boards: Iterable[BoardFlow]) -> dict[str, int]:
 def analyze_rotation(
     current: MarketSnapshot,
     history: list[MarketSnapshot],
+    in_session: bool = True,
+    session_label: str = "",
 ) -> RotationReport:
     """对最新快照执行轮动分析。
 
     Args:
         current: 最新快照。
         history: 历史快照列表（含 current 之前的历史，按时间升序）。
+        in_session: 当前是否处于交易时段。**False 时 current 不进入时间轴**——
+            收盘后/午间休市行情静止，追加只会写入与上一采样点完全重复的列，
+            既污染趋势与热力图，又挤占固定长度的历史窗口。此时趋势与热力图
+            定格于 history 的最后一个交易时点。
+        session_label: 时段中文标签，随报告下发供前端标注。
     """
-    report = RotationReport(ts=current.ts)
+    report = RotationReport(
+        ts=current.ts,
+        in_session=in_session,
+        session_label=session_label,
+    )
 
     if not current.boards:
         return report
@@ -126,7 +141,8 @@ def analyze_rotation(
     heat_times: list[str] = []
     heat_values: list[list[float]] = []
 
-    timeline = [s for s in history] + [current]
+    # 非交易时段不把当前快照计入时间轴（行情静止，采样无信息量）
+    timeline = list(history) + ([current] if in_session else [])
     for snap in timeline:
         if not snap.boards:
             continue
@@ -143,6 +159,7 @@ def analyze_rotation(
     report.heatmap_boards = heat_boards
     report.heatmap_board_names = [b.name for b in focus]
     report.heatmap_times = heat_times
+    report.series_end_ts = heat_times[-1] if heat_times else ""
     # heat_values 目前按时间行存储 -> 转置为 [板块][时间]
     report.heatmap_values = (
         [list(col) for col in zip(*heat_values)] if heat_values else []

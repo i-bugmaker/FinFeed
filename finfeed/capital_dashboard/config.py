@@ -23,6 +23,16 @@ TDX_TIMEOUT: float = float(os.environ.get("TDX_TIMEOUT", "8.0"))
 # 非交易时段可调大。0 表示关闭后台刷新(仅手动触发)。
 REFRESH_INTERVAL: int = int(os.environ.get("REFRESH_INTERVAL", "8"))
 
+# 非交易时段（午间休市 / 收盘后 / 非交易日）轮询间隔，单位秒。
+# 此时行情静止，继续按 8s 高频轮询既无新信息、又空耗 TDX 连接与上游压力，
+# 降为空转；设为 0 表示非交易时段完全停止后台刷新（仅手动触发）。
+IDLE_REFRESH_INTERVAL: int = int(os.environ.get("IDLE_REFRESH_INTERVAL", "300"))
+
+# 板块轮动趋势 / 板块资金轮动热力图是否仅在交易时段内采样统计。
+# True（默认）：非交易时段不再写入轮动历史，两个视图定格于最近一个交易时点。
+# 置 0 可恢复为全时段采样（仅供调试/离线回放）。
+ROTATION_SESSION_ONLY: bool = os.environ.get("ROTATION_SESSION_ONLY", "1") != "0"
+
 # 个股资金流详情(当日主力/散户流入流出)为逐股查询，成本较高，低频补全：
 # 每 DETAIL_REFRESH_EVERY 秒对榜单前 DETAIL_TOP_N 只股票补全一次。
 DETAIL_REFRESH_EVERY: int = int(os.environ.get("DETAIL_REFRESH_EVERY", "30"))
