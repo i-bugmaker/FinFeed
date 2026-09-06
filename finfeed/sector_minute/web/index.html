@@ -264,6 +264,17 @@
   .smic__amt { font-family: var(--font-num); color: var(--text-3); font-size: 11px; }
   .smic__close { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; color: var(--text-3); font-size: 15px; line-height: 1; }
   .smic__close:hover { background: var(--hover); color: var(--text-1); }
+
+  /* —— 固定（pin）：卡片固定在对比区，点「清空」时不被移除 —— */
+  .smic__pin { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; color: var(--text-3); opacity: .5; transition: opacity .15s, background .15s, color .15s; }
+  .smic__pin:hover { background: var(--hover); color: var(--text-1); opacity: 1; }
+  .smic__pin.is-on { opacity: 1; background: var(--brand); border-color: var(--brand); color: #fff; }
+  .smic__pin.is-on svg { fill: currentColor; fill-opacity: .2; }
+  .smic__pin.is-on:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: #fff; }
+  /* 固定态：品牌色描边 + 弱品牌底色（仅颜色，不占布局空间） */
+  .card.is-pinned { border-color: #93b4ff; background: var(--brand-subtle); }
+  .tile.is-pinned { border-color: #93b4ff; background: var(--brand-subtle); }
+  .tile-pin { flex: none; color: var(--brand-ink); }
   .smic__canvas { position: relative; flex: 1; min-height: 0; width: 100%; }
   .smic__loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-3); font-size: 12px; z-index: 1; }
   .smic__chart { position: absolute; inset: 0; }
@@ -338,7 +349,7 @@
       刷新
     </button>
 
-    <button type="button" class="chip is-danger" id="btnClearAll" title="清空所有已选对比标的" disabled>
+    <button type="button" class="chip is-danger" id="btnClearAll" title="清空所有未固定的对比标的（已固定的保留）" disabled>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
       清空
     </button>
@@ -827,14 +838,20 @@ function removeTarget(k) {
   else buildMain();
 }
 
-// 一键清空所有已选对比标的与分时图
+// 一键清空所有已选对比标的与分时图（已「固定」的标的保留，不被清空）
 function clearAll() {
-  state.selected = [];
+  const keep = state.selected.filter((s) => s.pinned);
+  const gone = state.selected.filter((s) => !s.pinned).map(keyOf);
+  if (!gone.length) { toast("当前标的均已固定，清空未移除任何项", true); return; }
+  state.selected = keep;
   persist();
-  state.chartsData = [];
-  syncSubscriptions(); // 后端订阅置空，停止抓取
-  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderEtfList(); renderSelect(); buildMain();
-  toast("已清空对比列表");
+  applySelection();
+  syncSubscriptions(); // 后端订阅同步为保留项，停止抓取已移除标的
+  renderBoardList(); renderStockList(); renderIndexList(); renderSearchList(); renderEtfList(); renderSelect();
+  // 纵向布局下走增量移除，保留标的的图表实例不重建（避免抖动与重新加载）
+  if (canIncremental()) gone.forEach((k) => removeChartByKey(k));
+  else buildMain();
+  toast(keep.length ? `已清空 ${gone.length} 个标的，保留 ${keep.length} 个固定标的` : "已清空对比列表");
 }
 
 function persist() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state.selected)); } catch (e) {} }
@@ -1299,19 +1316,57 @@ function kindBadge(kind) {
   return { cls: "is-board", label: "板" };
 }
 
+// 固定（pin）图标：图钉形状，选中态由 .is-on 控制配色与轻微填充
+const PIN_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
+
+// 固定状态：以 state.selected 为准（pinned 字段随选中列表一起持久化到 localStorage）
+function isPinned(k) { return state.selected.some((s) => keyOf(s) === k && s.pinned); }
+
+// 切换固定：仅更新按钮/卡片外观，不重建图表（避免 ECharts 实例重建与分时图闪烁）
+function togglePin(k) {
+  const t = state.selected.find((s) => keyOf(s) === k);
+  if (!t) return;
+  t.pinned = !t.pinned;
+  persist();
+  applyPinUI(k, !!t.pinned);
+  toast(t.pinned ? "已固定：清空时保留此分时图" : "已取消固定");
+}
+
+// 同步固定态到 DOM（卡片 + 一览缩略卡）
+function applyPinUI(k, on) {
+  document.querySelectorAll('.card[data-key="' + k + '"]').forEach((card) => {
+    card.classList.toggle("is-pinned", on);
+    const btn = card.querySelector(".smic__pin");
+    if (btn) {
+      btn.classList.toggle("is-on", on);
+      btn.title = on ? "取消固定（清空时不再保留）" : "固定此图（清空时保留）";
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    // 固定提示走 title，不占布局空间
+    if (on) card.title = "已固定：清空时保留此图";
+    else card.removeAttribute("title");
+  });
+  const tile = document.querySelector('.tile[data-key="' + k + '"]');
+  if (tile) tile.classList.toggle("is-pinned", on);
+}
+
 // 单张图表卡片 HTML（idx 为图表 DOM id 后缀，各行内不同布局共用）
 function makeCard(c, idx) {
   const bd = kindBadge(c.kind);
   const nd = !hasChartData(c);
-  return `<div class="card" data-key="${keyOf(c)}"><div class="smic">
+  const k = keyOf(c);
+  const pin = isPinned(k);
+  return `<div class="card${pin ? " is-pinned" : ""}" data-key="${k}"${pin ? ' title="已固定：清空时保留此图"' : ""}><div class="smic">
     <div class="smic__head">
       <span class="smic__badge ${bd.cls}">${bd.label}</span>
       <span class="smic__name" title="${esc(c.code)}">${esc(c.name || c.code)}</span>
-      <span class="smic__code">${esc(c.code)}</span><span class="smic__sp"></span>
+      <span class="smic__code">${esc(c.code)}</span>
+      <span class="smic__sp"></span>
       <span class="smic__price flat">${nd ? "—" : fmtNum(c.close)}</span>
       <span class="smic__pct flat">${nd ? "—" : fmtPct(c.change_pct)}</span>
       <span class="smic__amt flat">${nd ? "—" : (c.change_amt > 0 ? "+" : "") + fmtNum(c.change_amt)}</span>
-      <button type="button" class="smic__close" data-remove="${keyOf(c)}" title="从对比列表移除">×</button>
+      <button type="button" class="smic__pin${pin ? " is-on" : ""}" data-pin="${k}" aria-pressed="${pin ? "true" : "false"}" title="${pin ? "取消固定（清空时不再保留）" : "固定此图（清空时保留）"}">${PIN_SVG}</button>
+      <button type="button" class="smic__close" data-remove="${k}" title="从对比列表移除">×</button>
     </div>
     <div class="smic__canvas">
       <div class="smic__loading" style="display:${c.points && c.points.length ? "none" : "flex"}">
@@ -1322,15 +1377,18 @@ function makeCard(c, idx) {
   </div></div>`;
 }
 
-// 一览（C）缩略卡片：标题 + 迷你分时线 + 涨跌幅
+// 一览（C）缩略卡片：标题 + 迷你分时线 + 涨跌幅（已固定标的带图钉标记）
 function makeTile(c) {
   const bd = kindBadge(c.kind);
   const nd = !hasChartData(c);
-  return `<button type="button" class="tile" data-key="${keyOf(c)}">
+  const k = keyOf(c);
+  const pin = isPinned(k);
+  return `<button type="button" class="tile${pin ? " is-pinned" : ""}" data-key="${k}">
     <span class="tile-h">
       <span class="smic__badge ${bd.cls}">${bd.label}</span>
       <span class="tile-name">${esc(c.name || c.code)}</span>
       <span class="tile-code">${esc(c.code)}</span>
+      ${pin ? `<span class="tile-pin" title="已固定，清空时保留">${PIN_SVG}</span>` : ""}
     </span>
     <svg class="tile-spark" viewBox="0 0 140 44" preserveAspectRatio="none"></svg>
     <span class="tile-f flat">${nd ? "—　—" : (c.change_pct > 1e-6 ? "+" : "") + fmtPct(c.change_pct) + "　" + fmtNum(c.close)}</span>
@@ -2032,8 +2090,10 @@ $("#poolSearch").addEventListener("click", (e) => {
   toggleTarget(JSON.parse(btn.dataset.toggle));
 });
 
-// 移除（已选区 + 卡片头，事件委托）
+// 固定 / 移除（卡片头，事件委托）
 document.addEventListener("click", (e) => {
+  const pin = e.target.closest("[data-pin]");
+  if (pin) { togglePin(pin.dataset.pin); return; }
   const rm = e.target.closest("[data-remove]");
   if (rm) removeTarget(rm.dataset.remove);
 });
